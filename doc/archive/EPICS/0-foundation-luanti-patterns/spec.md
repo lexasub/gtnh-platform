@@ -1,0 +1,5 @@
+1. InventoryActions как first-class протокол У нас: ItemStack {item_id:uint16, count:uint8, meta:uint16} в FlatBuffers. У Luanti: IMoveAction, IDropAction, ICraftAction — сериализуемые действия с apply() сервер-сайд и clientApply() клиент-сайд. → У нас сейчас InventoryUpdate через gateway, но нет Move/Drop/Craft как отдельных Table в .fbs. Стоит завести.
+
+2. CraftReplacements (bucket → empty bucket) У нас: consume: false в input override. У Luanti: CraftReplacements — пара (что убрать, что добавить). Пример: water bucket → empty bucket. Это обобщение нашего подхода.
+
+3. CraftPriority У нас: просто матчинг по MachineType + предметам. У Luanti: приоритеты NO_RECIPE < TOOLREPAIR < SHAPELESS_AND_GROUPS < SHAPELESS < SHAPED_AND_GROUPS < SHAPED. Плюс shaped > shapeless при равном качестве совпадения.

@@ -1,0 +1,52 @@
+' =============================================================================
+' GTNH Platform — C4 Architecture Diagrams
+' Shared settings, theme, and tag definitions
+' =============================================================================
+
+' C4-PlantUML includes (require plantuml -pip or plantuml.jar with internet)
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+' ---------------------------------------------------------------------------
+' Colour palette
+' ---------------------------------------------------------------------------
+!define COLOR_CORE      #438D80      ' Teal — core C++ services
+!define COLOR_GOSIDECAR #5899DA      ' Blue — Go sidecars
+!define COLOR_CLIENT    #9B59B6      ' Purple — client
+!define COLOR_PROTOCOL  #E67E22      ' Orange — protocol / shared
+!define COLOR_EXTERNAL  #95A5A6      ' Grey — external
+!define COLOR_PLANNED   #BDC3C7      ' Light grey — planned/stub
+!define COLOR_DB        #2C3E50      ' Dark — data stores
+!define COLOR_STORAGE   #1ABC9C      ' Teal light — storage layer
+!define COLOR_NETWORK   #3498DB      ' Blue — network layer
+
+' ---------------------------------------------------------------------------
+' Tag styling
+' ---------------------------------------------------------------------------
+AddRelTag(tag_protocol, $lineColor="orange", $lineStyle=DashedLine)
+AddRelTag(tag_tcp, $lineColor="#2980B9", $lineStyle=SolidLine)
+AddRelTag(tag_pubsub, $lineColor="#8E44AD", $lineStyle=DashedLine)
+AddRelTag(tag_rpc, $lineColor="#27AE60", $lineStyle=SolidLine)
+AddRelTag(tag_planned, $lineColor="#BDC3C7", $lineStyle=DottedLine)
+
+' ---------------------------------------------------------------------------
+' Element overrides (C4-PlantUML uses $bgColor not $backgroundColor)
+' ---------------------------------------------------------------------------
+UpdateElementStyle("person", $bgColor="#2C3E50", $fontColor="#FFFFFF")
+UpdateElementStyle("system", $bgColor=COLOR_EXTERNAL, $fontColor="#FFFFFF")
+UpdateElementStyle("system_ext", $bgColor=COLOR_EXTERNAL, $fontColor="#FFFFFF")
+
+' Container-level
+UpdateElementStyle("container", $bgColor=COLOR_CORE, $fontColor="#FFFFFF")
+UpdateElementStyle("container_db", $bgColor=COLOR_DB, $fontColor="#FFFFFF")
+
+' Component-level
+UpdateElementStyle("component", $bgColor="#5DADE2", $fontColor="#FFFFFF")
+UpdateElementStyle("component_db", $bgColor=COLOR_DB, $fontColor="#FFFFFF")
+
+' ---------------------------------------------------------------------------
+' Helper: planned container (dashed border)
+' ---------------------------------------------------------------------------
+!define PLAN_CONTAINER(alias, label, tech, desc) \
+  Container(alias, label, tech, desc, $tags="planned")

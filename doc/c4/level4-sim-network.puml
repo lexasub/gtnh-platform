@@ -1,0 +1,59 @@
+' =============================================================================
+' Level 3 — SimulationCore: Network Clients + Storage
+' Все TCP клиенты, publisher, репозитории
+' =============================================================================
+@startuml GTNH-Sim-Network-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **SimulationCore: Network + Storage**\nTCP клиенты, Event Publisher, репозитории
+
+Container_Boundary(sim, "SimulationCore") {
+
+    ' ===================================================================
+    ' Network / Клиенты
+    ' ===================================================================
+    Container_Boundary(net, "Network / Клиенты") {
+        Component(net_router_client, "IoUringRouterClient", "C++", "TCP клиент MessageRouter\npub/sub через io_uring")
+        Component(net_chunk_client, "IoUringChunkClient", "C++", "TCP клиент ChunkStore\nRPC GetBlock/SetBlock")
+        Component(net_ess_client, "EntityStateStoreClient", "C++", "TCP клиент EntityStateStore\nentity.state.get/set RPC")
+        Component(net_pipe_client, "PipeEnergyClient", "C++", "TCP клиент PipeNetwork\nэнергия/жидкость")
+        Component(net_publisher, "RouterEventPublisher", "C++", "Публикует события в MessageRouter\nBlockChanged, MultiblockCreated")
+        Component(net_ievent, "IEventPublisher", "C++ (interface)", "Интерфейс публикации событий")
+        Rel(net_publisher, net_ievent, "extends", "")
+        Rel(net_publisher, net_router_client, "публикует через", "")
+        Rel(net_chunk_client, net_router_client, "использует router\nдля RPC каналов", "")
+    }
+
+    ' ===================================================================
+    ' Storage / Репозитории
+    ' ===================================================================
+    Container_Boundary(stor, "Storage / Репозитории") {
+        Component(stor_repo, "ChunkStoreRepository", "C++", "Репозиторий ChunkStore\nчерез IoUringChunkClient")
+        Component(stor_iblock, "IBlockRepository", "C++ (interface)", "Интерфейс доступа к блокам")
+        Rel(stor_repo, stor_iblock, "extends", "")
+    }
+
+    ' ===================================================================
+    ' Subsystem references
+    ' ===================================================================
+    Component(ecs_ref, "ECS Core", "SimulationEngine")
+    Component(craft_ref, "Crafting", "CraftRequestHandler\nInventoryActionHandler")
+    Component(world_ref, "World", "ChunkSnapshot\nChunkEventHandler")
+}
+
+' Cross-module relationships
+Rel(ecs_ref, net_publisher, "onMachineCreated callback", "")
+Rel(ecs_ref, stor_repo, "AsyncGetChunk / RPC", "")
+Rel(net_pipe_client, net_router_client, "pipe_network.* топики", "")
+
+Rel(craft_ref, net_publisher, "публикует CraftResponse\nи инвентарь-ивенты", "")
+Rel(craft_ref, net_ess_client, "сохраняет state", "")
+
+Rel(world_ref, net_publisher, "публикует ChunkSnapshot", "")
+Rel(world_ref, stor_repo, "загружает чанки", "")
+
+SHOW_LEGEND()
+@enduml

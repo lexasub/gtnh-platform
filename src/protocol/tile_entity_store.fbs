@@ -1,0 +1,88 @@
+// protocol/tile_entity_store.fbs
+// TileEntity state storage RPC: opaque blobs keyed by world coordinates.
+// Frame: [4 bytes: big-endian payload size] [FlatBuffer: TileEntityStoreMessage | TileEntityStoreReply]
+//
+// Dumb storage for machine/workbench/chest state. Knows nothing about blob content.
+// MVP backend: SQLite via MetaDB (Go). Post-MVP: LMDB (C++) when >1000 writes/tick.
+
+include "core.fbs";
+
+namespace Protocol;
+
+// ---------------------------------------------------------------------------
+// Request types
+// ---------------------------------------------------------------------------
+
+// Get TileEntity state blob at world coordinates
+table GetTileStateReq {
+  dim:uint32;
+  pos:Vec3i (required);
+}
+
+// Set TileEntity state blob at world coordinates
+table SetTileStateReq {
+  dim:uint32;
+  pos:Vec3i (required);
+  state:[uint8];              // opaque blob, no interpretation
+}
+
+// Remove TileEntity state at world coordinates
+table RemoveTileStateReq {
+  dim:uint32;
+  pos:Vec3i (required);
+}
+
+union TileEntityStoreRequest {
+  GetTileStateReq,
+  SetTileStateReq,
+  RemoveTileStateReq,
+}
+
+// ---------------------------------------------------------------------------
+// Response types
+// ---------------------------------------------------------------------------
+
+// Response to GetTileStateReq — empty blob = no state stored
+table GetTileStateResp {
+  state:[uint8];              // opaque blob, empty = no state
+}
+
+table SetTileStateResp {
+  success:bool;
+}
+
+table RemoveTileStateResp {
+  success:bool;
+}
+
+union TileEntityStoreResponse {
+  GetTileStateResp,
+  SetTileStateResp,
+  RemoveTileStateResp,
+  ErrorResp,
+}
+
+// ---------------------------------------------------------------------------
+// Wire wrappers
+// ---------------------------------------------------------------------------
+
+table TileEntityStoreMessage {
+  req_id:uint32;
+  request:TileEntityStoreRequest;
+}
+
+table TileEntityStoreReply {
+  req_id:uint32;
+  response:TileEntityStoreResponse;
+}
+
+union TileEntityStorePayload {
+  TileEntityStoreMessage,
+  TileEntityStoreReply,
+}
+
+table TileEntityStoreFrame {
+  payload:TileEntityStorePayload (required);
+}
+
+root_type TileEntityStoreFrame;

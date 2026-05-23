@@ -1,0 +1,82 @@
+' =============================================================================
+' Level 3 — GameClient Core
+' GameClient orchestrator + Infrastructure + Camera + Common Types + ServerLogic
+' Cross-subsystem relationships shown from GameClient to all subsystems
+' =============================================================================
+@startuml GTNH-Client-Core-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 3 — GameClient Core**\nОркестратор + инфраструктура + типы
+
+Container_Boundary(gc, "GameClient") {
+
+    ' ===================================================================
+    ' Infrastructure
+    ' ===================================================================
+    Container_Boundary(infra, "Инфраструктура") {
+        Component(gc_main, "main.cpp", "C++", "Точка входа")
+        Component(gc_core, "GameClient", "C++", "Оркестратор: Init / Run / Update\nвладеет всеми подсистемами")
+        Component(gc_thread, "NamedThreadPool", "C++", "Пул тредов\nasio::io_context worker threads")
+        Component(gc_workguard, "workGuard_", "C++", "Executor work guard\nне даёт io_context завершиться")
+    }
+
+    ' ===================================================================
+    ' Camera
+    ' ===================================================================
+    Container_Boundary(cam, "Камера (Camera)") {
+        Component(cam_obj, "Camera", "C++", "FPS камера\nview/projection матрицы\nуправление через мышь/клавиатуру")
+        Component(cam_prev, "prevCameraPos_", "glm::vec3", "Предыдущая позиция камеры\nдля delta-расчётов")
+    }
+
+    ' ===================================================================
+    ' ServerLogic
+    ' ===================================================================
+    Container_Boundary(slogic, "ServerLogic") {
+        Component(sl_mech, "IMechanism", "C++ (interface)", "Интерфейс механизма\nдля взаимодействия с сервером")
+    }
+
+    ' ===================================================================
+    ' Common Types
+    ' ===================================================================
+    Container_Boundary(common, "Common Types") {
+        Component(ct_types, "Types", "C++", "Базовые типы: BlockPos, ChunkCoord\nVec3, PlayerID, ItemStack")
+        Component(ct_blocktype, "BlockType", "C++", "Перечисление типов блоков\nID → BlockType mapping")
+        Component(ct_blockvtx, "BlockVertex", "C++", "Структура вершины блока\nпозиция, UV, light")
+        Component(ct_input, "InputState", "C++", "Состояние ввода\nклавиши, мышь, scroll")
+        Component(ct_inv, "Inventory", "C++", "Состояние инвентаря\n40 слотов актуальное")
+        Component(window, "Window (GLFW)", "C++ (GLFWwindow)", "Окно GLFW\n640×480 / 1280×720")
+    }
+
+    ' ===================================================================
+    ' Subsystem references (collapsed — подробно в отдельных файлах)
+    ' ===================================================================
+    Component(net_ref, "Сеть (Network)", "NetClient + IoUringConnection\nControl/Bulk очереди")
+    Component(world_ref, "Мир (World + Cache)", "World, ChunkStorage, MeshManager\nChunkLoadManager")
+    Component(render_ref, "Рендер (Render + RenderLib)", "RenderBridge, RenderAPI\nChunkMeshBuilder, Scene, UI")
+    Component(ui_ref, "UI (ImGui)", "UIManager, окна, панели\nCrafting, слоты, NEI")
+
+    ' ===================================================================
+    ' Cross-subsystem relationships
+    ' ===================================================================
+    ' GameClient → все подсистемы (ownership)
+    Rel(gc_core, net_ref, "владеет NetClient", "")
+    Rel(gc_core, world_ref, "владеет World, MeshManager\nChunkLoadManager", "")
+    Rel(gc_core, render_ref, "владеет RenderBridge", "")
+    Rel(gc_core, ui_ref, "владеет UIManager", "")
+    Rel(gc_core, cam_obj, "владеет Camera camera_", "")
+    Rel(gc_core, infra, "владеет", "")
+
+    ' Межподсистемные связи (верхнеуровнево)
+    Rel(net_ref, world_ref, "ChunkCallback → World::OnChunkReceived()\nBlockUpdateCallback → World::OnBlockUpdate()", "")
+    Rel(net_ref, ui_ref, "InventoryUpdateCallback → UIManager\nCraftResponseCallback", "")
+    Rel(world_ref, render_ref, "Данные чанков для рендера\nChunk updates → mesh rebuild", "")
+    Rel(ui_ref, net_ref, "SendPlayerAction / SendCraftRequest\nSendInventoryAction", "")
+    Rel(ui_ref, world_ref, "Блок-пикер для UI", "")
+    Rel(ui_ref, ct_inv, "Читает/пишет инвентарь", "")
+}
+
+SHOW_LEGEND()
+@enduml

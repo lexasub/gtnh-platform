@@ -1,0 +1,26 @@
+' =============================================================================
+' Level 3 — EntityStateStore
+' C++ :5200 — LMDB-backed persistence for world-bound entity state
+' =============================================================================
+@startuml GTNH-EntityStateStore-level3
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **EntityStateStore**\nC++ — LMDB persistence для состояний сущностей (:5200)
+
+Container_Boundary(ess, "EntityStateStore (C++ :5200)") {
+    Component(ess_main, "main.cpp", "C++", "Точка входа\nинициализация LMDB + TCP")
+    Component(ess_storage, "EntityStateStorage", "C++", "LMDB-backed storage\nдля состояний сущностей\nGetState / SetState / DeleteState")
+    Component(ess_cache_h, "cache.h / cache.cpp", "C++", "Кэш состояний\nдля быстрого доступа\nбез LMDB read на каждый запрос")
+    Component(ess_router, "MessageRouterClient", "C++", "TCP клиент MessageRouter\nentity.state.* топики\nget/set RPC")
+    Component(ess_chunk, "ChunkStoreClient", "C++", "TCP клиент ChunkStore\nдля доступа к блокам\nпри сохранении состояния")
+
+    Rel(ess_storage, ess_cache_h, "кэширует записи", "")
+    Rel(ess_router, ess_storage, "RPC → CRUD операция", "")
+    Rel(ess_chunk, ess_storage, "контекст блоков\nдля state", "")
+}
+
+SHOW_LEGEND()
+@enduml

@@ -1,0 +1,14 @@
+{
+  "gtnh:alloy_bronze": {
+    "m": 60,
+    "in": [[58, 3], [57, 1]],
+    "out": [[55, 4]],
+    "dur": 200
+  },
+  "gtnh:alloy_bronze_from_ingots": {
+    "m": 60,
+    "in": [[54, 3], [26, 1]],
+    "out": [[55, 4]],
+    "dur": 200
+  }
+}

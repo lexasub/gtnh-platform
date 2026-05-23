@@ -1,0 +1,108 @@
+// protocol/chunkstore.fbs
+// ChunkStore service RPC: request/reply over length-prefixed TCP frames.
+// Frame: [4 bytes: big-endian payload size] [FlatBuffer: ChunkStoreMessage | ChunkStoreReply]
+// Cross-service events (via MessageRouter): BlockChangedEvent (from core.fbs)
+
+include "core.fbs";
+
+namespace Protocol;
+
+// ---------------------------------------------------------------------------
+// Request types
+// ---------------------------------------------------------------------------
+table GetBlockReq {
+  pos:Vec3i (required);
+}
+
+table SetBlockReq {
+  pos:Vec3i (required);
+  block_id:uint16;
+  meta:uint8;
+}
+
+table SetBlockCASReq {
+  pos:Vec3i (required);
+  expected_block_id:uint16;
+  new_block_id:uint16;
+  meta:uint8;
+}
+
+table GetChunkReq {
+  coord:Vec3i (required);
+}
+
+table SaveChunkReq {
+  coord:Vec3i (required);
+  blocks:[uint16];
+  meta:[uint8];
+  multiblock:[uint32];
+}
+
+union ChunkStoreRequest {
+  GetBlockReq,
+  SetBlockReq,
+  SetBlockCASReq,
+  GetChunkReq,
+  SaveChunkReq,
+}
+
+// ---------------------------------------------------------------------------
+// Response types
+// ---------------------------------------------------------------------------
+table GetBlockResp {
+  block_id:uint16;
+  meta:uint8;
+  mb_id:uint32;
+}
+
+table SetBlockResp {
+  success:bool;
+}
+
+table SetBlockCASResp {
+  status:CASStatus;
+  actual_block_id:uint16;
+  actual_meta:uint8;
+}
+
+table GetChunkResp {
+  chunk:ChunkData (required);
+}
+
+table SaveChunkResp {
+  success:bool;
+}
+
+union ChunkStoreResponse {
+  GetBlockResp,
+  SetBlockResp,
+  SetBlockCASResp,
+  GetChunkResp,
+  SaveChunkResp,
+  ErrorResp,
+}
+
+// ---------------------------------------------------------------------------
+// Wire wrappers
+// ---------------------------------------------------------------------------
+table ChunkStoreMessage {
+  req_id:uint32;
+  request:ChunkStoreRequest;
+}
+
+table ChunkStoreReply {
+  req_id:uint32;
+  response:ChunkStoreResponse;
+}
+
+
+union ChunkStorePayload {
+  ChunkStoreMessage,
+  ChunkStoreReply,
+}
+
+table ChunkStoreFrame {
+  payload:ChunkStorePayload (required);
+}
+
+root_type ChunkStoreFrame;

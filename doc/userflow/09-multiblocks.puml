@@ -1,0 +1,236 @@
+' =============================================================================
+' GTNH Platform — User Flow: Multiblocks
+' 3 диаграммы: EBF, Large Boiler, Large Chemical Reactor
+' =============================================================================
+
+' ===========================================================================
+' 1. Electric Blast Furnace (EBF)
+' ===========================================================================
+@startuml multiblock-ebf
+title **Flow MB1: Electric Blast Furnace (EBF)**
+
+actor "Игрок" as Player
+participant "GameClient" as Client
+participant "SimulationCore" as Sim
+participant "ChunkStore" as CS
+participant "RecipeManager" as RM
+participant "PipeNetwork" as PN
+participant "EntityStateStore" as ESS
+participant "SpatialIndex" as SI
+
+== Сборка EBF ==
+
+Player -> Client: Ставит блоки по паттерну 3х3х4
+note right #9B59B6
+  EBF Pattern (3x3x4):
+  Layer 0: [ C C C ] - касинг
+           [ C C C ]
+           [ C C C ]
+  Layer 1: [ C A C ] - A = air
+           [ A H A ] - H = heating coil
+           [ C A C ]
+  Layer 2: (same as 1)
+  Layer 3: [ C C C ]
+           [ C M C ] - M = controller / muffler
+           [ C C C ]
+
+  Всего: 34 блока касинга (casings)
+         2 слота для катушек (heating coils)
+         Контроллер (EBF Controller)
+         Muffler hatch наверху
+end note
+
+== Detection: каждый SetBlock ==
+
+Client -> Sim: SetBlockAction (каждый блок)
+Sim -> CS: SetBlock CAS
+
+Sim -> Sim: onBlockChanged(pos, block_id)
+
+Sim -> SI: FindPattern(pos)
+note right #9B59B6
+  SpatialIndex проверяет:
+  - Все блоки вокруг pos
+  - Сравнивает с EBF pattern
+  - Если совпало: MultiblockController
+end note
+
+alt Pattern match: EBF complete
+    Sim -> Sim: Create MultiblockController ECS entity
+    Sim -> Sim: Find all hatches (input, output, energy, muffler)
+
+    Sim -> CS: SetBlockMeta для всех блоков\n(запись mb_id в meta-layer)
+    Sim -> ESS: Save multiblock state (hatches, coils, tier)
+
+    Sim -> MR: Publish sim.multiblock.created
+    Client -> Player: EBF активен!
+
+    == EBF tick (20 Hz) ==
+
+    Sim -> Sim: Tick: EBF running
+
+    Sim -> RM: FindRecipe(ebf_id, input_items, heat_required)
+    RM --> Sim: Recipe found (requires 1800K heat)
+
+    Sim -> PN: CheckEnergy(ebf_id, eu_cost/tick)
+    PN --> Sim: Energy OK
+
+    Sim -> Sim: Check coil heat capacity
+    note right: Kanhal (1800K), Nichrome (2700K),\nTungstenSteel (4500K)\nCoil tier определяет max heat
+
+    alt Heat >= recipe_heat_required
+        Sim -> Sim: Advance recipe progress
+        alt Recipe complete
+            Sim -> Sim: Consume inputs, produce outputs
+            Sim -> ESS: Save output to hatches
+        end
+    else Heat < required
+        Sim -> Sim: Pause, heat too low
+    end
+else Pattern not complete
+    Sim -> Sim: Single blocks only (no multiblock)
+end
+
+@enduml
+
+' ===========================================================================
+' 2. Large Steam Boiler
+' ===========================================================================
+@startuml multiblock-large-boiler
+title **Flow MB2: Large Steam Boiler**
+
+actor "Игрок" as Player
+participant "SimulationCore" as Sim
+participant "RecipeManager" as RM
+participant "PipeNetwork" as PN
+participant "ChunkStore" as CS
+participant "EntityStateStore" as ESS
+
+== Сборка парогенератора ==
+
+Player -> Client: Ставит блоки Large Boiler
+
+note right #5899DA
+  Large Boiler (3x3x4):
+  - Controller + касинг
+  - Firebox (для горения)
+  - Water intake hatches
+  - Steam output hatches
+  - Размеры: 1x1x1 -> 3x3x4 (LP -> HP)
+end note
+
+== Detection ==
+
+Sim -> Sim: onBlockChanged -> pattern match
+
+alt Pattern match: boiler complete
+    Sim -> Sim: Create MultiblockController
+    Sim -> CS: SetBlockMeta (mb_id)
+    Sim -> MR: Publish sim.multiblock.created
+
+    == Boiler tick ==
+
+    Tick -> Sim: tick(dt)
+
+    Sim -> Sim: Check fuel in firebox inventory
+    note right: Топливо: coal, charcoal,\nили жидкое топливо
+
+    alt Has fuel
+        Sim -> Sim: Burn fuel, generate heat
+        Sim -> Sim: Check water in input hatch
+
+        alt Has water
+            Sim -> Sim: Convert water -> steam
+            Sim -> PN: Publish fluid.node.update
+            PN -> PN: Distribute steam to network
+        else No water
+            Sim -> Sim: Heat buildup (overheat risk)
+        end
+    else No fuel
+        Sim -> Sim: Cool down, no steam
+    end
+
+    Sim -> ESS: Save boiler state (heat, fuel, water)
+end
+
+@enduml
+
+' ===========================================================================
+' 3. Large Chemical Reactor (LCR)
+' ===========================================================================
+@startuml multiblock-lcr
+title **Flow MB3: Large Chemical Reactor (LCR)**
+
+actor "Игрок" as Player
+participant "SimulationCore" as Sim
+participant "RecipeManager" as RM
+participant "PipeNetwork" as PN
+participant "ChunkStore" as CS
+participant "EntityStateStore" as ESS
+
+== Сборка LCR ==
+
+Player -> Client: Ставит блоки LCR
+
+note right #E67E22
+  LCR Pattern:
+  - 3x3x3 касинг
+  - Внутри пусто (air / fluid)
+  - Controller спереди
+  - Input/Output hatches
+  - Energy hatch
+  - Fluid hatches для жидкостей
+end note
+
+== Detection + Activation ==
+
+Sim -> Sim: onBlockChanged -> pattern match
+Sim -> Sim: Create MultiblockController
+
+== LCR tick ==
+
+Sim -> Sim: Tick(dt)
+
+Sim -> RM: FindRecipe(lcr_id, inputs)
+note right #E67E22
+  LCR рецепты:
+  - Требуют жидкости + предметы
+  - Chemical reactions
+  - Например: sulfuric_acid + iron -> iron_sulfate
+  - Требуют EU/t
+end note
+
+RM --> Sim: Recipe found
+
+Sim -> PN: CheckEnergy(lcr_id, eu_cost/tick)
+PN --> Sim: Energy available
+
+Sim -> Sim: Check fluid inputs
+note right: Fluid hatches содержат\nнеобходимые жидкости
+
+alt All inputs satisfied
+    Sim -> Sim: Advance recipe
+    Sim -> PN: ConsumeEnergy(eu_cost/tick)
+    Sim -> PN: ConsumeFluid(input_fluids)
+
+    alt Recipe complete
+        Sim -> Sim: Output items + fluids to hatches
+        Sim -> ESS: Save LCR state
+        Sim -> MR: Publish machine.state.updated
+    end
+else Missing inputs
+    Sim -> Sim: Idle, wait for materials
+end
+
+== Multiblocks: общий lifecycle ==
+
+note right #9B59B6
+  Multiblocks:
+  - SimulationCore ECS: MultiblockController entity
+  - Components: MachineComponent + EnergyStorage + InventoryContainer + SideConfig
+  - persisted через EntityStateStore
+  - Обнаружение через onBlockChanged + SpatialIndex
+  - L2 deferred в BFS анализе
+end note
+
+@enduml

@@ -1,0 +1,66 @@
+// protocol/machine_state.fbs
+// MachineState blob format — serialized by SimulationCore, stored as opaque blob
+// in EntityStateStore (LMDB). EntityStateStore does NOT parse this —
+// it's dumb storage. Only SimulationCore serializes/deserializes.
+//
+// Includes are relative to the flatc include path:
+include "core.fbs";
+
+namespace Protocol;
+
+// ---------------------------------------------------------------------------
+// Machine state: persisted TileEntity state for machines/workbenches
+// ---------------------------------------------------------------------------
+
+// Energy storage snapshot — mirrors core.fbs EnergyStorage struct
+// Used here explicitly so MachineState is self-describing for debugging
+struct MachineEnergyStorage {
+  capacity:int32;
+  current:int32;
+  max_input:int32;
+  max_output:int32;
+  tier:int32;
+}
+
+// Fluid tank snapshot — single tank within a machine
+struct MachineFluidTank {
+  fluid_id:uint32;
+  amount:int32;
+  capacity:int32;
+}
+
+// NBT-like tag for GTNH-specific extensibility
+// Allows custom fields without schema changes
+table NBTTag {
+  key:string;
+  value_type:uint8;     // 0=int32, 1=float, 2=string, 3=bytes
+  value_int:int32;
+  value_float:float;
+  value_string:string;
+  value_bytes:[uint8];
+}
+
+// Machine inventory snapshot (subset of slots for the machine)
+table MachineInventorySlot {
+  item_id:uint16;
+  count:uint16;
+  meta:uint16;
+}
+
+table MachineInventory {
+  size:uint8;
+  slots:[MachineInventorySlot];
+}
+
+// Root blob type stored in EntityStateStore
+// SimulationCore serializes this via flatbuffers::FlatBufferBuilder
+// and sends to EntityStateStore via SetTileState RPC
+table MachineState {
+  version:uint16;               // schema version (start at 1)
+  energy:MachineEnergyStorage;  // current energy state
+  fluids:[MachineFluidTank];    // fluid tanks (0-N)
+  inventory:MachineInventory;   // machine input/output slots
+  nbt_tags:[NBTTag];           // GTNH extension tags
+}
+
+root_type MachineState;

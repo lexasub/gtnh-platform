@@ -1,0 +1,38 @@
+' =============================================================================
+' Level 3 — RecipeManager (standalone service)
+' C++ — проверка и выполнение рецептов, таймеры, handlers
+' =============================================================================
+@startuml GTNH-RecipeManager-level3
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **RecipeManager**\nC++ — сервис проверки и выполнения рецептов
+
+Container_Boundary(rm, "RecipeManager (C++)") {
+    Component(rm_svc, "RecipeManagerService", "C++", "Сервис проверки рецептов\nCheckRecipe / Craft / EvaluateConditions\nтаймер тиков рецептов (50ms)")
+    Component(rm_router, "MessageRouterClient", "C++", "TCP клиент MessageRouter\nrecipe.* топики")
+    Component(rm_mgr, "RecipeManager (library)", "C++", "Ядро: БД рецептов\nзагрузка из data/recipes/\nпоиск + условия")
+    Component(rm_main, "main.cpp", "C++", "Точка входа")
+    Component(rm_active, "activeRecipes_", "unordered_map<Pos3Key, ActiveRecipe>", "Активные рецепты\nсейчас в обработке")
+    Component(rm_timer, "recipe_timer_", "asio::steady_timer", "Таймер 50ms\nтик прогресса рецептов")
+
+    ' Handlers
+    Component(rm_h_check, "handleCheckRecipe()", "C++", "Проверка рецепта\nбез выполнения")
+    Component(rm_h_craft, "handleCraft()", "C++", "Выполнение крафта\nстарт рецепта в машине")
+    Component(rm_h_eval, "handleEvaluateConditions()", "C++", "Проверка условий\nэнергия, температура")
+    Component(rm_h_block, "handleBlockEntityUpdate()", "C++", "Обновление состояния\nблока-сущности")
+
+    Rel(rm_svc, rm_router, "читает/пишет", "")
+    Rel(rm_svc, rm_mgr, "делегирует проверки", "")
+    Rel(rm_svc, rm_active, "ведёт активные", "")
+    Rel(rm_svc, rm_timer, "тик крафта", "")
+    Rel(rm_svc, rm_h_check, "диспатчит", "")
+    Rel(rm_svc, rm_h_craft, "диспатчит", "")
+    Rel(rm_svc, rm_h_eval, "диспатчит", "")
+    Rel(rm_svc, rm_h_block, "диспатчит", "")
+}
+
+SHOW_LEGEND()
+@enduml

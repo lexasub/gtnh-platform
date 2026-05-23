@@ -1,0 +1,53 @@
+' =============================================================================
+' Level 3 — Мелкие сервисы
+' WorldGenerator + SpatialIndex (planned) + Validation + StorageInterfaces
+' =============================================================================
+@startuml GTNH-TinyServices-level3
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **WorldGenerator · SpatialIndex · Validation · StorageInterfaces**\nМелкие сервисы и библиотеки
+
+' ===========================================================================
+' 1. WorldGenerator
+' ===========================================================================
+Container_Boundary(wg, "WorldGenerator (C++ — FastNoiseLite)") {
+    Component(wg_gen, "WorldGenerator", "C++", "Генератор мира: flat world\nпока заглушка\n(stone/grass/air)")
+    Component(wg_queue, "GenerationQueue", "C++", "Очередь генерации чанков\nасинхронные запросы\nот ChunkStore")
+    Component(wg_main, "main.cpp", "C++", "Точка входа")
+
+    Rel(wg_queue, wg_gen, "генерирует чанки\nпо запросу", "")
+}
+
+' ===========================================================================
+' 2. SpatialIndex (PLANNED)
+' ===========================================================================
+Container_Boundary(si, "SpatialIndex (PLANNED — C++ Boost.Geometry)") {
+    Component(si_main, "main.cpp", "C++", "Точка входа (заглушка\nвозвращает 0)")
+    Component(si_stub, "SpatialIndex stub", "C++", "Планируется:\nR-tree (Boost.Geometry)\nOctree для 3D поиска\nMultiblock queries\nAABB bounding-box search")
+}
+
+' ===========================================================================
+' 3. Validation Library (static lib)
+' ===========================================================================
+Container_Boundary(val, "Validation Library (C++ static lib)") {
+    Component(val_inv, "InventoryValidator", "C++ (static)", "Валидация ItemStack\nitem_id ≤ 65535, count ≤ 64\nmeta ≤ 65535, empty = item_id:0")
+    Component(val_inv_slot, "ValidateInventorySlot()", "C++ (static)", "Валидация одного слота\nделегирует ValidateItemStack")
+    Component(val_inv_full, "ValidateInventory()", "C++ (static)", "Валидация целого инвентаря\nsize match + все слоты")
+    Component(val_inv_type, "ValidateInventoryType()", "C++ (static)", "Валидация типа инвентаря\nтип 0-3, slot_count\nPlayer=45, Workbench=10")
+    Component(val_entity, "ValidateEntityState()", "C++ (static)", "Валидация EntityState\nstate buffer → Inventory\nFlatBuffers verifier")
+    Component(val_main, "main.cpp + src/", "C++", "Точка входа для тестов\nреализация валидации")
+}
+
+' ===========================================================================
+' 4. Storage Interfaces (header-only)
+' ===========================================================================
+Container_Boundary(si2, "Storage Interfaces (C++ header-only)") {
+    Component(si_entity, "IEntityStateStorage", "C++ (interface)", "Интерфейс хранилища\nсостояний сущностей\nLoad/Save/Delete EntityState")
+    Component(si_player, "IPlayerInventoryStorage", "C++ (interface)", "Интерфейс хранилища\nинвентарей игроков\nLoad/Save Inventory, Get/Save Position")
+}
+
+SHOW_LEGEND()
+@enduml

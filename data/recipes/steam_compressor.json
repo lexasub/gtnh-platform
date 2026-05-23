@@ -1,0 +1,14 @@
+{
+  "gtnh:compress_iron": {
+    "m": 52,
+    "in": [[4]],
+    "out": [[4]],
+    "dur": 200
+  },
+  "gtnh:compress_bronze": {
+    "m": 52,
+    "in": [[55]],
+    "out": [[56]],
+    "dur": 200
+  }
+}

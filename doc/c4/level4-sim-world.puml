@@ -1,0 +1,53 @@
+' =============================================================================
+' Level 3 — SimulationCore: World + Multiblock Patterns + Common
+' BlockTransforms, ChunkEvent, MultiblockPatternMatcher, ChunkSnapshot, spdlog
+' =============================================================================
+@startuml GTNH-Sim-World-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **SimulationCore: World + Multiblocks + Common**\nБлоки, чанки, паттерны мультиблоков
+
+Container_Boundary(sim, "SimulationCore") {
+
+    ' ===================================================================
+    ' GridPatternMatcher (Multiblocks)
+    ' ===================================================================
+    Container_Boundary(gpm, "GridPatternMatcher (мультиблоки)") {
+        Component(gpm_matcher, "GridPatternMatcher", "C++", "Поиск паттернов мультиблоков\nна основе BlockChanged событий")
+        Component(gpm_electrolyser, "ELECTROLYSER_PATTERN", "C++ const", "Паттерн электролизёра\n3×3×3 (24 блока)")
+        Rel(gpm_matcher, gpm_electrolyser, "содержит эталонный\nпаттерн", "")
+    }
+
+    ' ===================================================================
+    ' World
+    ' ===================================================================
+    Container_Boundary(world, "World") {
+        Component(w_transforms, "BlockTransforms", "C++", "Трансформации блоков\nориентация, meta")
+        Component(w_event_handler, "ChunkEventHandler", "C++", "Обработчик событий чанков\nзагрузка/выгрузка")
+        Component(w_snapshot, "ChunkSnapshot", "C++", "Слепок чанка\nдля отправки клиенту")
+        Component(w_container, "WorldContainerInventory", "C++", "Инвентари контейнеров в мире\nсундуки, печки")
+    }
+
+    ' ===================================================================
+    ' Common
+    ' ===================================================================
+    Component(logger, "Logger (spdlog)", "C++", "Логирование")
+    Component(xyz, "xyz.h", "C++", "Вспомогательные функции\nxyz packing/unpacking")
+
+    ' ===================================================================
+    ' Subsystem references
+    ' ===================================================================
+    Component(ecs_ref, "ECS Core", "SimulationEngine")
+    Component(net_ref, "Network", "RouterPublisher + Storage")
+}
+
+' Cross-module relationships
+Rel(ecs_ref, gpm_matcher, "matchElectrolyser()", "")
+Rel(w_snapshot, net_ref, "публикует ChunkSnapshot", "")
+Rel(w_event_handler, net_ref, "загружает чанки", "")
+
+SHOW_LEGEND()
+@enduml

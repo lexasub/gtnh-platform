@@ -1,0 +1,205 @@
+' =============================================================================
+' GTNH Platform — User Flow: Autonomous Operation
+' 3 диаграммы: работа без игрока, буры, цепочка переработки
+' =============================================================================
+
+' ===========================================================================
+' 1. Симуляция без игрока
+' ===========================================================================
+@startuml autonomous-no-player
+title **Flow A1: Симуляция без игрока (автокрафты, буры, машины)**
+
+actor "SimulationCore\n(20 Hz Tick, всегда)" as Tick
+participant "MachineSystem" as MachineSys
+participant "GeneratorSystem" as GenSys
+participant "HeatTransferSystem" as HT
+participant "PipeNetwork" as PN
+participant "RecipeManager" as RM
+participant "EntityStateStore" as ESS
+
+== Все сервисы работают независимо от наличия игрока ==
+
+Tick -> Tick: 20 Hz tick (вечный цикл)
+note right #438D80
+  После ухода игрока SimulationCore
+  продолжает тикать. Все машины,
+  генераторы, буры работают как обычно.
+end note
+
+Tick -> GenSys: tick(dt) — жечь топливо
+GenSys -> PN: DistributeEnergy
+
+Tick -> HT: tick(dt) — распределить тепло
+HT -> PN: Check heat network
+
+Tick -> MachineSys: tick(dt) — обработать рецепты
+
+loop For each machine with recipe
+    MachineSys -> PN: CheckEnergy(machine_id, cost)
+    PN --> MachineSys: Energy available / not
+
+    alt Energy available
+        MachineSys -> MachineSys: Advance recipe progress
+
+        alt Recipe complete
+            MachineSys -> MachineSys: Consume inputs, produce outputs
+
+            MachineSys -> RM: FindNextRecipe(input buffer)
+            RM --> MachineSys: Next recipe / none
+
+            alt Has next recipe
+                MachineSys -> MachineSys: Start next cycle
+            else No valid recipe / no input
+                MachineSys -> MachineSys: Idle, wait for input
+            end
+        end
+    else No energy
+        MachineSys -> MachineSys: Pause, retain progress
+    end
+
+    MachineSys -> ESS: Persist machine state каждый N-тиков
+    note right: Состояние сохраняется,\nчтобы пережить перезапуск
+end
+
+== Игрок вернулся ==
+
+note right #9B59B6
+  При возвращении игрок видит:
+  - Все крафты, запущенные до ухода
+  - Результаты работы буров
+  - Текущее состояние машин
+  - Накопленное тепло / энергию
+  - Всё что было произведено/потреблено
+end note
+
+@enduml
+
+' ===========================================================================
+' 2. Работа буров (автономная добыча)
+' ===========================================================================
+@startuml autonomous-drilling
+title **Flow A2: Работа буров (автономная добыча)**
+
+actor "SimulationCore\n(20 Hz Tick)" as Tick
+participant "DrillSystem" as Drill
+participant "SpatialIndex" as SI
+participant "ChunkStore" as CS
+participant "PipeNetwork" as PN
+participant "EntityStateStore" as ESS
+
+== Установка бура ==
+
+Tick -> Drill: tick(dt) — update drills
+
+loop For each active drill
+    Tick -> PN: CheckEnergy(drill_id, drill_cost/tick)
+    PN --> Tick: Energy status
+
+    alt Нет энергии
+        Tick -> Drill: Pause
+        ESS -> ESS: Save paused state
+    else Энергия есть
+
+        == BFS поиск руды в радиусе ==
+
+        Drill -> SI: FindOreBelow(drill_pos, radius)
+        SI --> Drill: Ore block positions found / none
+
+        alt Руда найдена
+            Drill -> CS: GetBlock(ore_pos)
+            CS --> Drill: Block data (ore type, hardness)
+
+            Drill -> Drill: Advance mining progress
+            note right: progress += drill_speed * multiplier\n(зависит от tier бура)
+
+            alt Progress >= required (block mined)
+                Drill -> CS: SetBlock CAS (ore_pos, AIR)
+                alt CAS успешен
+                    Drill -> Drill: Add ore to output buffer
+                    Drill -> SI: UpdateSpatialIndex(ore_pos, AIR)
+                    Drill -> PN: ConsumeEnergy(drill_id, mining_cost)
+                    Drill -> ESS: Update drill state
+                else CAS failed
+                    Drill -> Drill: Retry next tick
+                end
+            end
+        else Руда не найдена на текущей глубине
+            Drill -> Drill: Increase depth
+            note right: drill_depth += 1\nкаждый N тиков без руды
+
+            alt Max depth reached or bedrock
+                Drill -> Drill: Deactivate / notify full depletion
+                Drill -> ESS: Save depleted state
+            end
+        end
+
+        == Проверка output buffer ==
+
+        Drill -> Drill: Check output buffer
+        alt Buffer >= threshold
+            Drill -> Drill: Notify available for collection
+            note right: Output можно забрать\nчерез трубы или вручную
+        end
+    end
+end
+
+@enduml
+
+' ===========================================================================
+' 3. Автономная цепочка переработки
+' ===========================================================================
+@startuml autonomous-processing-chain
+title **Flow A3: Цепочка переработки (chain of machines)**
+
+actor "SimulationCore\n(20 Hz Tick)" as Tick
+participant "Machine A\n(дробилка)" as A
+participant "Machine B\n(печь)" as B
+participant "Machine C\n(компрессор)" as C
+participant "PipeNetwork" as PN
+participant "ItemPipe" as IP
+participant "EntityStateStore" as ESS
+
+== Пример: руда -> дроблёная -> слиток -> пластина ==
+
+note right #5899DA
+  Цепочка без игрока:
+  Дробилка (руда->порошок)
+    -> Печь (порошок->слиток)
+      -> Компрессор (слиток->пластина)
+  Машины соединены item pipes
+end note
+
+Tick -> A: tick(dt) — macerator: руда -> crushed
+A -> IP: Вытолкнуть crushed в output pipe
+IP -> B: Доставить crushed в input печи
+
+Tick -> B: tick(dt) — furnace: crushed -> ingot
+B -> IP: Вытолкнуть ingot в output pipe
+IP -> C: Доставить ingot в input компрессора
+
+Tick -> C: tick(dt) — compressor: ingot -> plate
+
+loop Каждый тик для каждой машины
+    Tick -> PN: CheckEnergy для A, B, C
+    PN --> Tick: Energy levels
+
+    alt Вся цепочка работает
+        A -> ESS: Save progress
+        B -> ESS: Save progress
+        C -> ESS: Save progress
+    else Энергия кончилась
+        A -> A: pause
+        B -> B: pause
+        C -> C: pause
+    end
+end
+
+note right #9B59B6
+  Если игрок ушёл на ночь:
+  - Тик продолжается
+  - Машины перерабатывают
+  - Предметы передвигаются по трубам
+  - При возвращении: готовые пластины
+end note
+
+@enduml

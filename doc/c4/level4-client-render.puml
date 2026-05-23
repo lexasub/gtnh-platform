@@ -1,0 +1,78 @@
+' =============================================================================
+' Level 3 — GameClient Render + RenderLib
+' RenderBridge, ChunkMeshBuilder, RenderAPI, Scene, ImGui, Minimap, etc.
+' =============================================================================
+@startuml GTNH-Client-Render-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 3 — GameClient: Render + RenderLib**\nbgfx рендер + библиотека рендера
+
+Container_Boundary(gc, "GameClient") {
+
+    ' ===================================================================
+    ' Render
+    ' ===================================================================
+    Container_Boundary(render, "Рендер (Render)") {
+        Component(r_bridge, "RenderBridge", "C++", "Мост между миром и bgfx\nсобирает кадр из чанков")
+        Component(r_mesh_builder, "ChunkMeshBuilder", "C++", "Сборка меша чанка\nиз блоков -> вершины")
+        Component(r_mesh_prov, "ChunkMeshProvider", "C++", "Провайдер мешей\nдля RenderBridge")
+        Component(r_minimap, "MinimapWorldAdapter", "C++", "Адаптер мира для миникарты\nсрез высот")
+    }
+
+    ' ===================================================================
+    ' RenderLib
+    ' ===================================================================
+    Container_Boundary(rlib, "RenderLib (библиотека рендера)") {
+        ' Common
+        Component(rl_api, "RenderAPI", "C++", "Абстракция bgfx\nинициализация, кадры, шейдеры")
+        Component(rl_blockq, "IBlockQuery", "C++ (interface)", "Интерфейс запроса блоков\nдля рендера")
+        Component(rl_meshprov, "IMeshProvider", "C++ (interface)", "Интерфейс провайдера мешей")
+        Component(rl_minimap, "IMinimapDataProvider", "C++ (interface)", "Интерфейс данных миникарты")
+        ' Scene
+        Component(rl_scene, "RenderScene", "C++", "Сцена рендера\nview + render passes")
+        Component(rl_frustum, "Frustum", "C++", "Frustum culling\nотсечение невидимых чанков")
+        ' UI
+        Component(rl_imgui, "ImGuiBackend", "C++", "Интеграция ImGui с bgfx\nвершинные буферы, текстуры")
+        Component(rl_minimap_ui, "Minimap", "C++", "Миникарта (ImGui)\nвид сверху")
+        ' Utils
+        Component(rl_ray, "Raycaster", "C++", "DDA raycast для рендера\nвыбор блока под прицелом")
+        Component(rl_shader, "ShaderLoader", "C++", "Загрузка шейдеров\nиз shaderDir")
+        Component(rl_atlas, "TextureAtlas", "C++", "Текстурный атлас блоков\nUV mapping")
+    }
+
+    ' ===================================================================
+    ' Subsystem references
+    ' ===================================================================
+    Component(core_ref, "GameClient Core", "Оркестратор")
+    Component(world_ref, "World", "World, IBlockQuery реализация")
+    Component(cache_ref, "Cache", "MeshManager, ChunkMeshCache")
+}
+
+' Internal relationships
+Rel(r_bridge, r_mesh_builder, "использует", "")
+Rel(r_bridge, r_mesh_prov, "получает меши", "")
+Rel(r_bridge, r_minimap, "обновляет миникарту", "")
+
+Rel(rl_api, rl_imgui, "интегрирует ImGui", "")
+Rel(rl_api, rl_scene, "управляет", "")
+Rel(rl_api, rl_shader, "загружает шейдеры", "")
+Rel(rl_api, rl_atlas, "использует текстуры", "")
+
+' Cross-subsystem
+Rel(core_ref, r_bridge, "владеет RenderBridge", "")
+Rel(world_ref, r_bridge, "Данные чанков для рендера", "")
+Rel(world_ref, rl_blockq, "IBlockQuery реализация", "")
+Rel(cache_ref, r_mesh_prov, "ChunkMeshCache → меши", "")
+
+Rel(r_bridge, rl_api, "Рендерит через bgfx API", "")
+Rel(r_bridge, rl_scene, "Управляет сценой", "")
+Rel(r_bridge, rl_atlas, "Текстурный атлас", "")
+Rel(r_bridge, rl_imgui, "ImGui интеграция", "")
+Rel(r_mesh_builder, rl_blockq, "Запрашивает блоки\nдля сборки меша", "")
+Rel(r_minimap, rl_minimap, "Реализует\nIMinimapDataProvider", "")
+
+SHOW_LEGEND()
+@enduml

@@ -1,0 +1,38 @@
+{
+  "gtnh:chemical_reactor_oxygen": {
+    "m": 0,
+    "in": [[16, 1, {"consume": false}]],
+    "out": [[31]],
+    "dur": 200
+  },
+  "gtnh:chemical_reactor_hydrogen": {
+    "m": 0,
+    "in": [[16]],
+    "out": [[17]],
+    "dur": 200
+  },
+  "gtnh:chemical_reactor_acid": {
+    "m": 0,
+    "in": [[18]],
+    "out": [[18]],
+    "dur": 200
+  },
+  "gtnh:chemical_reactor_water_split": {
+    "m": 0,
+    "in": [[1000]],
+    "out": [[17, 2]],
+    "dur": 300
+  },
+  "gtnh:chemical_reactor_iron_reduction": {
+    "m": 0,
+    "in": [[3]],
+    "out": [[4]],
+    "dur": 400
+  },
+  "gtnh:chemical_reactor_copper_reduction": {
+    "m": 0,
+    "in": [[53]],
+    "out": [[54]],
+    "dur": 400
+  }
+}

@@ -1,0 +1,93 @@
+' =============================================================================
+' Level 3 — GameClient UI Windows, Panels, Components
+' Все окна (блочные + игрок), панели, компоненты слотов/гридов
+' =============================================================================
+@startuml GTNH-Client-UI-Windows-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 3 — GameClient: UI Windows + Components**\nОкна, панели, слоты, гриды
+
+Container_Boundary(gc, "GameClient") {
+
+    ' ===================================================================
+    ' Windows — block-attached
+    ' ===================================================================
+    Container_Boundary(win_block, "Окна блоков") {
+        Component(win_block_attach, "BlockAttachedWindow", "C++ (base)", "Базовое окно\nпривязанное к блоку")
+        Component(win_chest, "ChestWindow", "C++", "UI сундука\nслоты 9×3")
+        Component(win_machine, "MachineWindow", "C++", "UI машины\nслоты + прогресс + энергия")
+        Rel(win_chest, win_block_attach, "extends", "")
+        Rel(win_machine, win_block_attach, "extends", "")
+    }
+
+    ' ===================================================================
+    ' Windows — player
+    ' ===================================================================
+    Container_Boundary(win_player, "Окна игрока") {
+        Component(win_inv, "PlayerInventory", "C++", "Инвентарь игрока\n36+9 слотов, drag-and-drop")
+        Component(win_craft, "ClientCraftingWindow", "C++", "Верстак клиента\n3×3 crafting grid")
+        Component(win_creative, "CreativeMenu", "C++", "Креативное меню\nпоиск предметов")
+        Component(win_recipe_inspect, "RecipeInspectWindow", "C++", "Просмотр рецепта\nNEI-like информация")
+        Component(win_craft_result, "CraftResultSlot", "C++", "Слот результата крафта")
+    }
+
+    ' ===================================================================
+    ' Panels
+    ' ===================================================================
+    Container_Boundary(panels, "Панели") {
+        Component(panel_nei, "NeiPanel", "C++", "NEI-подобная панель\nсписок рецептов, фильтры")
+    }
+
+    ' ===================================================================
+    ' Components (shared UI widgets)
+    ' ===================================================================
+    Container_Boundary(components, "UI Компоненты") {
+        Component(comp_craft_grid, "CraftingGrid", "C++", "Сетка крафта 3×3\nImGui рендер")
+        Component(comp_slot_grid, "SlotGrid", "C++", "Универсальная сетка слотов\nс drag-and-drop")
+        Component(comp_item_index, "ItemIndex", "C++", "Индекс предметов\nпоиск по имени/ID")
+        Component(comp_paginated, "PaginatedList", "C++ (template)", "Список с пагинацией\nдля NEI и креатива")
+        Component(comp_toast, "ToastNotification", "C++", "Toast-уведомления\nдля событий")
+        Component(comp_item_color, "ItemColor", "C++", "Цвета предметов\nrarity-based")
+        Rel(comp_craft_grid, comp_slot_grid, "использует", "")
+    }
+
+    ' ===================================================================
+    ' Subsystem references
+    ' ===================================================================
+    Component(uicore_ref, "UI Core", "UIManager, Input, Actions")
+    Component(craft_ref, "Crafting DBs", "ClientItemRegistry\nClientRecipeDB\nClientMachineRecipeDB")
+}
+
+' UI Core → все окна
+Rel(uicore_ref, win_chest, "владеет", "")
+Rel(uicore_ref, win_machine, "владеет", "")
+Rel(uicore_ref, win_inv, "владеет", "")
+Rel(uicore_ref, win_craft, "владеет", "")
+Rel(uicore_ref, win_creative, "владеет", "")
+Rel(uicore_ref, win_recipe_inspect, "владеет", "")
+Rel(uicore_ref, panel_nei, "владеет", "")
+Rel(uicore_ref, comp_slot_grid, "рендерит через окна", "")
+
+' Окна → компоненты
+Rel(win_craft, comp_craft_grid, "содержит", "")
+Rel(win_chest, comp_slot_grid, "содержит", "")
+Rel(win_machine, comp_slot_grid, "содержит", "")
+Rel(win_inv, comp_slot_grid, "содержит", "")
+Rel(win_creative, comp_paginated, "использует", "")
+Rel(panel_nei, comp_paginated, "использует", "")
+Rel(panel_nei, comp_item_index, "использует", "")
+Rel(panel_nei, comp_item_color, "использует", "")
+Rel(panel_nei, comp_toast, "показывает уведомления", "")
+Rel(win_recipe_inspect, comp_item_index, "использует", "")
+
+' Crafting DBs → окна
+Rel(craft_ref, win_craft, "ClientRecipeDB → рецепты", "")
+Rel(craft_ref, win_machine, "ClientMachineRecipeDB → рецепты", "")
+Rel(craft_ref, panel_nei, "DB → NEI панель", "")
+Rel(craft_ref, win_recipe_inspect, "DB → информация\nо рецепте", "")
+
+SHOW_LEGEND()
+@enduml

@@ -1,0 +1,103 @@
+' =============================================================================
+' Level 3 — ChunkStore Component Diagram
+' LMDB storage, ClockCache, Network service (MAXIMUM DETAIL)
+' =============================================================================
+@startuml GTNH-Platform-ChunkStore-Components-level3
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 3 — ChunkStore**\nLMDB-бэкенд + ClockCache + Asio TCP (C++)
+
+Container_Boundary(cs, "ChunkStore") {
+
+    ' ===================================================================
+    ' Chunk data structure
+    ' ===================================================================
+    Container_Boundary(chunk_data, "Chunk (формат данных)") {
+        Component(chunk_h, "Chunk", "C++ (struct)", "32³ блоков = 192 KB\n3 слоя: blocks[16bit] + meta[8bit] + mb_id[32bit]\n0 = air")
+        Component(chunk_block, "blocks[]", "uint16_t[32768]", "ID блоков (0=air, 1=stone, …)\nflat array O(1)")
+        Component(chunk_meta, "meta[]", "uint8_t[32768]", "Ориентация/мета-данные\n0-255")
+        Component(chunk_mbid, "multiblock[]", "uint32_t[32768]", "ID мультиблока (0=none)\nO(1) lookup")
+    }
+
+    ' ===================================================================
+    ' Storage layer
+    ' ===================================================================
+    Container_Boundary(storage, "Storage") {
+        Component(store, "ChunkStore", "C++", "Основное хранилище\nClockCache + LMDB + async I/O\nGetBlock/SetBlock/SaveChunk")
+        Component(cache, "ClockCache<uintptr_t, 1024>", "C++ (CLOCK algorithm)", "Lock-free кэш чанков\nсырые указатели, delete-on-evict\n1024 entry")
+        Component(iblock, "IBlockStore", "C++ (interface)", "Интерфейс хранилища блоков\nHasChunk / GetBlock / SetBlock / SaveChunk")
+        Component(section_codec, "SectionCodec", "C++", "Palette-encoding секций\nдля CompressedChunkData\nуменьшает размер LMDB")
+        Component(wq, "WorkQueue", "C++", "Очередь async операций\nдля I/O thread pool")
+
+        ' LMDB internals
+        Component(lmdb_env, "LMDB env_", "MDB_env*", "LMDB окружение\nотображение файла\nmmap, max 256GB")
+        Component(lmdb_dbi, "LMDB dbi_", "MDB_dbi", "Дескриптор таблицы\nключ: 64-bit ChunkCoord\nзначение: Chunk flat array")
+        Component(lmdb_read, "readTransaction()", "C++", "LMDB read tx\nполучение чанка из БД")
+        Component(lmdb_write, "writeTransaction()", "C++", "LMDB write tx\nсохранение чанка в БД")
+        Component(lmdb_resize, "growMapSize()", "C++", "Увеличение mmap\nпри нехватке места")
+
+        ' I/O thread pool
+        Component(io_pool, "asio::io_context io_pool_", "C++ (Asio)", "I/O thread pool\n2 worker thread\nдля асинхронных операций")
+        Component(io_threads, "io_threads_[]", "std::thread[2]", "Потоки I/O\nизбегают std::async")
+        Component(io_guard, "work_guard_", "asio::executor_work_guard", "Не даёт io_context\nзавершиться")
+
+        Rel(store, cache, "кэширует чанки", "")
+        Rel(store, iblock, "extends", "")
+        Rel(store, lmdb_env, "открывает/закрывает", "")
+        Rel(store, lmdb_dbi, "читает/пишет", "")
+        Rel(store, lmdb_read, "использует", "")
+        Rel(store, lmdb_write, "использует", "")
+        Rel(store, lmdb_resize, "вызывает при ошибке", "")
+        Rel(store, section_codec, "для palette encoding", "")
+        Rel(store, wq, "ставит async задачи", "")
+        Rel(store, io_pool, "async операции через", "")
+        Rel(io_pool, io_threads, "worker threads", "")
+    }
+
+    ' ===================================================================
+    ' Network layer
+    ' ===================================================================
+    Container_Boundary(network, "Network") {
+        Component(svc, "ChunkStoreService", "C++", "TCP сервис\nобработка входящих RPC\nGetBlock, SetBlock, GetChunk, SaveChunk")
+        Component(router_client, "RouterClient", "C++", "TCP клиент MessageRouter\npub/sub: world.blocks.changed\nworld.chunks.saved")
+        Component(frame_codec, "FrameCodec", "C++", "Length-prefixed framing\n[4B size][FlatBuffer]\nповерх TCP")
+        Component(block_ops, "Block Operations", "C++", "SetBlock/GetBlock/SaveChunk\nRPC handlers")
+
+        Rel(svc, block_ops, "диспатчит запросы", "")
+        Rel(block_ops, store, "читает/пишет блоки", "")
+        Rel(router_client, store, "публикует BlockChanged", "")
+    }
+
+    ' ===================================================================
+    ' World layer
+    ' ===================================================================
+    Container_Boundary(world, "World") {
+        Component(srv_world, "ServerWorld", "C++", "Серверный мир\nкоординация чанков\nChunk* lifetime management")
+        Rel(srv_world, store, "управляет жизненным\nциклом чанков", "")
+        Rel(srv_world, svc, "передаёт запросы", "")
+    }
+
+    ' ===================================================================
+    ' Generation queue
+    ' ===================================================================
+    Component(gen_queue, "GenerationQueue* gen_queue_", "C++ (ptr)", "Указатель на очередь\nгенерации чанков\n(из WorldGenerator)")
+
+    ' ===================================================================
+    ' Main + CLI
+    ' ===================================================================
+    Component(main, "main.cpp", "C++", "Точка входа\nинициализация ChunkStore\nзапуск сервера")
+    Component(cli_test, "chunk_store_cli_test.cpp", "C++", "CLI тестовый клиент\nдля отладки хранилища")
+
+    ' ===================================================================
+    ' Cross-module
+    ' ===================================================================
+    Rel(store, gen_queue, "если чанка нет в LMDB —\nставит задачу генерации", "")
+    Rel(svc, router_client, "публикует события\nчерез router", "")
+    Rel(gen_queue, srv_world, "callback при генерации\nнового чанка", "")
+}
+
+SHOW_LEGEND()
+@enduml

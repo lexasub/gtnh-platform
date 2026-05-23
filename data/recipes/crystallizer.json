@@ -1,0 +1,14 @@
+{
+  "gtnh:crystallizer_quartz": {
+    "m": 0,
+    "in": [[19]],
+    "out": [[20]],
+    "dur": 200
+  },
+  "gtnh:crystallizer_obsidian": {
+    "m": 0,
+    "in": [[21]],
+    "out": [[21]],
+    "dur": 200
+  }
+}

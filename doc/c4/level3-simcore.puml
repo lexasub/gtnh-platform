@@ -1,0 +1,74 @@
+' =============================================================================
+' Level 3 — SimulationCore overview
+' Subsystems as collapsed boundaries (детали — в level4)
+' =============================================================================
+@startuml GTNH-SimCore-level3
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 3 — SimulationCore**\nEnTT ECS + Crafting + Network (C++)
+
+Container_Boundary(sim, "SimulationCore") {
+
+    ' ===================================================================
+    ' ECS Core
+    ' ===================================================================
+    Container_Boundary(ecs, "ECS") {
+        Component(ecs_engine, "SimulationEngine", "C++", "Ядро: entt::registry\n14 компонентов, 6 систем")
+        Component(ecs_reg, "entt::registry reg_", "C++ (EnTT)", "Все ECS сущности")
+        Component(ecs_systems, "6 Systems", "C++", "Machine / Generator / CreativeGen\nBoiler / HeatTransfer")
+    }
+
+    ' ===================================================================
+    ' Actions
+    ' ===================================================================
+    Container_Boundary(actions, "Actions") {
+        Component(act_dispatcher, "ActionDispatcher", "C++", "Роутинг по типу")
+        Component(act_setblock, "SetBlockCASHandler", "C++", "CAS блок-операции")
+    }
+
+    ' ===================================================================
+    ' Crafting
+    ' ===================================================================
+    Container_Boundary(craft, "Crafting") {
+        Component(cr_handler, "CraftRequestHandler", "C++", "Проверка + выполнение")
+        Component(cr_flow, "CraftInventoryFlow", "C++", "Вход → рецепт → выход")
+        Component(cr_workbench, "WorkbenchStateManager", "C++", "Состояние верстаков")
+    }
+
+    ' ===================================================================
+    ' Network
+    ' ===================================================================
+    Container_Boundary(net, "Network") {
+        Component(net_router, "IoUringRouterClient", "C++", "TCP клиент MessageRouter")
+        Component(net_chunk, "IoUringChunkClient", "C++", "TCP клиент ChunkStore")
+        Component(net_ess, "EntityStateStoreClient", "C++", "TCP клиент ESS")
+        Component(net_pipe, "PipeEnergyClient", "C++", "TCP клиент PipeNetwork")
+        Component(net_pub, "RouterEventPublisher", "C++", "Публикация событий")
+    }
+
+    ' ===================================================================
+    ' World
+    ' ===================================================================
+    Container_Boundary(world, "World") {
+        Component(w_transforms, "BlockTransforms", "C++", "Ориентация, meta")
+        Component(w_event, "ChunkEventHandler", "C++", "Загрузка/выгрузка")
+        Component(w_snapshot, "ChunkSnapshot", "C++", "Слепок чанка")
+    }
+
+    ' ===================================================================
+    ' Key cross-subsystem relationships
+    ' ===================================================================
+    Rel(ecs_engine, actions, "onBlockChanged", "")
+    Rel(ecs_engine, craft, "matchElectrolyser()", "")
+    Rel(ecs_engine, net, "onMachineCreated", "")
+    Rel(craft, net_pub, "CraftResponse", "")
+    Rel(craft, net_chunk, "GetBlock для паттерна", "")
+    Rel(net_router, world, "RPC responses", "")
+    Rel(act_setblock, net_chunk, "SetBlockRPC", "")
+}
+
+SHOW_LEGEND()
+@enduml

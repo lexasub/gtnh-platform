@@ -1,0 +1,103 @@
+# ── IDE / Editors ──────────────────────────────────────
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# ── Build directories ──────────────────────────────────
+cmake-build-debug
+cmake-build-release
+build
+install/
+
+# ── Conan (dependency manager) ─────────────────────────
+conan
+conan_debug
+conan_toolchain.cmake
+CMakeUserPresets.json
+
+# ── Build artifacts / compiled binaries ────────────────
+*.o
+*.obj
+*.exe
+*.out
+*.app
+*.a
+*.so
+*.dylib
+*.dll
+clock_cache_test
+routerd
+compile_commands.json
+
+# ── Databases (runtime data) ────────────────────────────
+chunkdb/
+metadb.sqlite
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+
+# ── Profiling / debug dumps ────────────────────────────
+*.heapsnapshot
+*.heapprofile
+valgrind.xml
+*.perf
+perf.data
+*.profraw
+*.gcda
+*.gcno
+callgrind.out.*
+
+# ── Runtime config (machine-specific) ────────────────────
+imgui.ini
+*.cfg.local
+
+# ── Shaders (compiled) ──────────────────────────────────
+shaders/*.bin
+
+# ── FlatBuffers generated code ──────────────────────────
+src/protocol/generated/
+
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# ── AI / Agent tooling (not for distribution) ──────────
+.agent/
+.opencode/
+.kilo/
+.omo/
+.codegraph/
+.cache/
+agent/
+.sisyphus/plans/*.md
+!docs/
+
+# ── Backup / temp files ──────────────────────────────────
+*.bak
+*.orig
+*.tmp
+*.temp
+*.log
+
+# ── Go binaries (built locally) ─────────────────────────
+src/services/message_router/routerd
+src/services/message_router/message_router
+src/services/message_router/dummy
+src/services/meta_db/metadb
+src/services/meta_db/metadbd
+
+# ── Node.js ──────────────────────────────────────────────
+node_modules/
+package-lock.json
+
+# ── Beads / Dolt files ──────────────────────────────────
+.dolt/
+.beads-credential-key

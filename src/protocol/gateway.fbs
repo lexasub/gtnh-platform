@@ -1,0 +1,47 @@
+// protocol/gateway.fbs
+// Gateway ↔ Client binary protocol.
+// Wire format: [4 bytes: big-endian payload size] [1 byte: message type] [FlatBuffer]
+//   Types: 0=PlayerAction (client→gateway), 1=ChunkData (gateway→client),
+//         2=EntitySnapshot (gateway→client), 3=BlockAck (gateway→client),
+//         4=SetBlockAction (client→gateway), 5=InventoryUpdate (gateway→client),
+//         6=InventoryAction (client→gateway),
+//         7=CraftRequest (client→gateway), 8=CraftResponse (gateway→client),
+//         9=GridUpdate (gateway→client), 10=BlockEntityUpdate (gateway→client),
+//        11=CompressedChunkData (gateway→client), 12=ToolAction (client→gateway),
+//        13=ToolActionResp (gateway→client), 14=MachineAction (client→gateway),
+//        15=MachineActionResp (gateway→client),
+//        16=SetMachineSlotResp (gateway→client),
+//        17=ChestOpenReq (client→gateway),
+//        18=ChestOpenResp (gateway→client)
+
+include "core.fbs";
+
+namespace Protocol;
+
+union GatewayPayload {
+  PlayerAction,       // 0 — client→gateway
+  ChunkData,          // 1 — gateway→client (full chunk, on first load or resync)
+  EntitySnapshot,     // 2 — gateway→client
+  BlockAck,           // 3 — gateway→client (commit confirmation / rejection)
+  SetBlockAction,     // 4 — client→gateway (CAS block placement)
+  InventoryUpdate,    // 5 — gateway→client (inventory snapshot / update)
+  InventoryAction,    // 6 — client→gateway (inventory operation)
+  CraftRequest,       // 7 — client→gateway (craft from workbench)
+  CraftResponse,      // 8 — gateway→client (craft result)
+  GridUpdate,         // 9 — gateway→client (workbench grid state)
+  BlockEntityUpdate,  // 10 — gateway→client (machine/multiblock state)
+  CompressedChunkData,// 11 — gateway→client (lazy decoded chunk)
+  ToolAction,         // 12 — client→gateway (tool use: drill, wrench)
+  ToolActionResp,     // 13 — gateway→client (tool action result)
+  MachineAction,      // 14 — client→gateway (machine config changes)
+  MachineActionResp,  // 15 — gateway→client (machine config result)
+  SetMachineSlotResp, // 16 — gateway→client (machine slot ACK)
+  ChestOpenReq,       // 17 — client→gateway (chest open request)
+  ChestOpenResp,      // 18 — gateway→client (chest open response)
+}
+
+table GatewayMessage {
+  payload:GatewayPayload (required);
+}
+
+root_type GatewayMessage;

@@ -1,0 +1,46 @@
+// protocol/entity_state_store.fbs
+// Entity state storage RPC: opaque state blobs keyed by world position + entity type.
+// Frame: [4 bytes: big-endian payload size] [FlatBuffer: EntityStateStoreMessage | EntityStateStoreReply]
+//
+// Direct TCP RPC — NOT via MessageRouter. Entity state access is hot path
+// (read/write every tick per machine), so bypass the Go router for performance.
+
+include "core.fbs";
+
+namespace Protocol;
+
+// ---------------------------------------------------------------------------
+// Wire wrappers — identical pattern to ChunkStoreFrame / TileEntityStoreFrame
+// ---------------------------------------------------------------------------
+
+union EntityStateStoreRequest {
+  GetEntityStateReq,
+  SetEntityStateReq,
+}
+
+union EntityStateStoreResponse {
+  GetEntityStateResp,
+  EntityStateAck,
+  ErrorResp,
+}
+
+table EntityStateStoreMessage {
+  req_id:uint32;
+  request:EntityStateStoreRequest (required);
+}
+
+table EntityStateStoreReply {
+  req_id:uint32;
+  response:EntityStateStoreResponse (required);
+}
+
+union EntityStateStorePayload {
+  EntityStateStoreMessage,
+  EntityStateStoreReply,
+}
+
+table EntityStateStoreFrame {
+  payload:EntityStateStorePayload (required);
+}
+
+root_type EntityStateStoreFrame;

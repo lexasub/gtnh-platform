@@ -1,0 +1,123 @@
+' =============================================================================
+' Level 2 — Container Diagram
+' All 13 services, their TCP connections, protocols, and data stores
+' =============================================================================
+@startuml GTNH-Platform-Container-level2
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 2 — Container Diagram**\nСистема контейнеров (сервисов)
+
+' ---------------------------------------------------------------------------
+' External
+' ---------------------------------------------------------------------------
+Person(player, "Игрок", "GameClient")
+
+' ---------------------------------------------------------------------------
+' System boundary: GTNH Platform server side
+' ---------------------------------------------------------------------------
+System_Boundary(gtnh_srv, "GTNH Platform (Сервер)") {
+
+    ' ---- Message Router (Go) ----
+    Container(router, "MessageRouter", "Go :4000", "Центральный pub/sub брокер\nMQTT-style топики, 3 уровня приоритетов\nheartbeat, service discovery")
+
+    ' ---- Gateway (C++) ----
+    Container(gateway, "Gateway", "C++ (Asio+io_uring)\n:7777 / :7778", "TCP шлюз для клиента\nctrl + bulk порты\ninterest management, relay")
+
+    ' ---- Core world services (C++) ----
+    Container(chunkstore, "ChunkStore", "C++ (LMDB)", "Хранилище блоков\n32³ чанки, FlatBuffers RPC\nSetBlock / GetBlock / Load / Save")
+    ContainerDb(lmdb, "LMDB", "mmap БД", "Чанки: blocks[] + meta[] + mb_id[]\n192 KB на чанк")
+
+    Container(worldgen, "WorldGenerator", "C++ (FastNoiseLite)", "Генерация чанков\nпроцедурный террейн\nбиомы")
+
+    ContainerDb(entity_store_db, "LMDB (EntityState)", "mmap БД", "Состояния машин\nинвентари сущностей\n(горячий путь)")
+
+    ' ---- Simulation (C++) ----
+    Container(simcore, "SimulationCore", "C++ (EnTT ECS)\n:4000 (router)", "ECS 20Hz tick\nмультиблоки, мобы, крафт\nмашины, энергия")
+
+    Container(spatial, "SpatialIndex", "C++ (Boost.Geometry R-tree)", "Пространственный индекс\nпоиск мультиблоков\nO(log n) AABB queries", $tags="planned")
+
+    Container(pipenet, "PipeNetwork", "C++", "Графы энергии/жидкостей\nBFS, flow distribution\npipe tick")
+
+    ' ---- State & persistence (C++) ----
+    Container(ess, "EntityStateStore", "C++ (LMDB)\n:5200", "State persistence для сущностей\nTCP RPC, LMDB-backed")
+    ContainerDb(ess_db, "LMDB (ESS)", "mmap БД", "Состояния tile-entity\nбыстрый read path")
+
+    ' ---- Recipe Manager (C++) ----
+    Container(recipeman, "RecipeManager", "C++\n:5555 (router)", "Проверка рецептов\nкрафт по сетке\nпрогресс машин")
+
+    ' ---- Go sidecar services ----
+    Container(metadb, "MetaDB", "Go (SQLite)\n:5005 / :5006", "Игроки, инвентари\nпозиции, entity_state\nJSON API (:5005) + FlatBuffers RPC (:5006)")
+    ContainerDb(sqlite, "SQLite (MetaDB)", "Файл БД", "players, inventory\nentity_state таблицы")
+
+    ' ---- Library / non-service containers ----
+    Container(validation, "Validation Library", "C++ (static lib)", "InventoryValidator\nвалидация ItemStack/Inventory/EntityState\nстатическая библиотека")
+    Container(storage_ifaces, "Storage Interfaces", "C++ (header-only)", "IEntityStateStorage\nIPlayerInventoryStorage\nабстрактные интерфейсы")
+}
+
+' ---- Client (outside server boundary) ----
+System_Boundary(gtnh_cli, "GTNH Platform (Клиент)") {
+    Container(client, "GameClient", "C++ (bgfx+GLFW+ImGui)\n:55555", "Игровой клиент\nрендер, мир, UI, сеть\n8 подсистем, ~50+ компонентов")
+    ContainerDb(client_cache, "Клиентский кэш", "ОЗУ", "Чанки, меши, текстуры\nв памяти клиента")
+}
+
+' ===========================================================================
+' Relationships
+' ===========================================================================
+
+' ---- Client → Gateway ----
+Rel(client, gateway, "TCP FlatBuffers\nPlayerAction / SetBlockAction\nCraftRequest / InventoryAction", $tags="tag_tcp")
+Rel(gateway, client, "TCP FlatBuffers\nChunkData / EntitySnapshot\nBlockAck / InventoryUpdate\nCraftResponse / BlockEntityUpdate", $tags="tag_tcp")
+
+' ---- Gateway → Router ----
+Rel(gateway, router, "TCP pub/sub\nRegister / Subscribe / Publish", $tags="tag_pubsub")
+Rel(router, gateway, "world.* / player.*\nrouter → gateway relay", $tags="tag_pubsub")
+
+' ---- Router → Services (all connect to router) ----
+Rel(router, chunkstore, "world.blocks.*\nworld.chunks.*", $tags="tag_pubsub")
+Rel(chunkstore, router, "world.blocks.changed\nworld.chunks.saved", $tags="tag_pubsub")
+Rel(router, simcore, "world.blocks.changed\nsim.* request/response", $tags="tag_pubsub")
+Rel(simcore, router, "sim.*\nmultiblock.*", $tags="tag_pubsub")
+Rel(router, metadb, "meta_db.* / player.*", $tags="tag_pubsub")
+Rel(metadb, router, "player.inventory.update", $tags="tag_pubsub")
+Rel(router, recipeman, "recipe.* / machine.*", $tags="tag_pubsub")
+Rel(recipeman, router, "recipe.*.response", $tags="tag_pubsub")
+Rel(router, pipenet, "pipe_network.*", $tags="tag_pubsub")
+Rel(router, ess, "entity.state.*", $tags="tag_pubsub")
+Rel(router, worldgen, "world.chunks.generate", $tags="tag_pubsub")
+Rel(worldgen, router, "world.chunks.generated", $tags="tag_pubsub")
+
+' ---- ChunkStore internals ----
+Rel(chunkstore, lmdb, "Read/Write mmap\ntransactions", $tags="tag_rpc")
+
+' ---- Simulation → dependencies ----
+Rel(simcore, chunkstore, "RPC: GetBlock\nSetBlockMeta\nAsyncGetChunk", $tags="tag_rpc")
+Rel(simcore, ess, "TCP RPC: entity.state.get/set\n(LMDB горячий путь)", $tags="tag_rpc")
+Rel(simcore, pipenet, "RPC: energy/fluid tick\ndistributeEnergy", $tags="tag_rpc")
+Rel(simcore, storage_ifaces, "Использует интерфейсы\nIBlockRepository", $tags="tag_rpc")
+Rel(simcore, validation, "Валидация инвентаря\nперед сохранением", $tags="tag_rpc")
+
+' ---- WorldGenerator ----
+Rel(worldgen, chunkstore, "Генерирует чанки → AsyncSetBlock\nподключается через gen_queue_", $tags="tag_rpc")
+
+' ---- EntityStateStore ----
+Rel(ess, entity_store_db, "LMDB read/write\nmmap transactions", $tags="tag_rpc")
+Rel(ess, chunkstore, "ChunkStoreClient\nдля сущностей к блок данным", $tags="tag_rpc")
+
+' ---- MetaDB ----
+Rel(metadb, sqlite, "SQL запросы\nACID транзакции", $tags="tag_rpc")
+
+' ---- RecipeManager ----
+Rel(recipeman, simcore, "Через router: machine.state\nпрогресс рецептов", $tags="tag_pubsub")
+Rel(recipeman, validation, "Валидирует входные\nItemStack для крафта", $tags="tag_rpc")
+
+' ---- Client internals ----
+Rel(client, client_cache, "Кэширует чанки, меши\nтекстуры в памяти", $tags="tag_rpc")
+
+' ---- SpatialIndex (planned) ----
+Rel(spatial, chunkstore, "R-tree queries:\nGetMultiblocksIntersecting", $tags="tag_planned")
+
+SHOW_LEGEND()
+@enduml

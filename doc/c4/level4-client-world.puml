@@ -1,0 +1,63 @@
+' =============================================================================
+' Level 3 — GameClient World + Cache
+' World, ChunkStorage, ChunkView, InteractionSystem + caching subsystem
+' =============================================================================
+@startuml GTNH-Client-World-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 3 — GameClient: World + Cache**\nМир на клиенте + кэширование чанков
+
+Container_Boundary(gc, "GameClient") {
+
+    ' ===================================================================
+    ' World
+    ' ===================================================================
+    Container_Boundary(world, "Мир (World)") {
+        Component(w_world, "World", "C++", "Модель мира на клиенте\nвладеет чанками, обновлениями")
+        Component(w_chunk_stor, "ChunkStorage", "C++", "Хранилище загруженных чанков\nmap<ChunkCoord, ChunkView>")
+        Component(w_chunk_view, "ChunkView", "C++", "Представление чанка на клиенте\n32³ блоков + метаданные")
+        Component(w_interact, "InteractionSystem", "C++", "DDA raycast по блокам\nопределение цели игрока")
+        Rel(w_interact, w_world, "Читает блоки\nдля raycast", "")
+    }
+
+    ' ===================================================================
+    ' Cache
+    ' ===================================================================
+    Container_Boundary(cache, "Кэш (Cache)") {
+        Component(c_chunk_mgr, "ChunkLoadManager", "C++", "Асинхронная загрузка чанков\nприоритетная очередь загрузки")
+        Component(c_mesh_mgr, "MeshManager", "C++", "Управление генерацией мешей\nфоновые треды")
+        Component(c_mesh_cache, "ChunkMeshCache", "C++", "Кэш собранных мешей\nLRU eviction")
+        Component(c_neighbor_cache, "ChunkNeighborCache", "C++", "Кэш соседних чанков\nдля рендера границ")
+        Rel(c_chunk_mgr, c_mesh_mgr, "Триггерит перестройку\nмеша после загрузки", "")
+        Rel(c_mesh_mgr, c_mesh_cache, "Сохраняет/загружает меши", "")
+    }
+
+    ' ===================================================================
+    ' Subsystem references
+    ' ===================================================================
+    Component(core_ref, "GameClient Core", "Оркестратор")
+    Component(net_ref, "Network", "NetClient")
+    Component(render_ref, "Рендер", "RenderBridge + RenderLib")
+}
+
+' Internal
+Rel(w_world, w_chunk_stor, "владеет", "")
+Rel(w_world, c_chunk_mgr, "использует", "")
+Rel(w_world, c_mesh_mgr, "Chunk updates → mesh rebuild", "")
+
+' Cross-subsystem
+Rel(core_ref, w_world, "владеет World world_", "")
+Rel(core_ref, w_interact, "владеет InteractionSystem", "")
+Rel(core_ref, c_chunk_mgr, "владеет ChunkLoadManager", "")
+Rel(core_ref, c_mesh_mgr, "владеет MeshManager", "")
+
+Rel(net_ref, w_world, "ChunkCallback → World::OnChunkReceived()\nBlockUpdateCallback → World::OnBlockUpdate()", "")
+Rel(c_chunk_mgr, net_ref, "RequestChunk()", "")
+
+Rel(w_world, render_ref, "Данные чанков для рендера\nIBlockQuery реализация", "")
+
+SHOW_LEGEND()
+@enduml

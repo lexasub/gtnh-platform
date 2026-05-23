@@ -1,0 +1,230 @@
+// protocol/pipe_network.fbs
+// PipeNetwork service protocol — energy & fluid & item routing via MessageRouter pub/sub
+// Topics:
+//   Subscribe: energy.node.update    — node state registration/updates
+//   Subscribe: energy.check.request  — check available energy
+//   Publish:   energy.check.response — response to check
+//   Subscribe: energy.consume.request  — consume energy request
+//   Publish:   energy.consume.response — consume response
+//   Publish:   energy.flow           — energy flow events
+//   Subscribe: fluid.node.update     — fluid node state registration/updates
+//   Subscribe: fluid.check.request   — check available fluid
+//   Publish:   fluid.check.response  — response to fluid check
+//   Subscribe: fluid.consume.request — consume fluid request
+//   Publish:   fluid.consume.response— consume fluid response
+//   Publish:   fluid.flow            — fluid flow events
+//   Subscribe: item.node.update      — item node state registration/updates
+//   Subscribe: item.transfer.request — request item transfer
+//   Publish:   item.transfer.response— item transfer response
+//   Publish:   item.flow             — item flow events
+
+include "core.fbs";
+
+namespace Protocol;
+
+// ---------------------------------------------------------------------------
+// Energy node update: SimulationCore → PipeNetwork
+// Published on topic "energy.node.update" whenever a machine/pipe state changes
+// ---------------------------------------------------------------------------
+table EnergyNodeUpdate {
+  node_id:uint64;               // unique node ID (from SimulationCore ECS)
+  pos:Vec3i (required);         // world position
+  energy_type:EnergyType;       // ELECTRICITY / HEAT / STEAM
+  energy:int32;                 // current stored energy
+  capacity:int32;               // max capacity
+  max_input:int32;              // max input per tick
+  max_output:int32;             // max output per tick
+  tier:int32;                   // GregTech tier (0=ULV..10=RE)
+  is_source:bool = false;       // generator/input node
+  is_sink:bool = false;         // consumer/output node
+  connected_nodes:[uint64];     // IDs of adjacent pipe/machine nodes
+}
+
+// ---------------------------------------------------------------------------
+// Energy check: request/response over topics
+// "energy.check.request" → "energy.check.response"
+// ---------------------------------------------------------------------------
+table EnergyCheckReq {
+  node_id:uint64;
+  pos:Vec3i (required);
+  energy_type:EnergyType;
+  demand:int32;                 // how much energy is needed
+  tier:int32;                   // required tier
+}
+
+table EnergyCheckResp {
+  available:int32;              // how much can be supplied (0 = none)
+  deficit:int32;                // demand - available
+}
+
+// ---------------------------------------------------------------------------
+// Energy consume: request/response over topics
+// "energy.consume.request" → "energy.consume.response"
+// ---------------------------------------------------------------------------
+table EnergyConsumeReq {
+  node_id:uint64;
+  pos:Vec3i (required);
+  energy_type:EnergyType;
+  amount:int32;                 // how much energy to consume
+}
+
+table EnergyConsumeResp {
+  consumed:int32;               // actually consumed
+  remaining:int32;              // energy left after consumption
+}
+
+// ---------------------------------------------------------------------------
+// Energy flow event (published on "energy.flow")
+// Published when energy moves through the network
+// ---------------------------------------------------------------------------
+table EnergyFlowEvent {
+  node_id:uint64;               // pipe node that is flowing
+  from_node_id:uint64;          // source node (0 if generation)
+  to_node_id:uint64;            // destination node (0 if consumption)
+  energy_type:EnergyType;
+  amount:int32;                 // energy transferred (EU/tick)
+  pos:Vec3i (required);         // position of the pipe node
+  tier:int32;                   // voltage tier
+}
+
+// ---------------------------------------------------------------------------
+// EnergyPacketDef - packet-based energy transport for ELECTRICITY
+// ---------------------------------------------------------------------------
+table EnergyPacketDef {
+    voltage: uint32;
+    amp_count: uint8;
+    source_id: uint64;
+    target_id: uint64;
+}
+
+// ---------------------------------------------------------------------------
+// CableNodeStatus - status information for cable nodes
+// ---------------------------------------------------------------------------
+table CableNodeStatus {
+    node_id: uint64;
+    voltage_tier: uint8;
+    max_voltage: uint32;
+    ampacity: uint32;
+    packets_this_tick: int32;
+    temperature: float;
+}
+
+// ---------------------------------------------------------------------------
+// Cable exploded event (published on "energy.cable.exploded")
+// Published when a cable overheats and explodes
+// ---------------------------------------------------------------------------
+table CableExplodedEvent {
+  node_id:uint64;               // cable node that exploded
+  pos:Vec3i (required);         // world position
+  temperature:float;            // temperature at explosion
+}
+
+// ---------------------------------------------------------------------------
+// Fluid node update: SimulationCore → PipeNetwork
+// Published on topic "fluid.node.update" whenever a fluid machine/pipe state changes
+// ---------------------------------------------------------------------------
+table FluidNodeUpdate {
+  node_id:uint64;               // unique node ID (from SimulationCore ECS)
+  pos:Vec3i (required);         // world position
+  fluid_id:uint32;              // fluid type (0 = empty)
+  amount:int32;                 // current fluid amount (mB)
+  capacity:int32;               // max capacity (mB)
+  max_input:int32;              // max input per tick (mB/t)
+  max_output:int32;             // max output per tick (mB/t)
+  tier:int32;                   // tier (0=ULV..10=RE)
+  is_source:bool = false;       // generator/input node
+  is_sink:bool = false;         // consumer/output node
+  connected_nodes:[uint64];     // IDs of adjacent pipe/machine nodes
+}
+
+// ---------------------------------------------------------------------------
+// Fluid check: request/response over topics
+// "fluid.check.request" → "fluid.check.response"
+// ---------------------------------------------------------------------------
+table FluidCheckReq {
+  node_id:uint64;
+  pos:Vec3i (required);
+  fluid_id:uint32;
+  demand:int32;                 // how much fluid is needed (mB)
+  tier:int32;                   // required tier
+}
+
+table FluidCheckResp {
+  available:int32;              // how much can be supplied (0 = none)
+  deficit:int32;                // demand - available
+}
+
+// ---------------------------------------------------------------------------
+// Fluid consume: request/response over topics
+// "fluid.consume.request" → "fluid.consume.response"
+// ---------------------------------------------------------------------------
+table FluidConsumeReq {
+  node_id:uint64;
+  pos:Vec3i (required);
+  fluid_id:uint32;
+  amount:int32;                 // how much fluid to consume (mB)
+}
+
+table FluidConsumeResp {
+  consumed:int32;               // actually consumed (mB)
+  remaining:int32;              // fluid left after consumption (mB)
+}
+
+// ---------------------------------------------------------------------------
+// Fluid flow event (published on "fluid.flow")
+// Published when fluid moves through the network
+// ---------------------------------------------------------------------------
+table FluidFlowEvent {
+  node_id:uint64;               // pipe node that is flowing
+  from_node_id:uint64;          // source node (0 if generation)
+  to_node_id:uint64;            // destination node (0 if consumption)
+  fluid_id:uint32;              // fluid type
+  amount:int32;                 // fluid transferred (mB)
+  pos:Vec3i (required);         // position of the pipe node
+  tier:int32;                   // tier
+}
+
+// ---------------------------------------------------------------------------
+// Item node update: SimulationCore → PipeNetwork
+// Published on topic "item.node.update" when a pipe/inventory state changes
+// ---------------------------------------------------------------------------
+table ItemNodeUpdate {
+  node_id:uint64;               // unique node ID (from SimulationCore ECS)
+  pos:Vec3i (required);         // world position
+  items:[ItemStack];            // items stored at this node
+  capacity:int32;               // max item slots
+  is_source:bool = false;       // source/provider node
+  is_sink:bool = false;         // consumer/requester node
+  connected_nodes:[uint64];     // IDs of adjacent pipe/machine nodes
+}
+
+// ---------------------------------------------------------------------------
+// Item transfer: request/response over topics
+// "item.transfer.request" → "item.transfer.response"
+// ---------------------------------------------------------------------------
+table ItemTransferReq {
+  node_id:uint64;
+  pos:Vec3i (required);
+  item_id:uint16;               // which item to transfer
+  count:int8;                   // how many items
+  tier:int32;                   // required tier
+}
+
+table ItemTransferResp {
+  transferred:int32;            // items actually transferred
+  remaining:int32;              // items left to transfer
+}
+
+// ---------------------------------------------------------------------------
+// Item flow event (published on "item.flow")
+// Published when items move through the pipe network
+// ---------------------------------------------------------------------------
+table ItemFlowEvent {
+  node_id:uint64;               // pipe node that is flowing
+  from_node_id:uint64;          // source node (0 if generation)
+  to_node_id:uint64;            // destination node (0 if consumption)
+  item_id:uint16;               // item type flowing
+  count:int8;                   // items transferred
+  pos:Vec3i (required);         // position of the pipe node
+  tier:int32;                   // tier
+}

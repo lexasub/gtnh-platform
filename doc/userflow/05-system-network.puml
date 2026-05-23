@@ -1,0 +1,219 @@
+' =============================================================================
+' GTNH Platform — User Flow: System & Network
+' 3 диаграммы: startup sequence, service communication, multiplayer sync
+' =============================================================================
+
+' ===========================================================================
+' 1. Startup Sequence (order matters)
+' ===========================================================================
+@startuml system-startup
+title **Flow S1: Startup Sequence (порядок запуска)**
+
+participant "MessageRouter\n(Go)" as MR
+participant "ChunkStore\n(C++)" as CS
+participant "WorldGenerator\n(C++)" as WG
+participant "EntityStateStore\n(C++)" as ESS
+participant "PipeNetwork\n(C++)" as PN
+participant "SimulationCore\n(C++)" as Sim
+participant "MetaDB\n(Go)" as MDB
+participant "Gateway\n(C++)" as GW
+participant "GameClient\n(C++)" as Client
+
+== Фаза 1: Базовые сервисы ==
+
+MR -> MR: Start pub/sub broker
+note right: Internal pub/sub, heartbeat, discovery
+MR -> MR: Init priority channels system
+
+== Фаза 2: Хранилища ==
+
+note over CS: Загрузка LMDB, проверка целостности
+CS -> MR: Register chunkd service
+CS -> MR: Subscribe: world.chunks.get
+
+note over ESS: Загрузка LMDB для entity state
+ESS -> MR: Register ess service
+ESS -> MR: Subscribe: entity.state.get/set
+
+note over MDB: Инициализация SQLite
+MDB -> MR: Register metadb service
+
+== Фаза 3: Вычисления ==
+
+note over WG: Init FastNoiseLite
+WG -> MR: Register world_generator service
+WG -> MR: Subscribe: world.generator.generate
+
+note over PN: Init pipe graph
+PN -> MR: Register pipe_network service
+
+== Фаза 4: Simulation ==
+
+note over Sim: Init ECS registry + systems
+Sim -> Sim: Register 20 Hz tick loop
+Sim -> MR: Register simcore service
+Sim -> MR: Subscribe: world.blocks.changed
+Sim -> MR: Subscribe: sim.craft.request
+Sim -> MR: Subscribe: player.inventory.actions
+
+== Фаза 5: Шлюз ==
+
+note over GW: Init io_uring, listen on TCP port
+GW -> MR: Register gateway service
+GW -> MR: Subscribe: all client-facing topics
+
+== Фаза 6: Клиент ==
+
+note over Client: bgfx init, GLFW window
+Client -> GW: TCP connect (FlatBuffers)
+GW -> Client: Welcome + initial state
+Client -> Client: Request initial chunks
+
+@enduml
+
+' ===========================================================================
+' 2. Cross-Service Communication Patterns
+' ===========================================================================
+@startuml system-service-communication
+title **Flow S2: Cross-Service Communication Patterns**
+
+participant "Service A\n(Publisher)" as Pub
+participant "MessageRouter\n(Go)" as MR
+participant "Service B\n(Subscriber)" as Sub1
+participant "Service C\n(Subscriber)" as Sub2
+
+== Pattern 1: Pub/Sub (1-to-N) ==
+
+Pub -> MR: Publish topic.data
+MR -> MR: Fan-out to subscribers
+MR -> Sub1: Deliver topic.data
+MR -> Sub2: Deliver topic.data
+
+note right #8E44AD
+  Пример: world.blocks.changed
+  Published by: ChunkStore
+  Subscribed by: SimulationCore, Gateway
+end note
+
+== Pattern 2: RPC (Request-Response) ==
+
+Sub1 -> MR: RPC: service.method
+MR -> Pub: Forward RPC
+Pub -> Pub: Process
+Pub -> MR: Return result
+MR -> Sub1: Deliver response
+
+note right #27AE60
+  Пример: SetBlockMeta
+  Caller: SimulationCore
+  Executor: ChunkStore
+end note
+
+== Pattern 3: Chained Pub/Sub ==
+
+Pub -> MR: Publish event
+MR -> Sub1: Forward event
+Sub1 -> Sub1: Process, emit new event
+Sub1 -> MR: Publish derived.event
+MR -> Sub2: Forward derived.event
+
+note right
+  Пример:
+  ChunkStore -> world.blocks.changed
+  SimulationCore -> sim.multiblock.created
+end note
+
+== Pattern 4: Priority Channels ==
+
+Pub -> MR: Publish urgent.topic
+note right: Высокий приоритет (system health)
+MR -> MR: Queue by priority
+MR -> Sub1: Deliver urgent first
+MR -> Sub2: Deliver urgent first
+
+@enduml
+
+' ===========================================================================
+' 3. Multiplayer Sync
+' ===========================================================================
+@startuml system-multiplayer-sync
+title **Flow S3: Multiplayer Sync (несколько клиентов)**
+
+actor "Player 1" as P1
+actor "Player 2" as P2
+participant "Client 1" as C1
+participant "Client 2" as C2
+participant "Gateway" as GW
+participant "MessageRouter" as MR
+participant "SimulationCore" as Sim
+participant "ChunkStore" as CS
+
+== Player 1 ставит блок ==
+
+P1 -> C1: Размещает блок
+C1 -> GW: SetBlockAction(pos, block_id)
+GW -> MR: Publish world.blocks.set
+MR -> CS: SetBlock
+CS -> MR: Publish world.blocks.changed
+
+par Синхронизация
+    MR -> Sim: onBlockChanged(pos, block_id)
+    Sim -> Sim: Update ECS, check multiblock
+    Sim -> MR: Publish sim.blockentity.update (if needed)
+
+    MR -> GW: Relay to all connected clients
+
+    GW -> C1: BlockUpdate (source)
+    GW -> C2: BlockUpdate (broadcast)
+    C1 -> P1: Показывает блок
+    C2 -> P2: Показывает блок (другого игрока)
+end
+
+== Player 2 видит изменение ==
+
+note right #9B59B6
+  Все изменения мира
+  бродкастятся всем клиентам
+  через Gateway.
+  Никакой peer-to-peer.
+end note
+
+== Player 1 уходит (disconnect) ==
+
+P1 -> C1: Disconnect / закрывает игру
+C1 -> GW: TCP disconnect
+GW -> GW: Clean up connection state
+GW -> MR: Publish player.disconnected
+
+MR -> Sim: onPlayerDisconnected(player_id)
+Sim -> Sim: Free player-bound ECS entities
+
+note right
+  SimulationCore продолжает
+  работу без игрока.
+  Автокрафты и буры
+  работают в обычном режиме.
+end note
+
+MR -> C2: Broadcast: player 1 disconnected
+C2 -> P2: P1 vanished from world
+
+== Player 1 подключается снова (reconnect) ==
+
+P1 -> C1: Запускает клиент, подключается
+C1 -> GW: TCP connect
+GW -> C1: Welcome, current generation
+C1 -> GW: Request chunks around login pos
+GW -> MR: Publish player.reconnected
+MR -> Sim: onPlayerReconnected(player_id)
+Sim -> Sim: Load player ECS state from MetaDB
+
+note right
+  Reconnect:
+  - Client gets latest chunk data
+  - Gets current machine states
+  - Sees any autonomous progress
+  - Все автокрафты/буры видны
+end note
+
+@enduml

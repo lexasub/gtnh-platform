@@ -1,0 +1,19 @@
+{
+    "bindings": [
+        { "key": "R", "action": "show_recipe", "ctx": "global" },
+        { "key": "U", "action": "toggle_item_list", "ctx": "global" },
+        { "key": "Escape", "action": "close_ui", "ctx": "global" },
+        { "key": "E", "action": "toggle_inv", "ctx": "global" },
+        { "key": "Tab", "action": "toggle_creative", "ctx": "global" },
+        { "key": "1", "action": "hotbar_0", "ctx": "global" },
+        { "key": "2", "action": "hotbar_1", "ctx": "global" },
+        { "key": "3", "action": "hotbar_2", "ctx": "global" },
+        { "key": "4", "action": "hotbar_3", "ctx": "global" },
+        { "key": "5", "action": "hotbar_4", "ctx": "global" },
+        { "key": "6", "action": "hotbar_5", "ctx": "global" },
+        { "key": "7", "action": "hotbar_6", "ctx": "global" },
+        { "key": "8", "action": "hotbar_7", "ctx": "global" },
+        { "key": "9", "action": "hotbar_8", "ctx": "global" },
+        { "key": "0", "action": "hotbar_9", "ctx": "global" }
+    ]
+}

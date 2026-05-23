@@ -1,0 +1,50 @@
+' =============================================================================
+' Level 3 — PipeNetwork
+' C++ — графы энергии/жидкостей, BFS, flow distribution
+' =============================================================================
+@startuml GTNH-PipeNetwork-level3
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **PipeNetwork**\nC++ — графы энергии/жидкостей
+
+Container_Boundary(pn, "PipeNetwork (C++)") {
+    Component(pn_mgr, "PipeNetworkManager", "C++", "Ядро: графы энергии/жидкостей\nnodes, edges, networks\naddNode/removeNode/addEdge/removeEdge")
+    Component(pn_svc, "PipeNetworkService", "C++", "Сервис-обёртка\nнад PipeNetworkManager\nподключение к router")
+    Component(pn_router, "MessageRouterClient", "C++", "TCP клиент MessageRouter\npipe_network.* топики")
+    Component(pn_main, "main.cpp", "C++", "Точка входа")
+
+    ' Data structures
+    Component(pn_node, "PipeNode (struct)", "C++", "id, x/y/z, block_id\nenergyBuffer/Capacity\nfluidBuffer/Capacity/Id\nisSource/isSink")
+    Component(pn_edge, "PipeEdge (struct)", "C++", "fromNode, toNode, resistance\n0.0 = perfect, 1.0 = total loss")
+    Component(pn_network, "PipeNetwork (struct)", "C++", "id, nodeIds[], totalEnergy\ntotalFluid, fluidId, isActive")
+
+    ' Internal state
+    Component(pn_nodes_map, "nodes_", "unordered_map<id, PipeNode>", "Все узлы сети")
+    Component(pn_edges_map, "edges_", "unordered_map<id, InternalEdge>", "Все соединения")
+    Component(pn_ntn, "nodeToNetwork_", "unordered_map<node_id, network_id>", "Принадлежность узла к сети")
+    Component(pn_networks, "networks_", "unordered_map<id, PipeNetwork>", "Все найденные сети")
+
+    ' Algorithms
+    Component(pn_bfs, "discoverNetwork() / rebuildNetworks()", "C++ (BFS)", "BFS для обнаружения\nсвязных сетей\nот узла или весь граф")
+    Component(pn_flow, "distributeEnergy() / distributeFluid()", "C++", "Распределение потока\nпо узлам сети\nравномерно")
+    Component(pn_flow_helper, "distributeFlow()", "C++ (private)", "Хелпер распределения\ntotalAmount → node deltas")
+
+    Rel(pn_mgr, pn_node, "содержит", "")
+    Rel(pn_mgr, pn_edge, "содержит", "")
+    Rel(pn_mgr, pn_network, "содержит", "")
+    Rel(pn_mgr, pn_nodes_map, "владеет", "")
+    Rel(pn_mgr, pn_edges_map, "владеет", "")
+    Rel(pn_mgr, pn_ntn, "владеет", "")
+    Rel(pn_mgr, pn_networks, "владеет", "")
+    Rel(pn_mgr, pn_bfs, "вызывает", "")
+    Rel(pn_mgr, pn_flow, "вызывает per tick", "")
+    Rel(pn_flow, pn_flow_helper, "использует", "")
+    Rel(pn_svc, pn_mgr, "оборачивает", "")
+    Rel(pn_svc, pn_router, "подписывается на\npipe_network.*", "")
+}
+
+SHOW_LEGEND()
+@enduml

@@ -1,0 +1,487 @@
+// protocol/core.fbs
+// Shared types used across all GTNH Platform services.
+// Included by service-specific schemas via `include "core.fbs";`.
+
+namespace Protocol;
+
+// ---------------------------------------------------------------------------
+// Value types (struct = inline, zero-copy)
+// ---------------------------------------------------------------------------
+struct Vec3i { x:int32; y:int32; z:int32; }
+struct Vec3f { x:float; y:float; z:float; }
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+enum PlayerActionType : uint8 {
+  MOVE = 0,
+  RIGHT_MOUSE_CLICK = 1,
+  LEFT_MOUSE_CLICK = 2,
+  CHUNK_REQUEST = 3,
+  ITEM_ACTION = 4,
+  UNLOAD = 5,
+}
+
+enum BlockAckStatus : uint8 {
+  REJECTED = 0,
+  ACCEPTED = 1,
+  CONFLICT = 2,
+}
+
+enum CASStatus : uint8 {
+  OK = 0,
+  CONFLICT = 1,
+}
+
+enum EnergyType : uint8 {
+  ELECTRICITY = 0,
+  HEAT = 1,
+  STEAM = 2,
+}
+
+enum ToolActionType : uint8 {
+    MINE_BLOCK = 0,
+    WRENCH_CYCLE = 1,
+    CHARGE_ITEM = 2,
+    TOOL_INFO = 3,
+}
+
+enum MachineActionType : uint8 {
+    WRENCH_CYCLE = 0,
+    SET_SIDE_CONFIG = 1,
+    CONFIG_UPDATED = 2,
+}
+
+// ---------------------------------------------------------------------------
+// Client↔Gateway messages
+// ---------------------------------------------------------------------------
+table PlayerAction {
+  player_id:uint64;
+  action:PlayerActionType;
+  pos:Vec3i (required);
+  face:uint8;
+  count:uint8 = 1;
+  block_id:uint16;
+}
+
+// CAS-based block placement: client sends expected_block_id for optimistic
+// concurrency. If the server's current block_id differs, the action is
+// rejected with CONFLICT and the client must re-sync.
+table SetBlockAction {
+  player_id:uint64;
+  action:PlayerActionType;
+  pos:Vec3i (required);
+  expected_block_id:uint16;   // what client thinks is there now
+  new_block_id:uint16;         // 0 = break
+}
+
+// Server confirmation for a PlayerAction or SetBlockAction.
+// gateway→client: tells the client the result of its block action.
+table BlockAck {
+  pos:Vec3i (required);
+  status:BlockAckStatus;
+  block_id:uint16;      // final block_id (ACCEPTED/CONFLICT)
+  meta:uint8;            // final meta (ACCEPTED/CONFLICT)
+  reason:string;         // human-readable (for REJECTED, e.g. "no permission")
+}
+
+// ---------------------------------------------------------------------------
+// World state
+// ---------------------------------------------------------------------------
+
+// TODO(diff-protocol): add version:uint64 — monotonically increasing
+// chunk revision counter on server. Client uses it to detect stale snapshots
+// and to know that its pending change has been committed.
+table ChunkData {
+  coord:Vec3i (required);       // chunk coords (cx, cy, cz)
+  blocks:[uint16];              // 32768 elements, 0=air
+  meta:[uint8];                 // 32768 elements, block orientation
+  multiblock:[uint32];          // 32768 elements, mb_id, 0=none
+  // TODO(diff-protocol): version:uint64;
+}
+
+table CompressedChunkData {
+  coord:Vec3i (required);
+  palette_data:[uint8];         // palette-encoded sections (same format as LMDB)
+}
+
+// TODO(diff-protocol): add BlockUpdate table for incremental diffs:
+//
+//   // Incremental block change (gateway→client).
+//   // Replaces ChunkData for single-block mutations on already-loaded chunks.
+//   table BlockUpdate {
+//     pos:Vec3i (required);
+//     block_id:uint16;
+//     meta:uint8;
+//     mb_id:uint32;
+//     // chunk_version tells the client: "this is the state AFTER the server
+//     // processed your action at this version".
+//     chunk_version:uint64;
+//   }
+
+table EntitySnapshot {
+  entity_id:uint64;
+  pos:Vec3i (required);
+  velocity:Vec3f;
+  health:uint16;
+  energy:int32;            // current energy level (0 = none/no machine)
+  energy_type:EnergyType = ELECTRICITY;
+}
+
+// Energy storage: capacity and current EU levels for machines
+struct EnergyStorage {
+  capacity:int32;       // Maximum EU capacity
+  current:int32;        // Current EU stored
+  max_input:int32;      // Maximum EU/tick input
+  max_output:int32;     // Maximum EU/tick output
+  tier:int32;           // GregTech tier (0=ULV, 1=LV, 2=MV, ...)
+  energy_type:EnergyType = ELECTRICITY;
+}
+
+// Fluid tank: single fluid container inside a machine
+struct FluidTank {
+  fluid_id:uint32;      // 0 = empty
+  amount:int32;         // Amount in millibuckets (mB)
+  capacity:int32;       // Maximum capacity in mB
+}
+
+// Fluid stack: portable fluid representation (for inventory/transport)
+struct FluidStack {
+  fluid_id:uint32;      // 0 = empty
+  amount:int32;         // Amount in millibuckets (mB)
+}
+
+// ---------------------------------------------------------------------------
+// Inventory & Item Stack (Minecraft-style)
+// ---------------------------------------------------------------------------
+// ItemStack represents a single item/block with count and metadata.
+// This is the universal item representation used across all services.
+// Alias for InventorySlot - they are identical.
+struct ItemStack {
+  item_id:uint16;      // ID of item/block
+  count:uint8;         // stack size (1-64, 0 = empty)
+  meta:uint16;         // damage/state (0 = new/untouched)
+}
+
+// InventorySlot represents a single slot in a player inventory, chest, etc.
+// Same as ItemStack - kept for semantic clarity in inventory contexts.
+table InventorySlot {
+  item_id:uint16;      // ID of item/block
+  count:uint8;         // stack size (1-64, 0 = empty slot)
+  meta:uint16;         // damage/state (0 = new/untouched)
+}
+
+// InventoryUpdate: batch push to client. Gateway → Client on login,
+// chest open/close, and server-side changes (mob drops, trading, etc.).
+// Uses slot-based diffing — only changed slots are serialized.
+table InventoryUpdate {
+  player_id:uint64;
+  slots:[InventorySlot];  // 0-255 (player hotbar: 8, armor: 4, chest: 27)
+}
+
+// Inventory represents a container with a fixed number of slots.
+table Inventory {
+  slots:[InventorySlot];
+  size:uint8;  // number of slots in this inventory
+}
+
+// InventoryType defines different inventory types and their slot counts.
+table InventoryType {
+  type:uint8;          // 0=Player, 1=Machine, 2=Workbench, 3=Chest
+  slot_count:uint16;   // number of slots in this inventory type
+}
+
+// InventoryAction: client→server inventory operations
+table InventoryAction {
+  player_id:uint64;
+  action_type:uint8;       // 0=MOVE, 1=SPLIT, 2=DROP, 3=CRAFT
+  source_slot:uint8;       // source slot index
+  target_slot:uint8;       // target slot index (0xFF = none/drop)
+  count:uint8;             // item count for split/drop
+  meta:uint16;             // item metadata/damage (default 0)
+}
+
+// EntityState represents the state of a world-bound entity (machine, workbench, etc.)
+table EntityState {
+  entity_id:uint64;     // unique ID for this entity instance
+  entity_type:uint16;   // type of entity (machine, workbench, etc.)
+  state:[uint8];        // serialized state data (Inventory for now)
+}
+
+// EntityStateUpdate: batch push for entity state changes.
+table EntityStateUpdate {
+  entity_id:uint64;
+  state:[uint8];        // updated state data
+}
+
+// EntityState RPC: Get/Set entity state
+table GetEntityStateReq {
+  dimension:int32;
+  x:int32;
+  y:int32;
+  z:int32;
+  entity_type:uint16;
+}
+
+table GetEntityStateResp {
+  state:[uint8];        // entity state data
+}
+
+table ErrorResp {
+  message:string;
+}
+
+table SetEntityStateReq {
+  dimension:int32;
+  x:int32;
+  y:int32;
+  z:int32;
+  entity_type:uint16;
+  state:[uint8];        // entity state data
+}
+
+table EntityStateAck {
+  success:bool;
+}
+
+union EntityStateRequest {
+  GetEntityStateReq,
+  SetEntityStateReq,
+}
+
+union EntityStateResponse {
+  GetEntityStateResp,
+  EntityStateAck,
+}
+
+// ---------------------------------------------------------------------------
+// Events (published via MessageRouter)
+// ---------------------------------------------------------------------------
+table BlockChangedEvent {
+  pos:Vec3i (required);
+  block_id:uint16;
+  meta:uint8;
+  mb_id:uint32;
+}
+
+table MultiblockCreatedEvent {
+  controller_id:uint64;
+  anchor:Vec3i (required);
+  mb_type:uint16;
+}
+
+table MultiblockDestroyedEvent {
+  controller_id:uint64;
+}
+
+// Player join/leave events (for MetaDB inventory load/save)
+table PlayerJoined {
+  player_id:uint64;
+}
+
+table PlayerLeft {
+  player_id:uint64;
+  x:int32;
+  y:int32;
+  z:int32;
+}
+
+// ---------------------------------------------------------------------------
+// Machine slot types (for hatches and inventory slots)
+// ---------------------------------------------------------------------------
+enum MachineSlotType : uint8 {
+  INPUT = 0,
+  OUTPUT = 1,
+  BOTH = 2,
+  FLUID_INPUT = 3,
+  FLUID_OUTPUT = 4,
+  ENERGY = 5,
+  ANY = 6,
+}
+
+table MachineSlotInfo {
+  slot_index:uint16;
+  item:ItemStack;
+  capacity:uint16;            // max stack size / fluid mB
+  slot_type:MachineSlotType;
+}
+
+// ---------------------------------------------------------------------------
+// Hatch types (for multiblocks)
+// ---------------------------------------------------------------------------
+enum HatchType : uint8 {
+  ITEM_INPUT = 0,
+  ITEM_OUTPUT = 1,
+  FLUID_INPUT = 2,
+  FLUID_OUTPUT = 3,
+  ENERGY = 4,
+  MUFFLER = 5,
+  DYNAMIC = 6,
+}
+
+table HatchInfo {
+  pos:Vec3i;                   // hatch position in multiblock
+  hatch_type:HatchType;
+  tier:uint8;                  // voltage tier
+  slots:[MachineSlotInfo];    // items/fluids inside hatch
+}
+
+// ---------------------------------------------------------------------------
+// Cover types (for machines and multiblocks)
+// ---------------------------------------------------------------------------
+enum CoverType : uint8 {
+  NONE = 0,
+  CONVEYOR = 1,
+  PUMP = 2,
+  ROBOT_ARM = 3,
+  ENERGY_DETECTOR = 4,
+  FLUID_REGULATOR = 5,
+}
+
+table CoverInfo {
+  side:uint8;                  // 0-5 (D-U-N-S-W-E)
+  cover_type:CoverType;
+  data:uint16;                 // tier / config value
+}
+
+// ---------------------------------------------------------------------------
+// Events - Block Entity Updates (machines, workbenches, etc.)
+// ---------------------------------------------------------------------------
+// Published periodically to keep clients updated on machine progress bars,
+// inventory changes, energy levels, and multiblock hatch/cover state.
+// Simple machines (furnace, macerator) fill only basic fields;
+// multiblocks add hatches + covers + mb_id.
+table BlockEntityUpdate {
+  pos:Vec3i (required);        // machine location
+  machine_type:uint16;         // type of machine/workbench
+  progress:float;              // 0.0-1.0, current progress bar value
+  energy:uint32;               // current EU stored
+  energy_capacity:uint32;      // maximum EU buffer
+  energy_type:EnergyType = ELECTRICITY;
+  // Optional: inventory snapshot (simple machines)
+  input_items:[ItemStack];     // input slots
+  output_items:[ItemStack];    // output slots
+  // Optional: fluids
+  fluid_tanks:[FluidTank];    // fluid inventory
+  // Optional: machine ambient info
+  temperature:float;
+  network_id:uint32;           // PipeNetwork connection
+  flags:uint16;                // bitmask: processing, error, etc.
+  // Optional: multiblock info
+  mb_id:uint64;
+  structure_valid:bool;
+  hatches:[HatchInfo];
+  covers:[CoverInfo];
+}
+
+// CraftRequest: client→server, sent from workbench
+table CraftRequest {
+  player_id:uint64;
+  pos:Vec3i (required);        // workbench position
+  slots:[ItemStack];           // 9 slots of 3×3 grid
+}
+
+// CraftResponse: server→client, result of craft operation
+table CraftResponse {
+  success:bool;
+  result:ItemStack;
+  error:string;
+  grid:[ItemStack];        // consumed grid slots (9 items, 0=empty)
+}
+
+// GridUpdate: server→client, workbench crafting grid state
+// Published via MessageRouter topic "sim.workbench.state"
+table GridUpdate {
+  pos:Vec3i (required);        // workbench position
+  grid:[ItemStack];            // 9 slots of 3×3 crafting grid
+}
+
+// SetMachineSlotReq: client→server, move item between player inventory and machine slot.
+// - player_slot=255 + item_id=0  → extract machine slot to cursor (server clears slot)
+// - player_slot=255 + item_id>0  → put cursor item into machine slot
+// - player_slot<255 + item_id=0  → move from machine slot to player_slot
+// - player_slot<255 + item_id>0  → move from player_slot to machine slot
+table SetMachineSlotReq {
+  player_id:uint64;
+  pos:Vec3i (required);        // machine block position
+  slot_index:uint16;           // which slot in the machine container
+  item_id:uint16;
+  count:uint8;
+  meta:uint16;
+  player_slot:uint8 = 255;     // player inventory slot (255 = not from/to player inv)
+}
+
+table ToolAction {
+    player_id: uint64;
+    action: ToolActionType;
+    pos: Vec3i (required);
+    face: uint8;
+    item_id: uint16;
+    slot_idx: uint8;
+    extra_data: uint16;
+}
+
+table ToolActionResp {
+    success: bool;
+    error: string;
+    energy_remaining: uint32;
+    mined_block_id: uint16;
+    new_side_role: uint8;
+    all_roles: [uint8];
+}
+
+table MachineAction {
+    player_id: uint64;
+    action: MachineActionType;
+    pos: Vec3i (required);
+    face: uint8;
+    new_role: uint8;
+}
+
+table MachineActionResp {
+    success: bool;
+    error: string;
+    pos: Vec3i (required);
+    face: uint8;
+    new_role: uint8;
+    roles: [uint8];
+}
+
+table SetMachineSlotResp {
+    pos: Vec3i (required);
+    slot_idx: uint8;
+    success: bool;
+    error: string;
+    item: ItemStack;
+}
+
+// Chest inventory open/close
+// Gateway ↔ Client: chest inventory data exchange
+table ChestOpenReq {
+  player_id: uint64;
+  pos: Vec3i (required);      // chest block position (x, y, z)
+  open: bool = false;         // true=open, false=close
+}
+
+table ChestOpenResp {
+  pos: Vec3i (required);      // chest block position (x, y, z)
+  success: bool = false;      // true if operation succeeded
+  slots: [InventorySlot];     // 27 inventory slots
+}
+
+table SideConfigData {
+    machine_instance_id: uint64;
+    faces: [uint8];
+    last_modified: uint64;
+}
+
+table MachineConfigUpdated {
+    pos: Vec3i (required);
+    machine_id: uint16;
+    machine_instance_id: uint64;
+    faces: [uint8];
+    changed_face: uint8;
+    old_role: uint8;
+    new_role: uint8;
+    timestamp: uint64;
+}

@@ -1,0 +1,58 @@
+' =============================================================================
+' Level 3 — SimulationCore: Crafting + RecipeManager + InventoryActionHandler
+' =============================================================================
+@startuml GTNH-Sim-Crafting-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **SimulationCore: Crafting + Inventory**\nПоток крафта, рецепты, управление инвентарём
+
+Container_Boundary(sim, "SimulationCore") {
+
+    ' ===================================================================
+    ' Crafting
+    ' ===================================================================
+    Container_Boundary(craft, "Crafting") {
+        Component(cr_flow, "CraftInventoryFlow", "C++", "Поток крафта\nвход → рецепт → выход")
+        Component(cr_handler, "CraftRequestHandler", "C++", "Обработчик CraftRequest\nпроверка + выполнение")
+        Component(cr_grid, "GridPatternMatcher", "C++", "Сопоставление паттернов\nсетка 3×3 → рецепт")
+        Component(cr_workbench, "WorkbenchStateManager", "C++", "Состояние верстаков\nотслеживание изменений")
+        Rel(cr_handler, cr_flow, "использует для крафта", "")
+        Rel(cr_handler, cr_grid, "сопоставляет паттерн", "")
+    }
+
+    ' ===================================================================
+    ' RecipeManager (embedded)
+    ' ===================================================================
+    Container_Boundary(rm, "RecipeManager") {
+        Component(rm_mgr, "RecipeManager", "C++", "Локальный менеджер рецептов\nзагрузка из data/recipes/")
+    }
+
+    ' ===================================================================
+    ' InventoryActionHandler
+    ' ===================================================================
+    Component(inv_handler, "InventoryActionHandler", "C++", "Обработчик действий инвентаря\nMOVE / SPLIT / DROP / CRAFT\nкоординация между ECS и MetaDB")
+
+    ' ===================================================================
+    ' Subsystem references
+    ' ===================================================================
+    Component(ecs_ref, "ECS Core", "SimulationEngine\nECS registry + systems")
+    Component(net_ref, "Network", "RouterPublisher\nEntityStateStoreClient")
+    Component(chunk_ref, "Chunk Client", "IoUringChunkClient")
+}
+
+' Cross-module relationships
+Rel(cr_handler, ecs_ref, "изменяет ECS\nпри выполнении крафта", "")
+Rel(cr_handler, net_ref, "публикует CraftResponse", "")
+Rel(cr_handler, inv_handler, "InventoryActionHandler\nдля манипуляции предметами", "")
+
+Rel(inv_handler, ecs_ref, "читает/пишет InventoryContainer", "")
+Rel(inv_handler, net_ref, "публикует инвентарь-ивенты\nсохраняет state", "")
+
+Rel(cr_handler, rm_mgr, "проверяет рецепты", "")
+Rel(ecs_ref, rm_mgr, "получает MachineRegistry", "")
+
+SHOW_LEGEND()
+@enduml

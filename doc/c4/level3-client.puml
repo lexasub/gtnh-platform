@@ -1,0 +1,83 @@
+' =============================================================================
+' Level 3 — GameClient overview
+' Subsystems as collapsed boundaries (детали — в level4)
+' =============================================================================
+@startuml GTNH-Client-level3
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 3 — GameClient**\nbgfx + GLFW + ImGui + Asio (C++)
+
+Container_Boundary(gc, "GameClient") {
+
+    ' ===================================================================
+    ' Infrastructure
+    ' ===================================================================
+    Container_Boundary(infra, "Инфраструктура") {
+        Component(gc_core, "GameClient", "C++", "Оркестратор\nInit / Run / Update")
+        Component(gc_thread, "NamedThreadPool", "C++", "asio::io_context\nworker threads")
+    }
+
+    ' ===================================================================
+    ' Network
+    ' ===================================================================
+    Container_Boundary(net, "Network") {
+        Component(net_client, "NetClient", "C++ (Asio)", "TCP: ctrl :7777 + bulk :7778")
+    }
+
+    ' ===================================================================
+    ' World + Cache
+    ' ===================================================================
+    Container_Boundary(world, "World + Cache") {
+        Component(w_world, "World", "C++", "Модель мира + чанки")
+        Component(w_chunk_mgr, "ChunkLoadManager", "C++", "Загрузка чанков")
+        Component(w_mesh_mgr, "MeshManager", "C++", "Генерация мешей")
+    }
+
+    ' ===================================================================
+    ' Render
+    ' ===================================================================
+    Container_Boundary(render, "Render") {
+        Component(r_bridge, "RenderBridge", "C++", "Мост мир → bgfx")
+        Component(rl_api, "RenderAPI", "C++", "Абстракция bgfx")
+        Component(rl_scene, "RenderScene", "C++", "View + render passes")
+        Component(rl_imgui, "ImGuiBackend", "C++", "ImGui + bgfx")
+    }
+
+    ' ===================================================================
+    ' UI Core
+    ' ===================================================================
+    Container_Boundary(uicore, "UI Core") {
+        Component(ui_mgr, "UIManager", "C++", "Медиатор UI")
+        Component(ui_input, "InputManager", "C++", "Состояние ввода")
+    }
+
+    ' ===================================================================
+    ' UI Windows
+    ' ===================================================================
+    Container_Boundary(uiwin, "UI Windows") {
+        Component(win_chest, "ChestWindow", "C++", "Сундук")
+        Component(win_inv, "PlayerInventory", "C++", "Инвентарь")
+        Component(win_craft, "ClientCraftingWindow", "C++", "Верстак")
+        Component(panel_nei, "NeiPanel", "C++", "NEI")
+        Component(comp_slot, "SlotGrid", "C++", "Сетка слотов")
+    }
+
+    ' ===================================================================
+    ' Cross-subsystem
+    ' ===================================================================
+    Rel(gc_core, net, "владеет", "")
+    Rel(gc_core, world, "владеет", "")
+    Rel(gc_core, render, "владеет", "")
+    Rel(gc_core, uicore, "владеет", "")
+    Rel(net, world, "ChunkCallback → World", "")
+    Rel(net, uicore, "InventoryUpdate → UIManager", "")
+    Rel(world, render, "данные чанков", "")
+    Rel(uicore, uiwin, "владеет окнами", "")
+    Rel(uicore, net, "SendPlayerAction", "")
+}
+
+SHOW_LEGEND()
+@enduml

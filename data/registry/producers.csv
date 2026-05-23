@@ -1,0 +1,5 @@
+id,name,class,energy_out,energy_in,tier,slots_in,slots_out,capacity,maxInput,maxOutput
+46,gtnh:heat_generator,Generator,HEAT,,0,1,0,10000,32,32
+49,gtnh:steam_solid_boiler,Generator,STEAM,,0,2,1,0,0,32
+50,gtnh:steam_heat_boiler,Generator,HEAT,STEAM,0,1,1,0,0,32
+63,gtnh:creative_generator,CreativeGenerator,ELECTRICITY,,10,0,0,1000000,0,100000

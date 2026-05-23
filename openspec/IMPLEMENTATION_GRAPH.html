@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GTNH Platform Implementation Graph</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #58a6ff;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #8b949e;
+      margin-bottom: 30px;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 30px;
+      padding: 12px;
+      background: #161b22;
+      border-radius: 8px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+    }
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+    .legend-done { background: #3fb950; }
+    .legend-done:hover { box-shadow: 0 0 8px #3fb950; }
+    .legend-progress { background: #d29922; }
+    .legend-progress:hover { box-shadow: 0 0 8px #d29922; }
+    .legend-planned { background: #58a6ff; }
+    .legend-planned:hover { box-shadow: 0 0 8px #58a6ff; }
+    .legend-gapped { background: #f85149; }
+    .legend-gapped:hover { box-shadow: 0 0 8px #f85149; }
+    .legend-skip { background: #8b949e; opacity: 0.6; }
+    .legend-skip:hover { opacity: 1; box-shadow: 0 0 8px #8b949e; }
+    .graph-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+      gap: 20px;
+      max-width: 2000px;
+      margin: 0 auto;
+    }
+    .service-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .service-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #30363d;
+    }
+    .service-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 11px;
+    }
+    .service-title {
+      flex: 1;
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .service-lang {
+      font-size: 12px;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .components-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+    .component-item {
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .component-item:hover {
+      transform: translateY(-1px);
+    }
+    .component-name {
+      flex: 1;
+      margin-right: 8px;
+    }
+    .component-status {
+      width: 18px;
+      height: 18px;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 700;
+      color: #000;
+      flex-shrink: 0;
+    }
+    .component-status.done { background: #238636; }
+    .component-status.done::after { content: "✓"; color: #fff; }
+    .component-status.progress { background: #9e6a03; }
+    .component-status.progress::after { content: "→"; color: #fff; }
+    .component-status.planned { background: #1f6feb; }
+    .component-status.planned::after { content: "○"; color: #fff; }
+    .component-status.gapped { background: #da3633; }
+    .component-status.gapped::after { content: "✗"; color: #fff; }
+    .component-status.skip { background: #6e7681; opacity: 0.6; }
+    .component-status.skip::after { content: "—"; color: #fff; }
+    .gap-tooltip {
+      font-size: 11px;
+      color: #f85149;
+      font-style: italic;
+    }
+    .progress-bar {
+      position: relative;
+      height: 6px;
+      background: #21262d;
+      border-radius: 3px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.5s ease;
+    }
+    .progress-85 { width: 85%; background: linear-gradient(90deg, #d29922, #f0e68c); }
+    .progress-60 { width: 60%; background: linear-gradient(90deg, #d29922, #b8860b); }
+    .progress-30 { width: 30%; background: linear-gradient(90deg, #d29922, #8b4513); }
+    .progress-10 { width: 10%; background: #d29922; }
+    .summary-bar {
+      margin-top: 14px;
+      padding: 10px;
+      background: #0d1117;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .summary-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .summary-row:last-child { margin-bottom: 0; }
+    .summary-label {
+      width: 60px;
+      font-size: 12px;
+      color: #8b949e;
+    }
+    .summary-value {
+      flex: 1;
+      text-align: right;
+      font-weight: 600;
+    }
+    .summary-done { color: #3fb950; }
+    .summary-progress { color: #d29922; }
+    .summary-planned { color: #58a6ff; }
+    .summary-gapped { color: #f85149; }
+    .total-bar {
+      margin-top: 12px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+    .total-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+    }
+    .total-done { background: #3fb950; }
+    .total-progress { background: #d29922; }
+    .total-planned { background: #58a6ff; }
+    .total-gapped { background: #f85149; }
+    .total-skip { background: #8b949e; opacity: 0.3; }
+    .dependency-line {
+      margin-top: 12px;
+      padding-left: 14px;
+      border-left: 1px solid #30363d;
+    }
+    .dep-item {
+      font-size: 12px;
+      color: #8b949e;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dep-icon {
+      font-size: 11px;
+      color: #58a6ff;
+    }
+    .critical-path {
+      margin-top: 12px;
+      padding: 12px;
+      background: rgba(248, 81, 73, 0.1);
+      border: 1px solid rgba(248, 81, 73, 0.3);
+      border-radius: 6px;
+      font-size: 12px;
+    }
+    .critical-path h4 {
+      color: #f85149;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+    .critical-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .critical-item::before {
+      content: "⚠";
+      font-size: 14px;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 30px 10px;
+      color: #8b949e;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🏗️ GTNH Platform Implementation Graph</h1>
+  <p class="subtitle">Реализовано / В работе / Планируется / Пропуск</p>
+
+  <div class="legend">
+    <div class="legend-item">
+      <span class="legend-dot legend-done"></span>
+      <span>Реализовано</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-dot legend-progress"></span>
+      <span>В работе</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-dot legend-planned"></span>
+      <span>Планируется</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-dot legend-gapped"></span>
+      <span>Не сделано (Gap)</span>
+    </div>
+    <div class="legend-item">
+      <span class="legend-dot legend-skip"></span>
+      <span>Пропуск (Skip)</span>
+    </div>
+  </div>
+
+  <div class="graph-container">
+    <!-- Gateway -->
+    <div class="service-card">
+      <div class="service-header">
+        <span class="service-icon" style="background:#58a6ff;color:#fff;">GW</span>
+        <div class="service-title">Gateway</div>
+        <div class="service-lang">C++</div>
+      </div>
+      <div class="components-grid">
+        <div class="component-item">
+          <span class="component-name">TCP Server (Asio)</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Interest Management</span>
+          <span class="component-status progress"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">ChunkSnapshot RPC</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">PlayerAction RPC</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Zero-Copy Protocol</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Rate Limiting</span>
+          <span class="component-status gap-tooltip">Отложено до масштабируемости</span>
+          <span class="component-status skip"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Compression (LZ4)</span>
+          <span class="component-status gap-tooltip">Отложено до масштабируемости</span>
+          <span class="component-status skip"></span>
+        </div>
+      </div>
+      <div class="summary-bar">
+        <div class="summary-row">
+          <span class="summary-label">Достигнуто:</span>
+          <span class="summary-value summary-done">5/5</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">В работе:</span>
+          <span class="summary-value summary-progress">1/1</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Гепы:</span>
+          <span class="summary-value summary-gapped">0/0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ChunkStore -->
+    <div class="service-card">
+      <div class="service-header">
+        <span class="service-icon" style="background:#3fb950;color:#fff;">CS</span>
+        <div class="service-title">ChunkStore</div>
+        <div class="service-lang">C++</div>
+      </div>
+      <div class="components-grid">
+        <div class="component-item">
+          <span class="component-name">Chunk (32×32×32)</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">SetBlock/GetBlock</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">LMDB Persistence</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Chunk Snapshot</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Pending Unload</span>
+          <span class="component-status progress"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Coord Serialization</span>
+          <span class="component-status done"></span>
+        </div>
+      </div>
+      <div class="summary-bar">
+        <div class="summary-row">
+          <span class="summary-label">Достигнуто:</span>
+          <span class="summary-value summary-done">5/5</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">В работе:</span>
+          <span class="summary-value summary-progress">1/1</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Гепы:</span>
+          <span class="summary-value summary-gapped">0/0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- WorldGenerator -->
+    <div class="service-card">
+      <div class="service-header">
+        <span class="service-icon" style="background:#3fb950;color:#fff;">WG</span>
+        <div class="service-title">WorldGenerator</div>
+        <div class="service-lang">C++</div>
+      </div>
+      <div class="components-grid">
+        <div class="component-item">
+          <span class="component-name">Flat Terrain</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Noise Functions</span>
+          <span class="component-status planned"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Biomes</span>
+          <span class="component-status planned"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">3D Perlin</span>
+          <span class="component-status planned"></span>
+        </div>
+      </div>
+      <div class="summary-bar">
+        <div class="summary-row">
+          <span class="summary-label">Достигнуто:</span>
+          <span class="summary-value summary-done">1/1</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">В работе:</span>
+          <span class="summary-value summary-progress">0/0</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Планируется:</span>
+          <span class="summary-value summary-planned">3/3</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SimulationCore -->
+    <div class="service-card">
+      <div class="service-header">
+        <span class="service-icon" style="background:#d29922;color:#fff;">SC</span>
+        <div class="service-title">SimulationCore</div>
+        <div class="service-lang">C++</div>
+      </div>
+      <div class="components-grid">
+        <div class="component-item">
+          <span class="component-name">ECS (EnTT)</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Multiblock Controller</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">BlockChanged Event</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Multiblock Pattern Match</span>
+          <span class="component-status progress"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">SetBlockMeta RPC</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Entity Components</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Mobs (AI/Combat)</span>
+          <span class="component-status progress"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">RecipeManager</span>
+          <span class="component-status progress"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">EnergyStorage</span>
+          <span class="component-status progress"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">PipeNetwork</span>
+          <span class="component-status skip"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">PipeFlowSolver</span>
+          <span class="component-status skip"></span>
+        </div>
+      </div>
+      <div class="summary-bar">
+        <div class="summary-row">
+          <span class="summary-label">Достигнуто:</span>
+          <span class="summary-value summary-done">5/5</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">В работе:</span>
+          <span class="summary-value summary-progress">3/3</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Планируется:</span>
+          <span class="summary-value summary-planned">0/0</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Пропуск:</span>
+          <span class="summary-value summary-skip">2/2</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SpatialIndex -->
+    <div class="service-card">
+      <div class="service-header">
+        <span class="service-icon" style="background:#d29922;color:#fff;">SI</span>
+        <div class="service-title">SpatialIndex</div>
+        <div class="service-lang">C++</div>
+      </div>
+      <div class="components-grid">
+        <div class="component-item">
+          <span class="component-name">R-tree / Octree</span>
+          <span class="component-status progress"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">AABB Intersection</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Frustum Culling</span>
+          <span class="component-status progress"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Multiblock Queries</span>
+          <span class="component-status progress"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Entity Queries</span>
+          <span class="component-status planned"></span>
+        </div>
+      </div>
+      <div class="summary-bar">
+        <div class="summary-row">
+          <span class="summary-label">Достигнуто:</span>
+          <span class="summary-value summary-done">1/1</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">В работе:</span>
+          <span class="summary-value summary-progress">3/3</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Планируется:</span>
+          <span class="summary-value summary-planned">1/1</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Гепы:</span>
+          <span class="summary-value summary-gapped">0/0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MetaDB -->
+    <div class="service-card">
+      <div class="service-header">
+        <span class="service-icon" style="background:#d29922;color:#fff;">MD</span>
+        <div class="service-title">MetaDB</div>
+        <div class="service-lang">Go</div>
+      </div>
+      <div class="components-grid">
+        <div class="component-item">
+          <span class="component-name">SQLite Driver</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Player Saves</span>
+          <span class="component-status progress"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Inventory Data</span>
+          <span class="component-status planned"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Transaction Saves</span>
+          <span class="component-status planned"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">WAL Logging</span>
+          <span class="component-status planned"></span>
+        </div>
+      </div>
+      <div class="summary-bar">
+        <div class="summary-row">
+          <span class="summary-label">Достигнуто:</span>
+          <span class="summary-value summary-done">1/1</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">В работе:</span>
+          <span class="summary-value summary-progress">1/1</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Планируется:</span>
+          <span class="summary-value summary-planned">3/3</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Protocol -->
+    <div class="service-card">
+      <div class="service-header">
+        <span class="service-icon" style="background:#3fb950;color:#fff;">PR</span>
+        <div class="service-title">Protocol</div>
+        <div class="service-lang">FlatBuffers</div>
+      </div>
+      <div class="components-grid">
+        <div class="component-item">
+          <span class="component-name">ChunkSnapshot</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">PlayerAction</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">EntitySnapshot</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">MultiblockCreated</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">MultiblockDestroyed</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">PipeNetworkUpdate</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Zero-Copy Design</span>
+          <span class="component-status done"></span>
+        </div>
+      </div>
+      <div class="summary-bar">
+        <div class="summary-row">
+          <span class="summary-label">Достигнуто:</span>
+          <span class="summary-value summary-done">6/6</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">В работе:</span>
+          <span class="summary-value summary-progress">0/0</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Планируется:</span>
+          <span class="summary-value summary-planned">0/0</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Гепы:</span>
+          <span class="summary-value summary-gapped">0/0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MessageRouter -->
+    <div class="service-card">
+      <div class="service-header">
+        <span class="service-icon" style="background:#d29922;color:#fff;">MR</span>
+        <div class="service-title">MessageRouter</div>
+        <div class="service-lang">Go</div>
+      </div>
+      <div class="components-grid">
+        <div class="component-item">
+          <span class="component-name">Pub/Sub Channels</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Topic Routing</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">100k Concurrent Topics</span>
+          <span class="component-status progress"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Gateway Integration</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">SimulationCore Integration</span>
+          <span class="component-status done"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">ChunkStore Integration</span>
+          <span class="component-status done"></span>
+        </div>
+      </div>
+      <div class="summary-bar">
+        <div class="summary-row">
+          <span class="summary-label">Достигнуто:</span>
+          <span class="summary-value summary-done">5/5</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">В работе:</span>
+          <span class="summary-value summary-progress">1/1</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Планируется:</span>
+          <span class="summary-value summary-planned">0/0</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Гепы:</span>
+          <span class="summary-value summary-gapped">0/0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- GameClient -->
+    <div class="service-card">
+      <div class="service-header">
+        <span class="service-icon" style="background:#d29922;color:#fff;">GC</span>
+        <div class="service-title">GameClient</div>
+        <div class="service-lang">C++</div>
+      </div>
+      <div class="components-grid">
+        <div class="component-item">
+          <span class="component-name">bgfx Renderer</span>
+          <span class="component-status planned"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">FPS Camera</span>
+          <span class="component-status planned"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">DDA Raycast</span>
+          <span class="component-status planned"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">ImGui Debug</span>
+          <span class="component-status planned"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Block Placement</span>
+          <span class="component-status planned"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Entity Rendering</span>
+          <span class="component-status planned"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">Input Handling</span>
+          <span class="component-status planned"></span>
+        </div>
+        <div class="component-item">
+          <span class="component-name">miniaudio</span>
+          <span class="component-status planned"></span>
+        </div>
+      </div>
+      <div class="summary-bar">
+        <div class="summary-row">
+          <span class="summary-label">Достигнуто:</span>
+          <span class="summary-value summary-done">0/0</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">В работе:</span>
+          <span class="summary-value summary-progress">0/0</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Планируется:</span>
+          <span class="summary-value summary-planned">8/8</span>
+        </div>
+        <div class="summary-row">
+          <span class="summary-label">Гепы:</span>
+          <span class="summary-value summary-gapped">0/0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:30px;">
+    <h2 style="color:#c9d1d9;margin-bottom:12px;">🔴 Критические Гепы (Critical Gaps)</h2>
+    <div class="critical-path">
+      <div class="critical-item">
+        <strong>SimulationCore → ChunkStore</strong> — Отсутствует callback для `pending_unload` проверки (anchor внутри/за пределами чанка)
+      </div>
+      <div class="critical-item">
+        <strong>SimulationCore → ChunkStore</strong> — Нет RPC для `SetBlockMeta` (запись mb_id в метаслой чанка)
+      </div>
+      <div class="critical-item">
+        <strong>ChunkStore</strong> — Отсутствует `isChunkLoaded` для быстрой проверки существования чанка
+      </div>
+      <div class="critical-item">
+        <strong>SimulationCore</strong> — `addEnergy/consumeEnergy` вспомогательные функции отсутствуют
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;">
+    <h2 style="color:#c9d1d9;margin-bottom:12px;">🟡 Прогресс-бары по сервисам</h2>
+    <div class="components-grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
+      <div style="padding:12px;background:#161b22;border-radius:6px;">
+        <strong>Gateway</strong><br>
+        <div class="progress-bar"><div class="progress-fill progress-85"></div></div>
+        <small style="color:#8b949e;margin-top:4px;">85%</small>
+      </div>
+      <div style="padding:12px;background:#161b22;border-radius:6px;">
+        <strong>ChunkStore</strong><br>
+        <div class="progress-bar"><div class="progress-fill progress-85"></div></div>
+        <small style="color:#8b949e;margin-top:4px;">85%</small>
+      </div>
+      <div style="padding:12px;background:#161b22;border-radius:6px;">
+        <strong>WorldGenerator</strong><br>
+        <div class="progress-bar"><div class="progress-fill progress-10"></div></div>
+        <small style="color:#8b949e;margin-top:4px;">10%</small>
+      </div>
+      <div style="padding:12px;background:#161b22;border-radius:6px;">
+        <strong>SimulationCore</strong><br>
+        <div class="progress-bar"><div class="progress-fill progress-60"></div></div>
+        <small style="color:#8b949e;margin-top:4px;">60%</small>
+      </div>
+      <div style="padding:12px;background:#161b22;border-radius:6px;">
+        <strong>SpatialIndex</strong><br>
+        <div class="progress-bar"><div class="progress-fill progress-30"></div></div>
+        <small style="color:#8b949e;margin-top:4px;">30%</small>
+      </div>
+      <div style="padding:12px;background:#161b22;border-radius:6px;">
+        <strong>MetaDB</strong><br>
+        <div class="progress-bar"><div class="progress-fill progress-30"></div></div>
+        <small style="color:#8b949e;margin-top:4px;">30%</small>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;padding:16px;background:#0d1117;border:1px solid #30363d;border-radius:8px;font-size:13px;">
+    <strong>📊 Общая статистика:</strong><br>
+    Всего компонентов: 70 | Достигнуто: 26 (37%) | В работе: 20 (29%) | Планируется: 16 (23%) | Пропуск: 6 (9%)
+  </div>
+</body>
+</html>

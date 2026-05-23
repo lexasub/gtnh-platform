@@ -1,0 +1,8 @@
+id,name,class,energy_in,tier,slots_in,slots_out
+36,gtnh:heat_furnace,Furnace,HEAT,0,1,1
+48,gtnh:heat_macerator,Macerator,HEAT,0,1,1
+51,gtnh:steam_macerator,Macerator,STEAM,0,1,1
+52,gtnh:steam_compressor,Compressor,STEAM,0,1,1
+60,gtnh:bronze_alloy_smelter,AlloySmelter,STEAM,0,2,1
+61,gtnh:steam_extractor,Extractor,STEAM,0,1,1
+62,gtnh:steam_mixer,Mixer,STEAM,0,2,1

@@ -1,0 +1,38 @@
+# 01-energy-storage.fbs
+/*
+task: energystorage component
+description: represents a machine\'s ability to store, consume, and emit energy.
+ */
+
+// ecs components
+- energystorage (ecs component) – describes storage capacity and energy flow.
+- energyemitter (service) – publishes energy available from a machine.
+- energyreceiver (service) – subscribes to energy demand from machines.
+- simulationcore (service) – hosts the energy storage logic and host graph.
+
+// flatbuffers schema (simplified)
+struct energystorage {
+    int32_t capacity;      // maximum stored energy (eu)
+    int32_t currentenergy; // current stored energy
+    int32_t maxinput;      // max input per tick (eu)
+    int32_t maxoutput;     // max output per tick (eu)
+    int32_t tier;          // storage tier (0 = 1 eu/t, 1 = 10 eu/t, etc.)
+}
+
+// service architecture
+the energystorage component is attached to each machine. it receives energy via energyemitter messages and emits energy via energyreceiver callbacks. simulationcore subscribes to energystorage instances to aggregate storage across the world.
+
+// inputs/outputs
+// - none directly; energystorage is stateful, changes via emitter/receiver events.
+
+// constraints
+- at any tick, `currentenergy` cannot exceed `capacity`.
+- energy emitted cannot exceed `maxinput` (cannot draw more than configured per tick).
+- emitted energy cannot exceed `maxoutput`.
+- `tier` determines base unit: tier 0 = 1 eu/t, tier 1 = 10 eu/t, etc.
+
+// tests
+- test 1: verify that `currentenergy` is initialized to 0 and cannot be set directly.
+- test 2: simulate maxinput limit – after setting `maxinput = 5` and `maxoutput = 10`, ensure `currentenergy` never exceeds 5 unless `maxinput` is increased.
+- test 3: verify tier scaling – increasing `tier` should proportionally increase `capacity` (e.g., tier 2 ⇒ capacity = 2 * base).
+- test 4: ensure `currentenergy` updates correctly when `energyemitter` emits energy and `energyreceiver` receives it.

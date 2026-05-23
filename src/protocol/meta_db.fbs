@@ -1,0 +1,87 @@
+// protocol/meta_db.fbs
+// MetaDB (Go/SQLite) RPC: player-bound data — inventory, position.
+// Frame: [4 bytes: big-endian payload size] [FlatBuffer: MetaDBMessage | MetaDBReply]
+//
+// NOTE: InventorySlot and InventoryUpdate are shared types defined in core.fbs.
+//       meta_db.fbs defines the MetaDB-specific RPC protocol only.
+//
+// Renamed from entitystatestore.fbs to reflect actual ownership.
+
+include "core.fbs";
+
+namespace Protocol;
+
+// ---------------------------------------------------------------------------
+// Request types
+// ---------------------------------------------------------------------------
+
+// Get player inventory (full or partial)
+table GetInventoryReq {
+  player_id:uint64;
+  slot_index:uint16;        // 0 = full, 1-44 = single slot
+}
+
+// Set inventory slot (e.g., creative mode item give, hotbar swap)
+table SetInventorySlotReq {
+  player_id:uint64;
+  slot_index:uint16;
+  item_id:uint16;           // 0 = remove item
+  count:uint8;              // required if item_id != 0
+  meta:uint16;
+}
+
+// Get inventory snapshot for entity sync (e.g., player death, entity revival)
+table GetInventorySnapshotReq {
+  player_id:uint64;
+  include_hotbar:bool;      // true = include hotbar slots
+}
+
+union MetaDBRequest {
+  GetInventoryReq,
+  SetInventorySlotReq,
+  GetInventorySnapshotReq,
+}
+
+// ---------------------------------------------------------------------------
+// Response types
+// ---------------------------------------------------------------------------
+
+table GetInventoryResp {
+  inventory:[InventorySlot];  // may be empty if slot_index == 0 and no change
+}
+
+table GetInventorySnapshotResp {
+  main_inventory:[InventorySlot];   // 36 slots
+  hotbar:[InventorySlot];          // 9 slots, may be empty
+}
+
+union MetaDBResponse {
+  GetInventoryResp,
+  GetInventorySnapshotResp,
+  ErrorResp,
+}
+
+// ---------------------------------------------------------------------------
+// Wire wrappers
+// ---------------------------------------------------------------------------
+
+table MetaDBMessage {
+  req_id:uint32;
+  request:MetaDBRequest;
+}
+
+table MetaDBReply {
+  req_id:uint32;
+  response:MetaDBResponse;
+}
+
+union MetaDBPayload {
+  MetaDBMessage,
+  MetaDBReply,
+}
+
+table MetaDBFrame {
+  payload:MetaDBPayload (required);
+}
+
+root_type MetaDBFrame;

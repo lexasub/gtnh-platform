@@ -1,0 +1,69 @@
+' =============================================================================
+' Level 3 — GameClient UI Core
+' UIManager, Input, Actions, Factory, Defaults, Crafting DBs
+' =============================================================================
+@startuml GTNH-Client-UI-Core-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 3 — GameClient: UI Core**\nUIManager, ввод, действия, фабрика окон
+
+Container_Boundary(gc, "GameClient") {
+
+    ' ===================================================================
+    ' UI Core
+    ' ===================================================================
+    Container_Boundary(uicore, "UI Core") {
+        Component(ui_mgr, "UIManager", "C++", "Медиатор UI\nвладеет окнами, диспатчит события\nprocessInput / RenderAll / HandleNetwork")
+        Component(ui_action_reg, "ActionRegistry", "C++", "Реестр действий\nпривязка клавиш → действия")
+        Component(ui_action_handler, "ActionHandler", "C++", "Обработчик действий\nexecute по имени")
+        Component(ui_binder, "InputBinder", "C++", "Привязка клавиш\nkey → action mapping")
+        Component(ui_input_mgr, "InputManager", "C++", "Менеджер ввода\ngather input state каждый кадр")
+        Component(ui_defaults, "UIDefaults", "C++", "Стили по умолчанию\nцвета, размеры")
+        Component(ui_factory, "BlockUIFactory", "C++", "Фабрика окон по типу блока\nregistry<blockId → Creator>")
+    }
+
+    ' ===================================================================
+    ' Crafting subsystem
+    ' ===================================================================
+    Container_Boundary(craft, "Крафтинг (Crafting)") {
+        Component(cr_item_reg, "ClientItemRegistry", "C++", "Реестр предметов клиента\nID → имя, текстура")
+        Component(cr_machine_db, "ClientMachineRecipeDB", "C++", "БД рецептов машин\nна клиенте (кэш)")
+        Component(cr_recipe_db, "ClientRecipeDB", "C++", "БД рецептов крафта\nна клиенте")
+    }
+
+    ' ===================================================================
+    ' Subsystem references
+    ' ===================================================================
+    Component(core_ref, "GameClient Core", "Оркестратор")
+    Component(net_ref, "Network", "NetClient")
+    Component(world_ref, "World", "World")
+    Component(windows_ref, "UI Windows", "Окна + панели + слоты")
+    Component(inv_ref, "Inventory", "40 слотов, состояние")
+}
+
+' Internal
+Rel(ui_input_mgr, ui_binder, "передаёт состояние", "")
+Rel(ui_binder, ui_action_reg, "отображает key → action", "")
+Rel(ui_action_reg, ui_action_handler, "execute по имени", "")
+Rel(ui_mgr, ui_input_mgr, "читает ввод каждый кадр", "")
+Rel(ui_mgr, ui_action_handler, "диспатчит действия", "")
+Rel(ui_mgr, ui_factory, "создаёт окна", "")
+Rel(ui_factory, ui_mgr, "возвращает созданное окно", "")
+
+' Cross-subsystem
+Rel(core_ref, ui_mgr, "владеет UIManager uiMgr_", "")
+Rel(ui_mgr, net_ref, "SendPlayerAction / SendCraftRequest\nSendInventoryAction", "")
+Rel(ui_mgr, inv_ref, "Читает/пишет инвентарь", "")
+Rel(ui_mgr, world_ref, "Блок-пикер для UI", "")
+Rel(net_ref, ui_mgr, "InventoryUpdateCallback → HandleNetwork\nBlockEntityUpdateCallback\nCraftResponseCallback", "")
+
+Rel(ui_mgr, windows_ref, "владеет всеми окнами\nи панелями", "")
+Rel(windows_ref, cr_item_reg, "использует реестр\nпредметов", "")
+Rel(windows_ref, cr_recipe_db, "использует БД\nрецептов крафта", "")
+Rel(windows_ref, cr_machine_db, "использует БД\nрецептов машин", "")
+
+SHOW_LEGEND()
+@enduml

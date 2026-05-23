@@ -1,0 +1,220 @@
+' =============================================================================
+' GTNH Platform — User Flow: Machine Operations & Energy
+' 3 диаграммы: machine lifecycle, Energy/Recipe flow, multiblock formation
+' =============================================================================
+
+' ===========================================================================
+' 1. Machine Lifecycle (Furnace/Macerator/Compressor)
+' ===========================================================================
+@startuml machine-lifecycle
+title **Flow M1: Machine Lifecycle (20 Hz Tick)**
+
+actor "SimulationCore\n(20 Hz Tick)" as Tick
+participant "MachineSystem" as MachineSys
+participant "RecipeManager" as RM
+participant "PipeNetwork" as PN
+participant "EntityStateStore" as ESS
+participant "ECS Registry" as ECS
+
+== Каждый тик 20 Гц ==
+
+Tick -> MachineSys: tick(dt)
+MachineSys -> ECS: view<MachineComponent, EnergyStorage, Position>()
+
+note right #438D80
+  Машины (single-block):
+  furnace (36) - HEAT
+  macerator (48) - HEAT
+  steam_macerator (51) - STEAM
+  steam_compressor (52) - STEAM
+  alloy_smelter (60) - STEAM
+  extractor (61) - STEAM
+  mixer (62) - STEAM
+end note
+
+loop For each machine
+    MachineSys -> MachineSys: Check has valid recipe assigned
+
+    alt No recipe assigned
+        MachineSys -> RM: FindRecipe(machine_id, input items)
+        RM --> MachineSys: Recipe found / not found
+
+        alt Recipe found
+            MachineSys -> MachineSys: Assign recipe, calc duration
+        else No recipe
+            MachineSys -> MachineSys: Idle
+        end
+    end
+
+    alt Recipe is running
+        MachineSys -> PN: CheckEnergy(machine_id, recipe.energy_cost/tick)
+        PN --> MachineSys: Energy available / not
+
+        alt Energy available
+            MachineSys -> MachineSys: Consume recipe.energy_cost
+            MachineSys -> MachineSys: Advance recipe progress
+            MachineSys -> PN: ConsumeEnergy(energy_cost)
+        else No energy
+            MachineSys -> MachineSys: Pause, keep progress
+        end
+    end
+
+    alt Recipe complete
+        MachineSys -> MachineSys: Consume input items
+        MachineSys -> MachineSys: Produce output items
+        MachineSys -> RM: GetNextRecipe
+        RM --> MachineSys: Next recipe / none
+
+        alt Next recipe exists
+            MachineSys -> MachineSys: Start next recipe
+        else No next recipe
+            MachineSys -> MachineSys: Idle, wait for input
+        end
+    end
+
+    MachineSys -> ESS: UpdateMachineState
+    note right: Persists: energy.current, progress, inventory
+end
+
+@enduml
+
+' ===========================================================================
+' 2. Energy Flow (Generator -> Network -> Machine)
+' ===========================================================================
+@startuml machine-energy-flow
+title **Flow M2: Energy Flow (Generator -> PipeNetwork -> Machine)**
+
+actor "SimulationCore\n(20 Hz Tick)" as Tick
+participant "GeneratorSystem" as GenSys
+participant "PipeNetwork" as PN
+participant "MachineSystem" as MachineSys
+participant "ECS Registry" as ECS
+participant "CreativeGeneratorSystem" as Creative
+
+== Фаза 1: Генерация энергии ==
+
+Tick -> GenSys: tick(dt)
+GenSys -> ECS: view<MachineComponent, EnergyStorage>
+
+note right #E67E22
+  Источники энергии:
+  heat_generator (46) - HEAT из топлива
+  steam_solid_boiler (49) - STEAM из топлива
+  steam_heat_boiler (50) - STEAM из HEAT
+  creative_generator (63) - ELECTRICITY ∞
+end note
+
+loop For each generator
+    GenSys -> GenSys: Check fuel in inventory
+    GenSys -> Generator: Burn fuel, produce energy
+    GenSys -> PN: DistributeEnergy(machine_id, produced)
+end
+
+Tick -> Creative: tick(dt)
+Creative -> Creative: Produces unlimited ELECTRICITY
+Creative -> PN: DistributeEnergy(creative_id, 1024 EU/t)
+
+== Фаза 2: PipeNetwork распределение ==
+
+Tick -> PN: tick(dt)
+PN -> PN: BFS через pipe graph
+
+note right #5899DA
+  PipeNetwork:
+  - Поиск подключённых машин (BFS)
+  - Распределение энергии
+  - Приоритет: ближайшие машины
+  - Лимиты per pipe/tick
+end note
+
+loop For each energy source
+    PN -> PN: BFS from source through pipes
+    PN -> PN: Find connected consumers
+    loop For each consumer
+        PN -> PN: Calculate distribution %
+        PN -> PN: Transfer energy (limited by pipe throughput)
+    end
+end
+
+== Фаза 3: Потребление энергии ==
+
+Tick -> MachineSys: tick(dt)
+MachineSys -> MachineSys: For each running machine
+MachineSys -> PN: RequestEnergy(machine_id, recipe_energy_cost)
+PN --> MachineSys: Energy delivered / insufficient
+
+alt Energy received
+    MachineSys -> MachineSys: Advance recipe
+else No energy
+    MachineSys -> MachineSys: Pause
+end
+
+@enduml
+
+' ===========================================================================
+' 3. Multiblock formation
+' ===========================================================================
+@startuml machine-multiblock-formation
+title **Flow M3: Multiblock Formation (3x3x3)**
+
+actor "Игрок" as Player
+participant "GameClient" as Client
+participant "Gateway" as GW
+participant "MessageRouter" as MR
+participant "ChunkStore" as CS
+participant "SimulationCore\n(ECS)" as Sim
+participant "EntityStateStore" as ESS
+participant "RecipeManager" as RM
+
+Player -> Client: Ставит последний блок паттерна
+Client -> GW: SetBlockAction(pos, block_id, CAS)
+GW -> MR: Publish world.blocks.set
+MR -> CS: SetBlock CAS
+CS -> MR: Publish world.blocks.changed
+MR -> Sim: onBlockChanged(pos, block_id, mb_id)
+
+Sim -> Sim: Проверка: isPatternComplete(pos)
+
+note right #9B59B6
+  Multiblock detection:
+  1. Получить все блоки вокруг pos
+  2. Сравнить с зарегистрированными паттернами
+  3. Если совпало -> MultiblockController
+end note
+
+alt Pattern match found
+    Sim -> Sim: Create MultiblockController entity
+    Sim -> Sim: Add ECS components:\nMachineComponent + EnergyStorage + Position
+    Sim -> CS: RPC: SetBlockMeta для всех блоков\n(запись mb_id в meta-layer)
+    Sim -> Sim: Register all blocks positions
+    Sim -> ESS: Save multiblock state
+    Sim -> MR: Publish sim.multiblock.created
+    MR -> GW: Relay to all clients
+    GW -> Client: BlockUpdate (multiblock visual)
+    Client -> Player: Multiblock appears active
+
+    Sim -> RM: Register multiblock recipes
+    RM --> Sim: Recipes registered
+
+else Pattern not complete
+    Sim -> Sim: Single block only
+    Sim -> CS: RPC: SetBlockMeta(none)
+end
+
+== Multiblock dissociation ==
+
+Player -> Client: Ломает ключевой блок мультиблока
+Client -> GW: BreakBlockAction(pos)
+GW -> MR: Publish world.blocks.set (AIR)
+MR -> Sim: onBlockChanged(pos, AIR)
+Sim -> Sim: Check: isMultiblockAnchor(pos)
+
+alt Anchor block broken
+    Sim -> Sim: Destroy MultiblockController entity
+    Sim -> Sim: Remove ECS components
+    Sim -> CS: RPC: ClearBlockMeta для всех блоков
+    Sim -> ESS: Remove multiblock state
+    Sim -> MR: Publish sim.multiblock.destroyed
+end
+
+@enduml

@@ -1,0 +1,63 @@
+' =============================================================================
+' Level 3 — MetaDB
+' Go — SQLite, player data, inventory CRUD, event handlers
+' =============================================================================
+@startuml GTNH-MetaDB-level3
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **MetaDB**\nGo — SQLite, сохранение игроков и инвентаря
+
+Container_Boundary(metadb, "MetaDB (Go — SQLite)") {
+    Component(meta_main, "main.go", "Go", "Точка входа")
+    Component(meta_db, "MetaDB (struct)", "Go", "Ядро: SQLite connection\n+ RouterClient reference\ninventory CRUD + player pos")
+    Component(meta_router, "RouterClient (struct)", "Go", "TCP клиент MessageRouter\nRegister как 'metadb' сервис\nподписка на meta_db.* и player.*")
+    Component(meta_fbtcp, "flatbuffer_tcp.go", "Go", "FlatBuffers TCP handler\nдля JSON API (legacy)")
+
+    ' SQLite schema
+    Component(sql_players, "players table", "SQLite", "id, x, y, z\nпозиция игрока\nINSERT OR REPLACE")
+    Component(sql_inventory, "inventory table", "SQLite", "player_id, slot, block_id, count\nPRIMARY KEY (player_id, slot)\nFOREIGN KEY → players")
+    Component(sql_entity, "entity_state table", "SQLite", "dim, x, y, z, blob\nPRIMARY KEY (dim, x, y, z)\nдублирование с EntityStateStore\nдля долгосрочной персистентности")
+
+    ' CRUD operations
+    Component(crud_create_inv, "CreateInventory()", "Go", "Создание/замена\nинвентаря игрока\ntransaction: INSERT + DELETE")
+    Component(crud_get_inv, "GetInventory()", "Go", "Чтение инвентаря\nSELECT → FlatBuffers\nInventorySlot лист")
+    Component(crud_get_slot, "GetInventorySlot()", "Go", "Чтение одного слота")
+    Component(crud_upd_slot, "UpdateInventorySlot()", "Go", "Upsert: INSERT ON CONFLICT\nDO UPDATE")
+    Component(crud_del_slot, "DeleteInventorySlot()", "Go", "DELETE одного слота")
+    Component(crud_del_inv, "DeleteInventory()", "Go", "DELETE весь инвентарь")
+    Component(crud_save_pos, "SavePlayerPosition()", "Go", "Upsert позиции игрока")
+    Component(crud_get_pos, "GetPlayerPosition()", "Go", "SELECT позиции")
+    Component(crud_get_entity, "GetEntityState()", "Go", "Чтение entity state")
+    Component(crud_set_entity, "SetEntityState()", "Go", "Upsert entity state")
+    Component(crud_del_entity, "DeleteEntityState()", "Go", "DELETE entity state")
+
+    ' Event handlers
+    Component(ev_joined, "handlePlayerJoined()", "Go", "player.joined →\nGetInventory → PublishUpdate")
+    Component(ev_left, "handlePlayerLeft()", "Go", "player.left →\nSavePlayerPosition")
+    Component(ev_inv, "handlePlayerInventoryAction()", "Go", "player.inventory.actions →\nMOVE/SPLIT/DROP/CRAFT\n→ publish update")
+
+    ' Relationships
+    Rel(meta_db, sql_players, "читает/пишет", "")
+    Rel(meta_db, sql_inventory, "CRUD операции", "")
+    Rel(meta_db, sql_entity, "CRUD операции", "")
+    Rel(crud_create_inv, meta_db, "метод MetaDB", "")
+    Rel(crud_get_inv, meta_db, "метод MetaDB", "")
+    Rel(crud_upd_slot, meta_db, "метод MetaDB", "")
+    Rel(crud_del_slot, meta_db, "метод MetaDB", "")
+    Rel(crud_del_inv, meta_db, "метод MetaDB", "")
+    Rel(crud_save_pos, meta_db, "метод MetaDB", "")
+    Rel(crud_get_pos, meta_db, "метод MetaDB", "")
+    Rel(crud_get_entity, meta_db, "метод MetaDB", "")
+    Rel(crud_set_entity, meta_db, "метод MetaDB", "")
+    Rel(crud_del_entity, meta_db, "метод MetaDB", "")
+    Rel(meta_router, meta_db, "делегирует запросы", "")
+    Rel(ev_joined, meta_db, "вызывает GetInventory", "")
+    Rel(ev_left, meta_db, "вызывает SavePlayerPosition", "")
+    Rel(ev_inv, meta_db, "вызывает CRUD", "")
+}
+
+SHOW_LEGEND()
+@enduml

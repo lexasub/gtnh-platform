@@ -1,0 +1,130 @@
+' =============================================================================
+' Level 4 — Key Flows (Event Sequence)
+' 4 отдельных диаграммы: загрузка чанков, мультиблок, крафт, инвентарь
+' =============================================================================
+
+' ===========================================================================
+' Flow 1: Chunk Loading
+' ===========================================================================
+@startuml GTNH-Flow-ChunkLoading-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Flow 1: Загрузка чанков (подключение клиента)**
+
+Component(f1_client, "GameClient", "C++", "Запрашивает чанк при движении")
+Component(f1_gateway, "Gateway", "C++", "Релей запроса в MessageRouter")
+Component(f1_router, "MessageRouter", "Go", "Pub/sub брокер, топик world.chunks.get")
+Component(f1_chunk, "ChunkStore", "C++ (LMDB)", "Проверка в LMDB, генерация при промахе")
+Component(f1_gen, "WorldGenerator", "C++ (FastNoiseLite)", "Генерация террейна")
+
+Rel(f1_client, f1_gateway, "1. PlayerAction(CHUNK_REQUEST)", $tags="tag_tcp")
+Rel(f1_gateway, f1_router, "2. Publish: world.chunks.get", $tags="tag_pubsub")
+Rel(f1_router, f1_chunk, "3. Subscribe → ChunkStore", $tags="tag_pubsub")
+Rel(f1_chunk, f1_gen, "4a. Если нет в LMDB → GenerationQueue", $tags="tag_rpc")
+Rel(f1_gen, f1_chunk, "4b. AsyncSetBlock (заполняет чанк)", $tags="tag_rpc")
+Rel(f1_chunk, f1_router, "5. Publish: world.chunks.data", $tags="tag_pubsub")
+Rel(f1_router, f1_gateway, "6. Router → Gateway relay", $tags="tag_pubsub")
+Rel(f1_gateway, f1_client, "7. CompressedChunkData", $tags="tag_tcp")
+
+SHOW_LEGEND()
+@enduml
+
+' ===========================================================================
+' Flow 2: Multiblock Formation
+' ===========================================================================
+@startuml GTNH-Flow-Multiblock-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Flow 2: Формирование мультиблока (электролизёр 3×3×3)**
+
+Component(f2_client, "GameClient", "C++", "Игрок ставит блоки")
+Component(f2_gateway, "Gateway", "C++", "TCP шлюз + релей")
+Component(f2_router, "MessageRouter", "Go", "Pub/sub брокер")
+Component(f2_chunk, "ChunkStore", "C++ (LMDB)", "SetBlock + publish BlockChanged")
+Component(f2_sim, "SimulationCore", "C++ (ECS)", "onBlockChanged → ECS → matchElectrolyser")
+Component(f2_ess, "EntityStateStore", "C++ (LMDB)", "Сохранение состояния мультиблока")
+Component(f2_recipe, "RecipeManager", "C++", "Проверка рецептов для машины")
+
+Rel(f2_client, f2_gateway, "1. SetBlockAction\n(pos + CAS)", $tags="tag_tcp")
+Rel(f2_gateway, f2_router, "2. Publish: world.blocks.set", $tags="tag_pubsub")
+Rel(f2_router, f2_chunk, "3. SetBlock CAS", $tags="tag_pubsub")
+Rel(f2_chunk, f2_router, "4. Publish: world.blocks.changed", $tags="tag_pubsub")
+Rel(f2_router, f2_sim, "5. onBlockChanged(pos, block_id, mb_id)", $tags="tag_pubsub")
+Rel(f2_sim, f2_router, "6. ECS: create entity + components\nmatchElectrolyser() → MultiblockController", "")
+Rel(f2_sim, f2_router, "7. Publish: sim.multiblock.created", $tags="tag_pubsub")
+Rel(f2_sim, f2_chunk, "8. RPC: SetBlockMeta (запись mb_id)", $tags="tag_rpc")
+Rel(f2_sim, f2_router, "9. Publish: sim.blockentity.update", $tags="tag_pubsub")
+Rel(f2_router, f2_ess, "10. entity.state.set (сохранить)", $tags="tag_pubsub")
+Rel(f2_router, f2_recipe, "11. recipe.check (если есть рецепты)", $tags="tag_pubsub")
+Rel(f2_router, f2_gateway, "12. world.blocks.changed → relay", $tags="tag_pubsub")
+Rel(f2_gateway, f2_client, "13. BlockUpdate / BlockAck", $tags="tag_tcp")
+
+SHOW_LEGEND()
+@enduml
+
+' ===========================================================================
+' Flow 3: Crafting Pipeline
+' ===========================================================================
+@startuml GTNH-Flow-Crafting-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Flow 3: Крафт (CraftRequest → CraftResponse)**
+
+Component(f3_client, "GameClient\n(ClientCraftingWindow)", "C++", "Отправляет сетку 3×3")
+Component(f3_gateway, "Gateway", "C++", "Релей запросов")
+Component(f3_router, "MessageRouter", "Go", "Pub/sup брокер")
+Component(f3_sim, "SimulationCore\n(CraftRequestHandler)", "C++", "Обрабатывает CraftRequest")
+Component(f3_recipe, "RecipeManager", "C++", "Проверяет и выполняет рецепты")
+Component(f3_metadb, "MetaDB", "Go (SQLite)", "Сохраняет изменённый инвентарь")
+
+Rel(f3_client, f3_gateway, "1. CraftRequest\n(player_id + pos + 9 slots)", $tags="tag_tcp")
+Rel(f3_gateway, f3_router, "2. Publish: sim.craft.request", $tags="tag_pubsub")
+Rel(f3_router, f3_sim, "3. Subscribe → CraftRequestHandler", $tags="tag_pubsub")
+Rel(f3_sim, f3_recipe, "4. Проверка рецепта\n(GridPatternMatcher + RecipeManager)", $tags="tag_rpc")
+Rel(f3_sim, f3_router, "5. Publish: sim.craft.response\n(result ItemStack)", $tags="tag_pubsub")
+Rel(f3_sim, f3_metadb, "6. Inventory уменьшен:\nmeta_db.inventory.set", $tags="tag_pubsub")
+Rel(f3_router, f3_gateway, "7. Router → Gateway relay", $tags="tag_pubsub")
+Rel(f3_gateway, f3_client, "8. CraftResponse\n(success + result + consumed)", $tags="tag_tcp")
+
+SHOW_LEGEND()
+@enduml
+
+' ===========================================================================
+' Flow 4: Inventory Chain
+' ===========================================================================
+@startuml GTNH-Flow-Inventory-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Flow 4: Инвентарь (Player Inventory Chain)**
+
+Component(f4_client, "GameClient\n(InventoryWindow)", "C++", "Drag-and-drop предметов")
+Component(f4_gateway, "Gateway\n(InventoryIntegration)", "C++", "Маршрутизация InventoryAction")
+Component(f4_router, "MessageRouter", "Go", "Pub/sub брокер")
+Component(f4_sim, "SimulationCore\n(InventoryActionHandler)", "C++", "Обработка + ECS sync")
+Component(f4_metadb, "MetaDB", "Go (SQLite)", "Сохранение инвентаря")
+Component(f4_ess, "EntityStateStore", "C++ (LMDB)", "Сохранение машин")
+
+Rel(f4_client, f4_gateway, "1. InventoryAction\n(MOVE/SPLIT/DROP/CRAFT)", $tags="tag_tcp")
+Rel(f4_gateway, f4_router, "2. Publish: player.inventory.actions", $tags="tag_pubsub")
+Rel(f4_router, f4_metadb, "3a. MetaDB: CRUD слотов\n(GetInventorySlot / Update / Delete)", $tags="tag_pubsub")
+Rel(f4_router, f4_sim, "3b. SimCore: InventoryActionHandler\nсинхронизация с ECS", $tags="tag_pubsub")
+Rel(f4_sim, f4_router, "4. Publish: meta_db.inventory.set\n(для долгосрочного хранения)", $tags="tag_pubsub")
+Rel(f4_metadb, f4_router, "5. Publish: player.inventory.update", $tags="tag_pubsub")
+Rel(f4_router, f4_gateway, "6. Router → Gateway relay", $tags="tag_pubsub")
+Rel(f4_gateway, f4_client, "7. InventoryUpdate (слоты)", $tags="tag_tcp")
+Rel(f4_sim, f4_ess, "8. entity.state.set\n(если изменён инвентарь машины)", $tags="tag_tcp")
+
+SHOW_LEGEND()
+@enduml

@@ -1,0 +1,117 @@
+' =============================================================================
+' Level 3 — MessageRouter Component Diagram
+' Go pub/sub bus with priority channels and service discovery
+' =============================================================================
+@startuml GTNH-Platform-MessageRouter-Components-level3
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 3 — MessageRouter**\nGo TCP pub/sub + service discovery (:4000)
+
+Container_Boundary(mr, "MessageRouter") {
+
+    ' ===================================================================
+    ' Router — core
+    ' ===================================================================
+    Component(router, "Router", "Go (struct)", "Ядро роутера\nsubs map, services registry\nconn-services mapping")
+
+    ' ===================================================================
+    ' Data structures
+    ' ===================================================================
+    Container_Boundary(ds, "Data Structures") {
+        Component(map_subs, "subs map[string]map[*client]", "Go map", "Подписки\npattern → set клиентов\nMQTT-style wildcards")
+        Component(map_services, "services map[string]ServiceInfo", "Go map", "Реестр сервисов\nимя → информация")
+        Component(map_conn_svc, "connServices map[*client]string", "Go map", "Обратное отображение\nконнект → имя сервиса")
+        Component(svc_info, "ServiceInfo struct", "Go", "Name + Topics[]")
+    }
+
+    ' ===================================================================
+    ' Client (per-connection)
+    ' ===================================================================
+    Container_Boundary(client_struct, "Client (per connection)") {
+        Component(client, "client (struct)", "Go", "Состояние подключения\nсвои sendChs на каждый priority\ncloseOnce, dropped counter")
+        Component(send_high, "sendChs[PrioHigh]", "chan *[]byte\n(buffer: 4096)", "Высокий приоритет\nplayer.actions / player.actions.ack\nникогда не дропается (blocking send)")
+        Component(send_normal, "sendChs[PriNormal]", "chan *[]byte\n(buffer: 4096)", "Нормальный приоритет\nworld.* / player.inventory.*\ndrop oldest при фладе")
+        Component(send_low, "sendChs[PrioLow]", "chan *[]byte\n(buffer: 4096)", "Низкий приоритет\nentities.* / simulation.*\ndrop oldest при фладе")
+        Component(writer, "writer() goroutine", "Go goroutine", "Strict-priority cascade writer\n1. non-blocking High\n2. non-blocking High+Normal\n3. blocking ALL\nHigh всегда обслуживается первым")
+        Component(last_seen, "lastSeen atomic.Int64", "Go atomic", "Время последней активности\nдля timeout")
+        Component(dropped, "dropped atomic.Uint64", "Go atomic", "Счётчик дропнутых сообщений\nдля мониторинга")
+    }
+
+    ' ===================================================================
+    ' Topic matching
+    ' ===================================================================
+    Container_Boundary(topics, "Topic System") {
+        Component(topic_classify, "classifyTopic()", "Go", "Классификация топика\nпо приоритету доставки\nHigh / Normal / Low")
+        Component(topic_match, "topicMatches()", "Go", "MQTT-style matching\n+ = один сегмент\n# = все остальные сегменты\nwithout wildcard = exact")
+        Component(topic_prio_map, "Priority mapping", "Go constants", "PrioHigh = 0\nPriNormal = 1\nPrioLow = 2\nPrioCount = 3")
+    }
+
+    ' ===================================================================
+    ' Frame I/O
+    ' ===================================================================
+    Container_Boundary(frames, "Frame Protocol") {
+        Component(frame_read, "readFrame()", "Go", "Чтение фрейма\n[4B length BE][1B type][payload]\npooled буфер 64KB")
+        Component(frame_alloc, "allocPublishFrame()", "Go", "Создание publish-фрейма\nиз sync.Pool\n[ topic[2B len] + topic + data ]")
+        Component(frame_make, "makeFrame()", "Go", "Создание фрейма\nдля subscribe/unsubscribe/heartbeat")
+        Component(frame_pool, "framePool sync.Pool", "Go sync.Pool", "Pool буферов для фреймов\n64KB каждый, переиспользование")
+        Component(read_string, "readString()", "Go", "Чтение строки из фрейма\n[2B length][string]")
+    }
+
+    ' ===================================================================
+    ' Connection handler
+    ' ===================================================================
+    Container_Boundary(conn_handler, "Connection Handler") {
+        Component(main, "main()", "Go", "TCP listen :4000\naccept → go handleConn()")
+        Component(handle_conn, "handleConn()", "Go goroutine", "Читает фреймы из коннекта\nдиспатчит subscribe/unsubscribe\npublish/register/heartbeat")
+        Component(sig_handler, "handleSignals()", "Go goroutine", "SIGINT/SIGTERM → graceful\nshutdown")
+        Component(cleanup, "StartCleanup() + cleanupOnce()", "Go goroutine (120s)", "Отключение неактивных\nклиентов (idle=60s)")
+    }
+
+    ' ===================================================================
+    ' Publish flow
+    ' ===================================================================
+    Component(publish, "Publish()", "Go", "Фан-аут сообщения\nвсем подписчикам\nс учётом приоритета топика")
+
+    ' ===================================================================
+    ' Relationships
+    ' ===================================================================
+    Rel(router, map_subs, "владеет", "")
+    Rel(router, map_services, "владеет", "")
+    Rel(router, map_conn_svc, "владеет", "")
+    Rel(router, client, "Subscribe/Unsubscribe/Register", "")
+    Rel(router, publish, "Publish()", "")
+    Rel(router, handle_conn, "handleConn вызывает", "")
+
+    Rel(client, writer, "запускает при создании", "")
+    Rel(client, send_high, "владеет каналом", "")
+    Rel(client, send_normal, "владеет каналом", "")
+    Rel(client, send_low, "владеет каналом", "")
+    Rel(client, last_seen, "обновляет", "")
+    Rel(client, dropped, "инкрементит", "")
+
+    Rel(writer, send_high, "читает по приоритету\ncascade: High → Normal → Low", "")
+    Rel(writer, send_normal, "читает если High пуст", "")
+    Rel(writer, send_low, "читает если High+Normal пусты", "")
+
+    Rel(publish, topic_classify, "определяет приоритет", "")
+    Rel(publish, topic_match, "для каждого паттерна", "")
+    Rel(publish, client, "fans-out всем подписчикам", "")
+    Rel(publish, frame_alloc, "аллоцирует фрейм", "")
+
+    Rel(frame_read, frame_pool, "использует pool для\nрезультирующих данных", "")
+    Rel(frame_alloc, frame_pool, "берёт буфер из pool", "")
+
+    Rel(handle_conn, frame_read, "читает входящие фреймы", "")
+    Rel(handle_conn, router, "Subscribe / Unsubscribe / Publish\nRegister / Heartbeat", "")
+
+    Rel(cleanup, router, "UnsubscribeAll + Close\nдля idle клиентов", "")
+
+    Rel(topic_classify, topic_prio_map, "использует константы", "")
+    Rel(publish, topic_prio_map, "приоритет для отправки", "")
+}
+
+SHOW_LEGEND()
+@enduml

@@ -1,0 +1,79 @@
+' =============================================================================
+' Level 3 — SimulationCore: ECS Core + Systems + Actions
+' EnTT engine, 6 systems, ActionDispatcher (без data-компонентов)
+' =============================================================================
+@startuml GTNH-Sim-ECS-Core-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **SimulationCore: ECS Core + Systems + Actions**\nEnTT ECS (C++)
+
+Container_Boundary(sim, "SimulationCore") {
+
+    ' ===================================================================
+    ' ECS Core
+    ' ===================================================================
+    Container_Boundary(ecs, "ECS Core") {
+        Component(ecs_engine, "SimulationEngine", "C++", "Ядро ECS\nentt::registry, systems, controllers\nonBlockChanged → entity mutation")
+        Component(ecs_reg, "entt::registry reg_", "C++ (EnTT)", "ECS registry\nвладеет всеми сущностями")
+        Component(ecs_mach_reg, "MachineRegistry", "C++", "Реестр машин\nblock_id → MachineInfo\nslots_in, slots_out, energy")
+
+        ' --- 6 ECS Systems ---
+        Component(sys_machine, "MachineSystem", "C++", "Тик машин: рецепты, энергия\nпроверка мультиблоков")
+        Component(sys_generator, "GeneratorSystem", "C++", "Генерация энергии\nтопливо → EU/тепло")
+        Component(sys_cregen, "CreativeGeneratorSystem", "C++", "Креативная генерация\nбесконечная энергия")
+        Component(sys_boiler, "BoilerSystem", "C++", "Паровой котёл\nвода + тепло → пар")
+        Component(sys_heat, "HeatTransferSystem", "C++", "Теплопередача\nмежду блоками/окружением")
+        Component(sys_iface, "ISystem", "C++ (interface)", "Интерфейс ECS-системы\ntick(dt)")
+
+        Rel(ecs_engine, ecs_reg, "владеет registry", "")
+        Rel(ecs_engine, sys_machine, "registerSystem → systems_[]", "")
+        Rel(ecs_engine, sys_generator, "registerSystem", "")
+        Rel(ecs_engine, sys_cregen, "registerSystem", "")
+        Rel(ecs_engine, sys_boiler, "registerSystem", "")
+        Rel(ecs_engine, sys_heat, "registerSystem", "")
+        Rel(ecs_engine, ecs_mach_reg, "getMachineInfo / isMachineBlock", "")
+        Rel(sys_machine, sys_iface, "extends", "")
+        Rel(sys_generator, sys_iface, "extends", "")
+        Rel(sys_cregen, sys_iface, "extends", "")
+        Rel(sys_boiler, sys_iface, "extends", "")
+        Rel(sys_heat, sys_iface, "extends", "")
+    }
+
+    ' ===================================================================
+    ' Actions
+    ' ===================================================================
+    Container_Boundary(actions, "Actions") {
+        Component(act_dispatcher, "ActionDispatcher", "C++", "Диспетчер действий\nроутит по типу")
+        Component(act_handler, "IActionHandler", "C++ (interface)", "Интерфейс обработчика\nhandle(table)")
+        Component(act_setblock, "SetBlockCASHandler", "C++", "CAS блок-операции\ncompare-and-swap\nожидание → реальность")
+        Rel(act_dispatcher, act_handler, "диспатчит", "")
+        Rel(act_setblock, act_handler, "extends", "")
+    }
+
+    ' ===================================================================
+    ' Subsystem references
+    ' ===================================================================
+    Component(comp_ref, "ECS Components", "14 data-компонентов\nPosition → Biome\n(отдельный файл)")
+    Component(craft_ref, "Crafting", "CraftRequestHandler\nCraftInventoryFlow\nWorkbenchStateManager")
+    Component(net_ref, "Network", "IoUringRouterClient\nClients + Publisher")
+    Component(world_ref, "World", "BlockTransforms\nChunkEventHandler\nMultiblockPatterns")
+    Component(gpm_ref, "Multiblock Matcher", "GridPatternMatcher\nELECTROLYSER_PATTERN")
+    Component(rm_ref, "RecipeManager", "RecipeManager\n(embedded)")
+    Component(stor_ref, "Storage", "ChunkStoreRepository")
+
+    ' Cross-module relationships
+    Rel(ecs_reg, comp_ref, "emplace → all 14 components", "")
+    Rel(ecs_engine, gpm_ref, "matchElectrolyser()", "")
+    Rel(ecs_engine, net_ref, "onMachineCreated callback", "")
+    Rel(ecs_engine, stor_ref, "AsyncGetChunk / RPC", "")
+    Rel(ecs_engine, rm_ref, "получает MachineRegistry", "")
+    Rel(craft_ref, ecs_engine, "изменяет ECS\nпри выполнении крафта", "")
+    Rel(act_setblock, net_ref, "CAS → SetBlockRPC", "")
+    Rel(act_setblock, ecs_engine, "onBlockChanged\nпри успехе", "")
+}
+
+SHOW_LEGEND()
+@enduml

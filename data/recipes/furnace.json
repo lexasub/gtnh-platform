@@ -1,0 +1,35 @@
+{
+  "minecraft:furnace_beef": {
+    "m": 36,
+    "in": [[1]],
+    "out": [[2]],
+    "dur": 200
+  },
+  "minecraft:furnace_iron_ore": {
+    "m": 36,
+    "in": [[3]],
+    "out": [[4]],
+    "dur": 200,
+    "eu": 0.7
+  },
+  "minecraft:furnace_gold_ore": {
+    "m": 36,
+    "in": [[5]],
+    "out": [[6]],
+    "dur": 200,
+    "eu": 0.7
+  },
+  "minecraft:smelting_cobblestone": {
+    "m": 36,
+    "in": [[7]],
+    "out": [[8]],
+    "dur": 200,
+    "eu": 0.1
+  },
+  "minecraft:blasting_iron_ore": {
+    "m": 36,
+    "in": [[3]],
+    "out": [[4]],
+    "dur": 200
+  }
+}

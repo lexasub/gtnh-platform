@@ -1,0 +1,171 @@
+' =============================================================================
+' GTNH Platform — User Flow: Ore Processing Chain & Voltage Tiers
+' 2 диаграммы: ore processing chain, voltage tiers & transformers
+' =============================================================================
+
+' ===========================================================================
+' 1. Ore processing chain (classic GTNH doubling)
+' ===========================================================================
+@startuml orep-chain
+title **Flow O1: Ore Processing Chain (руда -> пластина)**
+
+actor "SimulationCore\n(20 Hz Tick)" as Tick
+participant "Macerator" as Mac
+participant "Furnace" as Furn
+participant "Compressor" as Comp
+participant "RecipeManager" as RM
+participant "PipeNetwork" as PN
+participant "ItemPipe" as IP
+
+== Фаза 1: Дробление (Macerator) ==
+
+Tick -> Mac: tick(dt)
+Mac -> RM: FindRecipe(macerator_id, input=[ore_iron])
+RM --> Mac: Recipe found: crushed_iron x2
+Mac -> PN: CheckEnergy(macerator_id, cost_per_tick)
+PN --> Mac: Energy OK
+
+Mac -> Mac: Advance progress (20 Hz)
+alt Recipe complete
+    Mac -> Mac: Consume 1 ore_iron
+    Mac -> Mac: Output 2 crushed_iron
+    Mac -> IP: Push crushed_iron to output pipe
+end
+
+== Фаза 2: Плавка (Furnace) ==
+
+IP -> Furn: Deliver crushed_iron to input
+
+Tick -> Furn: tick(dt)
+Furn -> RM: FindRecipe(furnace_id, input=[crushed_iron])
+RM --> Furn: Recipe found: iron_ingot x1
+Furn -> PN: CheckEnergy(furnace_id, cost_per_tick)
+PN --> Furn: Energy OK
+
+Furn -> Furn: Advance progress
+alt Recipe complete
+    Furn -> Furn: Consume 2 crushed_iron
+    Furn -> Furn: Output 1 iron_ingot
+    Furn -> IP: Push iron_ingot to output pipe
+end
+
+== Фаза 3: Сжатие (Compressor) ==
+
+IP -> Comp: Deliver iron_ingot to input
+
+Tick -> Comp: tick(dt)
+Comp -> RM: FindRecipe(compressor_id, input=[iron_ingot])
+RM --> Comp: Recipe found: iron_plate x1
+Comp -> PN: CheckEnergy(compressor_id, cost_per_tick)
+PN --> Comp: Energy OK
+
+Comp -> Comp: Advance progress
+alt Recipe complete
+    Comp -> Comp: Consume 1 iron_ingot
+    Comp -> Comp: Output 1 iron_plate
+end
+
+== Итог: 1 руда -> 2 пластины ==
+
+note right #E67E22
+  Classic GTNH doubling:
+  1 ore_iron
+    -> Macerator: 2 crushed_iron
+      -> Furnace: 2 iron_ingots
+        -> Compressor: 2 iron_plates
+
+  Требует: 3 машины + item pipes + energy
+  Всё работает без игрока
+end note
+
+@enduml
+
+' ===========================================================================
+' 2. Voltage tiers & transformers
+' ===========================================================================
+@startuml orep-voltage-tiers
+title **Flow O2: Voltage Tiers & Transformers**
+
+actor "Player / System" as Actor
+participant "Machine\n(EnergyStorage)" as Machine
+participant "Cable" as Cable
+participant "Transformer" as XFMR
+participant "PipeNetwork" as PN
+participant "GameClient" as Client
+
+== GregTech voltage tiers ==
+
+note right #438D80
+  GTNH Voltage Tiers:
+  ULV (0) =    8 EU/t
+  LV  (1) =   32 EU/t
+  MV  (2) =  128 EU/t
+  HV  (3) =  512 EU/t
+  EV  (4) = 2048 EU/t
+  IV  (5) = 8192 EU/t
+  LuV (6) = 32768 EU/t
+  ZPM (7) = 131072 EU/t
+  UV  (8) = 524288 EU/t
+  UHV (9) = 2097152 EU/t
+end note
+
+== Machine tier vs Cable tier ==
+
+Actor -> Machine: Устанавливает машину (MV tier)
+
+Machine -> Cable: Connect to energy network
+Cable --> Machine: Cable tier = LV / MV / HV
+
+alt Cable tier >= Machine tier (MV >= MV)
+    Machine -> PN: RequestEnergy
+    PN --> Machine: Energy delivered OK
+    Machine -> Machine: Normal operation
+
+else Cable tier < Machine tier (LV < MV)
+    note right #E74C3C
+      Cable перегружен!
+      Cable maxVoltage < Machine потребление
+    end
+    PN -> PN: Cable overheat
+    PN -> PN: Cable destroyed (explosion)
+    PN -> Client: Broadcast explosion event
+    Client -> Client: Show explosion effect
+
+else Machine tier < Source tier (MV machine, HV source)
+    note right #E74C3C
+      Машина получит слишком
+      много EU/t -> взрыв!
+    end
+    Machine -> Machine: Overvoltage
+    Machine -> Machine: Machine destroyed
+end
+
+== Transformer: решение проблемы ==
+
+Actor -> Machine: Ставит Transformer между source и machine
+
+note right #5899DA
+  Transformer:
+  - Step Down: HV(512) -> MV(128)
+  - 1 face = high voltage side
+  - 5 faces = low voltage side
+  - Machine получает MV -> OK
+end note
+
+Machine -> XFMR: Connected via MV side
+PN -> XFMR: Input: HV (512 EU/t)
+XFMR -> XFMR: Step down: 512 -> 128 EU/t
+XFMR -> Machine: Output: MV (128 EU/t)
+Machine -> Machine: Normal operation
+
+== Machine GUI: tier info ==
+
+Client -> Client: MachineWindow shows:
+note right
+  - Current tier (e.g. MV)
+  - Energy input EU/t
+  - MaxInput / MaxOutput
+  - Overvoltage warning if mismatch
+end note
+
+@enduml

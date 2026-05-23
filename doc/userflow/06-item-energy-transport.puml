@@ -1,0 +1,203 @@
+' =============================================================================
+' GTNH Platform — User Flow: Item, Fluid & Energy Transport
+' 3 диаграммы: item pipes, fluid pipes, energy cables
+' =============================================================================
+
+' ===========================================================================
+' 1. Item pipes (перемещение предметов между машинами)
+' ===========================================================================
+@startuml transport-item-pipes
+title **Flow T1: Item Pipes (перемещение предметов)**
+
+actor "SimulationCore\n(20 Hz Tick)" as Tick
+participant "Machine A\n(output)" as A
+participant "PipeNetwork" as PN
+participant "Machine B\n(input)" as B
+participant "ChunkStore" as CS
+
+== Установка труб ==
+
+Tick -> Tick: onBlockChanged: pipe placed
+Tick -> PN: Notify pipe network update
+PN -> PN: Rebuild graph (BFS)
+
+== Каждый тик: выталкивание предмета ==
+
+Tick -> A: tick(dt) — machine recipe complete
+A -> A: Output slot has item
+
+A -> PN: PushItemToPipe(output_slot, item, direction)
+
+== PipeNetwork: BFS routing ==
+
+PN -> PN: Find connected pipes from machine A output
+PN -> PN: BFS to find valid input inventories
+note right #5899DA
+  BFS ищет:
+  1. Соседние трубы (block_id in pipe list)
+  2. Машины с input-слотом
+  3. Фильтр: допустимый item для машины
+end note
+
+alt Connected machine B found
+    PN -> B: Deliver item to input slot
+    PN -> A: Confirm: item delivered
+else No valid destination in network
+    PN -> PN: Item stays in pipe buffer
+    note right: Предмет ждёт в трубе,\nпока не появится получатель
+end
+
+== Перемещение предмета через цепочку труб ==
+
+Tick -> Tick: Каждый тик: move items in pipes
+
+loop Each pipe segment with items
+    PN -> PN: Advance item one segment
+    note right: Предмет движется по 1 блоку\nза тик (pipe speed)
+    PN -> PN: Check next block
+
+    alt Next is pipe
+        PN -> PN: Move item to next pipe segment
+    else Next is machine input
+        PN -> PN: Insert into machine inventory
+
+        alt Machine input full
+            PN -> PN: Item stays, retry next tick
+        end
+    else Next is inventory/chest
+        PN -> PN: Insert into chest inventory
+    end
+end
+
+@enduml
+
+' ===========================================================================
+' 2. Fluid pipes (жидкости: вода, пар, нефть)
+' ===========================================================================
+@startuml transport-fluid-pipes
+title **Flow T2: Fluid Pipes (жидкости)**
+
+actor "SimulationCore\n(20 Hz Tick)" as Tick
+participant "SteamBoiler" as Boiler
+participant "PipeNetwork\n(fluid graph)" as PN
+participant "SteamMachine" as Machine
+participant "FluidTank\n(ECS component)" as Tank
+
+== Fluids as items design decision ==
+
+note right #5899DA
+  Архитектурное решение:
+  Жидкости = ItemStack (fluid item_id).
+  FluidTank/FluidStack .fbs — для UI баков.
+  PipeNetwork — отдельный граф для fluids.
+  infinite source placeholder для воды.
+end note
+
+== Boiler -> PipeNetwork: подача пара ==
+
+Tick -> Boiler: tick(dt)
+Boiler -> Boiler: HEAT + water -> STEAM produced
+Boiler -> PN: Publish fluid.node.update
+note right: PipeNetwork обновляет\nfluid node state
+
+== PipeNetwork -> Machine: распределение пара ==
+
+Tick -> PN: tick(dt)
+PN -> PN: BFS через fluid pipe graph
+PN -> PN: Find connected fluid consumers
+
+loop For each fluid consumer
+    PN -> PN: Calculate distribution
+
+    alt STEAM available in network
+        PN -> Machine: Deliver steam amount
+        PN -> PN: Deduct from source boiler
+        Machine -> Machine: Advance recipe
+    else No STEAM in network
+        PN -> Machine: Steam insufficient
+        Machine -> Machine: Idle (waiting for steam)
+    end
+end
+
+== Fluids as items: рецепты ==
+
+Tick -> Tick: RecipeManager проверяет input
+note right #E67E22
+  Рецепт может требовать:
+  - item_id (обычный предмет)
+  - fluid_id (как item_id)
+  MachineInventory содержит
+  fluid item_id в обычных слотах
+end note
+
+@enduml
+
+' ===========================================================================
+' 3. Energy cables (вольтаж, tier, потери, взрывы)
+' ===========================================================================
+@startuml transport-energy-cables
+title **Flow T3: Energy Cables (вольтаж, tier, потери)**
+
+actor "SimulationCore\n(20 Hz Tick)" as Tick
+participant "Generator" as Gen
+participant "PipeNetwork\n(energy graph)" as PN
+participant "Machine" as Machine
+participant "Cable" as Cable
+
+== Generator -> Cable -> Machine ==
+
+Tick -> Gen: tick(dt) — produce energy
+Gen -> PN: Publish energy.node.update
+note right: Generator tier: например MV (3),\nmaxOutput: 128 EU/t
+
+== PipeNetwork: BFS распределение ==
+
+Tick -> PN: tick(dt)
+PN -> PN: BFS от generator через cables
+
+loop For each cable segment
+    PN -> Cable: GetCableTier(cable_pos)
+    Cable --> PN: Tier (e.g. MV=3, max_voltage=128)
+
+    PN -> PN: Check voltage match
+    note right #E67E22
+      Правила вольтажа:
+      1. Cable tier >= generator tier -> OK
+      2. Cable tier < generator tier:
+         - Cable перегревается
+         - Explosion если превышен лимит
+      3. Cable tier > machine tier:
+         - Machine может взорваться
+         - Нужен transformer
+    end note
+end
+
+== Energy distribution ==
+
+PN -> PN: Find connected energy consumers
+PN -> PN: Distribute available energy
+
+loop For each consumer
+    PN -> Machine: Deliver energy (tier-checked)
+    Machine -> Machine: Advance recipe
+    PN -> PN: Deduct from source
+
+    alt Voltage mismatch
+        PN -> PN: Overvoltage event
+        PN -> PN: Cable segment destroyed
+        PN -> CS: SetBlock CAS (AIR at cable pos)
+    end
+end
+
+== Transformers: step up/down ==
+
+Tick -> Tick: Transformer block placed
+note right #438D80
+  Transformer:
+  - Step Up: MV->HV (128->512)
+  - Step Down: HV->MV (512->128)
+  - Sides: 1 face = high, 5 faces = low
+  - Prevents explosions from tier mismatch
+end note
+
+@enduml

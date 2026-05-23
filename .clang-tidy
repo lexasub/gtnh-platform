@@ -1,0 +1,25 @@
+---
+Checks: >
+  performance-*,
+  bugprone-*,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  clang-analyzer-*,
+  readability-*,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+CheckOptions:
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.NamespaceCase
+    value: CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: CamelCase
+  - key: readability-identifier-naming.VariableCase
+    value: camelBack
+  - key: modernize-use-default-member-init.UseAssignment
+    value: true
+WarningsAsErrors: >
+  bugprone-*,
+  clang-analyzer-*
+...

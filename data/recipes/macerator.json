@@ -1,0 +1,62 @@
+{
+  "minecraft:macerator_iron_ore": {
+    "m": 48,
+    "in": [[3]],
+    "out": [[9, 2]],
+    "dur": 400
+  },
+  "minecraft:macerator_gold_ore": {
+    "m": 48,
+    "in": [[5]],
+    "out": [[9, 2]],
+    "dur": 400
+  },
+  "minecraft:macerator_tin_ore": {
+    "m": 48,
+    "in": [[25]],
+    "out": [[9, 2]],
+    "dur": 400
+  },
+  "minecraft:macerator_uranium_ore": {
+    "m": 48,
+    "in": [[27]],
+    "out": [[9, 2]],
+    "dur": 500
+  },
+  "minecraft:macerator_electrum_ore": {
+    "m": 48,
+    "in": [[23]],
+    "out": [[9, 2]],
+    "dur": 400
+  },
+  "minecraft:macerator_quartz_ore": {
+    "m": 48,
+    "in": [[19]],
+    "out": [[20, 2]],
+    "dur": 300
+  },
+  "minecraft:macerator_cobblestone": {
+    "m": 48,
+    "in": [[7]],
+    "out": [[11]],
+    "dur": 100
+  },
+  "minecraft:macerator_stone": {
+    "m": 48,
+    "in": [[8]],
+    "out": [[11]],
+    "dur": 100
+  },
+  "minecraft:macerator_glass": {
+    "m": 48,
+    "in": [[12]],
+    "out": [[11]],
+    "dur": 100
+  },
+  "minecraft:macerator_coal": {
+    "m": 48,
+    "in": [[44]],
+    "out": [[9, 2]],
+    "dur": 200
+  }
+}

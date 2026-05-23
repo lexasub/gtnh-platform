@@ -1,0 +1,122 @@
+' =============================================================================
+' Level 3 — Gateway Component Diagram
+' IoUring-based TCP gateway with dual-port architecture (ctrl + bulk)
+' =============================================================================
+@startuml GTNH-Platform-Gateway-Components-level3
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 3 — Gateway**\nAsio + io_uring TCP шлюз (C++)
+
+Container_Boundary(gw, "Gateway") {
+
+    ' ===================================================================
+    ' Core Gateway class
+    ' ===================================================================
+    Component(gw_core, "IoUringGateway", "C++", "Топ-level класс\nвладеет серверами, коннектами\nrelay между клиентом и router")
+
+    ' ===================================================================
+    ' TCP Servers (client-facing)
+    ' ===================================================================
+    Container_Boundary(servers, "TCP Servers") {
+        Component(ctrl_srv, "ctrl_server_ (TcpServer)", "C++ (Asio+io_uring)\n:7777", "Control TCP сервер\nPlayerAction / InventoryAction\nCraftRequest / SetMachineSlot")
+        Component(bulk_srv, "bulk_server_ (TcpServer)", "C++ (Asio+io_uring)\n:7778", "Bulk TCP сервер\nChunkData / EntitySnapshot\nCompressedChunkData")
+
+        Component(client_ctrl, "client_ctrl_ (IoUringConnection)", "C++", "Активный control коннект\nот игрового клиента\n1 клиент = 1 коннект")
+        Component(client_bulk, "client_bulk_ (IoUringConnection)", "C++", "Активный bulk коннект\nот игрового клиента\n1 клиент = 1 коннект")
+    }
+
+    ' ===================================================================
+    ' Router client
+    ' ===================================================================
+    Container_Boundary(router, "Router Client") {
+        Component(router_cli, "router_ (RouterClient)", "C++", "TCP клиент MessageRouter\nподписка на world.* / player.*\npublish всех событий")
+    }
+
+    ' ===================================================================
+    ' Message types / Protocol constants
+    ' ===================================================================
+    Container_Boundary(proto, "Gateway Protocol") {
+        Component(msg_types, "GatewayMsg namespace", "C++ constexpr", "1=PlayerAction, 2=ChunkSnapshot, 3=EntitySnapshot\n4=BlockUpdate, 5=BlockAck, 6=InventoryUpdate\n7=InventoryAction, 8=BlockEntityUpdate\n9=CraftRequest, 10=CraftResponse, 11=SetBlockAction\n12=CompressedChunkData, 13=ToolAction, 14=ToolActionResp\n15=SetMachineSlot, 16=SetMachineSlotResp\n17=RecipeCompleted, 18=ChestOpenReq, 19=ChestOpenResp")
+    }
+
+    ' ===================================================================
+    ' Interest management
+    ' ===================================================================
+    Container_Boundary(interest, "Interest Management") {
+        Component(interest_mgr, "PlayerInterest", "C++ (struct)", "Центр интереса игрока\ncenter_x/y/z + radius = 8 чанков\nShouldSendChunk() filter")
+        Component(chunk_coord, "ChunkCoord", "C++ (struct)", "Координаты чанка x/y/z")
+    }
+
+    ' ===================================================================
+    ' Client state tracking
+    ' ===================================================================
+    Container_Boundary(state, "Client State") {
+        Component(cl_player_id, "client_player_id_", "uint64_t", "ID подключённого игрока\n0 = неизвестно")
+        Component(cl_last_pos, "last_x_ / y_ / z_", "int32_t", "Последняя известная\nпозиция игрока")
+        Component(cl_state_mutex, "client_state_mutex_", "std::mutex", "Thread-safety для\nсостояния клиента")
+    }
+
+    ' ===================================================================
+    ' Inventory Integration
+    ' ===================================================================
+    Container_Boundary(integration, "Integration") {
+        Component(inv_integration, "InventoryIntegration", "C++", "Интеграция инвентаря\nмаршрутизация InventoryAction\nмежду клиентом и MetaDB")
+        Rel(inv_integration, router_cli, "публикует\nplayer.inventory.actions", "")
+    }
+
+    ' ===================================================================
+    ' Callbacks (event-driven)
+    ' ===================================================================
+    Container_Boundary(callbacks, "Callbacks") {
+        Component(cb_client, "on_client_message", "std::function", "Callback: сообщение от клиента\n→ обработка OnClientCtrlMessage")
+        Component(cb_router, "on_router_message", "std::function", "Callback: сообщение от router\n→ релей клиенту")
+    }
+
+    ' ===================================================================
+    ' Internal handlers
+    ' ===================================================================
+    Container_Boundary(handlers, "Handlers") {
+        Component(h_client_ctrl, "on_client_ctrl_message()", "C++", "Обработка сообщений\nот control порта клиента\n→ publish в MessageRouter")
+        Component(h_client_bulk, "on_client_bulk_message()", "C++", "Обработка bulk данных\nот клиента")
+        Component(h_router, "on_router_publish()", "C++", "Релей сообщений от router\n→ клиенту (с фильтром interest)")
+    }
+
+    ' ===================================================================
+    ' Mutexes
+    ' ===================================================================
+    Component(mtx_ctrl, "client_ctrl_mutex_", "std::mutex", "Mutex для control коннекта")
+    Component(mtx_bulk, "client_bulk_mutex_", "std::mutex", "Mutex для bulk коннекта")
+
+    ' ===================================================================
+    ' Tag allocator
+    ' ===================================================================
+    Component(tag_alloc, "tag_alloc_ (TagAllocator)", "C++", "Аллокатор тегов\nдля io_uring операций")
+
+    ' ===================================================================
+    ' Cross-component relationships
+    ' ===================================================================
+    Rel(gw_core, ctrl_srv, "владеет", "")
+    Rel(gw_core, bulk_srv, "владеет", "")
+    Rel(gw_core, router_cli, "connect_router()", "")
+    Rel(gw_core, interest_mgr, "client_interest()", "")
+    Rel(gw_core, inv_integration, "использует", "")
+
+    Rel(ctrl_srv, client_ctrl, "accept → управляет", "")
+    Rel(bulk_srv, client_bulk, "accept → управляет", "")
+
+    Rel(h_client_ctrl, client_ctrl, "читает данные", "")
+    Rel(h_client_ctrl, router_cli, "публикует в топики", "")
+    Rel(h_client_bulk, client_bulk, "читает bulk данные", "")
+    Rel(h_router, router_cli, "получает сообщения", "")
+    Rel(h_router, client_ctrl, "send_to_client_ctrl()", "")
+    Rel(h_router, client_bulk, "send_to_client_bulk()", "")
+
+    Rel(interest_mgr, h_router, "фильтрует чанки\nперед отправкой", "")
+    Rel(inv_integration, h_client_ctrl, "перехватывает\nInventoryAction", "")
+}
+
+SHOW_LEGEND()
+@enduml

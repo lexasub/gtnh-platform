@@ -1,0 +1,119 @@
+// protocol/recipe.fbs
+// RecipeManager RPC: request/reply over length-prefixed TCP frames.
+// Frame: [4 bytes: big-endian payload size] [FlatBuffer: RecipeMessage | RecipeReply]
+
+include "core.fbs";
+
+namespace Protocol;
+
+// ---------------------------------------------------------------------------
+// Value types (struct = inline, zero-copy)
+// ---------------------------------------------------------------------------
+
+// Container: fixed-size array of ItemStack for machine inventory
+// slot 0 = machine output/input, slots 1-8 = inventory
+// TODO: This is a simplified container; may be replaced with vector in future
+struct Container {
+  items:[ItemStack:9];
+  dirty:uint8;
+  size:uint16;
+}
+
+// ---------------------------------------------------------------------------
+// Request types
+// ---------------------------------------------------------------------------
+table CheckRecipeReq {
+  container:Container;
+  machine_id:uint16;
+}
+
+table CraftReq {
+  recipe_id:string;
+  container:Container;
+}
+
+table EvaluateConditionsReq {
+  recipe_id:string;
+}
+
+union RecipeRequest {
+  CheckRecipeReq,
+  CraftReq,
+  EvaluateConditionsReq,
+}
+// ---------------------------------------------------------------------------
+// Response types
+// ---------------------------------------------------------------------------
+
+table CheckRecipeResp {
+  recipe_id:string;
+}
+
+table CraftResp {
+  new_container:Container;
+}
+
+table EvaluateConditionsResp {
+  success:bool;
+}
+
+table RecipeInfo {
+  machine_type:uint16;
+  recipe_id:string;
+  duration:uint32;
+  inputs:[ItemStack];
+  outputs:[ItemStack];
+}
+
+table RecipesForItemReq {
+  item_id:uint16;
+}
+
+table RecipesForItemResp {
+  recipes:[RecipeInfo];
+}
+
+union RecipeResponse {
+  CheckRecipeResp,
+  CraftResp,
+  EvaluateConditionsResp,
+  ErrorResp,
+  RecipesForItemResp,
+}
+
+// ---------------------------------------------------------------------------
+// Event types (pub/sub events, not RPC)
+// ---------------------------------------------------------------------------
+
+// Published by reciped when a recipe completes (both instant and timed).
+// simcored subscribes and replaces the entity's inventory with result_slots.
+table RecipeCompleted {
+  pos:Vec3i (required);
+  machine_id:uint16;
+  recipe_id:string (required);
+  result_slots:[ItemStack];  // full inventory contents after craft (inputs consumed + outputs)
+}
+
+// ---------------------------------------------------------------------------
+// Wire wrappers
+// ---------------------------------------------------------------------------
+table RecipeMessage {
+  req_id:uint32;
+  request:RecipeRequest;
+}
+
+table RecipeReply {
+  req_id:uint32;
+  response:RecipeResponse;
+}
+
+union RecipePayload {
+  RecipeMessage,
+  RecipeReply,
+}
+
+table RecipeFrame {
+  payload:RecipePayload (required);
+}
+
+root_type RecipeFrame;

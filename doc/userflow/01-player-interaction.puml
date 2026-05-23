@@ -1,0 +1,266 @@
+' =============================================================================
+' GTNH Platform — User Flow: Player-World Interaction
+' 5 диаграмм: block placement/removal, crafting, inventory, machine operation, exploration
+' =============================================================================
+
+' ===========================================================================
+' 1. Размещение / удаление блока
+' ===========================================================================
+@startuml player-block-placement
+title **Flow P1: Размещение / удаление блока**
+
+actor "Игрок" as Player
+participant "GameClient" as Client
+participant "Gateway" as GW
+participant "MessageRouter\n(Go)" as MR
+participant "ActionDispatcher" as Disp
+participant "SetBlockCASHandler" as CAS
+participant "ChunkStore" as CS
+participant "ECS Engine\n(SimulationCore)" as Sim
+participant "SpatialIndex" as SI
+
+== Размещение блока (CAS-based) ==
+
+Player -> Client: ЛКМ по миру с блоком в руке
+note right: DDA raycast hit detection\nClient knows expected_block_id
+Client -> GW: GatewayMessage(SetBlockAction)
+note right #E67E22
+  SetBlockAction:
+  - pos (Vec3i)
+  - expected_block_id (что клиент видит)
+  - new_block_id (что ставит)
+  - player_id
+  - action: RIGHT_MOUSE_CLICK
+end note
+GW -> MR: Publish "player.actions"
+MR -> Disp: Subscribe → forward SetBlockAction
+
+Disp -> CAS: handle(action)
+
+== Мгновенный optimistic ack ==
+
+CAS -> CAS: Проверка: new_block_id != 0 (не AIR)
+note right #438D80
+  Единственная валидация:
+  не дать поставить AIR
+end note
+
+CAS -> CAS: applyBlockTransform(expected, new)
+note right: Transform rules:\nнапр. ставишь воду → льётся
+
+CAS -> GW: BlockAck(ACCEPTED, final_id, final_meta)
+GW -> Client: GatewayMessage(BlockAck)
+Client -> Player: Показывает блок (оптимистично)
+
+== Асинхронный CAS в ChunkStore ==
+
+CAS -> CS: setBlockCAS(x,y,z, expected, new, meta, callback)
+
+alt CAS OK (expected совпал)
+    CS -> CS: Block saved to LMDB
+    CS -> CAS: callback(status=OK)
+    CAS -> MR: Publish world.blocks.changed
+    MR -> Sim: onBlockChanged
+    Sim -> SI: UpdateSpatialIndex(pos, final_id)
+
+    alt LEFT_MOUSE_CLICK (ломаем)
+        CAS -> CAS: giveItem(player, expected_block_id, 1)
+    end
+
+    alt RIGHT_MOUSE_CLICK (ставим)
+        note right: Клиент оптимистично\nсписал блок из инвентаря
+    end
+
+else CAS CONFLICT (expected НЕ совпал)
+    note right #E74C3C
+      Кто-то изменил блок между
+      моментом клика и CAS
+    end
+    CS -> CAS: callback(status=CONFLICT, actual_block_id)
+    CAS -> GW: BlockAck(CONFLICT, actual_id, actual_meta)
+    GW -> Client: Revert block
+    Client -> Player: Откатывает блок
+end
+
+== Удаление блока ==
+
+Player -> Client: ЛКМ по блоку (action=LEFT_MOUSE_CLICK)
+Client -> GW: SetBlockAction(expected, new_block_id=0)
+GW -> MR: Publish "player.actions"
+Disp -> CAS: handle(action)
+note right: final_block_id = 0 (AIR)
+
+CAS -> GW: BlockAck(ACCEPTED, AIR)
+GW -> Client: BlockAck
+Client -> Player: Показывает AIR (оптимистично)
+
+CAS -> CS: setBlockCAS(x,y,z, expected, AIR, 0, callback)
+
+alt CAS OK
+    CS -> CAS: status=OK
+    CAS -> CAS: giveItem(player, expected_id, 1)
+    note right: Сломанный блок в инвентарь
+    CAS -> MR: Publish world.blocks.changed
+    Sim -> SI: UpdateSpatialIndex(pos, AIR)
+    Sim -> Sim: Check multiblock dissociation
+else CAS CONFLICT
+    CS -> CAS: status=CONFLICT
+    CAS -> GW: BlockAck(CONFLICT, actual_id, 0)
+    GW -> Client: Revert
+    Client -> Player: Блок вернулся
+end
+
+@enduml
+
+' ===========================================================================
+' 2. Крафт (верстак)
+' ===========================================================================
+@startuml player-crafting
+title **Flow P2: Крафт (CraftRequest -> CraftResponse)**
+
+actor "Игрок" as Player
+participant "GameClient\n(ClientCraftingWindow)" as Client
+participant "Gateway" as GW
+participant "MessageRouter" as MR
+participant "SimulationCore\n(CraftRequestHandler)" as Sim
+participant "RecipeManager" as RM
+participant "MetaDB" as MDB
+
+Player -> Client: Открывает верстак
+Client -> Client: Загружает инвентарь из MetaDB
+Player -> Client: Раскладывает предметы 3x3
+Client -> Client: Отображает доступные рецепты
+Player -> Client: Нажимает крафт
+Client -> GW: CraftRequest(player_id, pos, slots[9])
+GW -> MR: Publish sim.craft.request
+MR -> Sim: Forward to CraftRequestHandler
+Sim -> RM: CheckRecipe(grid)
+RM --> Sim: Recipe found / not found
+alt Рецепт найден
+    Sim -> MDB: meta_db.inventory.set\n(уменьшить ингредиенты)
+    MDB --> Sim: Updated
+    Sim -> MDB: meta_db.inventory.set\n(добавить результат)
+    Sim -> MR: Publish sim.craft.response\n(success=true, result)
+else Рецепт не найден
+    Sim -> MR: Publish sim.craft.response\n(success=false)
+end
+MR -> GW: Relay
+GW -> Client: CraftResponse(success, result)
+Client -> Player: Обновляет UI
+
+@enduml
+
+' ===========================================================================
+' 3. Drag-and-drop инвентаря
+' ===========================================================================
+@startuml player-inventory
+title **Flow P3: Инвентарь (drag-and-drop)**
+
+actor "Игрок" as Player
+participant "GameClient\n(InventoryWindow)" as Client
+participant "Gateway\n(InventoryIntegration)" as GW
+participant "MessageRouter" as MR
+participant "MetaDB" as MDB
+participant "SimulationCore\n(InventoryActionHandler)" as Sim
+participant "EntityStateStore" as ESS
+
+Player -> Client: Drag-and-drop предмет
+Client -> GW: InventoryAction(MOVE, from, to)
+GW -> MR: Publish player.inventory.actions
+par Параллельно
+    MR -> MDB: Update slots
+    MDB -> MR: Publish player.inventory.update
+
+    MR -> Sim: InventoryActionHandler
+    Sim -> Sim: Sync with ECS
+    Sim -> MR: Publish meta_db.inventory.set
+end
+MR -> GW: Relay
+GW -> Client: InventoryUpdate(slots)
+Client -> Player: Показывает новое расположение
+alt Машинный инвентарь
+    Sim -> ESS: entity.state.set\n(persist machine inventory)
+end
+
+@enduml
+
+' ===========================================================================
+' 4. Взаимодействие с машиной
+' ===========================================================================
+@startuml player-machine-operation
+title **Flow P4: Взаимодействие с машиной**
+
+actor "Игрок" as Player
+participant "GameClient\n(MachineWindow)" as Client
+participant "Gateway" as GW
+participant "MessageRouter" as MR
+participant "SimulationCore" as Sim
+participant "EntityStateStore" as ESS
+participant "PipeNetwork" as PN
+
+== Открытие UI машины ==
+
+Player -> Client: ПКМ по машине
+Client -> GW: QueryMachineState(pos)
+GW -> MR: Publish sim.machine.query
+MR -> Sim: Forward
+Sim -> ESS: GetEntityState(machine_id, pos)
+ESS --> Sim: Machine state\n(energy, progress, slots)
+Sim -> MR: Publish sim.machine.state
+MR -> GW: Relay
+GW -> Client: MachineState(energy, progress, slots)
+Client -> Player: Показывает MachineWindow
+
+== Управление ==
+
+Player -> Client: Вставляет предметы / меняет режим
+Client -> GW: MachineAction(SET_INPUT, slot, item)
+GW -> MR: Publish sim.machine.action
+MR -> Sim: Forward
+Sim -> Sim: Update ECS component
+Sim -> PN: CheckEnergy(machine_id)
+PN --> Sim: Energy available / not
+alt Энергии достаточно
+    Sim -> ESS: UpdateMachineState
+    Sim -> MR: Publish sim.machine.progress
+else Энергии нет
+    Sim -> MR: Publish sim.machine.idle(no_energy)
+end
+MR -> GW: Relay
+GW -> Client: MachineStatusUpdate
+Client -> Player: Показывает прогресс / ожидание
+
+@enduml
+
+' ===========================================================================
+' 5. Исследование мира
+' ===========================================================================
+@startuml player-exploration
+title **Flow P5: Исследование мира (подгрузка чанков)**
+
+actor "Игрок" as Player
+participant "GameClient\n(WorldView)" as Client
+participant "Gateway" as GW
+participant "MessageRouter" as MR
+participant "ChunkStore" as CS
+participant "WorldGenerator" as WG
+
+Player -> Client: Двигает камеру
+Client -> Client: Проверяет кэш чанков
+Client -> GW: PlayerAction(CHUNK_REQUEST, pos)
+GW -> MR: Publish world.chunks.get
+MR -> CS: Forward запрос
+alt Чанк в LMDB
+    CS -> MR: Publish world.chunks.data
+else Чанка нет в LMDB
+    CS -> WG: GenerateChunk(pos)
+    WG -> WG: FastNoiseLite генерация
+    WG -> CS: AsyncSetBlock (наполняет чанк)
+    CS -> MR: Publish world.chunks.data
+end
+MR -> GW: Relay
+GW -> Client: CompressedChunkData
+Client -> Client: Распаковывает и кэширует
+Client -> Player: Отображает новую область
+
+@enduml

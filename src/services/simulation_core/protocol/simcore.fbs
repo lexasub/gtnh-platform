@@ -1,0 +1,108 @@
+// protocol/simcore.fbs
+// SimulationCore RPC: request/reply over length-prefixed TCP frames.
+// Frame: [4 bytes: big-endian payload size] [FlatBuffer: SimCoreMessage | SimCoreReply]
+
+include "core.fbs";
+
+namespace Protocol;
+
+// ---------------------------------------------------------------------------
+// Request types
+// ---------------------------------------------------------------------------
+table BlockChangedReq {
+  pos:Vec3i (required);
+  block_id:uint16;
+  meta:uint8;
+  mb_id:uint32;
+}
+
+table MatchPatternReq {
+  anchor:Vec3i (required);
+}
+
+table GetControllerReq {
+  controller_id:uint64;
+}
+
+table UnregisterControllerReq {
+  controller_id:uint64;
+}
+
+table TickReq {}
+
+union SimCoreRequest {
+  BlockChangedReq,
+  MatchPatternReq,
+  GetControllerReq,
+  UnregisterControllerReq,
+  TickReq,
+}
+
+// ---------------------------------------------------------------------------
+// Response types
+// ---------------------------------------------------------------------------
+table BlockChangedResp {
+  success:bool;
+}
+
+table MatchPatternResp {
+  controller_id:uint64;
+}
+
+table ControllerData {
+  controller_id:uint64;
+  anchor:Vec3i;
+  block_count:uint32;
+}
+
+table GetControllerResp {
+  controller:ControllerData;
+}
+
+table UnregisterControllerResp {
+  success:bool;
+}
+
+table TickResp {
+  controllers_updated:uint32;
+}
+
+table ErrorResp {
+  message:string;
+}
+
+union SimCoreResponse {
+  BlockChangedResp,
+  MatchPatternResp,
+  GetControllerResp,
+  UnregisterControllerResp,
+  TickResp,
+  ErrorResp,
+}
+
+// ---------------------------------------------------------------------------
+// Wire wrappers
+// ---------------------------------------------------------------------------
+table SimCoreMessage {
+  req_id:uint32;
+  request:SimCoreRequest;
+}
+
+table SimCoreReply {
+  req_id:uint32;
+  response:SimCoreResponse;
+}
+
+// ---------------------------------------------------------------------------
+// Cross-service events (published via MessageRouter)
+// ---------------------------------------------------------------------------
+table MultiblockCreatedEvent {
+  controller_id:uint64;
+  anchor:Vec3i;
+}
+
+table MultiblockDestroyedEvent {
+  controller_id:uint64;
+}
+
+root_type SimCoreMessage;

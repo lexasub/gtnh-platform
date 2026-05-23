@@ -1,0 +1,232 @@
+' =============================================================================
+' GTNH Platform — User Flow: Wrench, Tools & Machine Config
+' 3 диаграммы: wrench config, electric tools, machine side setup
+' =============================================================================
+
+' ===========================================================================
+' 1. Wrench: конфигурация сторон машины
+' ===========================================================================
+@startuml tools-wrench-config
+title **Flow W1: Wrench — конфигурация сторон машины**
+
+actor "Игрок" as Player
+participant "GameClient" as Client
+participant "Gateway" as GW
+participant "MessageRouter" as MR
+participant "SimulationCore" as Sim
+participant "EntityStateStore" as ESS
+
+== Установка машины ==
+
+Player -> Client: Ставит машину ПКМ
+Client -> Client: Определяет face (куда смотрит игрок)
+
+note right #438D80
+  При установке:
+  - Машина смотрит face к игроку
+  - Верх = INPUT (для труб)
+  - Низ = OUTPUT (для предметов)
+  - Зад = ENERGY (для кабелей)
+  - По умолчанию: auto-config
+end note
+
+Client -> GW: SetBlockAction(pos, machine_id, face)
+GW -> Sim: SetBlockAction
+Sim -> CS: SetBlock CAS
+Sim -> Sim: ECS: set MachineComponent.side_config
+
+== Смена стороны ключом (wrench) ==
+
+Player -> Client: ПКМ ключом по машине
+Client -> Client: Определить грань (raycast face)
+
+Client -> GW: ToolAction(WRENCH, pos, face)
+note right #E67E22
+  ToolAction:
+  - tool = WRENCH
+  - pos = позиция машины
+  - face = грань для переназначения
+  - Игрок выбирает новую роль грани
+end note
+
+GW -> MR: Publish "tool.actions"
+MR -> Sim: Forward to SimulationCore
+
+Sim -> Sim: Get machine side_config
+
+alt Циклическое переключение
+    Sim -> Sim: Rotate face roles
+    note right: Последовательность:\nINPUT -> OUTPUT -> ENERGY -> FLUID_IN -> FLUID_OUT -> (INPUT)
+    Sim -> Sim: Update MachineComponent.side_config
+
+    Sim -> ESS: Save new config
+    Sim -> MR: Publish machine.config.updated
+    MR -> GW: Relay to client
+    GW -> Client: MachineConfigUpdate(side_config)
+    Client -> Player: Показывает новую конфигурацию
+end
+
+== Визуальная обратная связь ==
+
+Client -> Client: Обновить модель машины
+note right
+  - Текстура грани меняется
+  - INPUT: стрелка вниз
+  - OUTPUT: стрелка вверх
+  - ENERGY: молния
+  - FLUID: капля
+end note
+
+@enduml
+
+' ===========================================================================
+' 2. Electric tools (drills, chainsaws, charging)
+' ===========================================================================
+@startuml tools-electric
+title **Flow W2: Electric Tools (дрели, пилы, зарядка)**
+
+actor "Игрок" as Player
+participant "GameClient" as Client
+participant "Gateway" as GW
+participant "SimulationCore" as Sim
+participant "ChunkStore" as CS
+participant "EntityStateStore" as ESS
+
+== Использование электродрели ==
+
+Player -> Client: Зажимает ЛКМ с дрелью
+
+== Каждый тик: разрушение блока ==
+
+Client -> GW: SetBlockAction(LEFT_CLICK, pos, expected)
+note right #E67E22
+  Электродрель:
+  - Mining level зависит от tier
+  - ULV: stone only
+  - LV: iron ore
+  - HV: diamond / titanium
+  - Speed = tier * base_speed
+  - AoE: 1x1 (basic), 3x3 (advanced)
+end note
+
+GW -> Sim: Forward
+Sim -> CS: SetBlock CAS (pos -> AIR)
+
+alt CAS OK
+    CS -> Sim: Block broken
+    Sim -> Sim: Consume drill energy
+    note right: Energy -= mining_cost * hardness
+
+    alt Drill energy depleted
+        Sim -> Client: ToolStatus(energy=0)
+        Client -> Player: Дрель разряжена
+    else Drill still has energy
+        Sim -> Client: ToolStatus(energy=current)
+        Client -> Player: Продолжает копать
+    end
+
+    Sim -> Sim: giveItem(player, broken_block_id, 1)
+else CAS CONFLICT
+    Sim -> Client: BlockAck(CONFLICT)
+    Client -> Player: Блок не сломан
+end
+
+== Зарядка инструмента ==
+
+Player -> Client: Кладёт дрель в зарядное устройство
+Client -> GW: MachineAction(SET_INPUT, slot=0, item=drill)
+GW -> Sim: Forward
+
+Sim -> Sim: Check: item is rechargeable
+note right #438D80
+  Зарядные устройства:
+  - Battery Buffer (LV, MV, HV)
+  - Transformer-based charger
+  - Заряжает от PipeNetwork
+end note
+
+Sim -> Sim: Start charging process
+loop Каждый тик (20 Hz)
+    Sim -> Sim: Drill.energy += charge_rate
+    Sim -> Sim: Battery.energy -= charge_rate
+
+    alt Drill fully charged
+        Sim -> Sim: Stop charging
+        Sim -> Client: ToolStatus(energy=max)
+        Client -> Player: Дрель заряжена
+    else Battery empty
+        Sim -> Sim: Stop (no power)
+    end
+end
+
+@enduml
+
+' ===========================================================================
+' 3. Machine side setup (выбор input/output/energy/fluid)
+' ===========================================================================
+@startuml tools-machine-side-setup
+title **Flow W3: Настройка сторон машины (input/output/energy)**
+
+actor "Игрок" as Player
+participant "GameClient\n(MachineWindow)" as Client
+participant "SimulationCore" as Sim
+participant "EntityStateStore" as ESS
+participant "PipeNetwork" as PN
+
+== Открытие конфигурации ==
+
+Player -> Client: ПКМ по машине
+Client -> Client: Показывает MachineWindow
+
+Player -> Client: Нажимает "Configure Sides"
+Client -> Client: Открывает side config UI
+
+note right #438D80
+  GTNH machine sides (6 граней):
+  - DOWN  (0) — низ
+  - UP    (1) — верх
+  - NORTH (2) — север
+  - SOUTH (3) — юг
+  - WEST  (4) — запад
+  - EAST  (5) — восток
+
+  Каждая грань может быть:
+  - INPUT (предметы внутрь)
+  - OUTPUT (предметы наружу)
+  - FLUID_INPUT
+  - FLUID_OUTPUT
+  - ENERGY (подключение кабеля)
+  - ANY (авто)
+  - NONE (заблокировано)
+end note
+
+== Конфигурация грани ==
+
+Player -> Client: Выбирает грань -> задаёт роль
+Client -> GW: MachineAction(SET_SIDE_CONFIG, pos, face, role)
+
+GW -> Sim: Forward
+Sim -> Sim: Update side_config[face] = role
+
+note right #E67E22
+  Пример конфигурации:
+  - UP = INPUT (предметы сверху)
+  - DOWN = OUTPUT (предметы снизу)
+  - BACK = ENERGY (кабель сзади)
+  - LEFT = FLUID_INPUT (жидкость)
+  - RIGHT = FLUID_OUTPUT
+  - FRONT = NONE (закрыто)
+end note
+
+Sim -> ESS: Save side config
+Sim -> MR: Publish machine.config.updated
+MR -> Client: MachineConfigUpdate
+Client -> Player: Показывает обновлённую модель
+
+== PipeNetwork: маршрутизация по конфигурации ==
+
+Sim -> PN: Notify config change
+PN -> PN: Update pipe routing
+note right: PipeNetwork учитывает\nкакие грани INPUT/OUTPUT/ENERGY\nпри BFS маршрутизации
+
+@enduml

@@ -1,0 +1,55 @@
+' =============================================================================
+' Level 3 — SimulationCore: ECS Components (data layer)
+' 14 EnTT components, registry reference
+' =============================================================================
+@startuml GTNH-Sim-ECS-Components-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **SimulationCore: ECS Components**\n14 EnTT data-компонентов
+
+Container_Boundary(sim, "SimulationCore") {
+
+    Container_Boundary(ecs_data, "ECS Data Components") {
+        Component(ecs_reg, "entt::registry reg_", "C++ (EnTT)", "ECS registry\nвладеет всеми сущностями\nи компонентами")
+
+        Component(comp_pos, "Position", "C++", "Позиция x/y/z")
+        Component(comp_block, "Block", "C++", "block_id, meta, mb_id")
+        Component(comp_machine, "MachineComponent", "C++", "machine_id, mb_id, managed_externally\nсчётчик энергии")
+        Component(comp_mb, "MultiblockController", "C++", "controller_id, anchor, blocks[]\nструктурная целостность")
+        Component(comp_recipe, "RecipeProgress", "C++", "progress, current_recipe\nremaining_ticks")
+        Component(comp_inv, "InventoryContainer", "C++", "entity_type, slot_count, slots[]\nItemStack лист")
+        Component(comp_energy, "EnergyStorage", "C++", "capacity, current, max_input\nmax_output, tier, energy_type")
+        Component(comp_energy_src, "EnergySource", "C++", "Тип источника энергии")
+        Component(comp_network, "NetworkConnection", "C++", "pipe_network_id\nсоединение с PipeNetwork")
+        Component(comp_temp, "TemperatureComponent", "C++", "Температура машины\nдля теплообмена")
+        Component(comp_heat, "HeatIntakeComponent", "C++", "Потребление тепла\nдля паровых машин")
+        Component(comp_purity, "PurityComponent", "C++", "Чистота материала\nдля некоторых рецептов")
+        Component(comp_machine_tag, "MachineTagComponent", "C++", "Теги машины\nдля поиска рецептов")
+        Component(comp_biome, "BiomeComponent", "C++", "Биом сущности\nвлияет на генерацию")
+
+        Rel(ecs_reg, comp_pos, "emplace<Position>", "")
+        Rel(ecs_reg, comp_block, "emplace<Block>", "")
+        Rel(ecs_reg, comp_machine, "emplace/get_or_emplace", "")
+        Rel(ecs_reg, comp_mb, "emplace/remove", "")
+        Rel(ecs_reg, comp_recipe, "emplace/remove", "")
+        Rel(ecs_reg, comp_inv, "emplace/remove", "")
+        Rel(ecs_reg, comp_energy, "emplace/remove", "")
+        Rel(ecs_reg, comp_energy_src, "emplace", "")
+        Rel(ecs_reg, comp_network, "emplace/remove", "")
+        Rel(ecs_reg, comp_temp, "emplace", "")
+        Rel(ecs_reg, comp_heat, "emplace", "")
+        Rel(ecs_reg, comp_purity, "emplace", "")
+        Rel(ecs_reg, comp_machine_tag, "emplace", "")
+        Rel(ecs_reg, comp_biome, "emplace", "")
+    }
+
+    Component(core_ref, "ECS Core", "SimulationEngine\n6 систем\nMachineRegistry")
+}
+
+Rel(core_ref, ecs_reg, "владеет registry", "")
+
+SHOW_LEGEND()
+@enduml

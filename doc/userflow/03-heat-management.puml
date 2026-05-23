@@ -1,0 +1,225 @@
+' =============================================================================
+' GTNH Platform — User Flow: Heat Management
+' 3 диаграммы: heat transfer, boiler/generator, cooling/overheat
+' =============================================================================
+
+' ===========================================================================
+' 1. Heat Transfer (PRODUCER -> CONSUMER)
+' ===========================================================================
+@startuml heat-transfer
+title **Flow H1: Heat Transfer (PRODUCER -> CONSUMER)**
+
+actor "SimulationCore\n(20 Hz Tick)" as Tick
+participant "GeneratorSystem" as Gen
+participant "HeatTransferSystem" as HT
+participant "MachineRegistry" as Reg
+participant "ECS Registry\n(entt::registry)" as ECS
+
+== Шаг 1: Печь / генератор производит тепло ==
+
+Tick -> Gen: tick(dt)
+Gen -> ECS: view<MachineComponent, EnergyStorage, Position>()
+Gen -> Gen: Filter: energy.type == HEAT && role == PRODUCER
+
+note right #E67E22
+  PRODUCER: heat_generator (46)
+  Потребляет топливо -> производит HEAT
+  Топливо: coal=8000HU, oak_planks=2000HU
+end note
+
+loop For each HEAT producer
+    Gen -> Gen: Burn fuel from inventory
+    Gen -> Gen: Add HEAT to EnergyStorage.current
+    Gen -> ECS: Update EnergyStorage component
+end
+
+== Шаг 2: Heat Transfer System ==
+
+Tick -> HT: tick(dt)
+HT -> ECS: view<MachineComponent, EnergyStorage, Position>()
+
+HT -> HT: Collect all HEAT producers\nEnergyStorage.current > 0 && role == PRODUCER
+
+note right #E67E22
+  Фильтр: energy.type == HEAT
+  role == PRODUCER
+  current > 0
+end note
+
+HT -> HT: Collect all HEAT consumers\nEnergyStorage.current < capacity && role == CONSUMER
+
+note right #438D80
+  Фильтр: energy.type == HEAT
+  role == CONSUMER
+  current < capacity
+end note
+
+HT -> HT: Для каждого consumer: проверить 6 соседей
+note right #438D80
+  Соседние направления:
+  (+x, -x, +y, -y, +z, -z)
+  Если PRODUCER рядом -> transfer
+  transfer = min(needed, available)
+end note
+
+loop For each consumer
+    HT -> HT: Check 6 neighbor directions
+    loop For each neighbor
+        alt Neighbor is a producer with HEAT
+            HT -> HT: Transfer heat
+            HT -> HT: producer.current -= transfer
+            HT -> HT: consumer.current += transfer
+        end
+    end
+    alt Consumer full -> stop checking neighbors
+    end
+end
+
+@enduml
+
+' ===========================================================================
+' 2. Boiler -> Steam -> Consumer
+' ===========================================================================
+@startuml heat-boiler-steam
+title **Flow H2: Boiler -> Steam -> Machine**
+
+actor "SimulationCore\n(20 Hz Tick)" as Tick
+participant "BoilerSystem" as Boiler
+participant "HeatTransferSystem" as HT
+participant "MachineSystem" as MachineSys
+participant "PipeNetwork" as PN
+participant "ECS Registry" as ECS
+
+== Boiler: потребляет HEAT, производит STEAM ==
+
+Tick -> Boiler: tick(dt)
+Boiler -> ECS: view<MachineComponent, EnergyStorage, Position>()
+
+Boiler -> Boiler: Filter: role == BOILER || machine_id == 50
+
+note right #5899DA
+  Boiler (50): hybrid producer
+  energy_in: HEAT  (потребляет тепло)
+  energy_out: STEAM (производит пар)
+  inventory: water bucket -> steam bucket
+end note
+
+loop For each boiler
+    Boiler -> Boiler: Check inventory for water
+    Boiler -> Boiler: Consume HEAT from EnergyStorage
+    alt Water + HEAT available
+        Boiler -> Boiler: Convert water -> steam bucket
+        Boiler -> Boiler: Produce STEAM to EnergyStorage
+        Boiler -> ECS: Update EnergyStorage
+    else No water or no HEAT
+        Boiler -> Boiler: Idle this tick
+    end
+end
+
+== Steam machines: потребляют STEAM ==
+
+Tick -> MachineSys: tick(dt)
+MachineSys -> MachineSys: Filter: machines that use STEAM
+
+note right #5899DA
+  STEAM consumers:
+  steam_macerator (51)
+  steam_compressor (52)
+  bronze_alloy_smelter (60)
+  steam_extractor (61)
+  steam_mixer (62)
+end note
+
+loop For each STEAM machine
+    MachineSys -> PN: CheckSteamAvailable(machine_id)
+    PN --> MachineSys: STEAM level in network
+
+    alt STEAM available
+        MachineSys -> MachineSys: Progress recipe
+        MachineSys -> PN: ConsumeSteam(machine_id, amount)
+    else No STEAM
+        MachineSys -> MachineSys: Idle (waiting for steam)
+    end
+end
+
+@enduml
+
+' ===========================================================================
+' 3. Охлаждение / перегрев
+' ===========================================================================
+@startuml heat-cooling-overheat
+title **Flow H3: Охлаждение и перегрев**
+
+actor "SimulationCore\n(20 Hz Tick)" as Tick
+participant "MachineSystem" as MachineSys
+participant "HeatTransferSystem" as HT
+participant "PipeNetwork" as PN
+participant "ECS Registry" as ECS
+participant "GameClient" as Client
+
+== Мониторинг температуры ==
+
+Tick -> HT: tick(dt)
+HT -> ECS: view<MachineComponent, EnergyStorage, Position>()
+
+loop For each machine with HEAT type
+    HT -> HT: Check current vs capacity
+
+    alt current >= capacity * 0.9 (90%+)
+        HT -> HT: Overheat warning
+        HT -> MachineSys: Slow down recipe speed (50%)
+        HT -> Client: Show yellow warning in UI
+
+    else current >= capacity (100%)
+        HT -> HT: OVERHEAT CRITICAL
+        HT -> MachineSys: Stop all processing
+        HT -> PN: Request emergency cooling
+
+        note right #E74C3C
+          При перегреве:
+          - Машина останавливается
+          - Может повредиться
+          - Требуется охлаждение
+        end note
+
+        HT -> Client: Show RED overheating icon
+
+    else current <= 0
+        HT -> HT: No heat, normal operation
+    end
+end
+
+== Охлаждение ==
+
+Player -> Client: Устанавливает охлаждение
+Client -> MachineSys: MachineAction(SET_COOLANT, slot, coolant)
+MachineSys -> PN: ActivateCooling(machine_id)
+
+alt Coolant-based cooling
+    PN -> PN: Coolant absorbs HEAT
+    PN -> PN: Coolant depletes over time
+    PN -> HT: Reduce HEAT by cooling_rate/tick
+    HT -> HT: current -= cooling_rate
+else Environment cooling
+    HT -> HT: Естественное остывание
+    note right: adjacent to water / air / radiator
+    HT -> HT: current -= ambient_cooling
+end
+
+alt Temperature <= threshold
+    HT -> MachineSys: Resume normal operation
+    HT -> Client: Clear overheat warning
+end
+
+== Pipes: long-distance heat transport ==
+
+MachineSys -> PN: SendHeatToPipe(machine_id, pipe_id)
+PN -> PN: BFS через pipe network
+PN -> PN: Heat flows through pipes
+alt Distant consumer found
+    PN -> PN: Transfer heat to remote machine
+else Heat dissipates in pipes
+    PN -> PN: Heat lost to environment
+end
+
+@enduml

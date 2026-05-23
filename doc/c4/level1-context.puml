@@ -1,0 +1,51 @@
+' =============================================================================
+' Level 1 — System Context Diagram
+' Shows the GTNH Platform as a black box with external actors and systems
+' =============================================================================
+@startuml GTNH-Platform-System-Context-level1
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 1 — System Context**\nGTNH Platform
+
+' ---------------------------------------------------------------------------
+' Person: players and admins
+' ---------------------------------------------------------------------------
+Person(player, "Игрок (Player)", "Человек, играющий в GTNH через клиент")
+Person(admin, "Администратор", "Управляет сервером, конфигурацией и плагинами")
+
+' ---------------------------------------------------------------------------
+' System boundary: GTNH Platform
+' ---------------------------------------------------------------------------
+System_Boundary(gtnh, "GTNH Platform") {
+    Container(platform, "GTNH Platform", "C++ / Go / FlatBuffers / TCP", "Распределённая Minecraft-платформа\n9 микросервисов + игровой клиент")
+}
+
+' ---------------------------------------------------------------------------
+' External systems
+' ---------------------------------------------------------------------------
+System_Ext(mouse_kbd, "Мышь / Клавиатура", "Ввод игрока (GLFW)")
+System_Ext(display, "Монитор", "Вывод рендера (bgfx: Vulkan/GL/D3D/Metal)")
+System_Ext(filesystem, "Файловая система", "LMDB / SQLite файлы БД\nна сервере")
+System_Ext(conan, "Conan пакеты", "Внешние зависимости\n(Asio, EnTT, bgfx, LMDB…)")
+
+' ---------------------------------------------------------------------------
+' Relationships
+' ---------------------------------------------------------------------------
+' Player ↔ Platform
+Rel(player, platform, "Нажимает клавиши / двигает мышь", "HID")
+Rel(platform, player, "Показывает 3D мир / UI", "bgfx + ImGui")
+Rel(platform, display, "Рендерит кадры", "Vulkan/GL")
+Rel(platform, mouse_kbd, "Читает ввод", "GLFW")
+
+' Admin
+Rel(admin, platform, "Настраивает сервер,\nзапускает процессы", "CLI / config")
+
+' External storage
+Rel(platform, filesystem, "Читает/пишет чанки, инвентари,\nсостояния машин", "mmap / SQL")
+Rel(platform, conan, "Линкует зависимости", "CMake + Conan")
+
+SHOW_LEGEND()
+@enduml

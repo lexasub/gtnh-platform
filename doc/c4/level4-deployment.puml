@@ -1,0 +1,92 @@
+' =============================================================================
+' Level 4 — Deployment / Infra Diagram
+' Process startup order, ports, data stores, and protocol topics
+' =============================================================================
+@startuml GTNH-Platform-Deployment-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 4 — Deployment & Network Topology**\nПроцессы, порты, БД, IPC протоколы
+
+' ===========================================================================
+' Legend for ports
+' ===========================================================================
+' :7777 — Gateway ctrl port (PlayerAction, Inventory, Craft)
+' :7778 — Gateway bulk port (ChunkData, EntitySnapshot)
+' :4000 — MessageRouter port (pub/sub bus)
+' :5005 — MetaDB JSON API
+' :5006 — MetaDB FlatBuffers RPC
+' :5200 — EntityStateStore (TCP RPC)
+
+' ===========================================================================
+' Node: Server machine
+' ===========================================================================
+System_Boundary(server, "Сервер (localhost)") {
+
+    ' ---- Data stores ----
+    ContainerDb(lmdb_chunks, "LMDB (ChunkStore)", "mmap файл", "Чанки\nключ: ChunkCoord (64bit)\nзначение: Chunk (192KB)")
+    ContainerDb(lmdb_ess, "LMDB (EntityStateStore)", "mmap файл", "Состояния сущностей\nключ: dim+x+y+z\nзначение: FlatBuffer blob")
+    ContainerDb(sqlite_metadb, "SQLite (MetaDB)", "Файл БД", "Таблицы:\n• players (id, x, y, z)\n• inventory (player_id, slot, block_id, count)\n• entity_state (dim, x, y, z, blob)")
+
+    ' ---- Services ----
+    Container(router_d, "routerd", "Go :4000", "1. MessageRouter\npub/sub bus")
+    Container(chunk_d, "chunkd", "C++", "2. ChunkStore\nLMDB storage")
+    Container(gateway_d, "gatewayd", "C++ :7777 / :7778", "3. Gateway\nTCP шлюз")
+    Container(simcore_d, "simcored", "C++ :4000 (router)", "4. SimulationCore\nECS 20Hz")
+    Container(client_d, "client", "C++ :55555", "5. GameClient\nbgfx + GLFW")
+
+    Container(ess_d, "entityd", "C++ :5200", "EntityStateStore\n(запускается после chunkd)")
+    Container(metadb_d, "metadbd", "Go :5005 / :5006", "MetaDB\nJSON API (:5005)\nFlatBuffers RPC (:5006)\n(запускается после routerd)")
+    Container(worldgen_d, "worldgend", "C++", "WorldGenerator\n(запускается после chunkd)")
+    Container(pipenet_d, "piped", "C++", "PipeNetwork\n(запускается после simcored)")
+    Container(recipeman_d, "reciped", "C++ :5555 (router)", "RecipeManager\n(запускается после routerd)")
+    PLAN_CONTAINER(spatial_d, "spatiald", "C++", "SpatialIndex\n(PLANNED)")
+
+    ' ---- Startup order relationships (dependencies) ----
+    Rel(chunk_d, router_d, "1) router должен быть запущен\nперед chunk", $tags="tag_planned")
+    Rel(gateway_d, router_d, "2) router до gateway", $tags="tag_planned")
+    Rel(gateway_d, chunk_d, "2) chunk до gateway\n(хотя не обязательно)", $tags="tag_planned")
+    Rel(simcore_d, router_d, "3) router до simcore", $tags="tag_planned")
+    Rel(simcore_d, chunk_d, "3) chunk до simcore", $tags="tag_planned")
+    Rel(client_d, gateway_d, "5) gateway до client\n(реальный порядок)", $tags="tag_planned")
+    Rel(ess_d, router_d, "зависит от router", $tags="tag_planned")
+    Rel(ess_d, chunk_d, "зависит от chunk", $tags="tag_planned")
+    Rel(metadb_d, router_d, "зависит от router", $tags="tag_planned")
+    Rel(worldgen_d, chunk_d, "зависит от chunk", $tags="tag_planned")
+    Rel(pipenet_d, router_d, "зависит от router", $tags="tag_planned")
+    Rel(recipeman_d, router_d, "зависит от router", $tags="tag_planned")
+
+    ' ---- Ports ----
+    Rel(client_d, gateway_d, ":7777 ctrl / :7778 bulk\nTCP FlatBuffers", $tags="tag_tcp")
+    Rel(gateway_d, router_d, ":4000\nTCP pub/sub", $tags="tag_tcp")
+    Rel(chunk_d, router_d, ":4000\nTCP pub/sub", $tags="tag_tcp")
+    Rel(simcore_d, router_d, ":4000\nTCP pub/sub", $tags="tag_tcp")
+    Rel(simcore_d, ess_d, ":5200\nTCP RPC entity.state", $tags="tag_tcp")
+    Rel(ess_d, chunk_d, "ChunkStore RPC\n(для данных блоков)", $tags="tag_tcp")
+    Rel(metadb_d, router_d, ":4000\nTCP pub/sub", $tags="tag_tcp")
+    Rel(pipenet_d, router_d, ":4000\nTCP pub/sub", $tags="tag_tcp")
+    Rel(recipeman_d, router_d, ":4000\nTCP pub/sub", $tags="tag_tcp")
+    Rel(worldgen_d, chunk_d, "TCP / queue ptr\nгенерация чанков", $tags="tag_tcp")
+
+    ' ---- Data stores ----
+    Rel(chunk_d, lmdb_chunks, "mmap read/write", "")
+    Rel(ess_d, lmdb_ess, "mmap read/write", "")
+    Rel(metadb_d, sqlite_metadb, "SQLite file\nACID транзакции", "")
+}
+
+' ===========================================================================
+' Topic Map (MessageRouter pub/sub topics)
+' ===========================================================================
+System_Boundary(topics, "MessageRouter Topic Map") {
+    Container(high, "PrioHigh (никогда не дропаются)", "blocking send", "player.actions\nplayer.actions.ack")
+    Container(normal, "PrioNormal (drop oldest при фладе)", "non-blocking", "world.blocks.changed\nworld.chunks.*\nplayer.inventory.update")
+    Container(low, "PrioLow (drop oldest при фладе)", "best-effort", "entities.*\nsimulation.*\nsim.*\nmultiblock.*\nrecipe.*\nmachine.*\nentity.state.*\nmeta_db.*\npipe_network.*")
+
+    Rel(high, normal, "strict priority cascade\nHigh всегда обслуживается\nпервым", "")
+    Rel(normal, low, "Normal до Low", "")
+}
+
+SHOW_LEGEND()
+@enduml

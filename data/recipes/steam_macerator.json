@@ -1,0 +1,20 @@
+{
+  "gtnh:steam_mac_iron": {
+    "m": 51,
+    "in": [[3]],
+    "out": [[9, 2]],
+    "dur": 160
+  },
+  "gtnh:steam_mac_gold": {
+    "m": 51,
+    "in": [[5]],
+    "out": [[9, 2]],
+    "dur": 160
+  },
+  "gtnh:steam_mac_copper": {
+    "m": 51,
+    "in": [[53]],
+    "out": [[9, 2]],
+    "dur": 160
+  }
+}

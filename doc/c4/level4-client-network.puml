@@ -1,0 +1,43 @@
+' =============================================================================
+' Level 3 — GameClient Network Subsystem
+' NetClient + IoUringConnection + очереди + memory pool + reconnect
+' =============================================================================
+@startuml GTNH-Client-Network-level4
+!include _common.puml
+
+LAYOUT_TOP_DOWN()
+LAYOUT_WITH_LEGEND()
+
+title **Level 3 — GameClient: Network**\nAsio + io_uring TCP клиент
+
+Container_Boundary(gc, "GameClient") {
+    Container_Boundary(net, "Сеть (Network)") {
+        Component(net_client, "NetClient", "C++ (Asio+io_uring)", "TCP клиент: ctrl (команды) + bulk (чанки)\nочереди сообщений, реконнект, callbacks")
+        Component(net_ctrl, "ctrl_conn_ (IoUringConnection)", "C++", "Control TCP коннект\n:7777 — PlayerAction, инвентарь, крафт")
+        Component(net_bulk, "bulk_conn_ (IoUringConnection)", "C++", "Bulk TCP коннект\n:7778 — ChunkData, EntitySnapshot")
+        Component(net_ctrl_q, "ctrl_queue_", "deque", "Очередь control-сообщений\nthread-safe, mutex-protected")
+        Component(net_bulk_q, "bulk_queue_", "deque", "Очередь bulk-сообщений\nthread-safe, mutex-protected")
+        Component(net_mempool, "ConcurrentMemoryPool", "C++", "Lock-free memory pool\nдля буферов FlatBuffers")
+        Component(net_reconnect, "Reconnect Logic", "C++", "3 попытки реконнекта\nexponential backoff")
+    }
+
+    Component(core_ref, "GameClient Core", "Оркестратор")
+    Component(world_ref, "Мир (World)", "World, ChunkStorage")
+    Component(ui_ref, "UI", "UIManager, окна")
+}
+
+Rel(core_ref, net_client, "владеет NetClient", "")
+Rel(net_client, net_ctrl, "управляет", "")
+Rel(net_client, net_bulk, "управляет", "")
+Rel(net_client, net_ctrl_q, "читает/пишет", "")
+Rel(net_client, net_bulk_q, "читает/пишет", "")
+Rel(net_client, net_mempool, "использует", "")
+Rel(net_client, net_reconnect, "вызывает при разрыве", "")
+
+' Внешние связи
+Rel(net_client, world_ref, "ChunkCallback → World::OnChunkReceived()\nBlockUpdateCallback → World::OnBlockUpdate()", "")
+Rel(net_client, ui_ref, "InventoryUpdateCallback → UIManager\nBlockEntityUpdateCallback\nCraftResponseCallback", "")
+Rel(ui_ref, net_client, "SendPlayerAction / SendCraftRequest\nSendInventoryAction", "")
+
+SHOW_LEGEND()
+@enduml
