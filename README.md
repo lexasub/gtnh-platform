@@ -102,7 +102,7 @@ The goal: understanding and fixing a component should require fewer changes and 
 
 ## Build
 
-### Dependencies
+### Dependencies (TODO NEED CONTRIBUTE)
 
 Two ways to get dependencies:
 
