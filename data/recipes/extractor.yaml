@@ -1,9 +1,10 @@
 # GTNH Platform — extractor recipes
-# Auto-converted from JSON
+# All recipes are STEAM-only (steam_extractor, block 59)
 class: extractor
 recipes:
 
   - name: gtnh:extract_dust_from_ore
+    energy_in: STEAM
     inputs:
       - { item: 3, count: 1 }
     outputs:
@@ -13,6 +14,7 @@ recipes:
     max_tier: 32767
 
   - name: gtnh:extract_rubber
+    energy_in: STEAM
     inputs:
       - { item: 13, count: 1 }
     outputs:

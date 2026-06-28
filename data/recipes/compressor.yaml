@@ -1,9 +1,10 @@
 # GTNH Platform — compressor recipes
-# Auto-converted from JSON
+# All recipes are STEAM-only (steam_compressor, block 52)
 class: compressor
 recipes:
 
   - name: gtnh:compress_bronze
+    energy_in: STEAM
     inputs:
       - { item: 55, count: 1 }
     outputs:
@@ -13,6 +14,7 @@ recipes:
     max_tier: 32767
 
   - name: gtnh:compress_iron
+    energy_in: STEAM
     inputs:
       - { item: 4, count: 1 }
     outputs:

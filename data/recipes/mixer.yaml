@@ -1,9 +1,10 @@
 # GTNH Platform — mixer recipes
-# Auto-converted from JSON
+# All recipes are STEAM-only (steam_mixer, block 60)
 class: mixer
 recipes:
 
   - name: gtnh:mix_alloy
+    energy_in: STEAM
     inputs:
       - { item: 9, count: 2 }
       - { item: 10, count: 1 }
@@ -14,6 +15,7 @@ recipes:
     max_tier: 32767
 
   - name: gtnh:mix_bronze_dust
+    energy_in: STEAM
     inputs:
       - { item: 58, count: 3 }
       - { item: 57, count: 1 }

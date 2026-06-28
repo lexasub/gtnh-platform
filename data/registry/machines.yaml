@@ -2,12 +2,11 @@
 # Defines energy types, machine classes, and their block variants.
 #
 # Each machine class groups variants that share the same recipe pool.
-# Variants differ by energy type, tier, and performance multipliers.
+# Variants differ by energy in/out, tier, and performance multipliers.
 #
-# Recipe matching: when a machine queries for recipes, the system:
-#   1. Looks up machine class by block_id
-#   2. Filters recipes by the variant's energy_type + tier range
-#   3. Applies variant multiplier to base recipe values
+# energy_in:  what the machine consumes (empty = burns fuel directly)
+# energy_out: what the machine produces (empty = consumer)
+# Both can be set for converters (e.g. steam→heat boiler)
 
 energy_types:
   # Heat: basic combustion/thermal
@@ -32,7 +31,7 @@ machine_classes:
     variants:
       - block_id: 36
         name: heat_furnace
-        energy_type: HEAT
+        energy_in: HEAT
         tier: 0
         role: consumer
         slots: { input: 1, output: 1 }
@@ -46,7 +45,7 @@ machine_classes:
     variants:
       - block_id: 48
         name: heat_macerator
-        energy_type: HEAT
+        energy_in: HEAT
         tier: 0
         role: consumer
         slots: { input: 1, output: 1 }
@@ -57,7 +56,7 @@ machine_classes:
 
       - block_id: 51
         name: steam_macerator
-        energy_type: STEAM
+        energy_in: STEAM
         tier: 0
         role: consumer
         slots: { input: 2, output: 2 }
@@ -71,7 +70,7 @@ machine_classes:
     variants:
       - block_id: 52
         name: steam_compressor
-        energy_type: STEAM
+        energy_in: STEAM
         tier: 0
         role: consumer
         slots: { input: 1, output: 1 }
@@ -85,7 +84,7 @@ machine_classes:
     variants:
       - block_id: 58
         name: bronze_alloy_smelter
-        energy_type: STEAM
+        energy_in: STEAM
         tier: 0
         role: consumer
         slots: { input: 2, output: 1 }
@@ -99,7 +98,7 @@ machine_classes:
     variants:
       - block_id: 59
         name: steam_extractor
-        energy_type: STEAM
+        energy_in: STEAM
         tier: 0
         role: consumer
         slots: { input: 1, output: 1 }
@@ -113,7 +112,7 @@ machine_classes:
     variants:
       - block_id: 60
         name: steam_mixer
-        energy_type: STEAM
+        energy_in: STEAM
         tier: 0
         role: consumer
         slots: { input: 2, output: 1 }
@@ -125,18 +124,21 @@ machine_classes:
   # ── Boiler ───────────────────────────────────────────────
   - class: boiler
     variants:
+      # Burns solid fuel → produces steam
       - block_id: 49
         name: steam_solid_boiler
-        energy_type: STEAM
+        energy_out: STEAM
         tier: 0
         role: producer
         slots: { input: 2, output: 1 }
         energy:
           max_output: 32
 
+      # Consumes steam → produces HEAT (steam→heat converter)
       - block_id: 50
         name: steam_heat_boiler
-        energy_type: HEAT
+        energy_in: STEAM
+        energy_out: HEAT
         tier: 0
         role: producer
         slots: { input: 1, output: 1 }
@@ -146,18 +148,20 @@ machine_classes:
   # ── Generator (produces energy from fuel) ───────────────
   - class: generator
     variants:
+      # Burns solid fuel → produces HEAT
       - block_id: 46
         name: heat_generator
-        energy_type: HEAT
+        energy_out: HEAT
         tier: 0
         role: producer
         slots: { input: 1, output: 0 }
         energy:
           max_output: 32
 
+      # Infinite ELECTRICITY source (creative)
       - block_id: 63
         name: creative_generator
-        energy_type: ELECTRICITY
+        energy_out: ELECTRICITY
         tier: 10
         role: producer
         energy:
@@ -170,7 +174,7 @@ machine_classes:
     variants:
       - block_id: 0
         name: placeholder_electrolyser
-        energy_type: ELECTRICITY
+        energy_in: ELECTRICITY
         tier: 0
         role: consumer
         slots: { input: 1, output: 1 }
@@ -181,7 +185,7 @@ machine_classes:
     variants:
       - block_id: 0
         name: placeholder_chemical_reactor
-        energy_type: ELECTRICITY
+        energy_in: ELECTRICITY
         tier: 0
         role: consumer
         slots: { input: 2, output: 1 }
@@ -192,7 +196,7 @@ machine_classes:
     variants:
       - block_id: 0
         name: placeholder_assembler
-        energy_type: ELECTRICITY
+        energy_in: ELECTRICITY
         tier: 0
         role: consumer
         slots: { input: 4, output: 1 }
@@ -203,7 +207,7 @@ machine_classes:
     variants:
       - block_id: 0
         name: placeholder_crystallizer
-        energy_type: ELECTRICITY
+        energy_in: ELECTRICITY
         tier: 0
         role: consumer
         slots: { input: 1, output: 1 }

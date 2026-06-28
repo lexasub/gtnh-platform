@@ -1,8 +1,11 @@
 # GTNH Platform — Macerator recipes
-# Tier bounds: all recipes available to HEAT:0 and STEAM:0 macerators
+# HEAT-bound recipes are for heat_macerator (block 48).
+# STEAM-bound recipes are for steam_macerator (block 51).
+# Unmarked recipes work on any energy type.
 class: macerator
 recipes:
   - name: macerator_iron_ore
+    energy_in: HEAT
     inputs:
       - { item: 3, count: 1 }
     outputs:
@@ -12,6 +15,7 @@ recipes:
     max_tier: 32767
 
   - name: macerator_gold_ore
+    energy_in: HEAT
     inputs:
       - { item: 5, count: 1 }
     outputs:
@@ -89,5 +93,36 @@ recipes:
     outputs:
       - { item: 9, count: 2 }
     duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Steam-only recipes (faster: 160 vs 400 tick) ────────
+  - name: gtnh:steam_mac_copper
+    energy_in: STEAM
+    inputs:
+      - { item: 53, count: 1 }
+    outputs:
+      - { item: 9, count: 2 }
+    duration: 160
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:steam_mac_gold
+    energy_in: STEAM
+    inputs:
+      - { item: 5, count: 1 }
+    outputs:
+      - { item: 9, count: 2 }
+    duration: 160
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:steam_mac_iron
+    energy_in: STEAM
+    inputs:
+      - { item: 3, count: 1 }
+    outputs:
+      - { item: 9, count: 2 }
+    duration: 160
     min_tier: 0
     max_tier: 32767
