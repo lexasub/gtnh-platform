@@ -67,6 +67,7 @@ namespace renderlib {
     // Client extensions — passed through to ImGuiDrawFn for debug overlay
     struct FrameExt {
         struct { int32_t x, y, z; } highlightedBlock{};
+        uint16_t highlightedBlockId = 0;   // block ID at highlighted position, 0 if none
         bool hasHighlight = false;
         size_t chunkCount = 0;
         size_t meshCount = 0;

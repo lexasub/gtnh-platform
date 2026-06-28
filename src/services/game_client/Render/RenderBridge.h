@@ -39,6 +39,7 @@ public:
         const Camera& camera, const InputState& input,
         int width, int height, float dt, bool mouseCaptured,
         bool hasHighlight, BlockPos highlightedBlock,
+        uint16_t highlightedBlockId,
         size_t chunkCount, size_t meshCount);
 
     void SubmitFrame(const renderlib::FrameRenderData& frd);

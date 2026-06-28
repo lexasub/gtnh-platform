@@ -4,6 +4,7 @@
 #include "Camera/Camera.h"
 #include "Common/InputState.h"
 #include "Common/Types.h"
+#include "Crafting/ClientItemRegistry.h"
 #include "UI/UIManager.h"
 #include <imgui.h>
 #include <glm/gtc/type_ptr.hpp>
@@ -49,6 +50,7 @@ renderlib::FrameRenderData RenderBridge::BuildFrameData(
     const Camera& camera, const InputState& input,
     int width, int height, float dt, bool mouseCaptured,
     bool hasHighlight, BlockPos highlightedBlock,
+    uint16_t highlightedBlockId,
     size_t chunkCount, size_t meshCount)
 {
     auto frd = renderlib::FrameRenderData{
@@ -70,6 +72,7 @@ renderlib::FrameRenderData RenderBridge::BuildFrameData(
         .ext = {
             .highlightedBlock = {highlightedBlock.x, highlightedBlock.y,
                                  highlightedBlock.z},
+            .highlightedBlockId = highlightedBlockId,
             .hasHighlight     = hasHighlight,
             .chunkCount       = chunkCount,
             .meshCount        = meshCount
@@ -166,6 +169,32 @@ void RenderBridge::ImGuiOverlay(const renderlib::FrameRenderData& frame) {
         dl->AddLine(screen[e[0]], screen[e[1]],
                     IM_COL32(255, 255, 255, 220), 2.5f);
     }
+
+    // ---- Block name label (above highlighted block) ----
+    if (frame.ext.highlightedBlockId != 0) {
+        std::string_view name = ItemRegistry::GetName(frame.ext.highlightedBlockId);
+        if (!name.empty()) {
+            glm::vec3 labelPos(hb.x + 0.5f, hb.y + 1.3f, hb.z + 0.5f);
+            glm::vec4 clip = vp * glm::vec4(labelPos, 1.0f);
+            if (clip.w > 0.0f) {
+                glm::vec3 ndc = glm::vec3(clip) / clip.w;
+                float sx = (ndc.x * 0.5f + 0.5f) * sw;
+                float sy = (-ndc.y * 0.5f + 0.5f) * sh;
+
+                ImVec2 textSize = ImGui::CalcTextSize(name.data(), name.data() + name.size());
+                const float padding = 8.0f;
+                ImVec2 bgMin(sx - textSize.x * 0.5f - padding, sy - textSize.y - padding);
+                ImVec2 bgMax(sx + textSize.x * 0.5f + padding, sy + padding);
+
+                dl->AddRectFilled(bgMin, bgMax, IM_COL32(0, 0, 0, 180), 6.0f);
+                dl->AddRect(bgMin, bgMax, IM_COL32(255, 255, 255, 60), 6.0f);
+                dl->AddText(ImGui::GetFont(), ImGui::GetFontSize() * 1.5f,
+                            ImVec2(sx - textSize.x * 0.5f, sy - textSize.y),
+                            IM_COL32(255, 255, 255, 255), name.data(), name.data() + name.size());
+            }
+        }
+    }
+
     // ---- Game UI windows (inventory, workbench, machines, etc.) ----
     if (g_uiMgr) {
         g_uiMgr->RenderAll();

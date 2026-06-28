@@ -251,11 +251,16 @@ void GameClient::Run() {
 
         renderBridge_.SetCameraPosition(camera_.pos);
 
+        uint16_t highlightedBlockId = 0;
+        if (interaction_.HasHighlight()) {
+            highlightedBlockId = world_.GetBlockAt(interaction_.GetHighlightedBlock());
+        }
+
         auto frd = RenderBridge::BuildFrameData(
             camera_, inputMgr_.State(), width_, height_, dt,
             inputMgr_.IsMouseCaptured(), interaction_.HasHighlight(),
-            interaction_.GetHighlightedBlock(), world_.ChunkCount(),
-            meshMgr_.MeshCount());
+            interaction_.GetHighlightedBlock(), highlightedBlockId,
+            world_.ChunkCount(), meshMgr_.MeshCount());
 
         renderBridge_.SubmitFrame(frd);
         renderBridge_.WaitForFrame();
