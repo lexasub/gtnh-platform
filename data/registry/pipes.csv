@@ -1,0 +1,5 @@
+id,item_id,name,tier,flow_rate,items_per_sec
+1,61,fluid_pipe,0,100,0
+2,62,item_pipe,0,0,8
+3,64,dense_item_pipe,1,0,32
+4,65,dense_fluid_pipe,1,400,0

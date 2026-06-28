@@ -1,0 +1,77 @@
+# GTNH Platform — assembler recipes
+# Auto-converted from JSON
+class: assembler
+recipes:
+
+  - name: gtnh:assembler_crafting_table
+    inputs:
+      - { item: 13, count: 4 }
+    outputs:
+      - { item: 14, count: 1 }
+    duration: 150
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:assembler_dust
+    inputs:
+      - { item: 4, count: 6 }
+    outputs:
+      - { item: 9, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:assembler_glass
+    inputs:
+      - { item: 11, count: 1 }
+      - { item: 12, count: 1 }
+    outputs:
+      - { item: 12, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:assembler_rod
+    inputs:
+      - { item: 4, count: 6 }
+    outputs:
+      - { item: 10, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:assembler_stone_axe
+    inputs:
+      - { item: 8, count: 2 }
+    outputs:
+      - { item: 34, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:assembler_wooden_axe
+    inputs:
+      - { item: 13, count: 2 }
+    outputs:
+      - { item: 41, count: 1 }
+    duration: 180
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:assembler_wooden_shovel
+    inputs:
+      - { item: 13, count: 1 }
+    outputs:
+      - { item: 42, count: 1 }
+    duration: 180
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:assembler_wooden_sword
+    inputs:
+      - { item: 13, count: 1 }
+    outputs:
+      - { item: 43, count: 1 }
+    duration: 180
+    min_tier: 0
+    max_tier: 32767

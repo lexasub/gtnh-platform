@@ -1,0 +1,23 @@
+# GTNH Platform — Generator recipes
+#
+# heat_generator: burns fuel → produces HEAT
+#   energy in: none (burns fuel items directly)
+#   energy out: HEAT (energy_output)
+#
+# creative_generator: no recipes (infinite source, handled
+#   directly by CreativeGeneratorSystem)
+class: generator
+recipes:
+
+  # ── Solid fuel → HEAT ───────────────────────────────────
+  - name: generator_coal
+    inputs:
+      - { item: 44, count: 1 }   # coal
+    duration: 100
+    energy_output: 4000   # HU generated
+
+  - name: generator_oak_planks
+    inputs:
+      - { item: 13, count: 1 }   # oak_planks
+    duration: 50
+    energy_output: 1000   # HU generated

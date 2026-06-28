@@ -1,0 +1,40 @@
+# GTNH Platform — Boiler recipes
+#
+# steam_solid_boiler: burns fuel + water → produces STEAM
+#   energy in: none (burns fuel items directly)
+#   energy out: STEAM (energy_output)
+#
+# steam_heat_boiler: consumes STEAM + water → produces HEAT
+#   energy in: STEAM (eu)
+#   energy out: HEAT (energy_output)
+class: boiler
+recipes:
+
+  # ── Solid fuel → steam ─────────────────────────────────
+  - name: boiler_coal
+    inputs:
+      - { item: 44, count: 1 }   # coal
+      - { item: 16, count: 1 }   # water_bucket
+    outputs:
+      - { item: 16, count: 1, consume: false }  # return empty bucket
+    duration: 100
+    energy_output: 3200   # SU generated
+
+  - name: boiler_oak_planks
+    inputs:
+      - { item: 13, count: 1 }   # oak_planks
+      - { item: 16, count: 1 }   # water_bucket
+    outputs:
+      - { item: 16, count: 1, consume: false }
+    duration: 50
+    energy_output: 800    # SU generated
+
+  # ── Steam → heat (converter) ────────────────────────────
+  - name: boiler_steam_to_heat
+    inputs:
+      - { item: 84, count: 1 }   # water
+    outputs:
+      - { item: 85, count: 1 }   # steam
+    duration: 20
+    eu: 32                # consumes 32 SU/tick
+    energy_output: 28     # produces 28 HU/tick

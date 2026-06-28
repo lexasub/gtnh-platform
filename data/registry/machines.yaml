@@ -1,0 +1,210 @@
+# GTNH Platform — Machine Registry
+# Defines energy types, machine classes, and their block variants.
+#
+# Each machine class groups variants that share the same recipe pool.
+# Variants differ by energy type, tier, and performance multipliers.
+#
+# Recipe matching: when a machine queries for recipes, the system:
+#   1. Looks up machine class by block_id
+#   2. Filters recipes by the variant's energy_type + tier range
+#   3. Applies variant multiplier to base recipe values
+
+energy_types:
+  # Heat: basic combustion/thermal
+  - type: HEAT
+    label: "HU"
+    tiers: [0]
+
+  # Steam: pressurized steam power
+  - type: STEAM
+    label: "SU"
+    tiers: [0, 1]
+
+  # Electricity: voltage tiers
+  - type: ELECTRICITY
+    label: "EU"
+    tiers: [0, 1, 2, 3, 4, 5]
+
+machine_classes:
+
+  # ── Furnace ──────────────────────────────────────────────
+  - class: furnace
+    variants:
+      - block_id: 36
+        name: heat_furnace
+        energy_type: HEAT
+        tier: 0
+        role: consumer
+        slots: { input: 1, output: 1 }
+        energy:
+          capacity: 10000
+          usage: 32
+        multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
+
+  # ── Macerator ────────────────────────────────────────────
+  - class: macerator
+    variants:
+      - block_id: 48
+        name: heat_macerator
+        energy_type: HEAT
+        tier: 0
+        role: consumer
+        slots: { input: 1, output: 1 }
+        energy:
+          capacity: 10000
+          usage: 32
+        multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
+
+      - block_id: 51
+        name: steam_macerator
+        energy_type: STEAM
+        tier: 0
+        role: consumer
+        slots: { input: 2, output: 2 }
+        energy:
+          capacity: 10000
+          usage: 32
+        multiplier: { duration: 0.8, output: 1.0, eu: 1.0 }
+
+  # ── Compressor ───────────────────────────────────────────
+  - class: compressor
+    variants:
+      - block_id: 52
+        name: steam_compressor
+        energy_type: STEAM
+        tier: 0
+        role: consumer
+        slots: { input: 1, output: 1 }
+        energy:
+          capacity: 10000
+          usage: 32
+        multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
+
+  # ── Alloy Smelter ───────────────────────────────────────
+  - class: alloy_smelter
+    variants:
+      - block_id: 58
+        name: bronze_alloy_smelter
+        energy_type: STEAM
+        tier: 0
+        role: consumer
+        slots: { input: 2, output: 1 }
+        energy:
+          capacity: 10000
+          usage: 32
+        multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
+
+  # ── Extractor ────────────────────────────────────────────
+  - class: extractor
+    variants:
+      - block_id: 59
+        name: steam_extractor
+        energy_type: STEAM
+        tier: 0
+        role: consumer
+        slots: { input: 1, output: 1 }
+        energy:
+          capacity: 10000
+          usage: 32
+        multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
+
+  # ── Mixer ────────────────────────────────────────────────
+  - class: mixer
+    variants:
+      - block_id: 60
+        name: steam_mixer
+        energy_type: STEAM
+        tier: 0
+        role: consumer
+        slots: { input: 2, output: 1 }
+        energy:
+          capacity: 10000
+          usage: 32
+        multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
+
+  # ── Boiler ───────────────────────────────────────────────
+  - class: boiler
+    variants:
+      - block_id: 49
+        name: steam_solid_boiler
+        energy_type: STEAM
+        tier: 0
+        role: producer
+        slots: { input: 2, output: 1 }
+        energy:
+          max_output: 32
+
+      - block_id: 50
+        name: steam_heat_boiler
+        energy_type: HEAT
+        tier: 0
+        role: producer
+        slots: { input: 1, output: 1 }
+        energy:
+          max_output: 32
+
+  # ── Generator (produces energy from fuel) ───────────────
+  - class: generator
+    variants:
+      - block_id: 46
+        name: heat_generator
+        energy_type: HEAT
+        tier: 0
+        role: producer
+        slots: { input: 1, output: 0 }
+        energy:
+          max_output: 32
+
+      - block_id: 63
+        name: creative_generator
+        energy_type: ELECTRICITY
+        tier: 10
+        role: producer
+        energy:
+          capacity: 1000000
+          max_output: 100000
+
+  # ── Electrolyser ─────────────────────────────────────────
+  # (class defined but no block placed yet — recipes exist with m=0)
+  - class: electrolyser
+    variants:
+      - block_id: 0
+        name: placeholder_electrolyser
+        energy_type: ELECTRICITY
+        tier: 0
+        role: consumer
+        slots: { input: 1, output: 1 }
+        multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
+
+  # ── Chemical Reactor ─────────────────────────────────────
+  - class: chemical_reactor
+    variants:
+      - block_id: 0
+        name: placeholder_chemical_reactor
+        energy_type: ELECTRICITY
+        tier: 0
+        role: consumer
+        slots: { input: 2, output: 1 }
+        multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
+
+  # ── Assembler ────────────────────────────────────────────
+  - class: assembler
+    variants:
+      - block_id: 0
+        name: placeholder_assembler
+        energy_type: ELECTRICITY
+        tier: 0
+        role: consumer
+        slots: { input: 4, output: 1 }
+        multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
+
+  # ── Crystallizer ─────────────────────────────────────────
+  - class: crystallizer
+    variants:
+      - block_id: 0
+        name: placeholder_crystallizer
+        energy_type: ELECTRICITY
+        tier: 0
+        role: consumer
+        slots: { input: 1, output: 1 }
+        multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }

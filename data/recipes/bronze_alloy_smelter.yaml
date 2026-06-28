@@ -1,0 +1,24 @@
+# GTNH Platform — alloy_smelter recipes
+# Auto-converted from JSON
+class: alloy_smelter
+recipes:
+
+  - name: gtnh:alloy_bronze
+    inputs:
+      - { item: 58, count: 3 }
+      - { item: 57, count: 1 }
+    outputs:
+      - { item: 55, count: 4 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:alloy_bronze_from_ingots
+    inputs:
+      - { item: 54, count: 3 }
+      - { item: 26, count: 1 }
+    outputs:
+      - { item: 55, count: 4 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767

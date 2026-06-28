@@ -1,0 +1,22 @@
+# GTNH Platform — compressor recipes
+# Auto-converted from JSON
+class: compressor
+recipes:
+
+  - name: gtnh:compress_bronze
+    inputs:
+      - { item: 55, count: 1 }
+    outputs:
+      - { item: 56, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:compress_iron
+    inputs:
+      - { item: 4, count: 1 }
+    outputs:
+      - { item: 4, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767

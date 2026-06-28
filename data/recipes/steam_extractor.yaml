@@ -1,0 +1,22 @@
+# GTNH Platform — extractor recipes
+# Auto-converted from JSON
+class: extractor
+recipes:
+
+  - name: gtnh:extract_dust_from_ore
+    inputs:
+      - { item: 3, count: 1 }
+    outputs:
+      - { item: 9, count: 3 }
+    duration: 180
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:extract_rubber
+    inputs:
+      - { item: 13, count: 1 }
+    outputs:
+      - { item: 59, count: 1 }
+    duration: 150
+    min_tier: 0
+    max_tier: 32767

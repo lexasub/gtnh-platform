@@ -1,0 +1,93 @@
+# GTNH Platform — Macerator recipes
+# Tier bounds: all recipes available to HEAT:0 and STEAM:0 macerators
+class: macerator
+recipes:
+  - name: macerator_iron_ore
+    inputs:
+      - { item: 3, count: 1 }
+    outputs:
+      - { item: 9, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+
+  - name: macerator_gold_ore
+    inputs:
+      - { item: 5, count: 1 }
+    outputs:
+      - { item: 9, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+
+  - name: macerator_tin_ore
+    inputs:
+      - { item: 25, count: 1 }
+    outputs:
+      - { item: 9, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+
+  - name: macerator_uranium_ore
+    inputs:
+      - { item: 27, count: 1 }
+    outputs:
+      - { item: 9, count: 2 }
+    duration: 500
+    min_tier: 0
+    max_tier: 32767
+
+  - name: macerator_electrum_ore
+    inputs:
+      - { item: 23, count: 1 }
+    outputs:
+      - { item: 9, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+
+  - name: macerator_quartz_ore
+    inputs:
+      - { item: 19, count: 1 }
+    outputs:
+      - { item: 20, count: 2 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767
+
+  - name: macerator_cobblestone
+    inputs:
+      - { item: 7, count: 1 }
+    outputs:
+      - { item: 11, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: macerator_stone
+    inputs:
+      - { item: 8, count: 1 }
+    outputs:
+      - { item: 11, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: macerator_glass
+    inputs:
+      - { item: 12, count: 1 }
+    outputs:
+      - { item: 11, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: macerator_coal
+    inputs:
+      - { item: 44, count: 1 }
+    outputs:
+      - { item: 9, count: 2 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767

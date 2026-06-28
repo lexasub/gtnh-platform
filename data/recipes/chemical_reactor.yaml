@@ -1,0 +1,58 @@
+# GTNH Platform — chemical_reactor recipes
+# Auto-converted from JSON
+class: chemical_reactor
+recipes:
+
+  - name: gtnh:chemical_reactor_acid
+    inputs:
+      - { item: 18, count: 1 }
+    outputs:
+      - { item: 18, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:chemical_reactor_copper_reduction
+    inputs:
+      - { item: 53, count: 1 }
+    outputs:
+      - { item: 54, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:chemical_reactor_hydrogen
+    inputs:
+      - { item: 16, count: 1 }
+    outputs:
+      - { item: 17, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:chemical_reactor_iron_reduction
+    inputs:
+      - { item: 3, count: 1 }
+    outputs:
+      - { item: 4, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:chemical_reactor_oxygen
+    inputs:
+      - { item: 16, count: 1, consume: false }
+    outputs:
+      - { item: 31, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:chemical_reactor_water_split
+    inputs:
+      - { item: 1000, count: 1 }
+    outputs:
+      - { item: 17, count: 2 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767

@@ -1,0 +1,10 @@
+id,name,color,density,gaseous,temperature
+1,water,1e5bc9,1000,false,300
+2,steam,e0e0e0,0.6,true,400
+3,sulfuric_acid,d4a0a0,1840,false,300
+4,hydrogen,a0d4a0,0.0899,true,300
+5,oxygen,a0a0d4,1.429,true,300
+6,molten_iron,b7410e,6980,false,1811
+7,molten_gold,ffd700,17310,false,1337
+8,molten_copper,b87333,8020,false,1358
+9,molten_tin,cdaf95,7280,false,505
