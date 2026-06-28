@@ -168,6 +168,16 @@ machine_classes:
           capacity: 1000000
           max_output: 100000
 
+  # ── Crafting Table ───────────────────────────────────────
+  # Manual (no energy) — player 3×3 workbench
+  - class: crafting_table
+    variants:
+      - block_id: 14
+        name: crafting_table
+        tier: 0
+        role: consumer
+        slots: { input: 9, output: 1 }
+
   # ── Electrolyser ─────────────────────────────────────────
   # (class defined but no block placed yet — recipes exist with m=0)
   - class: electrolyser
