@@ -52,10 +52,24 @@ int main(int argc, char** argv) {
     RecipeManager::ItemRegistry::instance().loadFromCSV(dataDir + "/data/registry/items.csv");
 
     auto recipes = std::make_shared<RecipeManager::RecipeManager>();
+
+    // Load legacy JSON recipes (backward compat)
     if (!recipes->loadRecipesFromDirectory(dataDir + "/data/recipes/")) {
-        spdlog::warn("No recipes loaded from {}", dataDir + "/data/recipes/");
+        spdlog::warn("No JSON recipes loaded from {}", dataDir + "/data/recipes/");
     } else {
-        spdlog::info("Loaded {} recipes", recipes->recipeCount());
+        spdlog::info("Loaded {} total recipes (JSON)", recipes->recipeCount());
+    }
+
+    // Load machine definitions from YAML (class→variant mapping)
+    if (recipes->loadMachinesFromYaml(dataDir + "/data/registry/machines.yaml")) {
+        spdlog::info("Loaded machine classes from machines.yaml");
+    } else {
+        spdlog::warn("Failed to load machines.yaml — YAML recipes will be skipped");
+    }
+
+    // Load YAML recipes (tier-aware, class-based)
+    if (recipes->loadRecipesFromYamlDirectory(dataDir + "/data/recipes/")) {
+        spdlog::info("Total recipes after YAML load: {}", recipes->recipeCount());
     }
 
     asio::io_context ioCtx;

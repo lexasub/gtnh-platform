@@ -3,6 +3,7 @@ set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(spdlog REQUIRED)
+find_package(yaml-cpp REQUIRED)
 
 add_library(machine_registry STATIC
     MachineRegistry.cpp
@@ -14,4 +15,5 @@ target_include_directories(machine_registry PUBLIC
 
 target_link_libraries(machine_registry PUBLIC
     spdlog::spdlog
+    yaml-cpp::yaml-cpp
 )

@@ -8,6 +8,7 @@
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <array>
+#include <climits>
 
 using json = nlohmann::json;
 
@@ -18,8 +19,6 @@ namespace RecipeManager {
 // ---------------------------------------------------------------------------
 
 bool Recipe::matches(const std::vector<ItemStack>& container_items) const {
-    // Quick check: we need at least as many non-empty container slots as non-empty inputs.
-    // Empty slots in the recipe (item_id==0) are just filler — they don't count as required.
     size_t requiredInputs = 0;
     for (const auto& req : inputs) {
         if (req.item_id != 0) ++requiredInputs;
@@ -30,17 +29,14 @@ bool Recipe::matches(const std::vector<ItemStack>& container_items) const {
     }
     if (available < requiredInputs) return false;
 
-    // For each required (non-empty) input, find a matching container slot.
-    // consume=false items (e.g., buckets) are not consumed — skip them in matching.
     std::vector<bool> used(container_items.size(), false);
 
     for (const auto& req : inputs) {
-        if (req.item_id == 0) continue;  // Empty recipe slot — no item required
+        if (req.item_id == 0) continue;
         bool found = false;
         for (size_t i = 0; i < container_items.size(); ++i) {
             if (used[i]) continue;
             const auto& slot = container_items[i];
-            // Must match item_id, have enough count, and match metadata
             if (slot.item_id == req.item_id &&
                 slot.count >= req.count &&
                 slot.metadata == req.metadata)
@@ -57,10 +53,8 @@ bool Recipe::matches(const std::vector<ItemStack>& container_items) const {
 }
 
 std::vector<ItemStack> Recipe::craft(const std::vector<ItemStack>& container_items) const {
-    // Copy container — we'll modify it
     std::vector<ItemStack> result = container_items;
 
-    // Consume inputs (skip items with consume=false)
     for (const auto& req : inputs) {
         if (!req.consume) {
             if (req.replace_item > 0) {
@@ -90,13 +84,11 @@ std::vector<ItemStack> Recipe::craft(const std::vector<ItemStack>& container_ite
         }
     }
 
-    // Find first empty slot and add outputs
     for (const auto& out : outputs) {
-        // Try to stack with existing matching slot first
         bool stacked = false;
         for (auto& slot : result) {
             if (slot.item_id == out.item_id && slot.metadata == out.metadata) {
-                uint8_t space = 64 - slot.count; // max stack = 64 for now
+                uint8_t space = 64 - slot.count;
                 if (space >= out.count) {
                     slot.count += out.count;
                     stacked = true;
@@ -106,7 +98,6 @@ std::vector<ItemStack> Recipe::craft(const std::vector<ItemStack>& container_ite
         }
         if (stacked) continue;
 
-        // Find empty slot
         bool placed = false;
         for (auto& slot : result) {
             if (slot.item_id == 0) {
@@ -173,9 +164,426 @@ std::unique_ptr<Protocol::Container> RecipeManager::createContainer(const std::v
         flatbuffers::span<const Protocol::ItemStack, 9>(itemsArray), 0, size);
 }
 
-// ---------------------------------------------------------------------------
-// Loading
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// YAML: Machine registry loading
+// ===========================================================================
+
+EnergyType RecipeManager::parseEnergyType(const std::string& str) const {
+    if (str.empty()) return static_cast<EnergyType>(255);
+    if (str == "HEAT") return EnergyType::HEAT;
+    if (str == "STEAM") return EnergyType::STEAM;
+    return EnergyType::ELECTRICITY;
+}
+
+bool RecipeManager::loadMachinesFromYaml(const std::string& filePath) {
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+        spdlog::warn("Failed to open machines YAML: {}", filePath);
+        return false;
+    }
+
+    YAML::Node root;
+    try {
+        root = YAML::Load(file);
+    } catch (const YAML::Exception& e) {
+        spdlog::warn("Failed to parse machines YAML {}: {}", filePath, e.what());
+        return false;
+    }
+
+    if (!root["machine_classes"]) {
+        spdlog::warn("machines.yaml: no 'machine_classes' section");
+        return false;
+    }
+
+    bool result = parseYamlMachines(root);
+    spdlog::info("Loaded {} machine classes, {} block_id mappings",
+                 classes_.size(), classByBlockId_.size());
+    return result;
+}
+
+bool RecipeManager::parseYamlMachines(const YAML::Node& root) {
+    auto classes = root["machine_classes"];
+    for (size_t i = 0; i < classes.size(); ++i) {
+        if (!parseYamlMachineClass(classes[i])) {
+            spdlog::warn("machines.yaml: failed to parse class at index {}", i);
+        }
+    }
+    return true;
+}
+
+bool RecipeManager::parseYamlMachineClass(const YAML::Node& node) {
+    if (!node["class"] || !node["variants"]) {
+        return false;
+    }
+
+    MachineClassDef def;
+    def.name = node["class"].as<std::string>();
+
+    auto variants = node["variants"];
+    for (size_t i = 0; i < variants.size(); ++i) {
+        const auto& v = variants[i];
+        MachineVariant mv;
+        mv.block_id       = v["block_id"].as<uint16_t>(0);
+        mv.name           = v["name"].as<std::string>("");
+        mv.energy_in      = parseEnergyType(v["energy_in"].as<std::string>(""));
+        mv.energy_out     = parseEnergyType(v["energy_out"].as<std::string>(""));
+        mv.tier           = v["tier"].as<int16_t>(0);
+
+        def.variants.push_back(mv);
+
+        if (mv.block_id > 0) {
+            if (classByBlockId_.count(mv.block_id) > 0) {
+                spdlog::warn("Block ID {} already mapped to class '{}', overriding with '{}'",
+                             mv.block_id, classByBlockId_[mv.block_id], def.name);
+            }
+            classByBlockId_[mv.block_id] = def.name;
+            tierByBlockId_[mv.block_id] = mv.tier;
+            energyInByBlockId_[mv.block_id] = static_cast<uint8_t>(mv.energy_in);
+        }
+    }
+
+    classes_[def.name] = std::move(def);
+    return true;
+}
+
+int16_t RecipeManager::getMachineTier(uint16_t block_id) const {
+    auto it = tierByBlockId_.find(block_id);
+    return (it != tierByBlockId_.end()) ? it->second : 0;
+}
+
+uint8_t RecipeManager::getMachineEnergyIn(uint16_t block_id) const {
+    auto it = energyInByBlockId_.find(block_id);
+    return (it != energyInByBlockId_.end()) ? it->second : ENERGY_TYPE_ANY;
+}
+
+const std::string& RecipeManager::getMachineClass(uint16_t block_id) const {
+    auto it = classByBlockId_.find(block_id);
+    return (it != classByBlockId_.end()) ? it->second : emptyString_;
+}
+
+// ===========================================================================
+// YAML: Recipe loading
+// ===========================================================================
+
+bool RecipeManager::loadRecipesFromYamlFile(const std::string& filePath) {
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+        spdlog::warn("Failed to open YAML recipe file: {}", filePath);
+        return false;
+    }
+
+    YAML::Node root;
+    try {
+        root = YAML::Load(file);
+    } catch (const YAML::Exception& e) {
+        spdlog::warn("Failed to parse YAML recipe {}: {}", filePath, e.what());
+        return false;
+    }
+
+    // Optional top-level class override
+    std::string defaultClass;
+    if (root["class"]) {
+        defaultClass = root["class"].as<std::string>();
+    }
+
+    if (!root["recipes"]) {
+        spdlog::warn("YAML recipe file {}: no 'recipes' section", filePath);
+        return false;
+    }
+
+    return parseYamlRecipes(root["recipes"], defaultClass);
+}
+
+bool RecipeManager::loadRecipesFromYamlDirectory(const std::string& directoryPath) {
+    spdlog::info("Loading YAML recipes from directory: {}", directoryPath);
+
+    try {
+        std::vector<std::string> recipeFiles;
+        for (const auto& entry : std::filesystem::directory_iterator(directoryPath)) {
+            auto ext = entry.path().extension();
+            if (entry.is_regular_file() && (ext == ".yaml" || ext == ".yml")) {
+                recipeFiles.push_back(entry.path().string());
+            }
+        }
+
+        if (recipeFiles.empty()) {
+            spdlog::warn("No YAML recipe files found in directory: {}", directoryPath);
+            return true;
+        }
+
+        for (const auto& filePath : recipeFiles) {
+            if (loadRecipesFromYamlFile(filePath)) {
+                // Count recipes loaded from this file
+                // (We count them by scanning recipes_ — but since they're
+                // already added there, just note the file was loaded)
+                spdlog::info("Loaded YAML recipes from {}", filePath);
+            }
+        }
+
+        // Count recipes with machine_class set (YAML-originated)
+        size_t yamlCount = 0;
+        for (const auto& [id, recipe] : recipes_) {
+            if (!recipe.machine_class.empty()) ++yamlCount;
+        }
+        spdlog::info("Loaded {} total YAML-sourced recipes", yamlCount);
+        return true;
+
+    } catch (const std::exception& e) {
+        spdlog::error("Error loading YAML recipes from directory {}: {}", directoryPath, e.what());
+        return false;
+    }
+}
+
+bool RecipeManager::parseYamlRecipes(const YAML::Node& root, const std::string& defaultClass) {
+    if (!root.IsSequence()) {
+        spdlog::warn("YAML 'recipes' is not a sequence");
+        return false;
+    }
+
+    size_t loaded = 0;
+    for (size_t i = 0; i < root.size(); ++i) {
+        if (parseYamlRecipe(root[i], defaultClass)) {
+            ++loaded;
+        }
+    }
+    return loaded > 0;
+}
+
+uint16_t RecipeManager::resolveItemName(const std::string& name) const {
+    return ItemRegistry::instance().nameToId(name);
+}
+
+bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& defaultClass) {
+    try {
+        Recipe recipe;
+
+        // Identifier
+        if (!yaml["name"]) {
+            spdlog::warn("YAML recipe missing 'name' field");
+            return false;
+        }
+        recipe.id = yaml["name"].as<std::string>();
+
+        // Class (per-recipe override or default)
+        if (yaml["class"]) {
+            recipe.machine_class = yaml["class"].as<std::string>();
+        } else if (!defaultClass.empty()) {
+            recipe.machine_class = defaultClass;
+        } else {
+            spdlog::warn("YAML recipe '{}' has no machine class", recipe.id);
+            return false;
+        }
+
+        // Tier bounds (inclusive)
+        recipe.min_tier = yaml["min_tier"].as<int16_t>(0);
+        recipe.max_tier = yaml["max_tier"].as<int16_t>(32767);
+
+        // Energy type filter (optional — ENERGY_TYPE_ANY = matches all)
+        if (yaml["energy_in"]) {
+            std::string ei = yaml["energy_in"].as<std::string>();
+            if (ei == "HEAT")       recipe.energy_type = static_cast<uint8_t>(1);
+            else if (ei == "STEAM") recipe.energy_type = static_cast<uint8_t>(2);
+            else if (ei == "ELECTRICITY") recipe.energy_type = static_cast<uint8_t>(0);
+            else spdlog::warn("YAML recipe '{}': unknown energy_in '{}'", recipe.id, ei);
+        }
+
+        // Inputs
+        if (yaml["inputs"]) {
+            auto inputs = yaml["inputs"];
+            if (inputs.IsSequence()) {
+                for (size_t i = 0; i < inputs.size(); ++i) {
+                    auto item = parseYamlInputItem(inputs[i]);
+                    if (item.item_id != 0 || inputs[i]["item"]) {
+                        // Even id=0 items can be valid if explicitly set
+                        recipe.inputs.push_back(item);
+                    }
+                }
+            }
+        }
+
+        // Outputs (required)
+        if (!yaml["outputs"] || !yaml["outputs"].IsSequence()) {
+            spdlog::warn("YAML recipe '{}': missing or invalid 'outputs'", recipe.id);
+            return false;
+        }
+        auto outputs = yaml["outputs"];
+        for (size_t i = 0; i < outputs.size(); ++i) {
+            recipe.outputs.push_back(parseYamlOutputItem(outputs[i]));
+        }
+        if (recipe.outputs.empty()) {
+            spdlog::warn("YAML recipe '{}': empty outputs", recipe.id);
+            return false;
+        }
+
+        // Duration
+        recipe.duration = yaml["duration"].as<uint32_t>(200);
+        if (recipe.duration == 0) recipe.duration = 1;
+
+        // Energy cost (optional)
+        recipe.energy_cost = yaml["eu"].as<float>(0.0f);
+
+        // Energy output (optional — >0 for generators/boilers)
+        recipe.energy_output = yaml["energy_output"].as<float>(0.0f);
+
+        // Conditions (optional)
+        if (yaml["conditions"]) {
+            parseYamlConditions(yaml["conditions"], recipe.conditions);
+        }
+
+        // Store
+        recipes_[recipe.id] = recipe;
+        recipesByClass_[recipe.machine_class].push_back(recipe.id);
+
+        return true;
+
+    } catch (const std::exception& e) {
+        if (yaml["name"]) {
+            spdlog::warn("Error parsing YAML recipe '{}': {}", yaml["name"].as<std::string>(), e.what());
+        } else {
+            spdlog::warn("Error parsing unnamed YAML recipe: {}", e.what());
+        }
+        return false;
+    }
+}
+
+InputItem RecipeManager::parseYamlInputItem(const YAML::Node& node) {
+    InputItem item;
+    item.item_id = 0;
+    item.count = 1;
+    item.consume = true;
+    item.replace_item = 0;
+    item.replace_meta = 0;
+
+    if (!node.IsMap()) return item;
+
+    // Resolve item name or numeric ID
+    if (node["item"]) {
+        if (node["item"].IsScalar()) {
+            std::string itemStr = node["item"].as<std::string>();
+            // Try numeric first
+            try {
+                item.item_id = static_cast<uint16_t>(std::stoi(itemStr));
+            } catch (...) {
+                // String name — resolve via registry
+                item.item_id = resolveItemName(itemStr);
+            }
+        } else {
+            item.item_id = node["item"].as<uint16_t>(0);
+        }
+    }
+
+    item.count = node["count"].as<uint8_t>(1);
+
+    if (node["consume"]) {
+        item.consume = node["consume"].as<bool>(true);
+    }
+
+    if (node["replace"]) {
+        std::string replaceStr = node["replace"].as<std::string>("");
+        if (!replaceStr.empty()) {
+            item.replace_item = resolveItemName(replaceStr);
+        }
+    }
+    if (node["replace_meta"]) {
+        item.replace_meta = node["replace_meta"].as<uint16_t>(0);
+    }
+
+    return item;
+}
+
+OutputItem RecipeManager::parseYamlOutputItem(const YAML::Node& node) {
+    OutputItem out;
+    out.item_id = 0;
+    out.count = 1;
+    out.metadata = 0;
+
+    if (!node.IsMap()) return out;
+
+    // Resolve item name or numeric ID
+    if (node["item"]) {
+        if (node["item"].IsScalar()) {
+            std::string itemStr = node["item"].as<std::string>();
+            try {
+                out.item_id = static_cast<uint16_t>(std::stoi(itemStr));
+            } catch (...) {
+                out.item_id = resolveItemName(itemStr);
+            }
+        } else {
+            out.item_id = node["item"].as<uint16_t>(0);
+        }
+    }
+
+    out.count = node["count"].as<uint8_t>(1);
+    out.metadata = node["meta"].as<uint16_t>(0);
+
+    // Optional display metadata
+    if (node["display_name"]) {
+        out.display_name = node["display_name"].as<std::string>();
+    }
+    if (node["color"]) {
+        out.color = node["color"].as<std::string>();
+    }
+    if (node["unlocalized_name"]) {
+        out.unlocalized_name = node["unlocalized_name"].as<std::string>();
+    }
+    if (node["lore"] && node["lore"].IsSequence()) {
+        std::vector<std::string> loreVec;
+        for (size_t i = 0; i < node["lore"].size(); ++i) {
+            loreVec.push_back(node["lore"][i].as<std::string>());
+        }
+        out.lore = loreVec;
+    }
+
+    return out;
+}
+
+void RecipeManager::parseYamlConditions(const YAML::Node& node, RecipeConditions& conditions) {
+    if (!node.IsMap()) return;
+
+    // Environment temperature
+    if (node["temperature"]) {
+        if (!conditions.environment) conditions.environment.emplace();
+        if (!conditions.environment->temperature) conditions.environment->temperature.emplace();
+        auto temp = node["temperature"];
+        if (temp["min"]) conditions.environment->temperature->min = temp["min"].as<float>();
+        if (temp["max"]) conditions.environment->temperature->max = temp["max"].as<float>();
+    }
+
+    // Purity
+    if (node["purity"]) {
+        if (!conditions.environment) conditions.environment.emplace();
+        conditions.environment->purity = node["purity"].as<float>();
+    }
+
+    // Biomes
+    if (node["biomes"] && node["biomes"].IsSequence()) {
+        if (!conditions.environment) conditions.environment.emplace();
+        for (size_t i = 0; i < node["biomes"].size(); ++i) {
+            if (node["biomes"][i].IsScalar()) {
+                try {
+                    conditions.environment->biomes.push_back(
+                        node["biomes"][i].as<uint16_t>());
+                } catch (...) {
+                    // String biome names would need a biome registry
+                }
+            }
+        }
+    }
+
+    // Machine energy conditions
+    if (node["machine"]) {
+        auto mach = node["machine"];
+        if (!conditions.machine) conditions.machine.emplace();
+        if (mach["energy_min"]) conditions.machine->energy_min = mach["energy_min"].as<uint32_t>();
+        if (mach["energy_max"]) conditions.machine->energy_max = mach["energy_max"].as<uint32_t>();
+        if (mach["network_id"]) conditions.machine->network_id = mach["network_id"].as<uint32_t>();
+        if (mach["facing"])     conditions.machine->facing = mach["facing"].as<uint8_t>();
+    }
+}
+
+// ===========================================================================
+// Legacy JSON loading (unchanged)
+// ===========================================================================
 
 bool RecipeManager::loadRecipesFromDirectory(const std::string& directoryPath) {
     spdlog::info("Loading recipes from directory: {}", directoryPath);
@@ -256,10 +664,6 @@ bool RecipeManager::loadRecipesFromDirectory(const std::string& directoryPath) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Compact format parser
-// ---------------------------------------------------------------------------
-
 bool RecipeManager::parseRecipeFile(const json& root) {
     if (!root.is_object()) return false;
     bool anyOk = false;
@@ -278,7 +682,6 @@ bool RecipeManager::parseCompactRecipe(const std::string& recipeId, const json& 
 
         Recipe recipe;
         recipe.id = recipeId;
-
         recipe.machine_id = data.value("m", 0);
 
         if (data.contains("in") && data["in"].is_array()) {
@@ -332,7 +735,7 @@ bool RecipeManager::parseCompactRecipe(const std::string& recipeId, const json& 
                 }
             }
         }
-        
+
         if (data.contains("mach") && data["mach"].is_object()) {
             auto& mach = data["mach"];
             recipe.conditions.machine.emplace();
@@ -352,7 +755,7 @@ bool RecipeManager::parseCompactRecipe(const std::string& recipeId, const json& 
                 recipe.conditions.machine->facing = mach["facing"].get<uint8_t>();
             }
         }
-        
+
         if (data.contains("spec") && data["spec"].is_array()) {
             for (const auto& specElem : data["spec"]) {
                 if (specElem.is_array() && specElem.size() >= 3) {
@@ -360,17 +763,10 @@ bool RecipeManager::parseCompactRecipe(const std::string& recipeId, const json& 
                     sc.key = specElem[0].get<uint16_t>();
                     sc.value_type = specElem[1].get<uint8_t>();
                     switch (sc.value_type) {
-                        case 0:
-                            sc.int_value = specElem[2].get<int32_t>();
-                            break;
-                        case 1:
-                            sc.float_value = specElem[2].get<float>();
-                            break;
-                        case 2:
-                            sc.string_value = specElem[2].get<std::string>();
-                            break;
-                        default:
-                            continue;
+                        case 0: sc.int_value = specElem[2].get<int32_t>(); break;
+                        case 1: sc.float_value = specElem[2].get<float>(); break;
+                        case 2: sc.string_value = specElem[2].get<std::string>(); break;
+                        default: continue;
                     }
                     recipe.conditions.special.push_back(std::move(sc));
                 }
@@ -427,6 +823,11 @@ std::vector<OutputItem> RecipeManager::parseCompactOutputList(const json& arr) {
     return result;
 }
 
+OutputItem RecipeManager::parseCompactOutputEntry(const json& /*entry*/) {
+    // Stub: not used directly
+    return {0, 1, 0, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt};
+}
+
 OutputItem RecipeManager::parseOutputOverride(uint16_t itemId, uint8_t count, const json& obj) {
     OutputItem out;
     out.item_id  = itemId;
@@ -455,10 +856,6 @@ OutputItem RecipeManager::parseOutputOverride(uint16_t itemId, uint8_t count, co
 
     return out;
 }
-
-// ---------------------------------------------------------------------------
-// Legacy parsers
-// ---------------------------------------------------------------------------
 
 bool RecipeManager::parseLegacyRecipeJson(const json& recipeData) {
     try {
@@ -591,20 +988,60 @@ uint16_t RecipeManager::stringToMachineId(const std::string& str) {
     return 0;
 }
 
-// ---------------------------------------------------------------------------
-// RPC implementations
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// RPC implementations (modified: tier-aware matching)
+// ===========================================================================
 
 std::string RecipeManager::checkRecipe(const Protocol::Container* container, uint16_t machine_id) {
     auto containerItems = convertContainerItems(container);
 
-    auto it = recipesByMachineId_.find(machine_id);
-    if (it == recipesByMachineId_.end()) return "";
+    // === Legacy lookup (by machine_id / block_id) ===
+    auto legacyIt = recipesByMachineId_.find(machine_id);
+    if (legacyIt != recipesByMachineId_.end()) {
+        for (const auto& recipeId : legacyIt->second) {
+            const auto& recipe = recipes_.at(recipeId);
+            if (recipe.matches(containerItems)) {
+                return recipe.id;
+            }
+        }
+    }
 
-    for (const auto& recipeId : it->second) {
-        const auto& recipe = recipes_.at(recipeId);
-        if (recipe.matches(containerItems)) {
-            return recipe.id;
+    // === New lookup (by class + tier) ===
+    auto classIt = classByBlockId_.find(machine_id);
+    if (classIt != classByBlockId_.end()) {
+        const std::string& machineClass = classIt->second;
+        int16_t machineTier = getMachineTier(machine_id);
+        uint8_t machineEnergyIn = getMachineEnergyIn(machine_id);
+
+        auto recipesIt = recipesByClass_.find(machineClass);
+        if (recipesIt != recipesByClass_.end()) {
+            // Try recipes from most specific (highest min_tier ≤ machine tier)
+            // to least specific (lowest min_tier)
+            std::vector<const Recipe*> candidates;
+            for (const auto& recipeId : recipesIt->second) {
+                const auto& recipe = recipes_.at(recipeId);
+                if (recipe.min_tier <= machineTier && machineTier <= recipe.max_tier) {
+                    if (recipe.energy_type != ENERGY_TYPE_ANY && recipe.energy_type != machineEnergyIn) {
+                        continue;
+                    }
+                    if (recipe.matches(containerItems)) {
+                        candidates.push_back(&recipe);
+                    }
+                }
+            }
+
+            // Pick the best: highest min_tier wins (most specific)
+            if (!candidates.empty()) {
+                const Recipe* best = nullptr;
+                int16_t bestMinTier = -1;
+                for (const auto* r : candidates) {
+                    if (r->min_tier > bestMinTier) {
+                        bestMinTier = r->min_tier;
+                        best = r;
+                    }
+                }
+                if (best) return best->id;
+            }
         }
     }
 
@@ -620,32 +1057,60 @@ const Recipe* RecipeManager::getRecipeById(const std::string& id) const {
 }
 
 const Recipe* RecipeManager::findRecipeByInputs(uint16_t machine_id, const std::vector<ItemStack>& inputs) const {
-    auto it = recipesByMachineId_.find(machine_id);
-    if (it == recipesByMachineId_.end()) {
-        return nullptr;
+    // === Legacy lookup (by machine_id / block_id) ===
+    auto legacyIt = recipesByMachineId_.find(machine_id);
+    if (legacyIt != recipesByMachineId_.end()) {
+        const Recipe* best = nullptr;
+        size_t bestInputs = 0;
+        for (const auto& recipeId : legacyIt->second) {
+            const auto& recipe = recipes_.at(recipeId);
+            if (recipe.matches(inputs)) {
+                size_t n = 0;
+                for (const auto& req : recipe.inputs) {
+                    if (req.item_id != 0) ++n;
+                }
+                if (n > bestInputs) {
+                    bestInputs = n;
+                    best = &recipe;
+                }
+            }
+        }
+        if (best) return best;
     }
 
-    // Find the BEST match: among all matching recipes, prefer the one
-    // with the most non-empty inputs (most specific = best fit).
-    // Without this, a 4-cobble recipe matches before an 8-cobble recipe.
-    const Recipe* best = nullptr;
-    size_t bestInputs = 0;
+    // === New lookup (by class + tier) ===
+    auto classIt = classByBlockId_.find(machine_id);
+    if (classIt != classByBlockId_.end()) {
+        const std::string& machineClass = classIt->second;
+        int16_t machineTier = getMachineTier(machine_id);
+        uint8_t machineEnergyIn = getMachineEnergyIn(machine_id);
 
-    for (const auto& recipeId : it->second) {
-        const auto& recipe = recipes_.at(recipeId);
-        if (recipe.matches(inputs)) {
-            size_t n = 0;
-            for (const auto& req : recipe.inputs) {
-                if (req.item_id != 0) ++n;
+        auto recipesIt = recipesByClass_.find(machineClass);
+        if (recipesIt != recipesByClass_.end()) {
+            const Recipe* best = nullptr;
+            int16_t bestMinTier = -1;
+
+            for (const auto& recipeId : recipesIt->second) {
+                const auto& recipe = recipes_.at(recipeId);
+                if (recipe.min_tier <= machineTier && machineTier <= recipe.max_tier) {
+                    if (recipe.energy_type != ENERGY_TYPE_ANY && recipe.energy_type != machineEnergyIn) {
+                        continue;
+                    }
+                    if (recipe.matches(inputs)) {
+                        // Prefer higher min_tier (more specific to this tier)
+                        if (recipe.min_tier > bestMinTier) {
+                            bestMinTier = recipe.min_tier;
+                            best = &recipe;
+                        }
+                    }
+                }
             }
-            if (n > bestInputs) {
-                bestInputs = n;
-                best = &recipe;
-            }
+
+            return best;
         }
     }
 
-    return best;
+    return nullptr;
 }
 
 std::unique_ptr<Protocol::Container> RecipeManager::craft(const std::string& recipeId, const Protocol::Container* container) {
@@ -678,12 +1143,8 @@ bool RecipeManager::evaluateConditions(const std::string& recipeId, const Machin
     return evaluator.evaluate(it->second, state);
 }
 
-// ---------------------------------------------------------------------------
-// FlatBuffers message handlers
-// ---------------------------------------------------------------------------
-
 std::vector<uint8_t> RecipeManager::handleCheckRecipeRequest(const Protocol::CheckRecipeReq* request, uint32_t req_id) {
-           std::string recipeId = checkRecipe(request->container(), request->machine_id());
+    std::string recipeId = checkRecipe(request->container(), request->machine_id());
 
     flatbuffers::FlatBufferBuilder builder;
     auto idOffset = builder.CreateString(recipeId);

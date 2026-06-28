@@ -40,13 +40,21 @@ struct OutputItem {
     std::optional<std::string> unlocalized_name;
 };
 
+/// Sentinel: recipe matches any machine energy type
+static constexpr uint8_t ENERGY_TYPE_ANY = 255;
+
 struct Recipe {
     std::string id;
     std::vector<InputItem> inputs;
     std::vector<OutputItem> outputs;
- uint16_t machine_id = 0;
+    uint16_t machine_id = 0;       // legacy: block_id
+    std::string machine_class;     // new: class name (empty = legacy format)
+    int16_t min_tier = 0;          // new: inclusive lower tier bound
+    int16_t max_tier = 32767;      // new: inclusive upper tier bound (INT16_MAX)
+    uint8_t energy_type = ENERGY_TYPE_ANY;  // filter: machine must have this energy_in (255 = any)
     uint32_t duration;
-    float energy_cost;
+    float energy_cost;        // energy consumed per tick (eu / recipe base)
+    float energy_output;      // energy produced per operation (0 for consumers)
     RecipeConditions conditions;
 
     bool matches(const std::vector<ItemStack>& container_items) const;

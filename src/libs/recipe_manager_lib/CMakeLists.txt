@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(flatbuffers REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(SQLite3 REQUIRED)
 
 set(FBS_DIR ${CMAKE_SOURCE_DIR}/src/protocol)
@@ -50,4 +51,5 @@ target_link_libraries(recipe_manager_lib PUBLIC
     flatbuffers::flatbuffers
     spdlog::spdlog
     nlohmann_json::nlohmann_json
+    yaml-cpp::yaml-cpp
 )

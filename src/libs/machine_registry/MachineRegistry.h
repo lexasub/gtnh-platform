@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <memory>
 #include <optional>
+#include <yaml-cpp/yaml.h>
 
 enum class EnergyType : uint8_t {
     ELECTRICITY = 0,
@@ -37,6 +38,10 @@ public:
     static std::unique_ptr<MachineRegistry> Load(const char* consumers_path,
                                                   const char* producers_path);
 
+    /// Load machine definitions from machines.yaml (replaces CSV).
+    /// Call this instead of Load() to use the new YAML registry.
+    static std::unique_ptr<MachineRegistry> LoadFromYaml(const char* yaml_path);
+
     // Global singleton access (set by whoever loads the registry)
     static MachineRegistry* instance() { return instance_; }
     static void setInstance(MachineRegistry* reg) { instance_ = reg; }
@@ -53,6 +58,7 @@ private:
     MachineRegistry() = default;
     bool LoadConsumers(const char* path);
     bool LoadProducers(const char* path);
+    bool ParseYamlMachineVariant(const YAML::Node& variant, const std::string& className);
     std::unordered_map<uint16_t, MachineInfo> machines_;
 
     static MachineRegistry* instance_;

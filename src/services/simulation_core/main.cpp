@@ -100,14 +100,13 @@ int main(int argc, char* argv[]) {
     const char*  chunkstore_host = (argc > 3) ? argv[3] : "127.0.0.1";
     uint16_t     chunkstore_port = (argc > 4) ? static_cast<uint16_t>(std::atoi(argv[4])) : 5001;
     const char*  recipes_dir     = (argc > 5) ? argv[5] : "/home/su/src/local/gtnh-platform/data/recipes";
-    const char*  consumers_path  = (argc > 6) ? argv[6] : "data/registry/consumers.csv";
-    const char*  producers_path  = (argc > 7) ? argv[7] : "data/registry/producers.csv";
+    const char*  machines_yaml   = (argc > 6) ? argv[6] : "data/registry/machines.yaml";
 
     spdlog::set_level(spdlog::level::debug);
     spdlog::info("Starting SimulationCore...");
 
-    // ── Machine registry ──────────────────────────────────────────────────
-    auto machineRegistry = MachineRegistry::Load(consumers_path, producers_path);
+    // ── Machine registry (from YAML) ──────────────────────────────────────
+    auto machineRegistry = MachineRegistry::LoadFromYaml(machines_yaml);
     if (machineRegistry) {
         MachineRegistry::setInstance(machineRegistry.get());
         spdlog::info("Loaded {} machine types from registry", machineRegistry->All().size());

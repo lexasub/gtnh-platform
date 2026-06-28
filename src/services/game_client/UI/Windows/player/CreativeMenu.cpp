@@ -21,7 +21,7 @@ void CreativeMenu::rebuildItemList() {
         items_.push_back({id, info->name, false});
     }
 
-    // Load from MachineRegistry (consumers.csv + producers.csv)
+    // Load from MachineRegistry (machines.yaml)
     if (auto* reg = MachineRegistry::instance()) {
         for (auto& [id, info] : reg->All()) {
             // Check if already added from ItemRegistry

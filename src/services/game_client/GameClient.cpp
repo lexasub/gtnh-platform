@@ -111,16 +111,14 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
     // ── Item registry — load items.csv ───────────────────────────────────
     ItemRegistry::Init();
 
-    // ── Machine registry — load consumers.csv + producers.csv ────────────
+    // ── Machine registry — load from machines.yaml ───────────────────────
     {
-        const char* consumers_path = std::getenv("GTNH_CONSUMERS_PATH");
-        if (!consumers_path) consumers_path = "data/registry/consumers.csv";
-        const char* producers_path = std::getenv("GTNH_PRODUCERS_PATH");
-        if (!producers_path) producers_path = "data/registry/producers.csv";
-        auto reg = MachineRegistry::Load(consumers_path, producers_path);
-        if (reg) {
+        const char* yaml_path = std::getenv("GTNH_MACHINES_YAML");
+        if (!yaml_path) yaml_path = "data/registry/machines.yaml";
+        auto reg = MachineRegistry::LoadFromYaml(yaml_path);
+        if (reg && reg->All().size() > 0) {
             MachineRegistry::setInstance(reg.release());
-            spdlog::info("Loaded machine registry from {} and {}", consumers_path, producers_path);
+            spdlog::info("Loaded machine registry from {}", yaml_path);
         }
     }
     BlockUIFactory::LoadFromRegistry(*MachineRegistry::instance());

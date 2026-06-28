@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <spdlog/spdlog.h>
+#include <yaml-cpp/yaml.h>
 
 namespace {
 
@@ -38,7 +39,108 @@ inline std::vector<std::string> SplitCSVLine(const std::string& line) {
     return result;
 }
 
+inline std::optional<EnergyType> ParseOptEnergy(const YAML::Node& node) {
+    if (!node || !node.IsScalar()) return std::nullopt;
+    auto s = node.as<std::string>("");
+    if (s.empty()) return std::nullopt;
+    return ParseEnergy(s);
+}
+
 } // anonymous namespace
+
+// ===========================================================================
+//  YAML loader (from machines.yaml)
+// ===========================================================================
+
+std::unique_ptr<MachineRegistry> MachineRegistry::LoadFromYaml(const char* yaml_path) {
+    auto registry = std::unique_ptr<MachineRegistry>(new MachineRegistry());
+
+    std::ifstream file(yaml_path);
+    if (!file.is_open()) {
+        SPDLOG_ERROR("Cannot open machines YAML: {}", yaml_path);
+        return registry;
+    }
+
+    YAML::Node root;
+    try {
+        root = YAML::Load(file);
+    } catch (const YAML::Exception& e) {
+        SPDLOG_ERROR("Failed to parse machines YAML {}: {}", yaml_path, e.what());
+        return registry;
+    }
+
+    if (!root["machine_classes"]) {
+        SPDLOG_WARN("machines.yaml: no 'machine_classes' section");
+        return registry;
+    }
+
+    auto classes = root["machine_classes"];
+    for (size_t i = 0; i < classes.size(); ++i) {
+        const auto& cls = classes[i];
+        if (!cls["class"] || !cls["variants"]) continue;
+        std::string className = cls["class"].as<std::string>();
+        auto variants = cls["variants"];
+        for (size_t j = 0; j < variants.size(); ++j) {
+            registry->ParseYamlMachineVariant(variants[j], className);
+        }
+    }
+
+    SPDLOG_DEBUG("MachineRegistry: loaded {} machines from YAML", registry->machines_.size());
+    return registry;
+}
+
+bool MachineRegistry::ParseYamlMachineVariant(const YAML::Node& v, const std::string& className) {
+    try {
+        MachineInfo info;
+        info.id = v["block_id"].as<uint16_t>(0);
+        if (info.id == 0) return false; // skip placeholders
+
+        info.name = v["name"].as<std::string>("");
+        info.machine_class = className;
+        info.role = ParseRole(v["role"].as<std::string>("consumer"));
+
+        // energy types
+        info.energy_in = ParseOptEnergy(v["energy_in"]);
+        info.energy_out = ParseOptEnergy(v["energy_out"]);
+
+        info.tier = v["tier"].as<int>(0);
+
+        // slots
+        if (v["slots"]) {
+            info.slots_in = v["slots"]["input"].as<int>(0);
+            info.slots_out = v["slots"]["output"].as<int>(0);
+        } else {
+            info.slots_in = 0;
+            info.slots_out = 0;
+        }
+
+        // energy config
+        if (v["energy"]) {
+            info.capacity = v["energy"]["capacity"].as<int>(0);
+            if (info.role == MachineRole::CONSUMER) {
+                info.maxInput = v["energy"]["usage"].as<int>(32);
+                info.maxOutput = 0;
+            } else {
+                info.maxInput = v["energy"]["usage"].as<int>(0);
+                info.maxOutput = v["energy"]["max_output"].as<int>(32);
+            }
+        } else {
+            info.capacity = 0;
+            info.maxInput = 0;
+            info.maxOutput = 0;
+        }
+
+        machines_.insert({info.id, std::move(info)});
+        return true;
+    } catch (const std::exception& e) {
+        SPDLOG_WARN("Parse error in YAML machine variant '{}': {}", className, e.what());
+        return false;
+    }
+}
+
+// ===========================================================================
+//  CSV loaders (deprecated — kept for backward compat)
+// ===========================================================================
 
 std::unique_ptr<MachineRegistry> MachineRegistry::Load(const char* consumers_path,
                                                         const char* producers_path) {

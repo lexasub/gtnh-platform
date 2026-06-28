@@ -8,6 +8,7 @@ glfw/3.4
 glm/1.0.1
 miniaudio/0.11.22
 nlohmann_json/3.11.3
+yaml-cpp/0.8.0
 spdlog/1.17.0
 xorg/system
 opengl/system
