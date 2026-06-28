@@ -53,13 +53,6 @@ int main(int argc, char** argv) {
 
     auto recipes = std::make_shared<RecipeManager::RecipeManager>();
 
-    // Load legacy JSON recipes (backward compat)
-    if (!recipes->loadRecipesFromDirectory(dataDir + "/data/recipes/")) {
-        spdlog::warn("No JSON recipes loaded from {}", dataDir + "/data/recipes/");
-    } else {
-        spdlog::info("Loaded {} total recipes (JSON)", recipes->recipeCount());
-    }
-
     // Load machine definitions from YAML (class→variant mapping)
     if (recipes->loadMachinesFromYaml(dataDir + "/data/registry/machines.yaml")) {
         spdlog::info("Loaded machine classes from machines.yaml");

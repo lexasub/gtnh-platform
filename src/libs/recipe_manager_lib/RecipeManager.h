@@ -7,7 +7,6 @@
 #include <optional>
 #include <flatbuffers/flatbuffers.h>
 #include "recipe_generated.h"
-#include <nlohmann/json.hpp>
 #include <yaml-cpp/yaml.h>
 #include "RecipeTypes.h"
 #include "RecipeConditions.h"
@@ -49,20 +48,7 @@ public:
     RecipeManager();
     ~RecipeManager();
 
-    // ── JSON loaders (existing) ──────────────────────────────────────
-    bool loadRecipesFromDirectory(const std::string& directoryPath);
-    bool parseRecipeFile(const nlohmann::json& root);
-    bool parseCompactRecipe(const std::string& recipeId, const nlohmann::json& data);
-    bool parseLegacyRecipeJson(const nlohmann::json& recipeData);
-    std::vector<InputItem> parseCompactInputList(const nlohmann::json& arr);
-    std::vector<OutputItem> parseCompactOutputList(const nlohmann::json& arr);
-    OutputItem parseCompactOutputEntry(const nlohmann::json& entry);
-    OutputItem parseOutputOverride(uint16_t itemId, uint8_t count, const nlohmann::json& overrideObj);
-    void parseLegacyItemStack(const nlohmann::json& data, std::vector<InputItem>& items);
-    void parseLegacyItemStackArray(const nlohmann::json& data, std::vector<InputItem>& items);
-    uint16_t stringToMachineId(const std::string& str);
-
-    // ── YAML loaders (new) ──────────────────────────────────────────
+    // ── YAML loaders ────────────────────────────────────────────────
     /// Load machines.yaml: builds class/variant maps used for recipe
     /// tier filtering and block_id → class resolution.
     bool loadMachinesFromYaml(const std::string& filePath);
@@ -103,8 +89,7 @@ public:
 private:
     // ── Recipe storage ──────────────────────────────────────────────
     std::unordered_map<std::string, Recipe> recipes_;
-    std::unordered_map<uint16_t, std::vector<std::string>> recipesByMachineId_;  // legacy: block_id → recipe IDs
-    std::unordered_map<std::string, std::vector<std::string>> recipesByClass_;    // new: class → recipe IDs
+    std::unordered_map<std::string, std::vector<std::string>> recipesByClass_;    // class → recipe IDs
 
     // ── Machine registry (from YAML) ────────────────────────────────
     std::unordered_map<std::string, MachineClassDef> classes_;

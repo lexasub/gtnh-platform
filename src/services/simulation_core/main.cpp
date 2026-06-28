@@ -114,10 +114,10 @@ int main(int argc, char* argv[]) {
 
     // ── Recipe manager ────────────────────────────────────────────────────
     auto recipeManager = std::make_shared<RecipeManager::RecipeManager>();
-    if (recipeManager->loadRecipesFromDirectory(recipes_dir)) {
-        spdlog::info("Loaded {} recipes from {}", recipeManager->recipeCount(), recipes_dir);
+    if (recipeManager->loadRecipesFromYamlDirectory(recipes_dir)) {
+        spdlog::info("Loaded {} YAML recipes from {}", recipeManager->recipeCount(), recipes_dir);
     } else {
-        spdlog::warn("Failed to load recipes from {}", recipes_dir);
+        spdlog::warn("Failed to load YAML recipes from {}", recipes_dir);
     }
 
     // ── Signals ───────────────────────────────────────────────────────────

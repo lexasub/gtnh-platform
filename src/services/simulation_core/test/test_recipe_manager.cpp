@@ -41,11 +41,11 @@ static void test_recipe_manager_empty() {
 
 static void test_recipe_manager_load_crafting_table() {
     RecipeManager::RecipeManager mgr;
-    bool ok = mgr.loadRecipesFromDirectory(DATA_DIR "/recipes");
-    CHECK(ok, "loaded recipes from data/recipes/");
+    bool ok = mgr.loadRecipesFromYamlDirectory(DATA_DIR "/recipes");
+    CHECK(ok, "loaded YAML recipes from data/recipes/");
     CHECK_GT(mgr.recipeCount(), size_t(0), "at least one recipe loaded");
 
-    auto* stick = mgr.getRecipeById("gtnh:stick");
+    auto* stick = mgr.getRecipeById("stick");
     if (stick) {
         CHECK_NE(stick->id, std::string(""), "stick recipe has id");
         CHECK_GT(stick->duration, uint32_t(0), "stick recipe has duration > 0");
@@ -58,7 +58,7 @@ static void test_recipe_manager_load_crafting_table() {
 
 static void test_recipe_manager_find_stick() {
     RecipeManager::RecipeManager mgr;
-    mgr.loadRecipesFromDirectory(DATA_DIR "/recipes");
+    mgr.loadRecipesFromYamlDirectory(DATA_DIR "/recipes");
 
     std::vector<RecipeManager::ItemStack> inputs = {
         {13, 1, 0},
@@ -74,7 +74,7 @@ static void test_recipe_manager_find_stick() {
 
 static void test_recipe_manager_no_match() {
     RecipeManager::RecipeManager mgr;
-    mgr.loadRecipesFromDirectory(DATA_DIR "/recipes");
+    mgr.loadRecipesFromYamlDirectory(DATA_DIR "/recipes");
 
     std::vector<RecipeManager::ItemStack> nonsense = {
         {99, 1, 0},
