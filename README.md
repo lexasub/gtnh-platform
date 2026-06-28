@@ -1,6 +1,13 @@
 # GTNH Platform
 
-**Distributed Minecraft-style platform** with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + Asio TCP).
+**A from-scratch voxel game engine and simulation platform inspired by GregTech: New Horizons.**
+
+Not a mod — a standalone C++ implementation with distributed architecture
+(ECS simulation, binary protocol, 9 services). Part platform for experimenting
+with GTNH-scale mechanics, part playable game with world, machines, pipes,
+crafting, and electric tools. (Gtnh inspired game in future)
+
+Built with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + Asio TCP).
 
 ## Git History & Contributing
 
