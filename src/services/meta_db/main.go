@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
+	"os"
 )
 
 const (
@@ -12,6 +14,17 @@ const (
 )
 
 func main() {
+	// Early version check (before any initialization)
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" || arg == "-v" {
+			fmt.Println("MetaDB Service (metadbd)")
+			fmt.Println("Version: (not configured - see main.go for setup instructions)")
+			fmt.Println("Git Hash: (not configured)")
+			fmt.Println("Build Date: (not configured)")
+			os.Exit(0)
+		}
+	}
+
 	m, err := NewMetaDB(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize MetaDB: %v", err)

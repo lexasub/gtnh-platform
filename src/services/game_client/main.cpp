@@ -2,6 +2,8 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <pthread.h>
 #include <csignal>
+#include <iostream>
+#include <string>
 #include "GameClient.h"
 
 static GameClient* g_client = nullptr;
@@ -16,6 +18,18 @@ static void signalHandler(int) {
 }
 
 int main(int argc, char* argv[]) {
+    // ── Early version check (before any initialization) ──────────────────
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--version" || arg == "-v") {
+            std::cout << "GameClient (gtnh-client)\n";
+            std::cout << "Version: (not configured - see main.cpp for setup instructions)\n";
+            std::cout << "Git Hash: (not configured)\n";
+            std::cout << "Build Date: (not configured)\n";
+            return 0;
+        }
+    }
+
     auto console = spdlog::stdout_color_mt("game_client");
     spdlog::set_default_logger(console);
     // Set to trace for IoUringClient SQE debugging, warn for normal use

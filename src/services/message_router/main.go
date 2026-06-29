@@ -14,6 +14,17 @@ import (
 )
 
 func main() {
+	// Early version check (before any initialization)
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" || arg == "-v" {
+			fmt.Println("MessageRouter Service (routerd)")
+			fmt.Println("Version: (not configured - see main.go for setup instructions)")
+			fmt.Println("Git Hash: (not configured)")
+			fmt.Println("Build Date: (not configured)")
+			os.Exit(0)
+		}
+	}
+
 	port := flag.Int("port", 4000, "TCP listen port")
 	flag.Parse()
 

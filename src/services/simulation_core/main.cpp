@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <vector>
 #include <array>
+#include <iostream>
+#include <string>
 
 #include "Network/clients/IoUringRouterClient.h"
 #include "Network/clients/IoUringChunkClient.h"
@@ -64,12 +66,17 @@
 // ── Signal handling ────────────────────────────────────────────────────────
 // File-scope statics are acceptable here — std::signal requires function pointers.
 static std::atomic<bool>  g_stop{false};
+static std::atomic<bool>  g_print_metrics{false};
 static asio::io_context*  g_io  = nullptr;
 
 static void handleSignal(int sig) {
     spdlog::info("Signal {} received, shutting down...", sig);
-    g_stop.store(true);
+    g_stop.store(true, std::memory_order_release);
     if (g_io) g_io->stop();
+}
+
+extern "C" void handleSIGUSR1([[maybe_unused]] int sig) {
+    g_print_metrics.store(true, std::memory_order_release);
 }
 
 // ── Topic handler helpers ──────────────────────────────────────────────────
@@ -95,6 +102,18 @@ entt::entity findEntityAt(const entt::registry& reg, int32_t x, int32_t y, int32
 // =========================================================================
 
 int main(int argc, char* argv[]) {
+    // ── Early version check (before any initialization) ──────────────────
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--version" || arg == "-v") {
+            std::cout << "SimulationCore Service (simcored)\n";
+            std::cout << "Version: (not configured - see main.cpp for setup instructions)\n";
+            std::cout << "Git Hash: (not configured)\n";
+            std::cout << "Build Date: (not configured)\n";
+            return 0;
+        }
+    }
+
     const char*  router_host     = (argc > 1) ? argv[1] : "127.0.0.1";
     uint16_t     router_port     = (argc > 2) ? static_cast<uint16_t>(std::atoi(argv[2])) : 4000;
     const char*  chunkstore_host = (argc > 3) ? argv[3] : "127.0.0.1";
@@ -124,6 +143,10 @@ int main(int argc, char* argv[]) {
     std::signal(SIGPIPE, SIG_IGN);
     std::signal(SIGINT,  handleSignal);
     std::signal(SIGTERM, handleSignal);
+    std::signal(SIGUSR1, handleSIGUSR1);  // Metrics on demand
+
+    // Record startup time for uptime calculation
+    const auto start_time = std::chrono::steady_clock::now();
 
     // ── Network clients ───────────────────────────────────────────────────
     auto routerClient     = std::make_shared<simcore::IoUringRouterClient>();
@@ -419,6 +442,32 @@ simcore::ActionDispatcher dispatcher(casHandler,
 
     while (!g_stop) {
         auto now = std::chrono::steady_clock::now();
+
+        // Check for metrics request
+        if (g_print_metrics.load(std::memory_order_acquire)) {
+            g_print_metrics.store(false, std::memory_order_release);
+            
+            // Calculate uptime
+            auto uptime_seconds = std::chrono::duration_cast<std::chrono::seconds>(
+                now - start_time).count();
+            int days = uptime_seconds / 86400;
+            int hours = (uptime_seconds % 86400) / 3600;
+            int minutes = (uptime_seconds % 3600) / 60;
+            int seconds = uptime_seconds % 60;
+            
+            // Count entities in registry
+            size_t entity_count = simulationEngine->reg().size();
+            
+            spdlog::info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            spdlog::info("METRICS: SimulationCore Service (simcored)");
+            spdlog::info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            spdlog::info("Uptime: {} days, {:02d}:{:02d}:{:02d}", days, hours, minutes, seconds);
+            spdlog::info("Router: {}:{}", router_host, router_port);
+            spdlog::info("ChunkStore: {}:{}", chunkstore_host, chunkstore_port);
+            spdlog::info("Active Entities: {}", entity_count);
+            spdlog::info("Tick Interval: {} ms", TICK_INTERVAL.count());
+            spdlog::info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        }
 
         if (now - lastHb >= std::chrono::seconds(20)) {
             lastHb = now;
