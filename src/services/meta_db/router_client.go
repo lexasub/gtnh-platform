@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/gtnh-platform/protocol/generated/go/Protocol"
 )
 
@@ -101,6 +102,8 @@ func (rc *RouterClient) connectAndServe() error {
 		"meta_db.inventory.get",
 		"meta_db.inventory.set",
 		"meta_db.inventory.snapshot",
+		"meta_db.quest.get",
+		"meta_db.quest.set",
 		"player.joined",
 		"player.left",
 	}
@@ -195,6 +198,12 @@ func (rc *RouterClient) handlePublish(payload []byte) {
 		return
 	case "player.left":
 		handlePlayerLeft(fbData, rc.m)
+		return
+	case "meta_db.quest.get":
+		handleQuestGet(fbData, rc.m)
+		return
+	case "meta_db.quest.set":
+		handleQuestSet(fbData, rc.m)
 		return
 	}
 
@@ -350,13 +359,29 @@ func handlePlayerJoined(data []byte, m *MetaDB) {
 	slots, err := m.GetInventory(playerID)
 	if err != nil {
 		log.Printf("[router] player.joined: GetInventory error: %v", err)
+	} else if len(slots) == 0 {
+		log.Printf("[router] player.joined: no saved inventory for player %d, skipping inventory publish", playerID)
+	} else {
+		m.PublishInventoryTo("player.inventory.load", playerID, slots)
+	}
+
+	pos, err := m.GetPlayerPosition(playerID)
+	if err != nil {
+		log.Printf("[router] player.joined: no saved position for player %d", playerID)
 		return
 	}
-	if len(slots) == 0 {
-		log.Printf("[router] player.joined: no saved inventory for player %d, skipping publish", playerID)
-		return
-	}
-	m.PublishInventoryTo("player.inventory.load", playerID, slots)
+	log.Printf("[router] player.joined: publishing position [%d,%d,%d] for player %d", pos.X, pos.Y, pos.Z, playerID)
+
+	builder := flatbuffers.NewBuilder(32)
+	Protocol.PlayerLeftStart(builder)
+	Protocol.PlayerLeftAddPlayerId(builder, playerID)
+	Protocol.PlayerLeftAddX(builder, int32(pos.X))
+	Protocol.PlayerLeftAddY(builder, int32(pos.Y))
+	Protocol.PlayerLeftAddZ(builder, int32(pos.Z))
+	left := Protocol.PlayerLeftEnd(builder)
+	builder.Finish(left)
+
+	m.rc.PublishRaw("player.position.load", builder.FinishedBytes())
 }
 
 func handlePlayerLeft(data []byte, m *MetaDB) {
@@ -372,5 +397,96 @@ func handlePlayerLeft(data []byte, m *MetaDB) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Quest handlers (binary protocol, no FlatBuffers wrapper)
+// Request format (meta_db.quest.get): [player_id:8 LE]
+// Response format: [player_id:8 LE][n_entries:2 LE][for each: quest_id:4 LE, status:1, progress_pct:1]
+// ---------------------------------------------------------------------------
 
+func handleQuestGet(data []byte, m *MetaDB) {
+	if len(data) < 8 {
+		log.Printf("[router] meta_db.quest.get: short payload (%d bytes)", len(data))
+		return
+	}
+	playerID := binary.LittleEndian.Uint64(data[:8])
+	log.Printf("[router] meta_db.quest.get: player=%d", playerID)
+
+	progress, err := GetQuestProgress(m.db, playerID)
+	if err != nil {
+		log.Printf("[router] meta_db.quest.get: GetQuestProgress error: %v", err)
+		resp := make([]byte, 10)
+		binary.LittleEndian.PutUint64(resp[:8], playerID)
+		binary.LittleEndian.PutUint16(resp[8:10], 0)
+		m.rc.PublishRaw("meta_db.quest.get.response", resp)
+		return
+	}
+
+	respLen := 10 + len(progress)*6
+	resp := make([]byte, respLen)
+	binary.LittleEndian.PutUint64(resp[:8], playerID)
+	binary.LittleEndian.PutUint16(resp[8:10], uint16(len(progress)))
+	for i, qp := range progress {
+		off := 10 + i*6
+		binary.LittleEndian.PutUint32(resp[off:off+4], qp.QuestID)
+		resp[off+4] = qp.Status
+		resp[off+5] = qp.ProgressPercent
+	}
+	m.rc.PublishRaw("meta_db.quest.get.response", resp)
+	log.Printf("[router] meta_db.quest.get: player=%d returned %d entries", playerID, len(progress))
+}
+
+func handleQuestSet(data []byte, m *MetaDB) {
+	if len(data) < 10 {
+		log.Printf("[router] meta_db.quest.set: short payload (%d bytes)", len(data))
+		return
+	}
+	playerID := binary.LittleEndian.Uint64(data[:8])
+	nEntries := int(binary.LittleEndian.Uint16(data[8:10]))
+	log.Printf("[router] meta_db.quest.set: player=%d entries=%d", playerID, nEntries)
+
+	if len(data) < 10+nEntries*6 {
+		log.Printf("[router] meta_db.quest.set: payload too short for %d entries", nEntries)
+		return
+	}
+
+	progresses := make([]QuestProgress, 0, nEntries)
+	for i := 0; i < nEntries; i++ {
+		off := 10 + i*6
+		qp := QuestProgress{
+			PlayerID:        playerID,
+			QuestID:         binary.LittleEndian.Uint32(data[off : off+4]),
+			Status:          data[off+4],
+			ProgressPercent: data[off+5],
+		}
+		progresses = append(progresses, qp)
+	}
+
+	if nEntries == 1 {
+		err := SetQuestProgress(m.db, playerID, progresses[0].QuestID, progresses[0].Status, progresses[0].ProgressPercent)
+		if err != nil {
+			log.Printf("[router] meta_db.quest.set: SetQuestProgress error: %v", err)
+		}
+	} else {
+		err := SetQuestProgressBatch(m.db, playerID, progresses)
+		if err != nil {
+			log.Printf("[router] meta_db.quest.set: SetQuestProgressBatch error: %v", err)
+		}
+	}
+
+	for _, qp := range progresses {
+		if qp.Status == uint8(3) {
+			event := make([]byte, 12)
+			binary.LittleEndian.PutUint64(event[:8], playerID)
+			binary.LittleEndian.PutUint32(event[8:12], qp.QuestID)
+			m.rc.PublishRaw("quest.completed", event)
+			log.Printf("[router] quest.completed: player=%d quest=%d", playerID, qp.QuestID)
+		}
+		event := make([]byte, 14)
+		binary.LittleEndian.PutUint64(event[:8], playerID)
+		binary.LittleEndian.PutUint32(event[8:12], qp.QuestID)
+		event[12] = qp.Status
+		event[13] = qp.ProgressPercent
+		m.rc.PublishRaw("meta_db.quest.progress.update", event)
+	}
+}
 

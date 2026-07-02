@@ -49,6 +49,9 @@ namespace GatewayMsg {//TODO move to protocol (flatbuffers)
     inline constexpr uint8_t kRecipeCompleted      = 17;
     inline constexpr uint8_t kChestOpenReq          = 18;
     inline constexpr uint8_t kChestOpenResp         = 19;
+    inline constexpr uint8_t kQuestProgressUpdate       = 20;
+    inline constexpr uint8_t kQuestUnlockNotification    = 21;
+    inline constexpr uint8_t kQuestCompletedNotification = 22;
 } // namespace GatewayMsg
 
 // ---------------------------------------------------------------------------
@@ -98,6 +101,7 @@ class IoUringGateway {
   bool has_client() const;
 
   void publish_player_joined();
+  void publish_player_left();
 
   void shutdown();
   void sendHeartbeat();
@@ -128,6 +132,12 @@ class IoUringGateway {
 
   // Client state for inventory chain
   mutable std::mutex client_state_mutex_;
+
+  // Session generation bumped on each accept().  Captured in on_closed
+  // so stale callbacks from old sessions don't corrupt the new session's
+  // player_id_known_ flag (race: old on_closed fires after new accept).
+  std::atomic<uint64_t> session_gen_{0};
+
   uint64_t client_player_id_ = 0;
   int32_t last_x_ = 0, last_y_ = 0, last_z_ = 0;
   bool player_id_known_ = false;

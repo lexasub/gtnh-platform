@@ -32,6 +32,17 @@ CREATE TABLE IF NOT EXISTS inventory (
 );
 
 CREATE INDEX IF NOT EXISTS idx_inventory_player ON inventory(player_id);
+
+CREATE TABLE IF NOT EXISTS quest_progress (
+	player_id INTEGER NOT NULL,
+	quest_id INTEGER NOT NULL,
+	status INTEGER NOT NULL DEFAULT 0,
+	progress_percent INTEGER NOT NULL DEFAULT 0,
+	PRIMARY KEY (player_id, quest_id),
+	FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_quest_progress_player ON quest_progress(player_id);
 `
 
 const entityStateSchema = `

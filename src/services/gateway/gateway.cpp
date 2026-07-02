@@ -1,6 +1,8 @@
 // gateway.cpp
 #include "gateway.h"
 #include "gateway_generated.h"
+#include "quest_generated.h"
+
 #include <gtnh/net/frame.h>
 #include <flatbuffers/flatbuffers.h>
 
@@ -9,7 +11,6 @@
 #include <cstring>
 #include <sys/socket.h>
 #include <unistd.h>
-
 IoUringGateway::~IoUringGateway() { shutdown(); }
 
 // =========================================================================
@@ -36,10 +37,18 @@ bool IoUringGateway::listen(uint16_t ctrl_port, uint16_t bulk_port) {
         conn->on_message = [this](uint8_t type, const uint8_t* d, size_t l) {
             on_client_ctrl_message(type, d, l);
         };
-        conn->on_closed = [this]() {
+        auto sess = ++session_gen_;
+        conn->on_closed = [this, sess]() {
             spdlog::info("Gateway: ctrl client disconnected");
             {
                 std::lock_guard<std::mutex> lock(client_state_mutex_);
+                // Only act if no newer session has started — the old on_closed
+                // callback may fire after the next accept handler has already
+                // set up state for a new session (race on rapid reconnect).
+                if (session_gen_.load() != sess) {
+                    spdlog::info("Gateway: stale on_closed from session {} skipped", sess);
+                    return;
+                }
                 if (player_id_known_) {
                     flatbuffers::FlatBufferBuilder fbb;
                     auto left = Protocol::CreatePlayerLeft(
@@ -234,12 +243,28 @@ void IoUringGateway::publish_player_joined() {
     spdlog::info("Gateway: republished player.join (id={}) on upstream reconnect", client_player_id_);
 }
 
+void IoUringGateway::publish_player_left() {
+    std::lock_guard<std::mutex> lock(client_state_mutex_);
+    if (!player_id_known_) return;
+    flatbuffers::FlatBufferBuilder fbb;
+    auto left = Protocol::CreatePlayerLeft(
+        fbb, client_player_id_, last_x_, last_y_, last_z_);
+    fbb.Finish(left);
+    publish("player.left", fbb.GetBufferPointer(), fbb.GetSize());
+    spdlog::info("Gateway: publish player.left (id={}, pos=[{}, {}, {}])",
+                 client_player_id_, last_x_, last_y_, last_z_);
+}
+
 // =========================================================================
 //  Shutdown
 // =========================================================================
 
 void IoUringGateway::shutdown() {
     spdlog::info("Gateway: shutting down...");
+    // Flush player position before disconnecting from router — after
+    // router_.disconnect() the publish would silently fail and the last
+    // position would be lost.
+    publish_player_left();
     router_.disconnect();
     {
         std::lock_guard<std::mutex> lock(client_ctrl_mutex_);
@@ -319,6 +344,29 @@ else if (topic == "player.chest.open.response")
     send_to_client_ctrl_raw(GatewayMsg::kChestOpenResp, payload, plen);
     else if (topic == "player.tool.action.response")
         send_to_client_ctrl_raw(GatewayMsg::kToolActionResp, payload, plen);
+    else if (topic == "player.position.load") {
+        auto pos = flatbuffers::GetRoot<Protocol::PlayerLeft>(payload);
+        if (pos) {
+            std::lock_guard<std::mutex> lock(client_state_mutex_);
+            last_x_ = pos->x(); last_y_ = pos->y(); last_z_ = pos->z();
+            spdlog::info("Gateway: position restored ([{}, {}, {}])",
+                         last_x_, last_y_, last_z_);
+            int32_t cx = last_x_ >> 5, cy = last_y_ >> 5, cz = last_z_ >> 5;
+            flatbuffers::FlatBufferBuilder fbb;
+            auto cp = Protocol::Vec3i(cx, cy, cz);
+            auto action = Protocol::CreatePlayerAction(fbb, 0,
+                                                       Protocol::PlayerActionType_CHUNK_REQUEST, &cp);
+            fbb.Finish(action);
+            publish("player.actions", fbb.GetBufferPointer(), fbb.GetSize());
+            spdlog::info("Gateway: re-sent CHUNK_REQUEST at chunk ({},{},{})", cx, cy, cz);
+        }
+    }
+    else if (topic == "quest.progress.updated")
+        send_to_client_ctrl_raw(GatewayMsg::kQuestProgressUpdate, payload, plen);
+    else if (topic == "quest.unlocked")
+        send_to_client_ctrl_raw(GatewayMsg::kQuestUnlockNotification, payload, plen);
+    else if (topic == "quest.completed")
+        send_to_client_ctrl_raw(GatewayMsg::kQuestCompletedNotification, payload, plen);
     else if (on_router_message)
         on_router_message(topic, payload, plen);
 }
