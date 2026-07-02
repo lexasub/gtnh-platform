@@ -290,6 +290,16 @@ func (m *MetaDB) DeleteEntityState(dim, x, y, z int) error {
 	return nil
 }
 
+// GetPlayerCount returns the total number of players in the database.
+func (m *MetaDB) GetPlayerCount() int {
+	var count int
+	err := m.db.QueryRow("SELECT COUNT(*) FROM players").Scan(&count)
+	if err != nil {
+		return 0
+	}
+	return count
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

@@ -14,8 +14,21 @@ import (
 )
 
 func main() {
+	// Early version check (before any initialization)
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" || arg == "-v" {
+			fmt.Println("MessageRouter Service (routerd)")
+			fmt.Println("Version: (not configured - see main.go for setup instructions)")
+			fmt.Println("Git Hash: (not configured)")
+			fmt.Println("Build Date: (not configured)")
+			os.Exit(0)
+		}
+	}
+
 	port := flag.Int("port", 4000, "TCP listen port")
 	flag.Parse()
+
+	startTime := time.Now()
 
 	router := NewRouter()
 	router.StartCleanup()
@@ -26,7 +39,7 @@ func main() {
 	}
 
 	log.Printf("message_router listening on :%d", *port)
-	go handleSignals(listener)
+	go handleSignals(listener, router, startTime, *port)
 
 	for {
 		conn, err := listener.Accept()
@@ -38,13 +51,35 @@ func main() {
 	}
 }
 
-func handleSignals(l net.Listener) {
+func handleSignals(l net.Listener, r *Router, startTime time.Time, port int) {
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
-	log.Println("shutting down...")
-	l.Close()
-	os.Exit(0)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	
+	for {
+		s := <-sig
+		switch s {
+		case syscall.SIGUSR1:
+			// Print metrics
+			uptime := time.Since(startTime)
+			days := int(uptime.Hours() / 24)
+			hours := int(uptime.Hours()) % 24
+			minutes := int(uptime.Minutes()) % 60
+			seconds := int(uptime.Seconds()) % 60
+			
+			log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+			log.Println("METRICS: MessageRouter Service (routerd)")
+			log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+			log.Printf("Uptime: %d days, %02d:%02d:%02d", days, hours, minutes, seconds)
+			log.Printf("TCP Port: %d", port)
+			log.Printf("Active Clients: %d", r.ClientCount())
+			log.Printf("Active Topics: %d", r.TopicCount())
+			log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		case syscall.SIGINT, syscall.SIGTERM:
+			log.Println("shutting down...")
+			l.Close()
+			os.Exit(0)
+		}
+	}
 }
 
 func handleConn(r *Router, conn net.Conn) {

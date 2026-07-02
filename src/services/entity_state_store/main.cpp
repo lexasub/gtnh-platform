@@ -4,6 +4,9 @@
 #include <csignal>
 #include <atomic>
 #include <memory>
+#include <iostream>
+#include <string>
+#include <chrono>
 
 #include "EntityStateStorage.h"
 #include "cache.h"
@@ -13,6 +16,7 @@
 #include "entity_state_store_generated.h"
 
 static std::atomic<bool> g_stop{false};
+static std::atomic<bool> g_print_metrics{false};
 static asio::io_context* g_io = nullptr;
 
 static void doReadFrame(std::shared_ptr<asio::ip::tcp::socket> socket, EntityStateStorage& storage);
@@ -156,11 +160,27 @@ static void doReadFrame(std::shared_ptr<asio::ip::tcp::socket> socket, EntitySta
 
 [[maybe_unused]] static void handleSignal(int sig) {
     spdlog::info("Signal {} received, shutting down...", sig);
-    g_stop.store(true);
+    g_stop.store(true, std::memory_order_release);
     if (g_io) g_io->stop();
 }
 
+extern "C" void handleSIGUSR1([[maybe_unused]] int sig) {
+    g_print_metrics.store(true, std::memory_order_release);
+}
+
 int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
+    // ── Early version check (before any initialization) ──────────────────
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--version" || arg == "-v") {
+            std::cout << "EntityStateStore Service (entitystated)\n";
+            std::cout << "Version: (not configured - see main.cpp for setup instructions)\n";
+            std::cout << "Git Hash: (not configured)\n";
+            std::cout << "Build Date: (not configured)\n";
+            return 0;
+        }
+    }
+
     std::string lmdb_path = "/tmp/lmdb";
     asio::io_context io_context;
     EntityStateStorage storage(lmdb_path, io_context, 1000);
@@ -234,6 +254,14 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     std::string chunkstore_host = "127.0.0.1";
     uint16_t chunkstore_port = 5001;
 
+    // Register signal handlers
+    std::signal(SIGINT, handleSignal);
+    std::signal(SIGTERM, handleSignal);
+    std::signal(SIGUSR1, handleSIGUSR1);
+    
+    g_io = &io_context;
+    const auto start_time = std::chrono::steady_clock::now();
+
     routerClient->Connect(router_host, router_port);
     chunkstoreClient->Connect(chunkstore_host, chunkstore_port);
 
@@ -242,7 +270,35 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     doAccept(tcp_acceptor, storage);
 
     spdlog::info("EntityStateService running, waiting for messages...");
-    io_context.run();
+    
+    // Run io_context in a loop that checks for signals
+    while (!g_stop.load()) {
+        // Check for metrics request
+        if (g_print_metrics.load(std::memory_order_acquire)) {
+            g_print_metrics.store(false, std::memory_order_release);
+            
+            auto now = std::chrono::steady_clock::now();
+            auto uptime_seconds = std::chrono::duration_cast<std::chrono::seconds>(
+                now - start_time).count();
+            int days = uptime_seconds / 86400;
+            int hours = (uptime_seconds % 86400) / 3600;
+            int minutes = (uptime_seconds % 3600) / 60;
+            int seconds = uptime_seconds % 60;
+            
+            spdlog::info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            spdlog::info("METRICS: EntityStateStore Service (entitystated)");
+            spdlog::info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            spdlog::info("Uptime: {} days, {:02d}:{:02d}:{:02d}", days, hours, minutes, seconds);
+            spdlog::info("LMDB Path: {}", lmdb_path);
+            spdlog::info("TCP RPC Port: 5200");
+            spdlog::info("Router: {}:{}", router_host, router_port);
+            spdlog::info("ChunkStore: {}:{}", chunkstore_host, chunkstore_port);
+            spdlog::info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        }
+        
+        io_context.poll();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     storage.shutdown();
     spdlog::info("EntityStateService shutdown complete");

@@ -2,8 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
 const (
@@ -12,6 +17,19 @@ const (
 )
 
 func main() {
+	// Early version check (before any initialization)
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" || arg == "-v" {
+			fmt.Println("MetaDB Service (metadbd)")
+			fmt.Println("Version: (not configured - see main.go for setup instructions)")
+			fmt.Println("Git Hash: (not configured)")
+			fmt.Println("Build Date: (not configured)")
+			os.Exit(0)
+		}
+	}
+
+	startTime := time.Now()
+
 	m, err := NewMetaDB(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize MetaDB: %v", err)
@@ -33,6 +51,9 @@ func main() {
 
 	log.Printf("MetaDB listening on %s", port)
 
+	// Handle signals in goroutine
+	go handleSignals(m, startTime)
+
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -40,6 +61,32 @@ func main() {
 			continue
 		}
 		go handleConnection(conn, m)
+	}
+}
+
+func handleSignals(m *MetaDB, startTime time.Time) {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGUSR1)
+	
+	for {
+		<-sig
+		// Print metrics
+		uptime := time.Since(startTime)
+		days := int(uptime.Hours() / 24)
+		hours := int(uptime.Hours()) % 24
+		minutes := int(uptime.Minutes()) % 60
+		seconds := int(uptime.Seconds()) % 60
+		
+		playerCount := m.GetPlayerCount()
+		
+		log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		log.Println("METRICS: MetaDB Service (metadbd)")
+		log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		log.Printf("Uptime: %d days, %02d:%02d:%02d", days, hours, minutes, seconds)
+		log.Printf("Database: %s", dbPath)
+		log.Printf("JSON RPC Port: %s", port)
+		log.Printf("Player Count: %d", playerCount)
+		log.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 	}
 }
 

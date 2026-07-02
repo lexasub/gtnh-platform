@@ -413,6 +413,26 @@ func (r *Router) Services() map[string]ServiceInfo {
 	return cp
 }
 
+// ClientCount returns the number of unique connected clients.
+func (r *Router) ClientCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	seen := make(map[*client]struct{})
+	for _, clients := range r.subs {
+		for cl := range clients {
+			seen[cl] = struct{}{}
+		}
+	}
+	return len(seen)
+}
+
+// TopicCount returns the number of topics with active subscribers.
+func (r *Router) TopicCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.subs)
+}
+
 // ---------------------------------------------------------------------------
 // Topic matching (MQTT-style)
 // ---------------------------------------------------------------------------
