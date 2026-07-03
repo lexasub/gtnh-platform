@@ -110,7 +110,7 @@ The goal: understanding and fixing a component should require fewer changes and 
 ## Build
 
 ### Dependencies (TODO NEED CONTRIBUTE)
-install tbb bgfx bx bimg
+install tbb bgfx bx bimg (and may be lodepng)
 
 Two ways to get dependencies:
 
@@ -122,7 +122,7 @@ Two ways to get dependencies:
 pip install conan
 conan install -of build --build=missing #-s build_type=Debug
 cd build
-cmake -GNinja -DCMAKE_TOOLCHAIN_FILE=$PWD/conan_toolchain.cmake ..
+cmake -GNinja -DCMAKE_TOOLCHAIN_FILE=$PWD/conan_toolchain.cmake .. # -DCMAKE_BUILD_TYPE=DEBUG
 
 ```
 

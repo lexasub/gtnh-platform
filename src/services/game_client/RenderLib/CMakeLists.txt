@@ -1,6 +1,6 @@
 # RenderLib — standalone bgfx rendering library for game_client
 # Depends on: bgfx, glm, glfw (public), spdlog, imgui, TBB (private)
-
+find_package(lodepng REQUIRED)
 add_library(renderlib STATIC
     Common/RenderAPI.cpp
     Scene/RenderScene.cpp
@@ -13,7 +13,7 @@ add_library(renderlib STATIC
 )
 
 # PUBLIC = game_client root, so consumers include as: #include "RenderLib/Common/RenderAPI.h"
-target_include_directories(renderlib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_include_directories(renderlib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. ${lodepng_INCLUDE_DIRS})
 
 # Dependencies exposed via public headers
 target_link_libraries(renderlib PUBLIC
@@ -21,6 +21,7 @@ target_link_libraries(renderlib PUBLIC
     glm::glm
     glfw
     imgui::imgui
+    lodepng::lodepng
 )
 
 # Dependencies used only in implementation (.cpp) files

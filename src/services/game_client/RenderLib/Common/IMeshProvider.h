@@ -18,6 +18,7 @@ namespace renderlib {
         const void* cpuIndices = nullptr;
         uint32_t numIndices = 0;
         uint32_t vertexSize = 0;             // stride
+        bool transparent = false;
     };
 
     struct Frustum; // forward declare (defined elsewhere)

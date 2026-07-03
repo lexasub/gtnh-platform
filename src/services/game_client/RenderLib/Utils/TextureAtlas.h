@@ -2,6 +2,8 @@
 
 #include <bgfx/bgfx.h>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace renderlib {
 
@@ -14,18 +16,16 @@ namespace renderlib {
         static void Init(int tileSize = 16);
         static void Shutdown();
         static bgfx::TextureHandle GetTextureHandle();
+        static bool IsTransparent(uint16_t blockId);
 
         static constexpr int kDefaultTilesX = 16;
         static constexpr int kDefaultTilesY = 16;
 
-        inline static UVRect GetUV(uint16_t tileId, int face) {
-            // tileId не должен выходить за 255, face < 6
-            return s_uvCache[tileId][face];
-        }
+        static UVRect GetUV(uint16_t tileId, int face);
 
     private:
-        TextureAtlas() = delete;
         static UVRect s_uvCache[256][6];
+        TextureAtlas() = delete;
     };
 
 } // namespace renderlib

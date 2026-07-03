@@ -1,8 +1,6 @@
 #pragma once
 
 #include "../chunk_store/Chunk/Chunk.h"
-#include <glm/glm.hpp>
-#include <glm/gtc/noise.hpp>
 
 class WorldGenerator {
 public:

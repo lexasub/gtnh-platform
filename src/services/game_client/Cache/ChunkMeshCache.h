@@ -20,12 +20,18 @@ struct ChunkMesh {
 
     bgfx::VertexBufferHandle vb = BGFX_INVALID_HANDLE;
     bgfx::IndexBufferHandle ib = BGFX_INVALID_HANDLE;
+    bgfx::VertexBufferHandle transparentVb = BGFX_INVALID_HANDLE;
+    bgfx::IndexBufferHandle transparentIb = BGFX_INVALID_HANDLE;
 
     void DestroyGpuBuffers() {
         if (bgfx::isValid(vb)) bgfx::destroy(vb);
         if (bgfx::isValid(ib)) bgfx::destroy(ib);
+        if (bgfx::isValid(transparentVb)) bgfx::destroy(transparentVb);
+        if (bgfx::isValid(transparentIb)) bgfx::destroy(transparentIb);
         vb = BGFX_INVALID_HANDLE;
         ib = BGFX_INVALID_HANDLE;
+        transparentVb = BGFX_INVALID_HANDLE;
+        transparentIb = BGFX_INVALID_HANDLE;
     }
 };
 

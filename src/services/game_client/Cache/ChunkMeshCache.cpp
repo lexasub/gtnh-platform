@@ -52,6 +52,8 @@ void ChunkMeshCache::DiscardHandles() {
     for (auto& entry : meshes_.range()) {
         entry.second.vb = BGFX_INVALID_HANDLE;
         entry.second.ib = BGFX_INVALID_HANDLE;
+        entry.second.transparentVb = BGFX_INVALID_HANDLE;
+        entry.second.transparentIb = BGFX_INVALID_HANDLE;
     }
     meshes_.clear();
 }
@@ -68,7 +70,7 @@ bool ChunkMeshCache::CheckBuildHash(const ChunkCoord& coord, uint64_t hash) cons
 }
 
 void ChunkMeshCache::ApplyMeshData(ChunkMeshBuilder::MeshData&& data, const ChunkCoord& coord, uint64_t contentHash) {
-    if (data.vertices.empty())
+    if (data.vertices.empty() && data.transparentVertices.empty())
         return;
 
     uint64_t key = MakeChunkKey(coord);
@@ -91,6 +93,11 @@ void ChunkMeshCache::ApplyMeshData(ChunkMeshBuilder::MeshData&& data, const Chun
         v.y += oy;
         v.z += oz;
     }
+    for (auto& v : mesh.cpuData.transparentVertices) {
+        v.x += ox;
+        v.y += oy;
+        v.z += oz;
+    }
     if (!mesh.cpuData.vertices.empty()) {
         mesh.cpuData.vertices.shrink_to_fit();
         mesh.vb = bgfx::createVertexBuffer(
@@ -109,6 +116,26 @@ void ChunkMeshCache::ApplyMeshData(ChunkMeshBuilder::MeshData&& data, const Chun
         // Renderer::Render uses per-chunk submit (Phase 3) when cpuData is empty.
         mesh.cpuData.indices.clear();
         mesh.cpuData.indices.shrink_to_fit();
+    }
+
+    // Create GPU buffers for transparent faces if any
+    if (!mesh.cpuData.transparentVertices.empty()) {
+        mesh.cpuData.transparentVertices.shrink_to_fit();
+        mesh.transparentVb = bgfx::createVertexBuffer(
+            bgfx::copy(mesh.cpuData.transparentVertices.data(),
+                       static_cast<uint32_t>(mesh.cpuData.transparentVertices.size() * sizeof(BlockVertex))),
+            BlockVertexLayoutRef());
+        mesh.cpuData.transparentVertices.clear();
+        mesh.cpuData.transparentVertices.shrink_to_fit();
+
+        mesh.cpuData.transparentIndices.shrink_to_fit();
+        mesh.transparentIb = bgfx::createIndexBuffer(
+            bgfx::copy(mesh.cpuData.transparentIndices.data(),
+                       static_cast<uint32_t>(mesh.cpuData.transparentIndices.size() * sizeof(uint16_t))));
+
+        // Free CPU-side data
+        mesh.cpuData.transparentIndices.clear();
+        mesh.cpuData.transparentIndices.shrink_to_fit();
     }
 
     mesh.dirty = false;

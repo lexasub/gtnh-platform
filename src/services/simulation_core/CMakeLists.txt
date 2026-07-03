@@ -70,8 +70,6 @@ add_library(simcored
         Network/PipeEnergyClient.cpp
         Network/FluidClient.cpp
         Network/TopicDispatcher.cpp
-        ECS/Reactors/EnergyFlowHandler.cpp
-        ECS/Reactors/FluidFlowHandler.cpp
         Network/clients/EntityStateStoreClient.cpp
         Network/clients/IoUringRouterClient.cpp
         Network/clients/IoUringChunkClient.cpp
@@ -97,7 +95,11 @@ add_library(simcored
         Crafting/CraftRequestHandler.cpp
         Crafting/RecipeCompletedHandler.cpp
         ECS/SimulationEngine.cpp
-ECS/Systems/HeatTransferSystem.cpp
+
+        ECS/Reactors/EnergyFlowHandler.cpp
+        ECS/Reactors/FluidFlowHandler.cpp
+
+        ECS/Systems/HeatTransferSystem.cpp
         ECS/Systems/GeneratorSystem.cpp
         ECS/Systems/CreativeGeneratorSystem.cpp
         ECS/Systems/MachineSystem.cpp

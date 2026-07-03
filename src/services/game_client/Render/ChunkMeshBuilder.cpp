@@ -43,6 +43,8 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
 
     data.vertices.clear();
     data.indices.clear();
+    data.transparentVertices.clear();
+    data.transparentIndices.clear();
 
     if (chunk.use_count() == 0) {
         return data;
@@ -50,9 +52,12 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
 
     data.vertices.reserve(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 8); //24/3 - 1/3 filled
     data.indices.reserve(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 12); //36/3 - 1/3 filled
+    data.transparentVertices.reserve(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 8); //24/3 - 1/3 filled
+    data.transparentIndices.reserve(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 12); //36/3 - 1/3 filled
 
 
     uint16_t idx = 0; //TODO may be > uint16_t - 32x32x32 x 6x4 = 76 432 > 65 536
+    uint16_t transparentIdx = 0;
 
     for (int y = 0; y < CHUNK_SIZE; ++y) {
         for (int z = 0; z < CHUNK_SIZE; ++z) {
@@ -103,7 +108,7 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
                     const uint32_t c = GetBlockColor(block);
 
                     for (int v = 0; v < 4; ++v) {
-                        data.vertices.push_back({
+                        BlockVertex vertex = {
                             .x = static_cast<float>(x + face[v][0]),
                             .y = static_cast<float>(y + face[v][1]),
                             .z = static_cast<float>(z + face[v][2]),
@@ -116,16 +121,24 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
                             },
                             .u = uv.u0 + du * (v & 1),
                             .v = uv.v0 + dv * ((v >> 1) & 1)
-                        });
+                        };
+
+                        if (renderlib::TextureAtlas::IsTransparent(block)) {
+                            data.transparentVertices.push_back(vertex);
+                        } else {
+                            data.vertices.push_back(vertex);
+                        }
                     }
 
-                    data.indices.push_back(idx + 0);
-                    data.indices.push_back(idx + 1);
-                    data.indices.push_back(idx + 2);
-                    data.indices.push_back(idx + 0);
-                    data.indices.push_back(idx + 2);
-                    data.indices.push_back(idx + 3);
-                    idx += 4;
+                    auto &curIdx = renderlib::TextureAtlas::IsTransparent(block) ? transparentIdx : idx;
+
+                    data.indices.push_back(curIdx + 0);
+                    data.indices.push_back(curIdx + 1);
+                    data.indices.push_back(curIdx + 2);
+                    data.indices.push_back(curIdx + 0);
+                    data.indices.push_back(curIdx + 2);
+                    data.indices.push_back(curIdx + 3);
+                    curIdx += 4;
                 }
             }
         }

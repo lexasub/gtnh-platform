@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <cmath>
 #include <limits>
+#include <glm/glm.hpp>
+#include <glm/gtc/noise.hpp>
 
 #include "FastNoise/FastNoise.h"
 #include "OreConfig.h"

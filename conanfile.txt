@@ -16,6 +16,7 @@ sqlite3/3.49.1
 liburing/2.13
 lmdb/0.9.32
 imgui/1.91.8
+lodepng/cci.20230410
 
 [options]
 boost/*:without_python=True

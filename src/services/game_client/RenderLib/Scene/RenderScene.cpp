@@ -79,50 +79,121 @@ void RenderScene::Render(const glm::mat4& viewMatrix, const glm::mat4& projMatri
         bgfx::setTexture(0, s_u_texAtlas, TextureAtlas::GetTextureHandle());
         bgfx::setState(BGFX_STATE_DEFAULT);
 
-        // Try to merge all meshes into one transient buffer
-        uint32_t totalVerts = 0, totalIndices = 0;
+        // Split visible meshes into opaque and transparent
+        std::vector<MeshDrawData> opaqueMeshes;
+        std::vector<MeshDrawData> transparentMeshes;
         for (auto& m : visibleMeshes) {
-            if (m.cpuVertices) {
-                totalVerts += m.numVertices;
-                totalIndices += m.numIndices;
+            if (m.transparent) {
+                transparentMeshes.push_back(m);
+            } else {
+                opaqueMeshes.push_back(m);
             }
         }
-        bool merged = false;
-        if (totalVerts > 0 && totalIndices > 0) {
-            bgfx::TransientVertexBuffer tvb;
-            bgfx::TransientIndexBuffer tib;
-            if (bgfx::allocTransientBuffers(&tvb, BlockVertexLayout(), totalVerts, &tib, totalIndices, true)) {
-                uint8_t* vertDst = tvb.data;
-                uint8_t* idxDst = tib.data;
-                uint32_t vertBase = 0;
-                for (auto& m : visibleMeshes) {
-                    if (!m.cpuVertices) continue;
-                    uint32_t nv = m.numVertices;
-                    uint32_t ni = m.numIndices;
-                    memcpy(vertDst, m.cpuVertices, nv * m.vertexSize);
-                    vertDst += nv * m.vertexSize;
-                    const uint16_t* srcIdx = static_cast<const uint16_t*>(m.cpuIndices);
-                    for (uint32_t i = 0; i < ni; ++i) {
-                        *reinterpret_cast<uint32_t*>(idxDst) = srcIdx[i] + vertBase;
-                        idxDst += sizeof(uint32_t);
+
+        // Render opaque meshes first
+        if (!opaqueMeshes.empty()) {
+            // Try to merge all opaque meshes into one transient buffer
+            uint32_t totalVerts = 0, totalIndices = 0;
+            for (auto& m : opaqueMeshes) {
+                if (m.cpuVertices) {
+                    totalVerts += m.numVertices;
+                    totalIndices += m.numIndices;
+                }
+            }
+            bool merged = false;
+            if (totalVerts > 0 && totalIndices > 0) {
+                bgfx::TransientVertexBuffer tvb;
+                bgfx::TransientIndexBuffer tib;
+                if (bgfx::allocTransientBuffers(&tvb, BlockVertexLayout(), totalVerts, &tib, totalIndices, true)) {
+                    uint8_t* vertDst = tvb.data;
+                    uint8_t* idxDst = tib.data;
+                    uint32_t vertBase = 0;
+                    for (auto& m : opaqueMeshes) {
+                        if (!m.cpuVertices) continue;
+                        uint32_t nv = m.numVertices;
+                        uint32_t ni = m.numIndices;
+                        memcpy(vertDst, m.cpuVertices, nv * m.vertexSize);
+                        vertDst += nv * m.vertexSize;
+                        const uint16_t* srcIdx = static_cast<const uint16_t*>(m.cpuIndices);
+                        for (uint32_t i = 0; i < ni; ++i) {
+                            *reinterpret_cast<uint32_t*>(idxDst) = srcIdx[i] + vertBase;
+                            idxDst += sizeof(uint32_t);
+                        }
+                        vertBase += nv;
                     }
-                    vertBase += nv;
+                    bgfx::setVertexBuffer(0, &tvb);
+                    bgfx::setIndexBuffer(&tib);
+                    bgfx::submit(0, s_blockProgram);
+                    merged = true;
                 }
-                bgfx::setVertexBuffer(0, &tvb);
-                bgfx::setIndexBuffer(&tib);
-                bgfx::submit(0, s_blockProgram);
-                merged = true;
+            }
+            if (!merged) {
+                // Fallback: submit each opaque mesh individually
+                for (auto& m : opaqueMeshes) {
+                    if (bgfx::isValid(m.handles.vb) && bgfx::isValid(m.handles.ib)) {
+                        bgfx::setVertexBuffer(0, m.handles.vb);
+                        bgfx::setIndexBuffer(m.handles.ib);
+                        bgfx::submit(0, s_blockProgram);
+                    }
+                }
             }
         }
-        if (!merged) {
-            // Fallback: submit each mesh individually
-            for (auto& m : visibleMeshes) {
-                if (bgfx::isValid(m.handles.vb) && bgfx::isValid(m.handles.ib)) {
-                    bgfx::setVertexBuffer(0, m.handles.vb);
-                    bgfx::setIndexBuffer(m.handles.ib);
-                    bgfx::submit(0, s_blockProgram);
+
+        // Render transparent meshes with alpha blending
+        if (!transparentMeshes.empty()) {
+            // Setup alpha blending state
+            bgfx::setState(BGFX_STATE_DEFAULT
+                | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA)
+                | BGFX_STATE_WRITE_Z);
+
+            // Try to merge all transparent meshes into one transient buffer
+            uint32_t totalVerts = 0, totalIndices = 0;
+            for (auto& m : transparentMeshes) {
+                if (m.cpuVertices) {
+                    totalVerts += m.numVertices;
+                    totalIndices += m.numIndices;
                 }
             }
+            bool merged = false;
+            if (totalVerts > 0 && totalIndices > 0) {
+                bgfx::TransientVertexBuffer tvb;
+                bgfx::TransientIndexBuffer tib;
+                if (bgfx::allocTransientBuffers(&tvb, BlockVertexLayout(), totalVerts, &tib, totalIndices, true)) {
+                    uint8_t* vertDst = tvb.data;
+                    uint8_t* idxDst = tib.data;
+                    uint32_t vertBase = 0;
+                    for (auto& m : transparentMeshes) {
+                        if (!m.cpuVertices) continue;
+                        uint32_t nv = m.numVertices;
+                        uint32_t ni = m.numIndices;
+                        memcpy(vertDst, m.cpuVertices, nv * m.vertexSize);
+                        vertDst += nv * m.vertexSize;
+                        const uint16_t* srcIdx = static_cast<const uint16_t*>(m.cpuIndices);
+                        for (uint32_t i = 0; i < ni; ++i) {
+                            *reinterpret_cast<uint32_t*>(idxDst) = srcIdx[i] + vertBase;
+                            idxDst += sizeof(uint32_t);
+                        }
+                        vertBase += nv;
+                    }
+                    bgfx::setVertexBuffer(0, &tvb);
+                    bgfx::setIndexBuffer(&tib);
+                    bgfx::submit(0, s_blockProgram);
+                    merged = true;
+                }
+            }
+            if (!merged) {
+                // Fallback: submit each transparent mesh individually
+                for (auto& m : transparentMeshes) {
+                    if (bgfx::isValid(m.handles.vb) && bgfx::isValid(m.handles.ib)) {
+                        bgfx::setVertexBuffer(0, m.handles.vb);
+                        bgfx::setIndexBuffer(m.handles.ib);
+                        bgfx::submit(0, s_blockProgram);
+                    }
+                }
+            }
+
+            // Reset state to default for next frame
+            bgfx::setState(BGFX_STATE_DEFAULT);
         }
     }
 

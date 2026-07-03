@@ -30,5 +30,15 @@ void ChunkMeshProvider::ForEachVisibleMesh(const renderlib::Frustum& frustum,
             drawData.cpuVertices = nullptr;
         }
         callback(drawData);
+
+        // Also yield transparent mesh if it exists
+        if (bgfx::isValid(mesh.transparentVb)) {
+            renderlib::MeshDrawData transparentDraw;
+            transparentDraw.handles.vb = mesh.transparentVb;
+            transparentDraw.handles.ib = mesh.transparentIb;
+            // Don't set cpuVertices — use GPU path for transparent
+            transparentDraw.transparent = true;
+            callback(transparentDraw);
+        }
     });
 }
