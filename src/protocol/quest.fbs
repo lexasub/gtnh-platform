@@ -1,0 +1,72 @@
+// protocol/quest.fbs
+// Quest Book protocol: quest data, completion tracking, progression events.
+// Quest data (CSV + JSON) is loaded from data/quests/ at service startup.
+// Quest progress per player is stored in MetaDB (SQLite).
+// FlatBuffers messages flow through MessageRouter and Gateway.
+
+include "core.fbs";
+
+namespace Protocol;
+
+// ---------------------------------------------------------------------------
+// Value types
+// ---------------------------------------------------------------------------
+
+// Quest completion status
+enum QuestStatus : uint8 {
+  LOCKED = 0,
+  AVAILABLE = 1,
+  IN_PROGRESS = 2,
+  COMPLETED = 3,
+}
+
+// ---------------------------------------------------------------------------
+// Client ↔ Gateway quest messages
+// ---------------------------------------------------------------------------
+
+// Sent to client when quest progress changes.
+// Contains the complete list of quest statuses for the player
+// (diff-based: client merges with local state).
+table QuestProgressUpdate {
+  player_id:uint64;
+  quests:[QuestEntry];
+}
+
+// Individual quest progress entry
+table QuestEntry {
+  quest_id:uint32;
+  status:QuestStatus = LOCKED;
+  progress:uint8 = 0;         // 0-100 percent for sub-task tracking
+}
+
+// Server → client: notify when new quests become available
+table QuestUnlockNotification {
+  player_id:uint64;
+  unlocked_ids:[uint32];      // quest IDs that just became available
+}
+
+// Server → client: notify when a quest is completed
+table QuestCompletedNotification {
+  player_id:uint64;
+  quest_id:uint32;
+  reward_item_id:uint16;
+  reward_count:uint8;
+}
+
+// ---------------------------------------------------------------------------
+// Events (pub/sub via MessageRouter)
+// ---------------------------------------------------------------------------
+
+// Published by SimulationCore when quest completion is detected.
+// Consumed by MetaDB to persist, and by Gateway to forward to client.
+table QuestCompleted {
+  player_id:uint64;
+  quest_id:uint32;
+  timestamp:uint64;           // unix nanos
+}
+
+// Published by the quest manager when the DAG unlocks new quests.
+table QuestUnlocked {
+  player_id:uint64;
+  unlocked_quest_ids:[uint32];
+}

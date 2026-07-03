@@ -16,6 +16,7 @@ add_library(UI
     Windows/player/RecipeInspectWindow.cpp
     Windows/player/PlayerInventory.cpp
     Windows/player/CreativeMenu.cpp
+    Windows/player/QuestBookWindow.cpp
 
     Panels/NeiPanel.cpp
 
@@ -27,6 +28,8 @@ add_library(UI
 )
 
 target_include_directories(UI PRIVATE ../Common . .. ${CMAKE_SOURCE_DIR}/src  ${CMAKE_SOURCE_DIR}/src/libs)
+target_compile_definitions(UI PRIVATE DATA_DIR="${CMAKE_SOURCE_DIR}/data")
 target_link_libraries(UI PRIVATE
         renderlib
-        machine_registry)
+        machine_registry
+        quest_lib)

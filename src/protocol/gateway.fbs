@@ -13,8 +13,12 @@
 //        16=SetMachineSlotResp (gateway→client),
 //        17=ChestOpenReq (client→gateway),
 //        18=ChestOpenResp (gateway→client)
+//        19=QuestProgressUpdate (gateway→client),
+//        20=QuestUnlockNotification (gateway→client),
+//        21=QuestCompletedNotification (gateway→client)
 
 include "core.fbs";
+include "quest.fbs";
 
 namespace Protocol;
 
@@ -38,6 +42,9 @@ union GatewayPayload {
   SetMachineSlotResp, // 16 — gateway→client (machine slot ACK)
   ChestOpenReq,       // 17 — client→gateway (chest open request)
   ChestOpenResp,      // 18 — gateway→client (chest open response)
+  QuestProgressUpdate,       // 19 — gateway→client (quest status update)
+  QuestUnlockNotification,   // 20 — gateway→client (new quests available)
+  QuestCompletedNotification,// 21 — gateway→client (quest completed)
 }
 
 table GatewayMessage {

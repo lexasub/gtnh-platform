@@ -99,6 +99,10 @@ int main(int argc, char* argv[]) {
     gateway.subscribe("player.tool.action.response");
     gateway.subscribe("world.block_entity.update");
     gateway.subscribe("recipe.completed");
+    gateway.subscribe("player.position.load");
+    gateway.subscribe("quest.completed");
+    gateway.subscribe("quest.unlocked");
+    gateway.subscribe("quest.progress.updated");
 
     spdlog::info("Gateway running — worker thread handles io_uring");
 
@@ -112,6 +116,11 @@ int main(int argc, char* argv[]) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
+    // Explicit shutdown — calls publish_player_left() before router disconnect
+    // to persist last player position.  Relying on the destructor alone would
+    // skip the publish because ~IoUringConnection polls the thread for 50 ms
+    // after the router is already disconnected.
+    gateway.shutdown();
     spdlog::info("Gateway stopped");
     return 0;
 }

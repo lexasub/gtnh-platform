@@ -43,6 +43,25 @@ CREATE TABLE IF NOT EXISTS quest_progress (
 );
 
 CREATE INDEX IF NOT EXISTS idx_quest_progress_player ON quest_progress(player_id);
+
+CREATE TABLE IF NOT EXISTS player_quest_rewards (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	player_id INTEGER NOT NULL,
+	quest_id INTEGER NOT NULL,
+	reward_type TEXT NOT NULL,
+	reward_id INTEGER NOT NULL,
+	reward_count INTEGER NOT NULL,
+	reward_value REAL DEFAULT 0.0,
+	redeemed INTEGER NOT NULL DEFAULT 0,
+	reward_timestamp INTEGER NOT NULL,
+	metadata TEXT,
+	FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE,
+	FOREIGN KEY (quest_id) REFERENCES quest_progress(quest_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_quest_rewards_player ON player_quest_rewards(player_id);
+CREATE INDEX IF NOT EXISTS idx_player_quest_rewards_quest ON player_quest_rewards(quest_id);
+CREATE INDEX IF NOT EXISTS idx_player_quest_rewards_redeemed ON player_quest_rewards(redeemed);
 `
 
 const entityStateSchema = `

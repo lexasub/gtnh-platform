@@ -4,6 +4,7 @@
 #include "Windows/player/PlayerInventory.h"
 #include "Windows/player/CreativeMenu.h"
 #include "../Windows/player/RecipeInspectWindow.h"
+#include "../Windows/player/QuestBookWindow.h"
 #include "Panels/NeiPanel.h"
 #include "Network/NetClient.h"
 #include "Common/Inventory.h"
@@ -12,9 +13,10 @@
 #include "core_generated.h"
 #include <GLFW/glfw3.h>
 #include <imgui.h>
+#include <spdlog/spdlog.h>
 
 void ActionHandler::Init(ActionRegistry* reg, UIManager* mgr, NetClient* nc,
-                          InventoryState* inv) {
+                         InventoryState* inv) {
     reg_ = reg;
     uiMgr_ = mgr;
     netClient_ = nc;
@@ -31,6 +33,7 @@ void ActionHandler::Init(ActionRegistry* reg, UIManager* mgr, NetClient* nc,
     reg->Register("close_ui",          [this]() { DoCloseAll(); });
     reg->Register("toggle_inv",        [this]() { DoToggleInventory(); });
     reg->Register("toggle_creative",   [this]() { DoToggleCreativeMenu(); });
+    reg->Register("toggle_quest_book", [this]() { DoToggleQuestBook(); });
     for (int i = 0; i < 10; ++i) {
         auto name = "hotbar_" + std::to_string(i);
         reg->Register(name, [this, i]() { DoSelectHotbar(i); });
@@ -67,6 +70,13 @@ void ActionHandler::DoToggleInventory() {
 void ActionHandler::DoToggleCreativeMenu() {
     if (auto* menu = uiMgr_->FindByType<CreativeMenu>()) {
         menu->SetOpen(!menu->IsOpen());
+    }
+}
+
+void ActionHandler::DoToggleQuestBook() {
+    if (auto* qb = uiMgr_->FindByType<QuestBookWindow>()) {
+        qb->SetOpen(!qb->IsOpen());
+        spdlog::debug("[Quest] Toggle quest book window: open={}", qb->IsOpen());
     }
 }
 

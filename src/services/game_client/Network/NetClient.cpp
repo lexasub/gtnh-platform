@@ -375,6 +375,12 @@ void NetClient::OnMessage(uint8_t msg_type,
             );
             return;
         }
+        case GatewayMsg::kQuestProgressUpdate:
+        case GatewayMsg::kQuestUnlockNotification:
+        case GatewayMsg::kQuestCompletedNotification:
+            if (onQuestUpdate_)
+                onQuestUpdate_(msg_type, data);
+            return;
         case GatewayMsg::kChestOpenResp: {
             flatbuffers::Verifier v(payload, plen);
             if (!v.VerifyBuffer<Protocol::ChestOpenResp>(nullptr)) {

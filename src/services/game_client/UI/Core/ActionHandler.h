@@ -21,6 +21,7 @@ public:
     void DoSelectHotbar(int slot);
     void DoScrollHotbar(float delta);
     void DoOpenRecipeInspect(uint16_t itemId);
+    void DoToggleQuestBook();
 
     // Direct call (from UI clicks, not keybindings)
     void SpawnItem(uint16_t itemId, uint8_t count, int16_t targetSlot = -1);

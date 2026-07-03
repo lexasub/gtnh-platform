@@ -33,7 +33,12 @@ void LoadFromCSV(const std::string& csvPath) {
         std::string field;
         
         if (!std::getline(iss, field, ',')) continue;
-        uint16_t id = static_cast<uint16_t>(std::stoul(field));
+        uint16_t id = 0;
+        try {
+            id = static_cast<uint16_t>(std::stoul(field));
+        } catch (const std::exception&) {
+            continue; //TODO remove exception
+        }
 
         if (id == 0) continue;
 
@@ -41,10 +46,20 @@ void LoadFromCSV(const std::string& csvPath) {
         std::string name = field;
 
         if (!std::getline(iss, field, ',')) continue;
-        uint8_t stackSize = static_cast<uint8_t>(std::stoul(field));
+        uint8_t stackSize = 64; // default
+        try {
+            stackSize = static_cast<uint8_t>(std::stoul(field));
+        } catch (const std::exception&) {
+            // keep default //TODO remove exception
+        }
 
         if (!std::getline(iss, field, ',')) continue;
-        uint16_t meta = static_cast<uint16_t>(std::stoul(field));
+        uint16_t meta = 0;
+        try {
+            meta = static_cast<uint16_t>(std::stoul(field));
+        } catch (const std::exception&) {
+            // keep default //TODO remove exception
+        }
 
         s_items[id] = {id, std::move(name), stackSize, meta};
     }

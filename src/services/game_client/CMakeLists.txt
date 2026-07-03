@@ -8,15 +8,17 @@ add_custom_command(
         ${FBS_GEN_DIR}/core_generated.h
         ${FBS_GEN_DIR}/gateway_generated.h
         ${FBS_GEN_DIR}/recipe_generated.h
+        ${FBS_GEN_DIR}/quest_generated.h
     COMMAND flatbuffers::flatc
         --gen-mutable
         -I ${FBS_DIR}
         -o ${FBS_GEN_DIR}
-        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/recipe.fbs
+        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/quest.fbs
     DEPENDS flatbuffers::flatc
             ${FBS_DIR}/core.fbs
             ${FBS_DIR}/gateway.fbs
             ${FBS_DIR}/recipe.fbs
+            ${FBS_DIR}/quest.fbs
     COMMENT "Generating FlatBuffers headers for game_client"
 )
 
@@ -25,6 +27,7 @@ add_custom_target(game_client_fbs
         ${FBS_GEN_DIR}/core_generated.h
         ${FBS_GEN_DIR}/gateway_generated.h
         ${FBS_GEN_DIR}/recipe_generated.h
+        ${FBS_GEN_DIR}/quest_generated.h
 )
 
 # Set output directories for binaries
@@ -93,6 +96,7 @@ target_include_directories(gameclientd PRIVATE
 target_link_libraries(gameclientd PRIVATE
     gtnh-net
     machine_registry
+    quest_lib
     renderlib
     UI
     flatbuffers::flatbuffers
@@ -110,6 +114,7 @@ target_link_libraries(gameclientd PRIVATE
 # Shader directory compile definition (for runtime loading)
 target_compile_definitions(gameclientd PRIVATE
     SHADER_DIR="${CMAKE_BINARY_DIR}/shaders/"
+    DATA_DIR="${CMAKE_SOURCE_DIR}/data"
 )
 
 # Enable bgfx multi-threaded mode: API thread != internal render thread

@@ -12,15 +12,24 @@ add_custom_command(
         ${FBS_GO_OUT_DIR}/Protocol/MetaDBResponse.go
         ${FBS_GO_OUT_DIR}/Protocol/MetaDBPayload.go
         ${FBS_GO_OUT_DIR}/Protocol/InventoryUpdate.go
+        ${FBS_GO_OUT_DIR}/Protocol/QuestStatus.go
+        ${FBS_GO_OUT_DIR}/Protocol/QuestProgressUpdate.go
+        ${FBS_GO_OUT_DIR}/Protocol/QuestEntry.go
+        ${FBS_GO_OUT_DIR}/Protocol/QuestCompleted.go
+        ${FBS_GO_OUT_DIR}/Protocol/QuestCompletedNotification.go
+        ${FBS_GO_OUT_DIR}/Protocol/QuestUnlockNotification.go
+        ${FBS_GO_OUT_DIR}/Protocol/QuestUnlocked.go
     COMMAND flatbuffers::flatc
         --go
         -I ${FBS_DIR}
         -o ${FBS_GO_OUT_DIR}
         ${FBS_DIR}/meta_db.fbs
         ${FBS_DIR}/core.fbs
+        ${FBS_DIR}/quest.fbs
     DEPENDS flatbuffers::flatc
             ${FBS_DIR}/core.fbs
             ${FBS_DIR}/meta_db.fbs
+            ${FBS_DIR}/quest.fbs
     COMMENT "Generating FlatBuffers Go code for meta_db"
 )
 

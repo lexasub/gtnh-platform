@@ -54,6 +54,7 @@ find_package(spdlog REQUIRED)
 find_package(glfw3 REQUIRED)
 #find_package(Boost REQUIRED)
 find_package(TBB REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 # vcpkg-managed dependencies (lmdb, wayland)
 if(NOT DEFINED VCPKG_ROOT)

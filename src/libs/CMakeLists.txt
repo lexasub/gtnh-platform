@@ -1,3 +1,4 @@
 add_subdirectory(recipe_manager_lib)
 add_subdirectory(machine_registry)
 add_subdirectory(libgtnh-net)
+add_subdirectory(quest_lib)

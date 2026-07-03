@@ -4,6 +4,7 @@
 #include "Windows/player/PlayerInventory.h"
 #include "Windows/player/CreativeMenu.h"
 #include "Windows/player/RecipeInspectWindow.h"
+#include "Windows/player/QuestBookWindow.h"
 #include "Panels/NeiPanel.h"
 #include <GLFW/glfw3.h>
 
@@ -17,12 +18,14 @@ void RegisterPlayerUI(UIManager& mgr, InventoryState& invState) {
     invWin.SetDragManager(mgr.GetDragManager());
     mgr.Register<CreativeMenu>(&mgr);
     mgr.Register<RecipeInspectWindow>();
+    mgr.Register<QuestBookWindow>();
     mgr.RegisterPanel<NeiPanel>(&mgr);
 
     // ── Default key bindings ──
     auto& binder = mgr.GetBinder();
     binder.Bind(GLFW_KEY_R,       "show_recipe");
     binder.Bind(GLFW_KEY_U,       "toggle_item_list");
+    binder.Bind(GLFW_KEY_GRAVE_ACCENT,       "toggle_quest_book"); // Quest button is '`'
     binder.Bind(GLFW_KEY_ESCAPE,  "close_ui");
     for (int i = 0; i < 9; ++i)
         binder.Bind(GLFW_KEY_1 + i, "hotbar_" + std::to_string(i));

@@ -44,6 +44,9 @@ namespace GatewayMsg {
     inline constexpr uint8_t kRecipeCompleted = 17;
     inline constexpr uint8_t kChestOpenReq    = 18;
     inline constexpr uint8_t kChestOpenResp   = 19;
+    inline constexpr uint8_t kQuestProgressUpdate       = 20;
+    inline constexpr uint8_t kQuestUnlockNotification    = 21;
+    inline constexpr uint8_t kQuestCompletedNotification = 22;
 }
 
 class NetClient : public std::enable_shared_from_this<NetClient> {
@@ -58,6 +61,7 @@ using ChunkCallback = std::function<void(std::shared_ptr<ChunkView>, ChunkCoord)
     using SetMachineSlotRespCallback = std::function<void(BlockPos, uint8_t, bool, const std::string&, const ItemStack&)>;
     using ChestOpenRespCallback = std::function<void(BlockPos, bool, const std::vector<ItemStack>&)>;
     using ToolActionRespCallback = std::function<void(bool, uint8_t, const std::vector<uint8_t>&)>;
+    using QuestUpdateCallback = std::function<void(uint8_t, std::shared_ptr<std::vector<uint8_t>>)>;
 
     explicit NetClient();
     ~NetClient();
@@ -86,6 +90,7 @@ using ChunkCallback = std::function<void(std::shared_ptr<ChunkView>, ChunkCoord)
     void SetSetMachineSlotRespCallback(SetMachineSlotRespCallback cb) { onSetMachineSlotResp_ = std::move(cb); }
     void SetChestOpenRespCallback(ChestOpenRespCallback cb) { onChestOpenResp_ = std::move(cb); }
     void SetToolActionRespCallback(ToolActionRespCallback cb) { onToolActionResp_ = std::move(cb); }
+    void SetQuestUpdateCallback(QuestUpdateCallback cb) { onQuestUpdate_ = std::move(cb); }
 
     // ---- outbound messages -------------------------------------------------
 
@@ -173,4 +178,5 @@ private:
     SetMachineSlotRespCallback onSetMachineSlotResp_;
     ChestOpenRespCallback onChestOpenResp_;
     ToolActionRespCallback onToolActionResp_;
+    QuestUpdateCallback onQuestUpdate_;
 };
