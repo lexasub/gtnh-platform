@@ -45,7 +45,7 @@ void MachineWindow::onMachineSlotAck(uint32_t /*x*/, uint32_t /*y*/, uint32_t /*
 
 void MachineWindow::Render(InventoryState* playerInv) {
     if (!open_) return;
-
+    //TODO refactor hell
     // Unique window ID per machine position (visible title stays "Machine")
     char title[64];
     std::snprintf(title, sizeof(title), "Machine###Machine_%d_%d_%d",

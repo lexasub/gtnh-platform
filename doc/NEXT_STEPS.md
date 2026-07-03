@@ -79,14 +79,6 @@
 
 **Файлы:** `game_client/UI/SlotGrid/SlotGrid.h`, `WorkbenchWindow.cpp`
 
-### Macerator recipes
-
-`macerator.json` отсутствует. Остальные 6 типов машин имеют рецепты.
-
-**Файлы:** `data/recipes/`
-
----
-
 ## P2 — Polish & deferred
 
 | Задача | Spec | Статус |

@@ -28,7 +28,7 @@ void ActionHandler::Init(ActionRegistry* reg, UIManager* mgr, NetClient* nc,
     }
 
     // Register all built-in actions
-    reg->Register("toggle_item_list",  [this]() { DoToggleItemList(); });
+    reg->Register("toggle_item_list",  [this]() { DoToggleItemList(); });//TODO give object func instead lambda
     reg->Register("show_recipe",       [this]() { DoShowRecipeForHovered(); });
     reg->Register("close_ui",          [this]() { DoCloseAll(); });
     reg->Register("toggle_inv",        [this]() { DoToggleInventory(); });
@@ -40,7 +40,7 @@ void ActionHandler::Init(ActionRegistry* reg, UIManager* mgr, NetClient* nc,
     }
     // Scroll binding (not a named action — wired as InputBinder callback)
     if (uiMgr_) {
-        uiMgr_->GetBinder().OnScroll([this](float delta) { DoScrollHotbar(delta); });
+        uiMgr_->GetBinder().OnScroll([this](float delta) { DoScrollHotbar(delta); });//TODO give object func instead lambda
     }
 }
 

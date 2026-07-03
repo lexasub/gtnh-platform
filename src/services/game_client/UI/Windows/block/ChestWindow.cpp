@@ -110,7 +110,7 @@ void ChestWindow::Render(InventoryState* playerInv) {
 
 bool ChestWindow::OnKeyEvent(int key, int action, [[maybe_unused]] int mods) {
     if (!open_) return false;
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) { //TODO key via uidefaults
         SetOpen(false);
         return true;
     }

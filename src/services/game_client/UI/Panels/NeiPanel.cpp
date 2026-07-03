@@ -18,7 +18,7 @@ NeiPanel::NeiPanel(UIManager* uiMgr) : uiMgr_(uiMgr) {}
 
 bool NeiPanel::OnKeyEvent(int key, int action, int /*mods*/) {
     if (!visible_) return false;
-    if (action == GLFW_PRESS && key == GLFW_KEY_ESCAPE) {
+    if (action == GLFW_PRESS && key == GLFW_KEY_ESCAPE) { //TODO use key via uidefaults
         visible_ = false;
         return true;
     }

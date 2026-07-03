@@ -174,7 +174,7 @@ int SlotGridComponent::Render() {
     int clicked = -1;
     int end = std::min(startIndex_ + count_, static_cast<int>(slots_.size()));
     SlotStyle s = NormalizedStyle(style_);
-
+    //TODO refactor if hall
     for (int i = startIndex_; i < end; ++i) {
         int col = (i - startIndex_) % cols_;
         if (col > 0) ImGui::SameLine();
@@ -208,7 +208,7 @@ int SlotGridComponent::Render() {
                 // Tool energy display (items 90-95)
                 uint32_t capacity = 0;
                 const char* toolName = nullptr;
-                switch (id) {
+                switch (id) { // TODO use some registry
                     case 90: capacity = 1000; toolName = "Drill (ULV)"; break;
                     case 91: capacity = 4000; toolName = "Drill (LV)"; break;
                     case 92: capacity = 16000; toolName = "Drill (MV)"; break;
@@ -219,7 +219,7 @@ int SlotGridComponent::Render() {
                 if (capacity > 0) {
                     float pct = (meta * 100.0f) / capacity;
                     ImGui::Text("%s", toolName);
-                    ImGui::Text("Energy: %u / %u EU", meta, capacity);
+                    ImGui::Text("Energy: %u / %u EU", meta, capacity); //EU? may be recognize current energy type? (ex - benz saw)
                     ImGui::ProgressBar(pct / 100.0f, ImVec2(120, 0), "");
                 } else if (toolName) {
                     ImGui::Text("%s", toolName);
@@ -293,19 +293,19 @@ int SlotGridComponent::Render() {
     }
 
     // ── ESC cancels drag (returns item to source) ────────────────────────
-    if (dm_ && dm_->IsDragging() && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    if (dm_ && dm_->IsDragging() && ImGui::IsKeyPressed(ImGuiKey_Escape)) { //TODO concrete button via uidefaults
         dm_->CancelDrag(slots_);
     }
 
     // ── Q while dragging → drop (destroy) held item ─────────────────────
-    if (dm_ && dm_->IsDragging() && ImGui::IsKeyPressed(ImGuiKey_Q)) {
+    if (dm_ && dm_->IsDragging() && ImGui::IsKeyPressed(ImGuiKey_Q)) {//TODO concrete button via uidefaults
         dm_->DropHeldItem();
     }
 
     // ── Q while hovering an item (not dragging) → drop that slot ────────
     // Uses DragManager's callback (wired to SendInventoryAction) to notify server.
     if (dm_ && !dm_->IsDragging() && inv_ && inv_->hoveredSlot >= 0
-        && ImGui::IsKeyPressed(ImGuiKey_Q))
+        && ImGui::IsKeyPressed(ImGuiKey_Q))//TODO concrete button via uidefaults
     {
         auto& slot = slots_[inv_->hoveredSlot];
         if (slot.item_id != 0) {
