@@ -110,6 +110,7 @@ The goal: understanding and fixing a component should require fewer changes and 
 ## Build
 
 ### Dependencies (TODO NEED CONTRIBUTE)
+install tbb bgfx bx bimg
 
 Two ways to get dependencies:
 
@@ -119,12 +120,15 @@ Two ways to get dependencies:
 
 ```bash
 pip install conan
-conan install . --build=missing
+conan install -of build --build=missing #-s build_type=Debug
+cd build
+cmake -GNinja -DCMAKE_TOOLCHAIN_FILE=$PWD/conan_toolchain.cmake ..
+
 ```
 
 > **Note:** If Conan registry is unavailable in your region, see Option B.
 
-**Option B — Pre-built (build once, reuse):**
+**Option B — Pre-built (build once, reuse):** TODO rewrite
 
 Dependencies that aren't in Conan (bgfx, FastNoise2, cmake-imgui, ImGuizmo) are always built manually. Use the setup script:
 

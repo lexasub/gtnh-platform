@@ -52,4 +52,5 @@ target_link_libraries(recipe_manager_lib PUBLIC
     spdlog::spdlog
     nlohmann_json::nlohmann_json
     yaml-cpp::yaml-cpp
+    SQLite::SQLite3
 )

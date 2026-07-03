@@ -15,7 +15,7 @@ find_package(flatbuffers REQUIRED)
 find_package(glm REQUIRED)
 find_package(spdlog REQUIRED)
 
-find_package(SQLite3 REQUIRED COMPONENTS SQLite3)
+find_package(SQLite3 REQUIRED)
 
 # FlatBuffers schema → C++ headers — shared protocol from src/protocol/
 set(FBS_DIR ${CMAKE_SOURCE_DIR}/src/protocol)
@@ -135,9 +135,9 @@ PRIVATE
     asio::asio
     flatbuffers::flatbuffers
     EnTT::EnTT
-    unofficial::lmdb::lmdb
+    lmdb::lmdb
     spdlog::spdlog
-    /usr/lib/libsqlite3.so
+    SQLite::SQLite3
     pthread
 )
 
@@ -188,9 +188,9 @@ target_link_libraries(simcored_test PRIVATE
     asio::asio
     flatbuffers::flatbuffers
     EnTT::EnTT
-    unofficial::lmdb::lmdb
+    lmdb::lmdb
     spdlog::spdlog
-    /usr/lib/libsqlite3.so
+    SQLite::SQLite3
     pthread
 )
 add_test(NAME simcored_test COMMAND simcored_test)

@@ -41,11 +41,11 @@ add_executable(chunkd
     main.cpp
 )
 
-# vcpkg's unofficial-lmdb transitively adds its entire include/ dir, which contains a newer
+# lmdb transitively adds its entire include/ dir, which contains a newer
 # flatbuffers.h (25.12) incompatible with our Conan flatc (25.9). Ensure Conan's version wins.
 include_directories(BEFORE SYSTEM ${flatbuffers_INCLUDE_DIRS} ${FBS_GEN_DIR})
 
-add_dependencies(chunkd chunkd_fbs)
+add_dependencies(chunkd chunkd_fbs asio::asio)
 
 # Lock-free ClockCache test — header-only, no external deps beyond Threads
 add_executable(clock_cache_test
@@ -64,10 +64,11 @@ target_compile_options(chunk_cache_test PRIVATE -mcx16)
 add_dependencies(chunk_cache_test chunkd_fbs)
 
 target_link_libraries(chunk_cache_test PRIVATE
-    unofficial::lmdb::lmdb
+    lmdb::lmdb
     spdlog::spdlog
     Threads::Threads
     worldgeneratord
+    asio::asio
 )
 
 # ClockCache vs LruCache microbenchmark — header-only, Threads only
@@ -78,7 +79,7 @@ target_compile_options(clock_cache_bench PRIVATE -mcx16)
 target_link_libraries(clock_cache_bench PRIVATE Threads::Threads)
 
 target_link_libraries(chunkd PRIVATE
-    unofficial::lmdb::lmdb
+    lmdb::lmdb
     flatbuffers::flatbuffers
     glm::glm
     spdlog::spdlog
@@ -91,14 +92,17 @@ add_executable(chunk_store_cli_test
     chunk_store_cli_test.cpp
     Storage/ChunkStore.cpp
     Storage/WorkQueue.cpp
+
 )
 add_dependencies(chunk_store_cli_test chunkd_fbs)
 target_compile_options(chunk_store_cli_test PRIVATE -mcx16)
 target_link_libraries(chunk_store_cli_test PRIVATE
-    unofficial::lmdb::lmdb
+    lmdb::lmdb
     spdlog::spdlog
     Threads::Threads
     worldgeneratord
+
+    asio::asio
 )
 
 # Load test — throughput, latency, mixed read/write, eviction stress
@@ -106,14 +110,17 @@ add_executable(chunkd_load_test
     Storage/chunkd_load_test.cpp
     Storage/ChunkStore.cpp
     Storage/WorkQueue.cpp
+
 )
 add_dependencies(chunkd_load_test chunkd_fbs)
 target_compile_options(chunkd_load_test PRIVATE -mcx16)
 target_link_libraries(chunkd_load_test PRIVATE
-    unofficial::lmdb::lmdb
+    lmdb::lmdb
     spdlog::spdlog
     Threads::Threads
     worldgeneratord
+
+    asio::asio
 )
 
 # Dirty-chunk tracking test — real LMDB, real concurrency
@@ -121,12 +128,14 @@ add_executable(chunk_dirty_test
     Storage/chunk_dirty_test.cpp
     Storage/ChunkStore.cpp
     Storage/WorkQueue.cpp
+
 )
-add_dependencies(chunk_dirty_test chunkd_fbs)
+add_dependencies(chunk_dirty_test chunkd_fbs asio::asio)
 target_compile_options(chunk_dirty_test PRIVATE -mcx16)
 target_link_libraries(chunk_dirty_test PRIVATE
-    unofficial::lmdb::lmdb
+    lmdb::lmdb
     spdlog::spdlog
     Threads::Threads
     worldgeneratord
+    asio::asio
 )

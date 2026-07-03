@@ -67,7 +67,7 @@ target_link_libraries(entitystated PRIVATE
     spdlog::spdlog
     asio::asio
     Threads::Threads
-    unofficial::lmdb::lmdb
+    lmdb::lmdb
 )
 
 # Unit tests
@@ -93,6 +93,6 @@ target_link_libraries(entitystated_test PRIVATE
     spdlog::spdlog
     asio::asio
     Threads::Threads
-    unofficial::lmdb::lmdb
+    lmdb::lmdb
 )
 add_test(NAME entitystated_test COMMAND entitystated_test)

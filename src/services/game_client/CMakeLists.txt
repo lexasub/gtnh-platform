@@ -147,7 +147,7 @@ function(compile_shader src variant profile out_var)
     set(output ${SHADER_OUT}/${name}.${variant}.bin)
     add_custom_command(
         OUTPUT ${output}
-        COMMAND ${BGFX_DIR}/build/cmake/bgfx/shaderc
+	COMMAND ${CMAKE_SOURCE_DIR}/shaderc
             -f ${src}
             -o ${output}
             --platform linux
@@ -167,7 +167,7 @@ function(compile_shader_vulkan src variant out_var)
     set(output ${SHADER_OUT}/${name}.${variant}.bin)
     add_custom_command(
         OUTPUT ${output}
-        COMMAND ${BGFX_DIR}/build/cmake/bgfx/shaderc
+	COMMAND ${CMAKE_SOURCE_DIR}/shaderc
             -f ${src}
             -o ${output}
             --platform linux

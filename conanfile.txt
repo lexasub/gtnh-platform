@@ -1,6 +1,5 @@
 [requires]
 asio/1.32.0
-boost/1.91.0
 entt/3.16.0
 flatbuffers/25.9.23
 fmt/12.1.0
@@ -10,12 +9,18 @@ miniaudio/0.11.22
 nlohmann_json/3.11.3
 yaml-cpp/0.8.0
 spdlog/1.17.0
+fastnoise2/1.1.1
 xorg/system
 opengl/system
+sqlite3/3.49.1
+liburing/2.13
+lmdb/0.9.32
+imgui/1.91.8
 
 [options]
 boost/*:without_python=True
 boost/*:without_iostreams=True
 
 [generators]
-cmake_find_package
+CMakeToolchain
+CMakeDeps

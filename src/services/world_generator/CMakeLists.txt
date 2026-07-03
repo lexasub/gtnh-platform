@@ -20,16 +20,9 @@ target_link_libraries(worldgeneratord PRIVATE
     spdlog::spdlog
     Threads::Threads
     nlohmann_json::nlohmann_json
-
+    fastnoise2::fastnoise2
     # TODO: These need to be built from source or fetched via a proper dependency manager.
     #       Currently they reference prebuilt objects in a local third_party/ build tree.
     #       See README for dependency setup instructions.
-    ${CMAKE_SOURCE_DIR}/third_party/FastNoise2/build/Metadata.cpp.o
-    ${CMAKE_SOURCE_DIR}/third_party/FastNoise2/build/SmartNode.cpp.o
-    ${CMAKE_SOURCE_DIR}/third_party/FastNoise2/build/FastNoise_C.cpp.o
-    ${CMAKE_SOURCE_DIR}/third_party/FastNoise2/build/FastSIMD.cpp.o
-    ${CMAKE_SOURCE_DIR}/third_party/FastNoise2/build/FastSIMD_FastNoise_AVX2.cpp.o
-    ${CMAKE_SOURCE_DIR}/third_party/FastNoise2/build/FastSIMD_FastNoise_AVX512.cpp.o
-    ${CMAKE_SOURCE_DIR}/third_party/FastNoise2/build/FastSIMD_FastNoise_SSE2.cpp.o
-    ${CMAKE_SOURCE_DIR}/third_party/FastNoise2/build/FastSIMD_FastNoise_SSE41.cpp.o
+
 )
