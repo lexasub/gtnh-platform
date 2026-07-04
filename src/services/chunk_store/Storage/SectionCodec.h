@@ -323,21 +323,18 @@ inline bool decodeChunk(const uint8_t *data, size_t size, Chunk &chunk) {
           return false;
 
         uint16_t bid = palette[pal_idx];
-        int lx = li & 0xF;
-        int lz = (li >> 4) & 0xF;
-        int ly = (li >> 8) & 0xF;
-        int gx = ox + lx;
-        int gy = oy + ly;
-        int gz = oz + lz;
-        chunk.blocks[chunkIndex(gx, gy, gz)] = bid;
+        int lx = ox + (li & 0xF);
+        int lz = oz + ((li >> 4) & 0xF);
+        int ly = oy + ((li >> 8) & 0xF);
+        chunk.GetBlock(lx, ly, lz) = bid;
       }
       r.pos += total_bytes;
     } else {
       uint16_t uniform_bid = palette[0];
-      for (int ly = 0; ly < SEC_SZ; ++ly)
-        for (int lz = 0; lz < SEC_SZ; ++lz)
-          for (int lx = 0; lx < SEC_SZ; ++lx)
-            chunk.blocks[chunkIndex(ox + lx, oy + ly, oz + lz)] = uniform_bid;
+      for (int ly = oy; ly < SEC_SZ + oy; ++ly)
+        for (int lz = oz; lz < SEC_SZ + oz; ++lz)
+          for (int lx = ox; lx < SEC_SZ + ox; ++lx)
+            chunk.blocks[chunkIndex( lx,  ly,  lz)] = uniform_bid;
     }
 
     uint16_t mc = 0;

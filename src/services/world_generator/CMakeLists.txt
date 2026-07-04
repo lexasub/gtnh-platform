@@ -2,6 +2,8 @@ set(CMAKE_CXX_STANDARD 26)
 find_package(Threads REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
+add_compile_options(-g -O3 -march=native -ffast-math)
+
 add_library(worldgeneratord
     WorldGenerator.cpp
     GenerationQueue.cpp
@@ -21,8 +23,4 @@ target_link_libraries(worldgeneratord PRIVATE
     Threads::Threads
     nlohmann_json::nlohmann_json
     fastnoise2::fastnoise2
-    # TODO: These need to be built from source or fetched via a proper dependency manager.
-    #       Currently they reference prebuilt objects in a local third_party/ build tree.
-    #       See README for dependency setup instructions.
-
 )

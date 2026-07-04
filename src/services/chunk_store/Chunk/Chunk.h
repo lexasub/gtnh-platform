@@ -22,7 +22,7 @@ struct alignas(64) Chunk {
   //     - know that its pending change is committed
   //     - detect concurrent mutations from other players
 
-  [[nodiscard]] uint16_t GetBlock(int x, int y, int z) const {
+  [[nodiscard]] uint16_t& GetBlock(int x, int y, int z) const {
     return blocks[(y << 10) | (z << 5) | x];
   }
   void SetBlock(int x, int y, int z, uint16_t id) const {
