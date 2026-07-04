@@ -3,27 +3,27 @@
 #include <string>
 #include <vector>
 
-struct OreDef {
+// Структура жилы (Vein) в стиле GTNH
+struct VeinDef {
   std::string name;
-  uint16_t block_id;
   int32_t min_y;
   int32_t max_y;
-  float threshold;
-  float frequency;
-  uint8_t vein_size;
-  float density;
-  float rarity;
+  int32_t weight;       // Вес для случайного выбора
+  float density;        // Плотность/Размер жилы (0.1 - 1.0)
+  uint16_t primary_id;  // Ядро (Core)
+  uint16_t secondary_id;// Оболочка (Wing)
+  uint16_t sporadic_id; // Вкрапления (Sporadic)
 };
 
 class OreConfig {
 public:
-  static OreConfig &instance();
-  bool load(const std::string &path);
-  const std::vector<OreDef> &allOres() const;
-  const OreDef *getOre(uint16_t block_id) const;
+  static OreConfig& instance();
+  bool load(const std::string& path);
+
+  const std::vector<VeinDef>& allVeins() const;
   int32_t seedOffset() const;
 
 private:
-  std::vector<OreDef> m_ores;
+  std::vector<VeinDef> m_veins;
   int32_t m_seedOffset = 12345;
 };

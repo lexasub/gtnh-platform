@@ -1,27 +1,24 @@
 #pragma once
-
-#include "OreConfig.h"
-#include <array>
-#include <cmath>
 #include <cstdint>
-#include <vector>
+#include <array>
+
+class Chunk;
+struct VeinDef;
 
 class OreGenerator {
+    // Размер региона в чанках (3x3 чанка = 96x96 блоков)
+    static constexpr int REGION_SIZE_CHUNKS = 3;
 public:
-  explicit OreGenerator(int32_t worldSeed);
+    static constexpr int REGION_SIZE_BLOCKS = REGION_SIZE_CHUNKS * 32;
+    explicit OreGenerator(int32_t worldSeed);
 
-  void generateOres(int32_t chunkX, int32_t chunkZ, int32_t baseHeight,
-                    std::array<uint16_t, 32 * 32 * 32> &blocks,
-                    int32_t chunkSize = 32);
+    void generateOres(int32_t chunkX, int32_t chunkY, int32_t chunkZ,
+                      std::array<uint16_t, 32*32*32>& blocks, int32_t chunkSize = 32);
 
 private:
-  float calculateOreNoise(const OreDef &ore, int32_t worldX, int32_t worldY,
-                          int32_t worldZ) const;
-  bool isInHeightRange(const OreDef &ore, int32_t y) const;
-  bool shouldGenerateInChunk(int32_t chunkX, int32_t chunkZ,
-                             const OreDef &ore) const;
-  float calculateDensityNoise(const OreDef &ore, int32_t worldX, int32_t worldY,
-                              int32_t worldZ) const;
+    int32_t m_worldSeed;
 
-  int32_t m_worldSeed;
+
+    uint32_t hashRegion(int32_t rx, int32_t rz, uint32_t seed) const;
+    const VeinDef* selectVein(int32_t y) const;
 };
