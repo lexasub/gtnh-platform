@@ -1,76 +1,34 @@
 {
   "veins": [
     {
-      "block_id": 3,
-      "name": "iron",
-      "min_y": 5,
-      "max_y": 40,
-      "threshold": 0.5,
-      "frequency": 0.08,
-      "vein_size": 8
+      "name": "copper_tin_vein",
+      "min_y": 40,
+      "max_y": 80,
+      "weight": 40,
+      "density": 0.6,
+      "primary": "10:0",
+      "secondary": "10:2",
+      "sporadic": "10:1"
     },
     {
-      "block_id": 53,
-      "name": "copper",
-      "min_y": 10,
-      "max_y": 60,
-      "threshold": 0.6,
-      "frequency": 0.10,
-      "vein_size": 10
-    },
-    {
-      "block_id": 25,
-      "name": "tin",
+      "name": "iron_nickel_vein",
       "min_y": 10,
       "max_y": 50,
-      "threshold": 0.7,
-      "frequency": 0.12,
-      "vein_size": 12
+      "weight": 30,
+      "density": 0.7,
+      "primary": "10:0",
+      "secondary": "10:3",
+      "sporadic": "10:6"
     },
     {
-      "block_id": 5,
-      "name": "gold",
-      "min_y": 5,
-      "max_y": 30,
-      "threshold": 0.8,
-      "frequency": 0.13,
-      "vein_size": 6
-    },
-    {
-      "block_id": 87,
-      "name": "coal",
-      "min_y": 5,
-      "max_y": 80,
-      "threshold": 0.75,
-      "frequency": 0.15,
-      "vein_size": 15
-    },
-    {
-      "block_id": 88,
-      "name": "redstone",
+      "name": "diamond_deep_vein",
       "min_y": 5,
       "max_y": 20,
-      "threshold": 0.85,
-      "frequency": 0.12,
-      "vein_size": 5
-    },
-    {
-      "block_id": 89,
-      "name": "lapis",
-      "min_y": 10,
-      "max_y": 30,
-      "threshold": 0.88,
-      "frequency": 0.11,
-      "vein_size": 7
-    },
-    {
-      "block_id": 90,
-      "name": "diamond",
-      "min_y": 5,
-      "max_y": 15,
-      "threshold": 0.9,
-      "frequency": 0.09,
-      "vein_size": 4
+      "weight": 5,
+      "density": 0.4,
+      "primary": "10:9",
+      "secondary": "10:7",
+      "sporadic": "10:8"
     }
   ]
 }

@@ -2,6 +2,7 @@
 #include <nlohmann/json.hpp>
 #include <fstream>
 #include <spdlog/spdlog.h>
+#include "common/ItemId.h"
 
 using json = nlohmann::json;
 
@@ -20,21 +21,23 @@ bool OreConfig::load(const std::string& path) {
         json j;
         file >> j;
         m_seedOffset = j.value("seed_offset", 12345);
-        m_ores.clear();
-        for (const auto& o : j["ores"]) {
-            OreDef def;
-            def.name = o["name"];
-            def.block_id = o["block_id"];
-            def.min_y = o["min_y"];
-            def.max_y = o["max_y"];
-            def.threshold = o["threshold"];
-            def.frequency = o["frequency"];
-            def.vein_size = o["vein_size"];
-            def.density = o["density"];
-            def.rarity = o.value("rarity", 1.0f);
-            m_ores.push_back(def);
+        m_veins.clear();
+
+        for (const auto& v : j["veins"]) {
+            VeinDef def;
+            def.name = v["name"];
+            def.min_y = v["min_y"];
+            def.max_y = v["max_y"];
+            def.weight = v["weight"];
+            def.density = v.value("density", 0.5f);
+
+            def.primary_id = ItemId::pack(std::string{v["primary"]});
+            def.secondary_id = ItemId::pack(std::string{v["secondary"]});
+            def.sporadic_id = ItemId::pack(std::string{v["sporadic"]});
+
+            m_veins.push_back(def);
         }
-        spdlog::info("[OreConfig] Loaded {} ore types from {}", m_ores.size(), path);
+        spdlog::info("[OreConfig] Loaded {} vein types from {}", m_veins.size(), path);
         return true;
     } catch (const std::exception& e) {
         spdlog::error("[OreConfig] Parse error: {}", e.what());
@@ -42,13 +45,5 @@ bool OreConfig::load(const std::string& path) {
     }
 }
 
-const std::vector<OreDef>& OreConfig::allOres() const { return m_ores; }
-
-const OreDef* OreConfig::getOre(uint16_t block_id) const {
-    for (const auto& o : m_ores) {
-        if (o.block_id == block_id) return &o;
-    }
-    return nullptr;
-}
-
+const std::vector<VeinDef>& OreConfig::allVeins() const { return m_veins; }
 int32_t OreConfig::seedOffset() const { return m_seedOffset; }

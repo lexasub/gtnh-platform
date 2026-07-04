@@ -445,6 +445,7 @@ void ChunkStore::AsyncGetChunk(ChunkCoord coord,
       gen_queue_->requestChunk(coord,
                                   [this, coord, callback = std::move(callback)](std::shared_ptr<Chunk> gen_chunk) mutable {
                                       // Save generated chunk to LMDB (on gen thread)
+                                      //TODO, may be fix via queue ) HMM, WRITING TO in gen thread
                                       writeTransaction(makeKey(coord.x, coord.y, coord.z), *gen_chunk);
                                       // Cache a copy (gen_queue owns the original shared_ptr)
                                       auto* cached_chunk = new Chunk();

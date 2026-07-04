@@ -132,6 +132,7 @@ struct Reader {
 
 inline void encodeSection(const Chunk &chunk, int section,
                           std::vector<uint8_t> &buf) {
+  //TODO optimize
   int ox = sectionOrigin(section, 0);
   int oy = sectionOrigin(section, 2);
   int oz = sectionOrigin(section, 1);

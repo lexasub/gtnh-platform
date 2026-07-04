@@ -57,13 +57,14 @@ int,name,stack,meta
 10:0,iron_ore,,0
 10:1,gold_ore,,0
 10:2,tin_ore,,0
-10:3,electrum_ore,,0
+10:3,coper_ore,,0
 10:4,uranium_ore,,0
 10:5,quartz_ore,,0
 10:6,coal_ore,,0
 10:7,redstone_ore,,0
 10:8,lapis_ore,,0
 10:9,diamond_ore,,0
+10:10,electrum_ore,,0
 
 #(prefix 110) empty
 # MACHINES (prefix 1110)
