@@ -1,16 +1,16 @@
 #include "ECS/SimulationEngine.h"
 #include "Common/xyz.h"
+#include <common/ItemId.h>
 #include <spdlog/spdlog.h>
 #include <algorithm>
 
-// Infrastructure blocks that should NOT get ECS machine entities.
-// IDs must match data/registry/items.csv:
-//   pipes: fluid=61, item=62, dense_item=64, dense_fluid=65
-//   cables: tin=66, copper=67, gold=68, alu=69, tungsten=70, platinum=71
-//   transformers: mv_hv=72, hv_ev=73
-//   NOT infra: creative_generator=63 (machine)
 constexpr bool isInfraBlock(uint16_t id) {
-    return (id >= 61 && id <= 73 && id != 63);
+    return id == ItemId::pack("1111:10:0") || id == ItemId::pack("1111:10:1")
+        || id == ItemId::pack("1111:10:2") || id == ItemId::pack("1111:10:3")
+        || id == ItemId::pack("1111:01:0") || id == ItemId::pack("1111:01:1")
+        || id == ItemId::pack("1111:01:2") || id == ItemId::pack("1111:01:3")
+        || id == ItemId::pack("1111:01:4") || id == ItemId::pack("1111:01:5")
+        || id == ItemId::pack("1110:11:0")|| id == ItemId::pack("1110:11:1");
 }
 
 namespace simcore {

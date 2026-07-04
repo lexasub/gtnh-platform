@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 #include <cmath>
+#include <common/ItemId.h>
 #include "PipeNetwork.h"
 #include "CableGraph.h"
 #include "CableTypes.h"
@@ -412,21 +413,24 @@ static void test_fluid_distribution_no_source() {
 
 static void test_fluid_registry_defaults() {
     auto& reg = FluidRegistry::instance();
+    uint16_t waterId = ItemId::pack("1111:11:0");
+    uint16_t steamId = ItemId::pack("1111:11:1");
+    uint16_t acidId  = ItemId::pack("1111:11:2");
 
-    CHECK(reg.isFluid(84), "water (84) registered");
-    CHECK(reg.isFluid(85), "steam (85) registered");
-    CHECK(reg.isFluid(86), "sulfuric_acid (86) registered");
+    CHECK(reg.isFluid(waterId), "water registered");
+    CHECK(reg.isFluid(steamId), "steam registered");
+    CHECK(reg.isFluid(acidId), "sulfuric_acid registered");
 
-    const auto* water = reg.getFluid(84);
+    const auto* water = reg.getFluid(waterId);
     CHECK(water != nullptr, "water def exists");
-    CHECK(water->item_id == 84, "water id correct");
+    CHECK(water->item_id == waterId, "water id correct");
     CHECK(water->max_temp == 373, "water max temp correct");
 
-    const auto* steam = reg.getFluid(85);
+    const auto* steam = reg.getFluid(steamId);
     CHECK(steam != nullptr, "steam def exists");
     CHECK(steam->density < 1.0f, "steam less dense than water");
 
-    const auto* acid = reg.getFluid(86);
+    const auto* acid = reg.getFluid(acidId);
     CHECK(acid != nullptr, "acid def exists");
     CHECK(acid->density > 1.0f, "acid denser than water");
 

@@ -42,7 +42,7 @@ bool ItemRegistry::loadFromCSV(const std::string& csvPath) {
         line = line.substr(start, end - start + 1);
 
         // Skip header row
-        if (lineNum == 1 && line.find("id,name") != std::string::npos) {
+        if (lineNum == 1 && line.find("int,name") != std::string::npos) {
             continue;
         }
 
@@ -52,10 +52,32 @@ bool ItemRegistry::loadFromCSV(const std::string& csvPath) {
             continue;
         }
 
-        // Parse and validate fields
-        uint16_t id = static_cast<uint16_t>(std::stoi(idStr));
-        uint8_t stackSize = static_cast<uint8_t>(std::stoi(stackStr));
-        uint16_t meta = static_cast<uint16_t>(std::stoi(metaStr));
+        // Parse ID with ItemId::pack (handles "10:1" prefix notation)
+        uint16_t id = ItemId::pack(idStr);
+        if (id == 0 && idStr != "0" && idStr != "0:0:0") {
+            spdlog::warn("Invalid item ID at line {}: {}", lineNum, idStr);
+            continue;
+        }
+
+        // Parse stack size (optional, default 64)
+        uint8_t stackSize = 64;
+        if (!stackStr.empty()) {
+            try {
+                stackSize = static_cast<uint8_t>(std::stoi(stackStr));
+            } catch (...) {
+                // keep default
+            }
+        }
+
+        // Parse meta (optional, default 0)
+        uint16_t meta = 0;
+        if (!metaStr.empty()) {
+            try {
+                meta = static_cast<uint16_t>(std::stoi(metaStr));
+            } catch (...) {
+                // keep default
+            }
+        }
 
         ItemDefinition def(id, nameStr, stackSize, meta);
 
@@ -81,7 +103,7 @@ bool ItemRegistry::parseCSVLine(const std::string& line, std::string& idStr,
     std::istringstream iss(line);
     std::string field;
 
-    // id
+    // int (prefix notation or flat decimal)
     if (!std::getline(iss, field, ',')) return false;
     idStr = field;
 
@@ -89,11 +111,11 @@ bool ItemRegistry::parseCSVLine(const std::string& line, std::string& idStr,
     if (!std::getline(iss, field, ',')) return false;
     nameStr = field;
 
-    // stack_size
+    // stack (optional)
     if (!std::getline(iss, field, ',')) return false;
     stackStr = field;
 
-    // meta
+    // meta (optional)
     if (!std::getline(iss, field, ',')) return false;
     metaStr = field;
 

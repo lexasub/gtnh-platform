@@ -45,6 +45,7 @@ target_include_directories(pipe_networkd PRIVATE
     ${FBS_GEN_DIR}
     ${flatbuffers_INCLUDE_DIRS}
     ${CMAKE_SOURCE_DIR}/src/protocol
+    ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
@@ -70,6 +71,7 @@ target_include_directories(pipe_network_test PRIVATE
     ${flatbuffers_INCLUDE_DIRS}
     ${CMAKE_SOURCE_DIR}/src/protocol
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
 )
 
 add_dependencies(pipe_network_test pipenet_fbs)

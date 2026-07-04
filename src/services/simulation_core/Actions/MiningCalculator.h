@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <cmath>
+#include <common/ItemId.h>
 #include "../ECS/components/ItemEnergyStorage.h"
 
 // Base mining time in ticks for a player with no tool
@@ -17,42 +18,30 @@ constexpr float TOOL_SPEED[] = {
 // Energy cost per block hardness unit
 constexpr int32_t ENERGY_PER_HARDNESS = 50;  // 50 EU per hardness level
 
-// Block hardness definitions (hardcoded for MVP, configurable later)
+// Block hardness definitions
 constexpr uint8_t getBlockHardness(uint16_t block_id) {
-    switch (block_id) {
-        // Ores
-        case 3:  case 5:  case 25: case 53:  // iron, gold, tin, copper
-        case 70: case 71: case 72: case 73:  // coal, redstone, lapis, diamond
-            return 3;
-        // Stone variants
-        case 1:  return 2;  // stone
-        case 7:  return 2;  // cobblestone
-        case 8:  return 2;  // stone (smooth)
-        // Soft blocks
-        case 13: return 1;  // oak_planks
-        case 12: return 0;  // glass
-        default:  return 1;  // default
-    }
+    if (block_id == ItemId::pack("0:0:4")) return 0;  // glass
+    if (block_id == ItemId::pack("0:10:0")) return 1;  // oak_planks
+    if (block_id == ItemId::pack("0:0:1")) return 2;   // stone
+    if (block_id == ItemId::pack("0:0:2")) return 2;   // cobblestone
+    if (block_id == ItemId::pack("0:0:5")) return 3;   // obsidian
+    if (ItemId::category(block_id) == ItemId::CAT_ORES) return 3;
+    return 1;  // default
 }
 
 // Mining level required to break a block
 constexpr uint8_t getBlockMiningLevel(uint16_t block_id) {
-    switch (block_id) {
-        case 73: return 3;  // diamond_ore — needs HV (tier 3)
-        case 72: return 2;  // lapis_ore — needs MV (tier 2)
-        case 71: return 2;  // redstone_ore — needs MV
-        case 5:  return 2;  // gold_ore — needs MV
-        default: return 1;  // most ores — needs LV (tier 1)
-    }
+    if (block_id == ItemId::pack("10:9")) return 3;  // diamond_ore — needs HV
+    if (block_id == ItemId::pack("10:8")) return 2;  // lapis_ore — needs MV
+    if (block_id == ItemId::pack("10:7")) return 2;  // redstone_ore — needs MV
+    if (block_id == ItemId::pack("10:1")) return 2;  // gold_ore — needs MV
+    return 1;  // most ores — needs LV
 }
 
 constexpr bool logIsWoodBlock(uint16_t block_id) {
-    switch (block_id) {
-        case 13: case 14: case 15: case 16: case 17:
-        case 18:
-            return true;
-        default: return false;
-    }
+    // All wood items are under prefix "010" (wood category)
+    // Check top 3 bits = 010 → range 0x4000–0x5FFF (16384–24575)
+    return (block_id & 0xE000) == 0x4000;
 }
 
 inline int32_t miningEnergyCost(uint16_t toolItem, uint16_t blockId) {

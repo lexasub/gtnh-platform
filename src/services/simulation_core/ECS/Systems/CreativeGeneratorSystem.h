@@ -2,6 +2,7 @@
 
 #include <entt/entt.hpp>
 #include <memory>
+#include <common/ItemId.h>
 #include "ISystem.h"
 #include "../components/MachineComponent.h"
 #include "../components/EnergyStorage.h"
@@ -22,7 +23,7 @@ public:
     void tick(float dt) override;
 
     static constexpr int32_t kDefaultEnergyPerTick = 1024;
-    static constexpr uint16_t kCreativeGeneratorBlockId = 63;
+    static constexpr uint16_t kCreativeGeneratorBlockId = ItemId::pack("1110:01:2");
 
     void setEnergyPerTick(int32_t val) { energyPerTick_ = val; }
 

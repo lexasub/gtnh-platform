@@ -1,29 +1,30 @@
 #pragma once
 #include <cstdint>
+#include <common/ItemId.h>
 
-constexpr uint16_t ITEM_DRILL_ULV    = 90;
-constexpr uint16_t ITEM_DRILL_LV     = 91;
-constexpr uint16_t ITEM_DRILL_MV     = 92;
-constexpr uint16_t ITEM_DRILL_HV     = 93;
-constexpr uint16_t ITEM_CHAINSAW_LV  = 94;
-constexpr uint16_t ITEM_WRENCH       = 95;
+// Tool item IDs — computed at compile time from prefix notation.
+// Devices with special mining behavior.
 
-constexpr uint16_t BLOCK_BATTERY_BUFFER_LV = 96;
-constexpr uint16_t BLOCK_BATTERY_BUFFER_MV = 97;
-constexpr uint16_t BLOCK_BATTERY_BUFFER_HV = 98;
-constexpr uint16_t BLOCK_CHARGER           = 99;
+constexpr uint16_t ITEM_DRILL_ULV    = ItemId::pack("1111:0:0");
+constexpr uint16_t ITEM_DRILL_LV     = ItemId::pack("1111:0:1");
+constexpr uint16_t ITEM_DRILL_MV     = ItemId::pack("1111:0:2");
+constexpr uint16_t ITEM_DRILL_HV     = ItemId::pack("1111:0:3");
+constexpr uint16_t ITEM_CHAINSAW_LV  = ItemId::pack("1111:0:4");
+constexpr uint16_t ITEM_WRENCH       = ItemId::pack("1111:0:5");
 
+// Battery buffers & charger — under MACHINES category
+constexpr uint16_t BLOCK_BATTERY_BUFFER_LV = ItemId::pack("1110:10:0");
+constexpr uint16_t BLOCK_BATTERY_BUFFER_MV = ItemId::pack("1110:10:1");
+constexpr uint16_t BLOCK_BATTERY_BUFFER_HV = ItemId::pack("1110:10:2");
+constexpr uint16_t BLOCK_CHARGER           = ItemId::pack("1110:10:3");
+
+    // Tool tier from item ID — uses payload encoding under 1111:00: prefix
+// Payload: [tier:5][type:6] — tier = (payload >> 6) & 0x1F
 constexpr uint8_t toolTier(uint16_t itemId) {
-    switch (itemId) {
-        case ITEM_DRILL_ULV: return 0;
-        case ITEM_DRILL_LV:
-        case ITEM_CHAINSAW_LV: return 1;
-        case ITEM_DRILL_MV: return 2;
-        case ITEM_DRILL_HV: return 3;
-        default: return 0;
-    }
+    return static_cast<uint8_t>(ItemId::toolTier(itemId));
 }
 
+// Mining level from tier index
 constexpr uint8_t miningLevel(uint8_t tier) {
     constexpr uint8_t levels[] = {1, 2, 3, 4};
     return (tier < 4) ? levels[tier] : 4;

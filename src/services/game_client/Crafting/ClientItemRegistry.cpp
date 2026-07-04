@@ -3,6 +3,7 @@
 #include <sstream>
 #include <algorithm>
 #include <iostream>
+#include <common/ItemId.h>
 
 namespace ItemRegistry {
 
@@ -25,40 +26,42 @@ void LoadFromCSV(const std::string& csvPath) {
     }
 
     while (std::getline(file, line)) {
-        if (line.empty()) {
+        if (line.empty() || line[0] == '#') {
             continue;
         }
 
         std::istringstream iss(line);
         std::string field;
-        
+
+        // int (prefix notation or flat decimal)
         if (!std::getline(iss, field, ',')) continue;
-        uint16_t id = 0;
-        try {
-            id = static_cast<uint16_t>(std::stoul(field));
-        } catch (const std::exception&) {
-            continue; //TODO remove exception
-        }
+        uint16_t id = ItemId::pack(field);
+        if (id == 0 && field != "0" && field != "0:0:0") continue;
 
         if (id == 0) continue;
 
+        // name
         if (!std::getline(iss, field, ',')) continue;
         std::string name = field;
 
-        if (!std::getline(iss, field, ',')) continue;
-        uint8_t stackSize = 64; // default
-        try {
-            stackSize = static_cast<uint8_t>(std::stoul(field));
-        } catch (const std::exception&) {
-            // keep default //TODO remove exception
+        // stack (optional, default 64)
+        uint8_t stackSize = 64;
+        if (std::getline(iss, field, ',') && !field.empty()) {
+            try {
+                stackSize = static_cast<uint8_t>(std::stoul(field));
+            } catch (const std::exception&) {
+                // keep default
+            }
         }
 
-        if (!std::getline(iss, field, ',')) continue;
+        // meta (optional, default 0)
         uint16_t meta = 0;
-        try {
-            meta = static_cast<uint16_t>(std::stoul(field));
-        } catch (const std::exception&) {
-            // keep default //TODO remove exception
+        if (std::getline(iss, field, ',') && !field.empty()) {
+            try {
+                meta = static_cast<uint16_t>(std::stoul(field));
+            } catch (const std::exception&) {
+                // keep default
+            }
         }
 
         s_items[id] = {id, std::move(name), stackSize, meta};

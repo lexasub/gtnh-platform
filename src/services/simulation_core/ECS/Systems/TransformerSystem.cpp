@@ -1,4 +1,5 @@
 #include "TransformerSystem.h"
+#include <common/ItemId.h>
 #include <spdlog/spdlog.h>
 #include <cmath>
 
@@ -16,7 +17,8 @@ namespace {
 }
 
 bool TransformerSystem::isTransformer(uint16_t block_id) {
-    return block_id == 72 || block_id == 73;
+    return block_id == ItemId::pack("1110:11:0")  // transformer_mv_hv
+        || block_id == ItemId::pack("1110:11:1"); // transformer_hv_ev
 }
 
 TransformerSystem::TransformerSystem(entt::registry& reg,

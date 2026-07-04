@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Crafting/ClientItemRegistry.h"
+#include <common/ItemId.h>
 
 static int g_tests = 0, g_passed = 0, g_failed = 0;
 
@@ -28,13 +29,13 @@ static void test_load_items_csv() {
 
     CHECK(ItemRegistry::GetItem(0) == nullptr, "item 0 (air) is skipped by design");
 
-    auto* planks = ItemRegistry::GetItem(13);
-    CHECK(planks != nullptr, "item 13 (oak_planks) exists");
-    CHECK_EQ(planks->name, std::string("base:oak_planks"), "oak_planks name");
+    auto* planks = ItemRegistry::GetItem(ItemId::pack("0:10:0"));
+    CHECK(planks != nullptr, "oak_planks exists");
+    CHECK_EQ(planks->name, std::string("oak_planks"), "oak_planks name");
 
-    auto* coal = ItemRegistry::GetItem(44);
-    CHECK(coal != nullptr, "item 44 (coal) exists");
-    CHECK_EQ(coal->name, std::string("base:coal"), "coal name");
+    auto* coal = ItemRegistry::GetItem(ItemId::pack("0:111:2"));
+    CHECK(coal != nullptr, "coal exists");
+    CHECK_EQ(coal->name, std::string("coal"), "coal name");
 
     auto* unknown = ItemRegistry::GetItem(9999);
     CHECK(unknown == nullptr, "unknown item returns nullptr");
@@ -48,15 +49,15 @@ static void test_load_items_csv() {
 static void test_item_properties() {
     ItemRegistry::LoadFromCSV(DATA_DIR "/registry/items.csv");
 
-    auto* stone = ItemRegistry::GetItem(7);
-    CHECK(stone != nullptr, "item 7 (stone) exists");
-    CHECK_EQ(stone->stackSize, uint8_t(64), "stone stack size is 64");
-    CHECK_EQ(stone->name, std::string("base:cobblestone"), "cobblestone name");
-    CHECK_EQ(ItemRegistry::GetStackSize(7), uint8_t(64), "GetStackSize for stone");
+    auto* stone = ItemRegistry::GetItem(ItemId::pack("0:0:2"));
+    CHECK(stone != nullptr, "cobblestone exists");
+    CHECK_EQ(stone->stackSize, uint8_t(64), "cobblestone stack size is 64");
+    CHECK_EQ(stone->name, std::string("cobblestone"), "cobblestone name");
+    CHECK_EQ(ItemRegistry::GetStackSize(ItemId::pack("0:0:2")), uint8_t(64), "GetStackSize for cobblestone");
 
-    auto* chest = ItemRegistry::GetItem(20);
-    CHECK(chest != nullptr, "item 20 (chest) exists");
-    CHECK_EQ(chest->name, std::string("base:quartz"), "item 20 quartz name");
+    auto* chest = ItemRegistry::GetItem(ItemId::pack("0:10:3"));
+    CHECK(chest != nullptr, "chest exists");
+    CHECK_EQ(chest->name, std::string("chest"), "chest name");
 
     PASS();
 }

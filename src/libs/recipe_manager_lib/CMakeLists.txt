@@ -41,6 +41,7 @@ add_library(recipe_manager_lib STATIC
 
 target_include_directories(recipe_manager_lib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
     ${FBS_GEN_DIR}
     ${flatbuffers_INCLUDE_DIRS}
 )

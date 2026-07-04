@@ -1,4 +1,5 @@
 #include "FluidRegistry.h"
+#include <common/ItemId.h>
 
 FluidRegistry::FluidRegistry() {
     initDefaults();
@@ -21,16 +22,15 @@ void FluidRegistry::initDefaults() {
     if (initialized_) return;
     initialized_ = true;
 
-    // IDs must match data/registry/items.csv:
-    //   water=84, steam=85, sulfuric_acid=86
-    registerFluid({84, "water",          1.0f,  1.0f, 373});
-    registerFluid({85, "steam",          0.6f,  0.3f, 473});
-    registerFluid({86, "sulfuric_acid",  1.84f, 24.0f, 610});
+    // IDs from data/registry/items.csv (prefix notation):
+    registerFluid({ItemId::pack("1111:11:0"), "water",          1.0f,  1.0f, 373});
+    registerFluid({ItemId::pack("1111:11:1"), "steam",          0.6f,  0.3f, 473});
+    registerFluid({ItemId::pack("1111:11:2"), "sulfuric_acid",  1.84f, 24.0f, 610});
 
-    // Additional fluids from items.csv (bucket items)
-    registerFluid({16, "water",          1.0f,  1.0f, 373});     // water_bucket
-    registerFluid({17, "hydrogen",       0.09f, 0.01f, 20});     // hydrogen_bucket
-    registerFluid({18, "sulfuric_acid",  1.84f, 24.0f, 610});    // sulfuric_acid_bucket
+    // Bucket items
+    registerFluid({ItemId::pack("0:1111:0"), "water",          1.0f,  1.0f, 373});
+    registerFluid({ItemId::pack("0:1111:1"), "hydrogen",       0.09f, 0.01f, 20});
+    registerFluid({ItemId::pack("0:1111:2"), "sulfuric_acid",  1.84f, 24.0f, 610});
 }
 
 FluidRegistry& FluidRegistry::instance() {
