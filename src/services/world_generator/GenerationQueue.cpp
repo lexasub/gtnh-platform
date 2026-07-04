@@ -60,12 +60,14 @@ void GenerationQueue::workerLoop() {
         generator_->GenerateTerrain(*chunk, chunkCoord.x, chunkCoord.y, chunkCoord.z);
         //spdlog::debug("Generated chunk ({},{},{})", chunkCoord.x, chunkCoord.y, chunkCoord.z);
 
+        //std::vector<std::move_only_function<void(std::shared_ptr<Chunk>)>> cbs;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (auto it = pending_.find(chunkCoord); it != pending_.end()) {
                 auto cbs = std::move(it->second.callbacks);
                 pending_.erase(it);
-                for (size_t i = 0, n = cbs.size(); i < n; ++i) {
+
+                for (size_t i = 0, n = cbs.size(); i < n; ++i) { //TODO write in LMDB in other thread and run callback not in lock
                     cbs[i](chunk);
                 }
             }
