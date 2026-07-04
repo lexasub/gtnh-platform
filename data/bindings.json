@@ -1,19 +1,33 @@
 {
     "bindings": [
-        { "key": "R", "action": "show_recipe", "ctx": "global" },
-        { "key": "U", "action": "toggle_item_list", "ctx": "global" },
-        { "key": "Escape", "action": "close_ui", "ctx": "global" },
-        { "key": "E", "action": "toggle_inv", "ctx": "global" },
-        { "key": "Tab", "action": "toggle_creative", "ctx": "global" },
-        { "key": "1", "action": "hotbar_0", "ctx": "global" },
-        { "key": "2", "action": "hotbar_1", "ctx": "global" },
-        { "key": "3", "action": "hotbar_2", "ctx": "global" },
-        { "key": "4", "action": "hotbar_3", "ctx": "global" },
-        { "key": "5", "action": "hotbar_4", "ctx": "global" },
-        { "key": "6", "action": "hotbar_5", "ctx": "global" },
-        { "key": "7", "action": "hotbar_6", "ctx": "global" },
-        { "key": "8", "action": "hotbar_7", "ctx": "global" },
-        { "key": "9", "action": "hotbar_8", "ctx": "global" },
-        { "key": "0", "action": "hotbar_9", "ctx": "global" }
+        { "key": "W",  "action": "FWD",        "type": "held",    "ctx": "global" },
+        { "key": "S",  "action": "BKWD",       "type": "held",    "ctx": "global" },
+        { "key": "Up",    "action": "FWD_ALT",    "type": "held",    "ctx": "global" },
+        { "key": "Down",  "action": "BKWD_ALT",   "type": "held",    "ctx": "global" },
+        { "key": "A",  "action": "LEFT",       "type": "held",    "ctx": "global" },
+        { "key": "D",  "action": "RIGHT",      "type": "held",    "ctx": "global" },
+        { "key": "Left",  "action": "LEFT_ALT",   "type": "held",    "ctx": "global" },
+        { "key": "Right", "action": "RIGHT_ALT",  "type": "held",    "ctx": "global" },
+        { "key": "Space", "action": "ASCEND",     "type": "held",    "ctx": "global" },
+        { "key": "LeftShift", "action": "DESCEND",    "type": "held",    "ctx": "global" },
+        { "key": "G",  "action": "wrench_cycle",    "type": "held",    "ctx": "global" },
+
+        { "key": "E",  "action": "INVENTORY",      "type": "pressed", "ctx": "global" },
+        { "key": "Tab",    "action": "CREATIVE_MENU",  "type": "pressed", "ctx": "global" },
+        { "key": "R",  "action": "show_recipe",     "type": "pressed", "ctx": "global" },
+        { "key": "U",  "action": "toggle_item_list", "type": "pressed", "ctx": "global" },
+        { "key": "GraveAccent", "action": "toggle_quest_book", "type": "pressed", "ctx": "global" },
+        { "key": "Escape",     "action": "close_ui",          "type": "pressed", "ctx": "global" },
+        { "key": "1",  "action": "hotbar_0",        "type": "pressed", "ctx": "global" },
+        { "key": "2",  "action": "hotbar_1",        "type": "pressed", "ctx": "global" },
+        { "key": "3",  "action": "hotbar_2",        "type": "pressed", "ctx": "global" },
+        { "key": "4",  "action": "hotbar_3",        "type": "pressed", "ctx": "global" },
+        { "key": "5",  "action": "hotbar_4",        "type": "pressed", "ctx": "global" },
+        { "key": "6",  "action": "hotbar_5",        "type": "pressed", "ctx": "global" },
+        { "key": "7",  "action": "hotbar_6",        "type": "pressed", "ctx": "global" },
+        { "key": "8",  "action": "hotbar_7",        "type": "pressed", "ctx": "global" },
+        { "key": "9",  "action": "hotbar_8",        "type": "pressed", "ctx": "global" },
+        { "key": "0",  "action": "hotbar_9",        "type": "pressed", "ctx": "global" }
     ]
 }
+

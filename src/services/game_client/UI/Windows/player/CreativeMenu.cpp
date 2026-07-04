@@ -3,7 +3,6 @@
 #include "Core/ActionHandler.h"
 #include "Crafting/ClientItemRegistry.h"
 #include "machine_registry/MachineRegistry.h"
-#include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <algorithm>
 
@@ -39,12 +38,8 @@ void CreativeMenu::rebuildItemList() {
               [](const Item& a, const Item& b) { return a.id < b.id; });
 }
 
-bool CreativeMenu::OnKeyEvent(int key, int /*action*/, int /*mods*/) {
-    if (key == GLFW_KEY_TAB) {
-        open_ = !open_;
-        if (open_) rebuildItemList();
-        return true;
-    }
+// CREATIVE_MENU is handled by InputBinder → ActionHandler::DoToggleCreativeMenu.
+bool CreativeMenu::OnKeyEvent(int /*key*/, int /*action*/, int /*mods*/) {
     return false;
 }
 

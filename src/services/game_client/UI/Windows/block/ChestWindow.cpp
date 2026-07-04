@@ -4,7 +4,6 @@
 #include "UI/Core/DragManager.h"
 #include "core_generated.h"
 #include <imgui.h>
-#include <GLFW/glfw3.h>
 #include <cstdio>
 
 ChestWindow::ChestWindow(BlockPos pos)
@@ -108,11 +107,8 @@ void ChestWindow::Render(InventoryState* playerInv) {
     ImGui::End();
 }
 
-bool ChestWindow::OnKeyEvent(int key, int action, [[maybe_unused]] int mods) {
+bool ChestWindow::OnKeyEvent(int /*key*/, int /*action*/, int /*mods*/) {
     if (!open_) return false;
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) { //TODO key via uidefaults
-        SetOpen(false);
-        return true;
-    }
+    // ESCAPE close is handled by InputBinder → close_ui → UIManager::CloseAll
     return false;
 }

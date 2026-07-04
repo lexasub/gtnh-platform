@@ -5,6 +5,7 @@
 #include "RenderLib/Utils/Raycaster.h"
 
 class Camera;
+class InputBinder;
 class InputState;
 class World;
 class NetClient;
@@ -18,6 +19,7 @@ public:
                                InventoryState* inventory = nullptr);
 
     void SetInventory(InventoryState* inventory) { inventory_ = inventory; }
+    void SetBinder(const InputBinder* binder) { binder_ = binder; }
 
     // Ray-cast from camera, highlight target, dispatch break/place actions.
     // Must be called every frame AFTER camera is updated.
@@ -39,6 +41,7 @@ private:
 
     renderlib::Raycaster raycaster_;
     InventoryState* inventory_ = nullptr;
+    const InputBinder* binder_ = nullptr;
     BlockPos highlightedBlock_{};
     bool hasHighlight_ = false;
 };

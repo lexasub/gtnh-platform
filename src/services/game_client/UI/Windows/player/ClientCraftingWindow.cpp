@@ -5,7 +5,6 @@
 #include "Network/NetClient.h"
 #include "core_generated.h"
 #include <imgui.h>
-#include <GLFW/glfw3.h>
 #include <cstdio>
 #include <spdlog/spdlog.h>
 #include <flatbuffers/verifier.h>
@@ -39,12 +38,9 @@ void CraftingWindow::OnCraftResponse(bool success, uint16_t item_id, uint8_t cou
     }
 }
 
-bool CraftingWindow::OnKeyEvent(int key, int action, [[maybe_unused]] int mods) {
+bool CraftingWindow::OnKeyEvent(int /*key*/, int /*action*/, int /*mods*/) {
     if (!open_) return false;
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) { //TODO key use uidefaults
-        SetOpen(false);
-        return true;
-    }
+    // ESCAPE close is handled by InputBinder → close_ui → UIManager::CloseAll
     return false;
 }
 

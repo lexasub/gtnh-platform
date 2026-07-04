@@ -3,11 +3,11 @@
 #include "Common/InputState.h"
 #include "Network/NetClient.h"
 #include "World/World.h"
+#include "UI/Core/InputBinder.h"
 #include <spdlog/spdlog.h>
 #include <limits>
 #include <cstdint>
 #include "core_generated.h"
-#include <GLFW/glfw3.h>
 
 InteractionSystem::InteractionSystem(const IBlockQuery* blockQuery,
                                      InventoryState* inventory)
@@ -73,8 +73,8 @@ void InteractionSystem::Update(const Camera& camera, const InputState& input,
         }
     }
 
-    // G key: send wrench cycle action on highlighted block
-    if (input.keys[GLFW_KEY_G] && hasHighlight_) {
+    // Wrench cycle on highlighted block (key from held binding "wrench_cycle")
+    if (binder_ && binder_->IsHeld("wrench_cycle", input) && hasHighlight_) {
         // Detect which face the player is looking at via raycast
         int faceX = 0, faceY = 0, faceZ = 0;
         raycaster_.GetTargetedBlock(ray, renderlib::Raycaster::REACH_DIST,

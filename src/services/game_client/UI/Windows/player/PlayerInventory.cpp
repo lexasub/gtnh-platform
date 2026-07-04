@@ -2,7 +2,6 @@
 #include "Network/NetClient.h"
 #include "core_generated.h"
 #include "gateway_generated.h"
-#include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <spdlog/spdlog.h>
 
@@ -16,13 +15,8 @@ static constexpr int kTotalSlots = kInventoryRows * kInventoryCols; // 40
 PlayerInventory::PlayerInventory(InventoryState& state) : state_(state) {}
 
 // ── Key event ───────────────────────────────────────────────────────────────
-bool PlayerInventory::OnKeyEvent(int key, int /*action*/, int /*mods*/) {
-    if (key == GLFW_KEY_E) {
-        state_.open = !state_.open;
-        // Opening inventory closes other windows — handled by UIManager::OpenExclusive
-        return true; // consumed
-    }
-    // Tab is handled by CreativeMenu, not here
+// E (INVENTORY) is handled by InputBinder → ActionHandler::DoToggleInventory.
+bool PlayerInventory::OnKeyEvent(int /*key*/, int /*action*/, int /*mods*/) {
     return false;
 }
 

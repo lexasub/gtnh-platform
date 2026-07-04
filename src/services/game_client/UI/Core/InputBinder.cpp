@@ -9,6 +9,42 @@
 
 using json = nlohmann::json;
 
+InputBinder::InputBinder() {
+    registerDefaults();
+}
+
+bool InputBinder::IsHeld(const std::string& actionName, const InputState& state) const {
+    int key = GetHeldKey(actionName);
+    if (key < 0 || key >= 512) return false;
+    return state.keys[key];
+}
+
+void InputBinder::registerDefaults() {
+    // Held — camera movement
+    BindHeld(GLFW_KEY_W,          "FWD");
+    BindHeld(GLFW_KEY_S,          "BKWD");
+    BindHeld(GLFW_KEY_UP,        "FWD_ALT");
+    BindHeld(GLFW_KEY_DOWN,      "BKWD_ALT");
+    BindHeld(GLFW_KEY_A,          "LEFT");
+    BindHeld(GLFW_KEY_D,          "RIGHT");
+    BindHeld(GLFW_KEY_LEFT,      "LEFT_ALT");
+    BindHeld(GLFW_KEY_RIGHT,     "RIGHT_ALT");
+    BindHeld(GLFW_KEY_SPACE,      "ASCEND");
+    BindHeld(GLFW_KEY_LEFT_SHIFT, "DESCEND");
+    BindHeld(GLFW_KEY_G,          "wrench_cycle");
+
+    // Pressed — UI actions
+    Bind(GLFW_KEY_R,       "show_recipe");
+    Bind(GLFW_KEY_U,       "toggle_item_list");
+    Bind(GLFW_KEY_GRAVE_ACCENT,       "toggle_quest_book");
+    Bind(GLFW_KEY_ESCAPE,  "close_ui");
+    Bind(GLFW_KEY_E,       "INVENTORY");
+    Bind(GLFW_KEY_TAB,     "CREATIVE_MENU");
+    for (int i = 0; i < 9; ++i)
+        Bind(GLFW_KEY_1 + i, "hotbar_" + std::to_string(i));
+    Bind(GLFW_KEY_0, "hotbar_9");
+}
+
 void InputBinder::Bind(int key, int mods, std::string actionName,
                         const char* context) {
     auto it = std::ranges::find_if(contexts_,
@@ -137,6 +173,17 @@ void InputBinder::Process(const InputState& cur,
     }
 }
 
+void InputBinder::BindHeld(int key, std::string actionName,
+                            const char* context) {
+    (void)context; // held bindings are global-only for now
+    heldBindings_[actionName] = key;
+}
+
+int InputBinder::GetHeldKey(const std::string& actionName) const {
+    auto it = heldBindings_.find(actionName);
+    return it != heldBindings_.end() ? it->second : -1;
+}
+
 void InputBinder::LoadConfig(const std::string& path) {
     configPath_ = path;
     ReloadConfig();
@@ -155,6 +202,7 @@ void InputBinder::ReloadConfig() {
         for (const auto& entry : j["bindings"]) {
             std::string keyStr = entry.value("key", "");
             std::string action = entry.value("action", "");
+            std::string type  = entry.value("type", "pressed");
             std::string ctx    = entry.value("ctx", "global");
             int mods           = entry.value("mods", 0);
 
@@ -164,6 +212,11 @@ void InputBinder::ReloadConfig() {
             static const std::unordered_map<std::string, int> s_keyMap = {
                 {"Escape", 256}, {"Enter", 257}, {"Tab", 258},
                 {"Backspace", 259}, {"Space", 32},
+                {"GraveAccent", 96},
+                {"Left", 263}, {"Right", 262}, {"Up", 265}, {"Down", 264},
+                {"LeftShift", 340}, {"RightShift", 344},
+                {"LeftControl", 341}, {"RightControl", 345},
+                {"LeftAlt", 342}, {"RightAlt", 346},
                 {"0", 48}, {"1", 49}, {"2", 50}, {"3", 51}, {"4", 52},
                 {"5", 53}, {"6", 54}, {"7", 55}, {"8", 56}, {"9", 57},
                 {"A", 65}, {"B", 66}, {"C", 67}, {"D", 68}, {"E", 69},
@@ -176,7 +229,10 @@ void InputBinder::ReloadConfig() {
             auto it = s_keyMap.find(keyStr);
             if (it == s_keyMap.end()) continue;
 
-            Bind(it->second, mods, action, ctx.c_str());
+            if (type == "held")
+                BindHeld(it->second, action, ctx.c_str());
+            else
+                Bind(it->second, mods, action, ctx.c_str());
         }
     } catch (...) {
         // Silently ignore malformed config

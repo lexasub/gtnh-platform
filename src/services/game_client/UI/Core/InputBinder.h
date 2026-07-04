@@ -13,6 +13,9 @@ class ActionRegistry;
 
 class InputBinder {
 public:
+
+    InputBinder();
+
     void SetActionRegistry(ActionRegistry* reg) { reg_ = reg; }
 
     // ── Binding ──────────────────────────────────────────────────────────
@@ -49,9 +52,19 @@ public:
     bool IsContextActive(const char* name) const;
     size_t ActiveContextCount() const { return active_.size(); }
 
+    // ── Held bindings (continuous, for camera movement etc.) ─────────────
+    // Binds an action name to a key. Camera queries GetHeldKey at init time
+    // and reads input.keys[key] per frame — no per-frame binder query.
+    void BindHeld(int key, std::string actionName,
+                  const char* context = "global");
+    int GetHeldKey(const std::string& actionName) const;
+    bool IsHeld(const std::string& actionName, const InputState& state) const;
+
     // ── Config ───────────────────────────────────────────────────────────
     // Load from JSON file: { "bindings": [ { "key":"R", "action":"show_recipe",
-    // "mods":0, "ctx":"global" } ] }
+    // "mods":0, "type":"pressed", "ctx":"global" } ] }
+    // Type "pressed" (default) = edge-triggered via Process().
+    // Type "held" = continuous, queried via GetHeldKey().
     // Called after SetActionRegistry with all actions registered.
     void LoadConfig(const std::string& path);
     void ReloadConfig();
@@ -75,10 +88,14 @@ private:
     };
 
     void dispatchBindings(int key, int mods);
+    void registerDefaults();
 
     ActionRegistry* reg_ = nullptr;
     std::vector<Context> contexts_;
     std::vector<size_t> active_;       // indices into contexts_, top = last
     ScrollFn onScroll_;
     std::string configPath_;
+
+    // Held bindings: action → key (continuous state, not edge-triggered)
+    std::unordered_map<std::string, int> heldBindings_;
 };

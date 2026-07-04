@@ -34,6 +34,8 @@ void ActionHandler::Init(ActionRegistry* reg, UIManager* mgr, NetClient* nc,
     reg->Register("toggle_inv",        [this]() { DoToggleInventory(); });
     reg->Register("toggle_creative",   [this]() { DoToggleCreativeMenu(); });
     reg->Register("toggle_quest_book", [this]() { DoToggleQuestBook(); });
+    reg->Register("INVENTORY",         [this]() { DoToggleInventory(); });
+    reg->Register("CREATIVE_MENU",     [this]() { DoToggleCreativeMenu(); });
     for (int i = 0; i < 10; ++i) {
         auto name = "hotbar_" + std::to_string(i);
         reg->Register(name, [this, i]() { DoSelectHotbar(i); });

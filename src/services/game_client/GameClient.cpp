@@ -148,6 +148,8 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
             [](void*) {} /* no-op deleter — owned by MeshManager */));
 
     camera_.Init();
+    camera_.SetBinder(&uiMgr_.GetBinder());
+    interaction_.SetBinder(&uiMgr_.GetBinder());
 
     chunkLoadManager_ = std::make_unique<ChunkLoadManager>(world_, *netClient_);
 

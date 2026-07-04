@@ -40,34 +40,8 @@ void UIManager::RenderPanels() {
     }
 }
 
-static bool wasPressed(const std::array<bool, 512>& prev, const InputState& cur, int key) {
-    return cur.keys[key] && !prev[key];
-}
-
 void UIManager::ProcessInput(const InputState& input) {
-    // InputBinder handles global keys: R, U, Escape, 1-9, scroll
     binder_.Process(input, prevKeys_);
-
-    // ── Window-specific hotkeys (E = inventory, TAB = creative) ───────────────
-    static constexpr int kDispatchKeys[] = { GLFW_KEY_E, GLFW_KEY_TAB };
-    for (int dispatchKey : kDispatchKeys) {
-        if (!wasPressed(prevKeys_, input, dispatchKey)) continue;
-        // Iterate in reverse so topmost window receives the event first
-        for (auto it = windows_.rbegin(); it != windows_.rend(); ++it) {
-            if ((*it)->OnKeyEvent(dispatchKey, GLFW_PRESS, 0)) break;
-        }
-    }
-
-    // ── Dispatch key events to visible side panels ──────────────────────────
-    for (int key : kDispatchKeys) {
-        if (!wasPressed(prevKeys_, input, key)) continue;
-        for (auto& p : panels_) {
-            if (p->IsVisible()) {
-                if (p->OnKeyEvent(key, GLFW_PRESS, 0)) break;
-            }
-        }
-    }
-
     std::memcpy(prevKeys_.data(), input.keys.data(), sizeof(prevKeys_));
 }
 

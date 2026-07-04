@@ -1,4 +1,5 @@
 #include "Camera.h"
+#include "UI/Core/InputBinder.h"
 #include <GLFW/glfw3.h>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/norm.hpp>
@@ -9,6 +10,24 @@ void Camera::Init() {
     orient = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
     pos = glm::vec3(256.0f, 80.0f, 224.0f);
     fov = 70.0f;
+}
+
+void Camera::SetBinder(const InputBinder* binder) {
+    binder_ = binder;
+    resolveActionKeys();
+}
+
+void Camera::resolveActionKeys() {
+    keyFwd_      = binder_->GetHeldKey("FWD");
+    keyBkwd_     = binder_->GetHeldKey("BKWD");
+    keyFwdAlt_   = binder_->GetHeldKey("FWD_ALT");
+    keyBkwdAlt_  = binder_->GetHeldKey("BKWD_ALT");
+    keyLeft_     = binder_->GetHeldKey("LEFT");
+    keyRight_    = binder_->GetHeldKey("RIGHT");
+    keyLeftAlt_  = binder_->GetHeldKey("LEFT_ALT");
+    keyRightAlt_ = binder_->GetHeldKey("RIGHT_ALT");
+    keyAscend_   = binder_->GetHeldKey("ASCEND");
+    keyDescend_  = binder_->GetHeldKey("DESCEND");
 }
 
 void Camera::Update(float dt, const InputState& input) {
@@ -28,21 +47,20 @@ void Camera::Update(float dt, const InputState& input) {
         120.0f
     );
 
-    // Movement
+    // Movement (configurable via held bindings in bindings.json)
     float speed = SPEED * dt;
-    float forward_primary = static_cast<float>(input.keys[GLFW_KEY_W]) - static_cast<float>(input.keys[GLFW_KEY_S]);
-    float forward_secondary = static_cast<float>(input.keys[GLFW_KEY_UP]) - static_cast<float>(input.keys[GLFW_KEY_DOWN]);
+    float forward_primary = static_cast<float>(input.keys[keyFwd_]) - static_cast<float>(input.keys[keyBkwd_]);
+    float forward_secondary = static_cast<float>(input.keys[keyFwdAlt_]) - static_cast<float>(input.keys[keyBkwdAlt_]);
 
-    float right_primary = static_cast<float>(input.keys[GLFW_KEY_D]) - static_cast<float>(input.keys[GLFW_KEY_A]);
-    float right_secondary = static_cast<float>(input.keys[GLFW_KEY_RIGHT]) - static_cast<float>(input.keys[GLFW_KEY_LEFT]);
+    float right_primary = static_cast<float>(input.keys[keyRight_]) - static_cast<float>(input.keys[keyLeft_]);
+    float right_secondary = static_cast<float>(input.keys[keyRightAlt_]) - static_cast<float>(input.keys[keyLeftAlt_]);
 
-    // Если forward_primary == 0, то (1.0f - abs(forward_primary)) ≈ 1.0f
-    // Иначе — близко к 0.0f (если |forward_primary| ≥ 1)
+    // If primary is nonzero, use it; otherwise fall back to secondary
     float forward = forward_primary + (1.0f - glm::abs(forward_primary)) * forward_secondary;
     float right = right_primary + (1.0f - glm::abs(right_primary)) * right_secondary;
     pos += (forward * GetForward() + right * GetRight() + glm::vec3(
         0.0f,
-        static_cast<float>(input.keys[GLFW_KEY_SPACE]) - static_cast<float>(input.keys[GLFW_KEY_LEFT_SHIFT]),
+        static_cast<float>(input.keys[keyAscend_]) - static_cast<float>(input.keys[keyDescend_]),
         0.0f
     )) * speed;
 }
