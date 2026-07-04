@@ -1,18 +1,18 @@
 #pragma once
 
-#include <memory>
-#include <vector>
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <memory>
+#include <vector>
 
 #include "Common/InputState.h"
-#include "Windows/IUIWindow.h"
-#include "Panels/ISidePanel.h"
-#include "Core/ActionRegistry.h"
 #include "Core/ActionHandler.h"
+#include "Core/ActionRegistry.h"
 #include "Core/InputBinder.h"
+#include "Panels/ISidePanel.h"
 #include "UI/Core/DragManager.h"
+#include "Windows/IUIWindow.h"
 struct InventoryState;
 struct BlockPos;
 class NetClient;
@@ -33,115 +33,112 @@ class NetClient;
 // ──────────────────────────────────────────────────────────────────────────────
 class UIManager {
 public:
-    UIManager() = default;
-    ~UIManager() = default;
+  UIManager() = default;
+  ~UIManager() = default;
 
-    UIManager(const UIManager&) = delete;
-    UIManager& operator=(const UIManager&) = delete;
+  UIManager(const UIManager &) = delete;
+  UIManager &operator=(const UIManager &) = delete;
 
-    // ── Window registration ──────────────────────────────────────────────────
-    // Usage: auto& invWin = mgr.Register<InventoryWindow>(invState);
-    template<typename T, typename... Args>
-    T& Register(Args&&... args) {
-        auto ptr = std::make_unique<T>(std::forward<Args>(args)...);
-        auto& ref = *ptr;
-        windows_.push_back(std::move(ptr));
-        return ref;
-    }
+  // ── Window registration ──────────────────────────────────────────────────
+  // Usage: auto& invWin = mgr.Register<InventoryWindow>(invState);
+  template <typename T, typename... Args> T &Register(Args &&...args) {
+    auto ptr = std::make_unique<T>(std::forward<Args>(args)...);
+    auto &ref = *ptr;
+    windows_.push_back(std::move(ptr));
+    return ref;
+  }
 
-    // ── Shared player inventory ──────────────────────────────────────────────
-    void SetPlayerInventory(InventoryState* inv) { playerInv_ = inv; }
-    InventoryState* GetPlayerInventory() const { return playerInv_; }
+  // ── Shared player inventory ──────────────────────────────────────────────
+  void SetPlayerInventory(InventoryState *inv) { playerInv_ = inv; }
+  InventoryState *GetPlayerInventory() const { return playerInv_; }
 
-    // ── Action system ────────────────────────────────────────────────────────
-    ActionRegistry& GetActionRegistry() { return actionReg_; }
-    ActionHandler&  GetActions()        { return actions_; }
-    InputBinder&    GetBinder()         { return binder_; }
+  // ── Action system ────────────────────────────────────────────────────────
+  ActionRegistry &GetActionRegistry() { return actionReg_; }
+  ActionHandler &GetActions() { return actions_; }
+  InputBinder &GetBinder() { return binder_; }
 
-    // ── Input dispatch ──────────────────────────────────────────────────────
-    // Call once per frame from GameClient::Update BEFORE interaction system.
-    // Handles hotbar keys, Escape-close, and per-window OnKeyEvent dispatch.
-    void ProcessInput(const InputState& input);
+  // ── Input dispatch ──────────────────────────────────────────────────────
+  // Call once per frame from GameClient::Update BEFORE interaction system.
+  // Handles hotbar keys, Escape-close, and per-window OnKeyEvent dispatch.
+  void ProcessInput(const InputState &input);
 
-    // ── Render dispatch ──────────────────────────────────────────────────────
-    // Call from the ImGui overlay callback (RenderBridge::ImGuiOverlay).
-    // Iterates all windows and calls their Render().
-    void RenderAll();
+  // ── Render dispatch ──────────────────────────────────────────────────────
+  // Call from the ImGui overlay callback (RenderBridge::ImGuiOverlay).
+  // Iterates all windows and calls their Render().
+  void RenderAll();
 
-    // ── Network dispatch ─────────────────────────────────────────────────────
-    // Call from NetClient callback.
-    // Routes msg to all windows (each checks if it cares about this msgType).
-    void HandleNetwork(uint8_t msgType, const void* data);
+  // ── Network dispatch ─────────────────────────────────────────────────────
+  // Call from NetClient callback.
+  // Routes msg to all windows (each checks if it cares about this msgType).
+  void HandleNetwork(uint8_t msgType, const void *data);
 
-    // ── Network access ───────────────────────────────────────────────────────
-    void SetNetClient(NetClient* nc);
-    NetClient* GetNetClient() const { return netClient_; }
+  // ── Network access ───────────────────────────────────────────────────────
+  void SetNetClient(NetClient *nc);
+  NetClient *GetNetClient() const { return netClient_; }
 
-    // ── Drag manager ────────────────────────────────────────────────────────
-    DragManager& GetDragManager() { return dragMgr_; }
+  // ── Drag manager ────────────────────────────────────────────────────────
+  DragManager &GetDragManager() { return dragMgr_; }
 
-    // ── Window management ────────────────────────────────────────────────────
-    void CloseAll();
-    bool AnyOpen() const;
+  // ── Window management ────────────────────────────────────────────────────
+  void CloseAll();
+  bool AnyOpen() const;
 
-    // Opens window and closes all others.
-    // If window is already open, closes it (toggle).
-    void OpenExclusive(IUIWindow* window);
+  // Opens window and closes all others.
+  // If window is already open, closes it (toggle).
+  void OpenExclusive(IUIWindow *window);
 
-    // ── Lookup ──────────────────────────────────────────────────────────────
-    template<typename T>
-    T* Find() {
-        for (auto& w : windows_)
-            if (auto* casted = dynamic_cast<T*>(w.get()))
-                return casted;
-        return nullptr;
-    }
+  // ── Lookup ──────────────────────────────────────────────────────────────
+  template <typename T> T *Find() {
+    for (auto &w : windows_)
+      if (auto *casted = dynamic_cast<T *>(w.get()))
+        return casted;
+    return nullptr;
+  }
 
-    /// Find the first window of type T by iterating windows_ and dynamic_cast.
-    /// Returns nullptr if no match found.
-    template<typename T>
-    T* FindByType() {
-        for (auto& w : windows_)
-            if (auto* casted = dynamic_cast<T*>(w.get()))
-                return casted;
-        return nullptr;
-    }
+  /// Find the first window of type T by iterating windows_ and dynamic_cast.
+  /// Returns nullptr if no match found.
+  template <typename T> T *FindByType() {
+    for (auto &w : windows_)
+      if (auto *casted = dynamic_cast<T *>(w.get()))
+        return casted;
+    return nullptr;
+  }
 
-    // Find an open block-attached window at the given position.
-    IUIWindow* FindOpenAtBlock(const BlockPos& pos) const;
+  // Find an open block-attached window at the given position.
+  IUIWindow *FindOpenAtBlock(const BlockPos &pos) const;
 
-    const std::vector<std::unique_ptr<IUIWindow>>& All() const { return windows_; }
+  const std::vector<std::unique_ptr<IUIWindow>> &All() const {
+    return windows_;
+  }
 
-    // ── Side panel management ──────────────────────────────────────────────
-    template<typename T, typename... Args>
-    T& RegisterPanel(Args&&... args) {
-        auto ptr = std::make_unique<T>(std::forward<Args>(args)...);
-        auto& ref = *ptr;
-        panels_.push_back(std::move(ptr));
-        return ref;
-    }
+  // ── Side panel management ──────────────────────────────────────────────
+  template <typename T, typename... Args> T &RegisterPanel(Args &&...args) {
+    auto ptr = std::make_unique<T>(std::forward<Args>(args)...);
+    auto &ref = *ptr;
+    panels_.push_back(std::move(ptr));
+    return ref;
+  }
 
-    void RenderPanels();
+  void RenderPanels();
 
-    template<typename T>
-    T* FindPanel() {
-        for (auto& p : panels_)
-            if (auto* casted = dynamic_cast<T*>(p.get()))
-                return casted;
-        return nullptr;
-    }
+  template <typename T> T *FindPanel() {
+    for (auto &p : panels_)
+      if (auto *casted = dynamic_cast<T *>(p.get()))
+        return casted;
+    return nullptr;
+  }
 
 private:
-    std::vector<std::unique_ptr<IUIWindow>> windows_;
-    std::vector<std::unique_ptr<ISidePanel>> panels_;
-    NetClient* netClient_ = nullptr;
-    InventoryState* playerInv_ = nullptr;
-    std::array<bool, 512> prevKeys_{};
+  std::vector<std::unique_ptr<IUIWindow>> windows_;
+  std::vector<std::unique_ptr<ISidePanel>> panels_;
+  NetClient *netClient_ = nullptr;
+  InventoryState *playerInv_ = nullptr;
+  std::array<bool, 512> prevKeys_{};
 
-    DragManager dragMgr_;
+  DragManager dragMgr_;
 
-    // Action / binding system
-    ActionRegistry actionReg_;
-    ActionHandler  actions_;
-    InputBinder    binder_;
+  // Action / binding system
+  ActionRegistry actionReg_;
+  ActionHandler actions_;
+  InputBinder binder_;
 };

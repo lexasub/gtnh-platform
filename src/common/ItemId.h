@@ -32,36 +32,46 @@ namespace ItemId {
 // Category enum
 // ---------------------------------------------------------------------------
 enum Category : uint8_t {
-    CAT_BASE         = 0,
-    CAT_ORES         = 1,
-    CAT_MATERIALS    = 2,
-    CAT_MACHINES     = 3,
-    CAT_INFRA        = 4,    // tools, cables, pipes, fluid items
+  CAT_BASE = 0,
+  CAT_ORES = 1,
+  CAT_MATERIALS = 2,
+  CAT_MACHINES = 3,
+  CAT_INFRA = 4, // tools, cables, pipes, fluid items
 };
 
 /// Decode top-level category from a packed ID based on prefix bits.
 constexpr Category category(uint16_t id) {
-    if (id < 0x8000) return CAT_BASE;
-    if (id < 0xC000) return CAT_ORES;
-    if (id < 0xE000) return CAT_MATERIALS;
-    if (id < 0xF000) return CAT_MACHINES;
-    return CAT_INFRA;
+  if (id < 0x8000)
+    return CAT_BASE;
+  if (id < 0xC000)
+    return CAT_ORES;
+  if (id < 0xE000)
+    return CAT_MATERIALS;
+  if (id < 0xF000)
+    return CAT_MACHINES;
+  return CAT_INFRA;
 }
 
 /// Human-readable category name.
-constexpr const char* categoryName(Category c) {
-    switch (c) {
-        case CAT_BASE:       return "BASE";
-        case CAT_ORES:       return "ORES";
-        case CAT_MATERIALS:  return "MATERIALS";
-        case CAT_MACHINES:   return "MACHINES";
-        case CAT_INFRA:      return "INFRA";
-        default:             return "?";
-    }
+constexpr const char *categoryName(Category c) {
+  switch (c) {
+  case CAT_BASE:
+    return "BASE";
+  case CAT_ORES:
+    return "ORES";
+  case CAT_MATERIALS:
+    return "MATERIALS";
+  case CAT_MACHINES:
+    return "MACHINES";
+  case CAT_INFRA:
+    return "INFRA";
+  default:
+    return "?";
+  }
 }
 
-constexpr const char* categoryName(uint16_t id) {
-    return categoryName(category(id));
+constexpr const char *categoryName(uint16_t id) {
+  return categoryName(category(id));
 }
 
 // ---------------------------------------------------------------------------
@@ -70,48 +80,51 @@ constexpr const char* categoryName(uint16_t id) {
 // Split on ':', concatenate binary segments, last segment is decimal payload.
 // ---------------------------------------------------------------------------
 constexpr uint16_t pack(std::string_view s) {
-    if (s.empty()) return 0;
+  if (s.empty())
+    return 0;
 
-    // Find last colon
-    auto last_colon = s.rfind(':');
-    if (last_colon == std::string_view::npos) {
-        // No colons → plain decimal (backward compat with flat IDs)
-        uint16_t val = 0;
-        for (char c : s) {
-            if (c >= '0' && c <= '9')
-                val = static_cast<uint16_t>(val * 10 + (c - '0'));
-        }
-        return val;
+  // Find last colon
+  auto last_colon = s.rfind(':');
+  if (last_colon == std::string_view::npos) {
+    // No colons → plain decimal (backward compat with flat IDs)
+    uint16_t val = 0;
+    for (char c : s) {
+      if (c >= '0' && c <= '9')
+        val = static_cast<uint16_t>(val * 10 + (c - '0'));
     }
+    return val;
+  }
 
-    // Parse prefix bits (binary 0/1 before last colon, skipping colons)
-    uint16_t prefix = 0;
-    int plen = 0;
-    for (size_t i = 0; i < last_colon; ++i) {
-        char c = s[i];
-        if (c == '0') {
-            prefix = static_cast<uint16_t>((prefix << 1) | 0);
-            ++plen;
-        } else if (c == '1') {
-            prefix = static_cast<uint16_t>((prefix << 1) | 1);
-            ++plen;
-        }
-        // skip ':' (separator)
+  // Parse prefix bits (binary 0/1 before last colon, skipping colons)
+  uint16_t prefix = 0;
+  int plen = 0;
+  for (size_t i = 0; i < last_colon; ++i) {
+    char c = s[i];
+    if (c == '0') {
+      prefix = static_cast<uint16_t>((prefix << 1) | 0);
+      ++plen;
+    } else if (c == '1') {
+      prefix = static_cast<uint16_t>((prefix << 1) | 1);
+      ++plen;
     }
+    // skip ':' (separator)
+  }
 
-    if (plen > 15) return 0; // too many prefix bits
+  if (plen > 15)
+    return 0; // too many prefix bits
 
-    // Parse payload (decimal after last colon)
-    uint16_t payload = 0;
-    for (size_t i = last_colon + 1; i < s.size(); ++i) {
-        char c = s[i];
-        if (c >= '0' && c <= '9')
-            payload = static_cast<uint16_t>(payload * 10 + (c - '0'));
-    }
+  // Parse payload (decimal after last colon)
+  uint16_t payload = 0;
+  for (size_t i = last_colon + 1; i < s.size(); ++i) {
+    char c = s[i];
+    if (c >= '0' && c <= '9')
+      payload = static_cast<uint16_t>(payload * 10 + (c - '0'));
+  }
 
-    // Shift: prefix occupies top 'plen' bits, payload fills the rest
-    int shift = 16 - plen;
-    return static_cast<uint16_t>((static_cast<unsigned>(prefix) << shift) | payload);
+  // Shift: prefix occupies top 'plen' bits, payload fills the rest
+  int shift = 16 - plen;
+  return static_cast<uint16_t>((static_cast<unsigned>(prefix) << shift) |
+                               payload);
 }
 
 // ---------------------------------------------------------------------------
@@ -119,19 +132,19 @@ constexpr uint16_t pack(std::string_view s) {
 // Sub-prefix levels not decoded — use category-specific helpers for that.
 // ---------------------------------------------------------------------------
 inline std::string unpack(uint16_t id) {
-    if (id < 0x8000) {
-        return "0:" + std::to_string(id & 0x7FFF);
-    }
-    if (id < 0xC000) {
-        return "10:" + std::to_string(id & 0x3FFF);
-    }
-    if (id < 0xE000) {
-        return "110:" + std::to_string(id & 0x1FFF);
-    }
-    if (id < 0xF000) {
-        return "1110:" + std::to_string(id & 0xFFF);
-    }
-    return "1111:" + std::to_string(id & 0xFFF);
+  if (id < 0x8000) {
+    return "0:" + std::to_string(id & 0x7FFF);
+  }
+  if (id < 0xC000) {
+    return "10:" + std::to_string(id & 0x3FFF);
+  }
+  if (id < 0xE000) {
+    return "110:" + std::to_string(id & 0x1FFF);
+  }
+  if (id < 0xF000) {
+    return "1110:" + std::to_string(id & 0xFFF);
+  }
+  return "1111:" + std::to_string(id & 0xFFF);
 }
 
 // ---------------------------------------------------------------------------
@@ -142,19 +155,20 @@ inline std::string unpack(uint16_t id) {
 //   type = payload & 0x1F
 // ---------------------------------------------------------------------------
 constexpr int toolTier(uint16_t id) {
-    // Check top 6 bits = 111100 (0xF000–0xF3FF range)
-    if ((id & 0xFC00) != 0xF000) {
-        return 0; // not a tool
-    }
-    // Payload is lower 10 bits; tier is high 5 bits of payload
-    uint16_t payload = id & 0x03FF;
-    return (payload >> 5) & 0x1F;
+  // Check top 6 bits = 111100 (0xF000–0xF3FF range)
+  if ((id & 0xFC00) != 0xF000) {
+    return 0; // not a tool
+  }
+  // Payload is lower 10 bits; tier is high 5 bits of payload
+  uint16_t payload = id & 0x03FF;
+  return (payload >> 5) & 0x1F;
 }
 
 constexpr int toolType(uint16_t id) {
-    if ((id & 0xFC00) != 0xF000) return 0;
-    uint16_t payload = id & 0x03FF;
-    return payload & 0x1F;
+  if ((id & 0xFC00) != 0xF000)
+    return 0;
+  uint16_t payload = id & 0x03FF;
+  return payload & 0x1F;
 }
 
 // NOLINTBEGIN

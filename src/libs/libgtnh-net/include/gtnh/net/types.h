@@ -18,18 +18,19 @@ inline constexpr uint64_t kTagMask = (uint64_t(1) << kTagBits) - 1;
 
 // Encode user_data from generation and raw tag:
 //   user_data = (generation << kTagBits) | (raw_tag & kTagMask)
-inline constexpr uint64_t encode_user_data(uint64_t generation, uint64_t raw_tag) {
-    return (generation << kTagBits) | (raw_tag & kTagMask);
+inline constexpr uint64_t encode_user_data(uint64_t generation,
+                                           uint64_t raw_tag) {
+  return (generation << kTagBits) | (raw_tag & kTagMask);
 }
 
 // Decode raw tag from user_data
 inline constexpr uint64_t decode_tag(uint64_t user_data) {
-    return user_data & kTagMask;
+  return user_data & kTagMask;
 }
 
 // Decode generation from user_data
 inline constexpr uint64_t decode_generation(uint64_t user_data) {
-    return user_data >> kTagBits;
+  return user_data >> kTagBits;
 }
 
 } // namespace gtnh::net

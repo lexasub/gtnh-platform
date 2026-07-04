@@ -1,9 +1,9 @@
 // gateway.h
 #pragma once
 
-#include <gtnh/net/server.h>
-#include <gtnh/net/router_client.h>
 #include <gtnh/net/io_uring_connection.h>
+#include <gtnh/net/router_client.h>
+#include <gtnh/net/server.h>
 
 #include <chrono>
 #include <functional>
@@ -29,75 +29,77 @@
 //   6 = InventoryUpdate (FlatBuffer: Protocol::InventoryUpdate)
 //  14 = ToolActionResp (FlatBuffer: Protocol::ToolActionResp)
 // ---------------------------------------------------------------------------
-namespace GatewayMsg {//TODO move to protocol (flatbuffers)
-    inline constexpr uint8_t kPlayerAction     = 1;
-    inline constexpr uint8_t kChunkSnapshot    = 2;
-    inline constexpr uint8_t kEntitySnapshot   = 3;
-    inline constexpr uint8_t kBlockUpdate      = 4;
-    inline constexpr uint8_t kBlockAck         = 5;
-    inline constexpr uint8_t kInventoryUpdate  = 6;
-    inline constexpr uint8_t kInventoryAction  = 7;
-    inline constexpr uint8_t kBlockEntityUpdate = 8;
-    inline constexpr uint8_t kCraftRequest      = 9;
-    inline constexpr uint8_t kCraftResponse     = 10;
-    inline constexpr uint8_t kSetBlockAction   = 11;
-    inline constexpr uint8_t kCompressedChunkData  = 12;
-    inline constexpr uint8_t kToolAction       = 13;
-    inline constexpr uint8_t kToolActionResp   = 14;
-    inline constexpr uint8_t kSetMachineSlot       = 15;
-    inline constexpr uint8_t kSetMachineSlotResp   = 16;
-    inline constexpr uint8_t kRecipeCompleted      = 17;
-    inline constexpr uint8_t kChestOpenReq          = 18;
-    inline constexpr uint8_t kChestOpenResp         = 19;
-    inline constexpr uint8_t kQuestProgressUpdate       = 20;
-    inline constexpr uint8_t kQuestUnlockNotification    = 21;
-    inline constexpr uint8_t kQuestCompletedNotification = 22;
+namespace GatewayMsg { // TODO move to protocol (flatbuffers)
+inline constexpr uint8_t kPlayerAction = 1;
+inline constexpr uint8_t kChunkSnapshot = 2;
+inline constexpr uint8_t kEntitySnapshot = 3;
+inline constexpr uint8_t kBlockUpdate = 4;
+inline constexpr uint8_t kBlockAck = 5;
+inline constexpr uint8_t kInventoryUpdate = 6;
+inline constexpr uint8_t kInventoryAction = 7;
+inline constexpr uint8_t kBlockEntityUpdate = 8;
+inline constexpr uint8_t kCraftRequest = 9;
+inline constexpr uint8_t kCraftResponse = 10;
+inline constexpr uint8_t kSetBlockAction = 11;
+inline constexpr uint8_t kCompressedChunkData = 12;
+inline constexpr uint8_t kToolAction = 13;
+inline constexpr uint8_t kToolActionResp = 14;
+inline constexpr uint8_t kSetMachineSlot = 15;
+inline constexpr uint8_t kSetMachineSlotResp = 16;
+inline constexpr uint8_t kRecipeCompleted = 17;
+inline constexpr uint8_t kChestOpenReq = 18;
+inline constexpr uint8_t kChestOpenResp = 19;
+inline constexpr uint8_t kQuestProgressUpdate = 20;
+inline constexpr uint8_t kQuestUnlockNotification = 21;
+inline constexpr uint8_t kQuestCompletedNotification = 22;
 } // namespace GatewayMsg
 
 // ---------------------------------------------------------------------------
 // Interest management
 // ---------------------------------------------------------------------------
 struct ChunkCoord {
-    int32_t x, y, z;
+  int32_t x, y, z;
 };
 
 struct PlayerInterest {
-    int32_t center_x = 0, center_y = 0, center_z = 0;
-    int radius = 8; // chunks
+  int32_t center_x = 0, center_y = 0, center_z = 0;
+  int radius = 8; // chunks
 
-    bool ShouldSendChunk(ChunkCoord cc) const {
-        return std::abs(cc.x - center_x) <= radius
-            && std::abs(cc.y - center_y) <= radius
-            && std::abs(cc.z - center_z) <= radius;
-    }
+  bool ShouldSendChunk(ChunkCoord cc) const {
+    return std::abs(cc.x - center_x) <= radius &&
+           std::abs(cc.y - center_y) <= radius &&
+           std::abs(cc.z - center_z) <= radius;
+  }
 };
 
 // Top-level Gateway: owns io_uring rings, listens for GameClient connections,
 // connects to MessageRouter, relays messages bidirectionally.
 //
 class IoUringGateway {
- public:
+public:
   IoUringGateway() = default;
   ~IoUringGateway();
 
-  IoUringGateway(const IoUringGateway&) = delete;
-  IoUringGateway& operator=(const IoUringGateway&) = delete;
+  IoUringGateway(const IoUringGateway &) = delete;
+  IoUringGateway &operator=(const IoUringGateway &) = delete;
 
   bool init();
   bool listen(uint16_t ctrl_port, uint16_t bulk_port);
-  bool connect_router(const std::string& host, uint16_t port);
+  bool connect_router(const std::string &host, uint16_t port);
 
-  void subscribe(const std::string& topic);
-  void publish(const std::string& topic, const uint8_t* data, size_t len);
+  void subscribe(const std::string &topic);
+  void publish(const std::string &topic, const uint8_t *data, size_t len);
 
-  void send_to_client_ctrl(uint8_t msg_type, const uint8_t* data, size_t len);
-  void send_to_client_bulk(uint8_t msg_type, const uint8_t* data, size_t len);
+  void send_to_client_ctrl(uint8_t msg_type, const uint8_t *data, size_t len);
+  void send_to_client_bulk(uint8_t msg_type, const uint8_t *data, size_t len);
   void send_to_client_ctrl_raw(std::shared_ptr<std::vector<uint8_t>> frame);
   void send_to_client_bulk_raw(std::shared_ptr<std::vector<uint8_t>> frame);
-  void send_to_client_ctrl_raw(uint8_t msg_type, const uint8_t* data, size_t len);
-  bool send_to_client_bulk_raw(uint8_t msg_type, const uint8_t* data, size_t len);
+  void send_to_client_ctrl_raw(uint8_t msg_type, const uint8_t *data,
+                               size_t len);
+  bool send_to_client_bulk_raw(uint8_t msg_type, const uint8_t *data,
+                               size_t len);
 
-  PlayerInterest* client_interest();
+  PlayerInterest *client_interest();
   bool has_client() const;
 
   void publish_player_joined();
@@ -106,15 +108,17 @@ class IoUringGateway {
   void shutdown();
   void sendHeartbeat();
 
-  std::function<void(const uint8_t* data, size_t len)> on_client_message;
-  std::function<void(const std::string& topic, const uint8_t* data, size_t len)>
+  std::function<void(const uint8_t *data, size_t len)> on_client_message;
+  std::function<void(const std::string &topic, const uint8_t *data, size_t len)>
       on_router_message;
 
- private:
-  void on_router_publish(const std::string& topic,
-                          std::shared_ptr<std::vector<uint8_t>> data);
-  void on_client_ctrl_message(uint8_t msg_type, const uint8_t* data, size_t len);
-  void on_client_bulk_message(uint8_t msg_type, const uint8_t* data, size_t len);
+private:
+  void on_router_publish(const std::string &topic,
+                         std::shared_ptr<std::vector<uint8_t>> data);
+  void on_client_ctrl_message(uint8_t msg_type, const uint8_t *data,
+                              size_t len);
+  void on_client_bulk_message(uint8_t msg_type, const uint8_t *data,
+                              size_t len);
 
   gtnh::net::TcpServer ctrl_server_;
   gtnh::net::TcpServer bulk_server_;

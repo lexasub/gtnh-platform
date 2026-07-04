@@ -1,18 +1,18 @@
 #pragma once
 
-#include <vector>
-#include <string>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 class ItemIndex {
-    std::vector<uint16_t> items_;      // current view (filtered)
-    std::vector<uint16_t> fullItems_;  // complete sorted list
+  std::vector<uint16_t> items_;     // current view (filtered)
+  std::vector<uint16_t> fullItems_; // complete sorted list
 public:
-    ItemIndex() = default;
+  ItemIndex() = default;
 
-    void Rebuild();
+  void Rebuild();
 
-    void SetSearch(const std::string& query);
+  void SetSearch(const std::string &query);
 
-    const std::vector<uint16_t>& GetItems() const { return items_; }
+  const std::vector<uint16_t> &GetItems() const { return items_; }
 };

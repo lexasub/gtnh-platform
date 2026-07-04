@@ -1,7 +1,7 @@
 #pragma once
 
-#include "IUIWindow.h"
 #include "Common/Types.h"
+#include "IUIWindow.h"
 
 // ──────────────────────────────────────────────────────────────────────────────
 // BlockAttachedWindow — intermediate base for windows bound to a world block.
@@ -15,13 +15,13 @@
 // ──────────────────────────────────────────────────────────────────────────────
 class BlockAttachedWindow : public IUIWindow {
 public:
-    explicit BlockAttachedWindow(BlockPos pos) : pos_(pos) {}
+  explicit BlockAttachedWindow(BlockPos pos) : pos_(pos) {}
 
-    BlockPos GetAnchorPos() const { return pos_; }
-    void SetAnchorPos(BlockPos pos) { pos_ = pos; }
+  BlockPos GetAnchorPos() const { return pos_; }
+  void SetAnchorPos(BlockPos pos) { pos_ = pos; }
 
-    bool IsBlockAttached() const final { return true; }
+  bool IsBlockAttached() const final { return true; }
 
 protected:
-    BlockPos pos_;
+  BlockPos pos_;
 };

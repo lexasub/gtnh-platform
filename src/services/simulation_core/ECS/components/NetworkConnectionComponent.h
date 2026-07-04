@@ -5,11 +5,11 @@
 namespace simcore {
 
 struct NetworkConnectionComponent {
-    std::vector<uint32_t> network_ids;
+  std::vector<uint32_t> network_ids;
 
-    NetworkConnectionComponent() = default;
-    explicit NetworkConnectionComponent(std::vector<uint32_t> ids)
-        : network_ids(std::move(ids)) {}
+  NetworkConnectionComponent() = default;
+  explicit NetworkConnectionComponent(std::vector<uint32_t> ids)
+      : network_ids(std::move(ids)) {}
 };
 
 } // namespace simcore

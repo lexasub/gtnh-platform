@@ -20,389 +20,435 @@
 
 #include <cstdint>
 #include <cstring>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 #include "../Chunk/Chunk.h"
 
-constexpr int SEC_SZ   = 16;
-constexpr int SEC_VOL  = SEC_SZ * SEC_SZ * SEC_SZ;
-constexpr int SEC_CNT  = 8;
+constexpr int SEC_SZ = 16;
+constexpr int SEC_VOL = SEC_SZ * SEC_SZ * SEC_SZ;
+constexpr int SEC_CNT = 8;
 
 constexpr uint32_t MAGIC = 0x4B484347; // "GCHK"
 
 // Maps section index bit axis to origin: bit0=x, bit1=z, bit2=y
 inline int sectionOrigin(int section, int axis) {
-    return ((section >> axis) & 1) * SEC_SZ;
+  return ((section >> axis) & 1) * SEC_SZ;
 }
 
 inline int localIndex(int lx, int ly, int lz) {
-    return (ly << 8) | (lz << 4) | lx;
+  return (ly << 8) | (lz << 4) | lx;
 }
 
-inline int chunkIndex(int x, int y, int z) {
-    return (y << 10) | (z << 5) | x;
-}
+inline int chunkIndex(int x, int y, int z) { return (y << 10) | (z << 5) | x; }
 
 struct BitWriter {
-    std::vector<uint8_t>& buf;
-    int bit_pos = 0;
+  std::vector<uint8_t> &buf;
+  int bit_pos = 0;
 
-    void write(uint32_t val, int bits) {
-        for (int i = 0; i < bits; ++i) {
-            if (bit_pos % 8 == 0) buf.push_back(0);
-            if ((val >> i) & 1)
-                buf[bit_pos / 8] |= static_cast<uint8_t>(1 << (bit_pos % 8));
-            ++bit_pos;
-        }
+  void write(uint32_t val, int bits) {
+    for (int i = 0; i < bits; ++i) {
+      if (bit_pos % 8 == 0)
+        buf.push_back(0);
+      if ((val >> i) & 1)
+        buf[bit_pos / 8] |= static_cast<uint8_t>(1 << (bit_pos % 8));
+      ++bit_pos;
     }
+  }
 };
 
 struct BitReader {
-    const uint8_t* data;
-    int bit_pos = 0;
+  const uint8_t *data;
+  int bit_pos = 0;
 
-    uint32_t read(int bits) {
-        uint32_t val = 0;
-        for (int i = 0; i < bits; ++i) {
-            if ((data[bit_pos / 8] >> (bit_pos % 8)) & 1)
-                val |= (1u << i);
-            ++bit_pos;
-        }
-        return val;
+  uint32_t read(int bits) {
+    uint32_t val = 0;
+    for (int i = 0; i < bits; ++i) {
+      if ((data[bit_pos / 8] >> (bit_pos % 8)) & 1)
+        val |= (1u << i);
+      ++bit_pos;
     }
+    return val;
+  }
 };
 
 // ─── wire-format helpers ──────────────────────────────────────────
 
-inline void writeU8(std::vector<uint8_t>& buf, uint8_t v) {
-    buf.push_back(v);
+inline void writeU8(std::vector<uint8_t> &buf, uint8_t v) { buf.push_back(v); }
+
+inline void writeU16(std::vector<uint8_t> &buf, uint16_t v) {
+  buf.push_back(static_cast<uint8_t>(v & 0xFF));
+  buf.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
 }
 
-inline void writeU16(std::vector<uint8_t>& buf, uint16_t v) {
-    buf.push_back(static_cast<uint8_t>(v & 0xFF));
-    buf.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
-}
-
-inline void writeU32(std::vector<uint8_t>& buf, uint32_t v) {
-    buf.push_back(static_cast<uint8_t>(v & 0xFF));
-    buf.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
-    buf.push_back(static_cast<uint8_t>((v >> 16) & 0xFF));
-    buf.push_back(static_cast<uint8_t>((v >> 24) & 0xFF));
+inline void writeU32(std::vector<uint8_t> &buf, uint32_t v) {
+  buf.push_back(static_cast<uint8_t>(v & 0xFF));
+  buf.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+  buf.push_back(static_cast<uint8_t>((v >> 16) & 0xFF));
+  buf.push_back(static_cast<uint8_t>((v >> 24) & 0xFF));
 }
 
 struct Reader {
-    const uint8_t* data;
-    size_t size;
-    size_t pos = 0;
+  const uint8_t *data;
+  size_t size;
+  size_t pos = 0;
 
-    bool readU8(uint8_t& v) {
-        if (pos + 1 > size) return false;
-        v = data[pos++];
-        return true;
-    }
+  bool readU8(uint8_t &v) {
+    if (pos + 1 > size)
+      return false;
+    v = data[pos++];
+    return true;
+  }
 
-    bool readU16(uint16_t& v) {
-        if (pos + 2 > size) return false;
-        v = static_cast<uint16_t>(data[pos]) |
-            (static_cast<uint16_t>(data[pos + 1]) << 8);
-        pos += 2;
-        return true;
-    }
+  bool readU16(uint16_t &v) {
+    if (pos + 2 > size)
+      return false;
+    v = static_cast<uint16_t>(data[pos]) |
+        (static_cast<uint16_t>(data[pos + 1]) << 8);
+    pos += 2;
+    return true;
+  }
 
-    bool readU32(uint32_t& v) {
-        if (pos + 4 > size) return false;
-        v = static_cast<uint32_t>(data[pos]) |
-            (static_cast<uint32_t>(data[pos + 1]) << 8) |
-            (static_cast<uint32_t>(data[pos + 2]) << 16) |
-            (static_cast<uint32_t>(data[pos + 3]) << 24);
-        pos += 4;
-        return true;
-    }
+  bool readU32(uint32_t &v) {
+    if (pos + 4 > size)
+      return false;
+    v = static_cast<uint32_t>(data[pos]) |
+        (static_cast<uint32_t>(data[pos + 1]) << 8) |
+        (static_cast<uint32_t>(data[pos + 2]) << 16) |
+        (static_cast<uint32_t>(data[pos + 3]) << 24);
+    pos += 4;
+    return true;
+  }
 
-    bool skip(size_t n) {
-        if (pos + n > size) return false;
-        pos += n;
-        return true;
-    }
+  bool skip(size_t n) {
+    if (pos + n > size)
+      return false;
+    pos += n;
+    return true;
+  }
 };
 
 // ─── encoder ──────────────────────────────────────────────────────
 
-inline void encodeSection(const Chunk& chunk, int section,
-                          std::vector<uint8_t>& buf) {
-    int ox = sectionOrigin(section, 0);
-    int oy = sectionOrigin(section, 2);
-    int oz = sectionOrigin(section, 1);
+inline void encodeSection(const Chunk &chunk, int section,
+                          std::vector<uint8_t> &buf) {
+  int ox = sectionOrigin(section, 0);
+  int oy = sectionOrigin(section, 2);
+  int oz = sectionOrigin(section, 1);
 
-    std::unordered_map<uint16_t, uint16_t> palette_map;
-    std::vector<uint16_t> palette;
+  std::unordered_map<uint16_t, uint16_t> palette_map;
+  std::vector<uint16_t> palette;
 
-    struct MetaEntry { uint16_t local_idx; uint8_t  meta; };
-    struct MbEntry  { uint16_t local_idx; uint32_t mb_id; };
-    std::vector<MetaEntry> meta_entries;
-    std::vector<MbEntry>   mb_entries;
+  struct MetaEntry {
+    uint16_t local_idx;
+    uint8_t meta;
+  };
+  struct MbEntry {
+    uint16_t local_idx;
+    uint32_t mb_id;
+  };
+  std::vector<MetaEntry> meta_entries;
+  std::vector<MbEntry> mb_entries;
 
-    uint16_t indices[SEC_VOL];
+  uint16_t indices[SEC_VOL];
 
-    for (int ly = 0; ly < SEC_SZ; ++ly) {
-        for (int lz = 0; lz < SEC_SZ; ++lz) {
-            for (int lx = 0; lx < SEC_SZ; ++lx) {
-                int gx = ox + lx;
-                int gy = oy + ly;
-                int gz = oz + lz;
-                int ci = chunkIndex(gx, gy, gz);
-                int li = localIndex(lx, ly, lz);
+  for (int ly = 0; ly < SEC_SZ; ++ly) {
+    for (int lz = 0; lz < SEC_SZ; ++lz) {
+      for (int lx = 0; lx < SEC_SZ; ++lx) {
+        int gx = ox + lx;
+        int gy = oy + ly;
+        int gz = oz + lz;
+        int ci = chunkIndex(gx, gy, gz);
+        int li = localIndex(lx, ly, lz);
 
-                uint16_t bid = chunk.blocks[ci];
-                auto it = palette_map.find(bid);
-                if (it == palette_map.end()) {
-                    uint16_t idx = static_cast<uint16_t>(palette.size());
-                    palette_map[bid] = idx;
-                    palette.push_back(bid);
-                    indices[li] = idx;
-                } else {
-                    indices[li] = it->second;
-                }
-
-                uint8_t m = chunk.meta[ci];
-                if (m != 0)
-                    meta_entries.push_back({static_cast<uint16_t>(li), m});
-
-                uint32_t mb = chunk.multiblock[ci];
-                if (mb != 0)
-                    mb_entries.push_back({static_cast<uint16_t>(li), mb});
-            }
+        uint16_t bid = chunk.blocks[ci];
+        auto it = palette_map.find(bid);
+        if (it == palette_map.end()) {
+          uint16_t idx = static_cast<uint16_t>(palette.size());
+          palette_map[bid] = idx;
+          palette.push_back(bid);
+          indices[li] = idx;
+        } else {
+          indices[li] = it->second;
         }
-    }
 
-    uint16_t psz = static_cast<uint16_t>(palette.size());
-    writeU16(buf, psz);
-    for (auto bid : palette)
-        writeU16(buf, bid);
+        uint8_t m = chunk.meta[ci];
+        if (m != 0)
+          meta_entries.push_back({static_cast<uint16_t>(li), m});
 
-    int bpi_val = 0;
-    if (psz > 1) {
-        uint32_t tmp = psz - 1;
-        while (tmp > 0) { ++bpi_val; tmp >>= 1; }
+        uint32_t mb = chunk.multiblock[ci];
+        if (mb != 0)
+          mb_entries.push_back({static_cast<uint16_t>(li), mb});
+      }
     }
-    auto bpi = static_cast<uint8_t>(bpi_val);
-    writeU8(buf, bpi);
+  }
 
-    if (bpi > 0) {
-        BitWriter bw{buf, static_cast<int>(buf.size()) * 8};
-        for (int i = 0; i < SEC_VOL; ++i)
-            bw.write(indices[i], bpi);
-    }
+  uint16_t psz = static_cast<uint16_t>(palette.size());
+  writeU16(buf, psz);
+  for (auto bid : palette)
+    writeU16(buf, bid);
 
-    uint16_t mc = static_cast<uint16_t>(meta_entries.size());
-    writeU16(buf, mc);
-    for (auto& e : meta_entries) {
-        writeU16(buf, e.local_idx);
-        writeU8(buf, e.meta);
+  int bpi_val = 0;
+  if (psz > 1) {
+    uint32_t tmp = psz - 1;
+    while (tmp > 0) {
+      ++bpi_val;
+      tmp >>= 1;
     }
+  }
+  auto bpi = static_cast<uint8_t>(bpi_val);
+  writeU8(buf, bpi);
 
-    uint16_t mbc = static_cast<uint16_t>(mb_entries.size());
-    writeU16(buf, mbc);
-    for (auto& e : mb_entries) {
-        writeU16(buf, e.local_idx);
-        writeU32(buf, e.mb_id);
-    }
+  if (bpi > 0) {
+    BitWriter bw{buf, static_cast<int>(buf.size()) * 8};
+    for (int i = 0; i < SEC_VOL; ++i)
+      bw.write(indices[i], bpi);
+  }
+
+  uint16_t mc = static_cast<uint16_t>(meta_entries.size());
+  writeU16(buf, mc);
+  for (auto &e : meta_entries) {
+    writeU16(buf, e.local_idx);
+    writeU8(buf, e.meta);
+  }
+
+  uint16_t mbc = static_cast<uint16_t>(mb_entries.size());
+  writeU16(buf, mbc);
+  for (auto &e : mb_entries) {
+    writeU16(buf, e.local_idx);
+    writeU32(buf, e.mb_id);
+  }
 }
 
-inline void encodeChunk(const Chunk& chunk, std::vector<uint8_t>& buf) {
-    buf.clear();
-    writeU32(buf, MAGIC);
-    writeU8(buf, 1);
-    writeU8(buf, SEC_CNT);
-    for (int s = 0; s < SEC_CNT; ++s)
-        encodeSection(chunk, s, buf);
+inline void encodeChunk(const Chunk &chunk, std::vector<uint8_t> &buf) {
+  buf.clear();
+  writeU32(buf, MAGIC);
+  writeU8(buf, 1);
+  writeU8(buf, SEC_CNT);
+  for (int s = 0; s < SEC_CNT; ++s)
+    encodeSection(chunk, s, buf);
 }
 
 // ─── section offset table ─────────────────────────────────────────
-// Scans the compressed buffer and records byte offset for each of the 8 sections.
-// Enables O(1) jump to any section for lazy decoding.
+// Scans the compressed buffer and records byte offset for each of the 8
+// sections. Enables O(1) jump to any section for lazy decoding.
 
-inline bool buildSectionOffsets(const uint8_t* data, size_t size, uint32_t offsets[8]) {
-    Reader r{data, size, 0};
-    uint32_t magic = 0;
-    if (!r.readU32(magic) || magic != MAGIC) return false;
-    uint8_t ver = 0;
-    if (!r.readU8(ver) || ver < 1) return false;
-    uint8_t sec_cnt = 0;
-    if (!r.readU8(sec_cnt) || sec_cnt != SEC_CNT) return false;
+inline bool buildSectionOffsets(const uint8_t *data, size_t size,
+                                uint32_t offsets[8]) {
+  Reader r{data, size, 0};
+  uint32_t magic = 0;
+  if (!r.readU32(magic) || magic != MAGIC)
+    return false;
+  uint8_t ver = 0;
+  if (!r.readU8(ver) || ver < 1)
+    return false;
+  uint8_t sec_cnt = 0;
+  if (!r.readU8(sec_cnt) || sec_cnt != SEC_CNT)
+    return false;
 
-    for (int s = 0; s < SEC_CNT; ++s) {
-        offsets[s] = r.pos;
-
-        uint16_t psz = 0;
-        if (!r.readU16(psz) || psz == 0) return false;
-        if (r.pos + static_cast<size_t>(psz) * 2 > r.size) return false;
-        r.pos += psz * 2;
-
-        uint8_t bpi = 0;
-        if (!r.readU8(bpi)) return false;
-
-        if (bpi > 0) {
-            int total_bits = SEC_VOL * bpi;
-            r.pos += (total_bits + 7) / 8;
-        }
-
-        uint16_t mc = 0;
-        if (!r.readU16(mc)) return false;
-        if (r.pos + static_cast<size_t>(mc) * 3 > r.size) return false;
-        r.pos += mc * 3;
-
-        uint16_t mbc = 0;
-        if (!r.readU16(mbc)) return false;
-        if (r.pos + static_cast<size_t>(mbc) * 6 > r.size) return false;
-        r.pos += mbc * 6;
-    }
-    return true;
-}
-
-// ─── single-section decoder ───────────────────────────────────────
-// Decodes one palette-compressed section into caller-provided 4096-element arrays.
-// blocks_out/meta_out/mb_out use section-local indexing: (ly*256 + lz*16 + lx).
-// section_offset is obtained from buildSectionOffsets().
-
-inline bool decodeSingleSection(const uint8_t* data, size_t size, int section,
-                                 uint16_t* blocks_out, uint8_t* meta_out, uint32_t* mb_out,
-                                 uint32_t section_offset) {
-    (void)section;
-    Reader r{data, size, section_offset};
-
-    std::memset(blocks_out, 0, SEC_VOL * sizeof(uint16_t));
-    std::memset(meta_out,   0, SEC_VOL * sizeof(uint8_t));
-    std::memset(mb_out,     0, SEC_VOL * sizeof(uint32_t));
+  for (int s = 0; s < SEC_CNT; ++s) {
+    offsets[s] = r.pos;
 
     uint16_t psz = 0;
-    if (!r.readU16(psz) || psz == 0) return false;
-    std::vector<uint16_t> palette(psz);
-    for (int i = 0; i < psz; ++i) {
-        if (!r.readU16(palette[i])) return false;
-    }
+    if (!r.readU16(psz) || psz == 0)
+      return false;
+    if (r.pos + static_cast<size_t>(psz) * 2 > r.size)
+      return false;
+    r.pos += psz * 2;
 
     uint8_t bpi = 0;
-    if (!r.readU8(bpi)) return false;
+    if (!r.readU8(bpi))
+      return false;
 
     if (bpi > 0) {
-        int total_bits = SEC_VOL * bpi;
-        int total_bytes = (total_bits + 7) / 8;
-        if (r.pos + total_bytes > r.size) return false;
-
-        BitReader br{r.data + r.pos, 0};
-        for (int li = 0; li < SEC_VOL; ++li) {
-            uint32_t pal_idx = br.read(bpi);
-            if (pal_idx >= psz) return false;
-            blocks_out[li] = palette[pal_idx];
-        }
-        r.pos += total_bytes;
-    } else {
-        uint16_t uniform = palette[0];
-        for (int li = 0; li < SEC_VOL; ++li)
-            blocks_out[li] = uniform;
+      int total_bits = SEC_VOL * bpi;
+      r.pos += (total_bits + 7) / 8;
     }
 
     uint16_t mc = 0;
-    if (!r.readU16(mc)) return false;
-    for (int i = 0; i < mc; ++i) {
-        uint16_t li = 0; uint8_t m = 0;
-        if (!r.readU16(li) || !r.readU8(m)) return false;
-        if (li < SEC_VOL) meta_out[li] = m;
-    }
+    if (!r.readU16(mc))
+      return false;
+    if (r.pos + static_cast<size_t>(mc) * 3 > r.size)
+      return false;
+    r.pos += mc * 3;
 
     uint16_t mbc = 0;
-    if (!r.readU16(mbc)) return false;
-    for (int i = 0; i < mbc; ++i) {
-        uint16_t li = 0; uint32_t mbid = 0;
-        if (!r.readU16(li) || !r.readU32(mbid)) return false;
-        if (li < SEC_VOL) mb_out[li] = mbid;
+    if (!r.readU16(mbc))
+      return false;
+    if (r.pos + static_cast<size_t>(mbc) * 6 > r.size)
+      return false;
+    r.pos += mbc * 6;
+  }
+  return true;
+}
+
+// ─── single-section decoder ───────────────────────────────────────
+// Decodes one palette-compressed section into caller-provided 4096-element
+// arrays. blocks_out/meta_out/mb_out use section-local indexing: (ly*256 +
+// lz*16 + lx). section_offset is obtained from buildSectionOffsets().
+
+inline bool decodeSingleSection(const uint8_t *data, size_t size, int section,
+                                uint16_t *blocks_out, uint8_t *meta_out,
+                                uint32_t *mb_out, uint32_t section_offset) {
+  (void)section;
+  Reader r{data, size, section_offset};
+
+  std::memset(blocks_out, 0, SEC_VOL * sizeof(uint16_t));
+  std::memset(meta_out, 0, SEC_VOL * sizeof(uint8_t));
+  std::memset(mb_out, 0, SEC_VOL * sizeof(uint32_t));
+
+  uint16_t psz = 0;
+  if (!r.readU16(psz) || psz == 0)
+    return false;
+  std::vector<uint16_t> palette(psz);
+  for (int i = 0; i < psz; ++i) {
+    if (!r.readU16(palette[i]))
+      return false;
+  }
+
+  uint8_t bpi = 0;
+  if (!r.readU8(bpi))
+    return false;
+
+  if (bpi > 0) {
+    int total_bits = SEC_VOL * bpi;
+    int total_bytes = (total_bits + 7) / 8;
+    if (r.pos + total_bytes > r.size)
+      return false;
+
+    BitReader br{r.data + r.pos, 0};
+    for (int li = 0; li < SEC_VOL; ++li) {
+      uint32_t pal_idx = br.read(bpi);
+      if (pal_idx >= psz)
+        return false;
+      blocks_out[li] = palette[pal_idx];
     }
-    return true;
+    r.pos += total_bytes;
+  } else {
+    uint16_t uniform = palette[0];
+    for (int li = 0; li < SEC_VOL; ++li)
+      blocks_out[li] = uniform;
+  }
+
+  uint16_t mc = 0;
+  if (!r.readU16(mc))
+    return false;
+  for (int i = 0; i < mc; ++i) {
+    uint16_t li = 0;
+    uint8_t m = 0;
+    if (!r.readU16(li) || !r.readU8(m))
+      return false;
+    if (li < SEC_VOL)
+      meta_out[li] = m;
+  }
+
+  uint16_t mbc = 0;
+  if (!r.readU16(mbc))
+    return false;
+  for (int i = 0; i < mbc; ++i) {
+    uint16_t li = 0;
+    uint32_t mbid = 0;
+    if (!r.readU16(li) || !r.readU32(mbid))
+      return false;
+    if (li < SEC_VOL)
+      mb_out[li] = mbid;
+  }
+  return true;
 }
 
 // ─── decoder ──────────────────────────────────────────────────────
 
-inline bool decodeChunk(const uint8_t* data, size_t size, Chunk& chunk) {
-    std::memset(&chunk, 0, sizeof(Chunk));
+inline bool decodeChunk(const uint8_t *data, size_t size, Chunk &chunk) {
+  std::memset(&chunk, 0, sizeof(Chunk));
 
-    Reader r{data, size, 0};
+  Reader r{data, size, 0};
 
-    uint32_t magic = 0;
-    if (!r.readU32(magic) || magic != MAGIC) return false;
-    uint8_t ver = 0;
-    if (!r.readU8(ver) || ver < 1) return false;
-    uint8_t sec_cnt = 0;
-    if (!r.readU8(sec_cnt) || sec_cnt != SEC_CNT) return false;
+  uint32_t magic = 0;
+  if (!r.readU32(magic) || magic != MAGIC)
+    return false;
+  uint8_t ver = 0;
+  if (!r.readU8(ver) || ver < 1)
+    return false;
+  uint8_t sec_cnt = 0;
+  if (!r.readU8(sec_cnt) || sec_cnt != SEC_CNT)
+    return false;
 
-    for (int s = 0; s < SEC_CNT; ++s) {
-        int ox = sectionOrigin(s, 0);
-        int oy = sectionOrigin(s, 2);
-        int oz = sectionOrigin(s, 1);
+  for (int s = 0; s < SEC_CNT; ++s) {
+    int ox = sectionOrigin(s, 0);
+    int oy = sectionOrigin(s, 2);
+    int oz = sectionOrigin(s, 1);
 
-        uint16_t psz = 0;
-        if (!r.readU16(psz) || psz == 0) return false;
-        std::vector<uint16_t> palette(psz);
-        for (int i = 0; i < psz; ++i) {
-            if (!r.readU16(palette[i])) return false;
-        }
-
-        uint8_t bpi = 0;
-        if (!r.readU8(bpi)) return false;
-
-        if (bpi > 0) {
-            int total_bits = SEC_VOL * bpi;
-            int total_bytes = (total_bits + 7) / 8;
-            if (r.pos + total_bytes > r.size) return false;
-
-            BitReader br{r.data + r.pos, 0};
-            for (int li = 0; li < SEC_VOL; ++li) {
-                uint32_t pal_idx = br.read(bpi);
-                if (pal_idx >= psz) return false;
-
-                uint16_t bid = palette[pal_idx];
-                int lx = li & 0xF;
-                int lz = (li >> 4) & 0xF;
-                int ly = (li >> 8) & 0xF;
-                int gx = ox + lx;
-                int gy = oy + ly;
-                int gz = oz + lz;
-                chunk.blocks[chunkIndex(gx, gy, gz)] = bid;
-            }
-            r.pos += total_bytes;
-        } else {
-            uint16_t uniform_bid = palette[0];
-            for (int ly = 0; ly < SEC_SZ; ++ly)
-                for (int lz = 0; lz < SEC_SZ; ++lz)
-                    for (int lx = 0; lx < SEC_SZ; ++lx)
-                        chunk.blocks[chunkIndex(ox + lx, oy + ly, oz + lz)] = uniform_bid;
-        }
-
-        uint16_t mc = 0;
-        if (!r.readU16(mc)) return false;
-        for (int i = 0; i < mc; ++i) {
-            uint16_t li  = 0;
-            uint8_t  meta = 0;
-            if (!r.readU16(li) || !r.readU8(meta)) return false;
-            int lx = li & 0xF;
-            int lz = (li >> 4) & 0xF;
-            int ly = (li >> 8) & 0xF;
-            chunk.meta[chunkIndex(ox + lx, oy + ly, oz + lz)] = meta;
-        }
-
-        uint16_t mbc = 0;
-        if (!r.readU16(mbc)) return false;
-        for (int i = 0; i < mbc; ++i) {
-            uint16_t li = 0;
-            uint32_t mb_id = 0;
-            if (!r.readU16(li) || !r.readU32(mb_id)) return false;
-            int lx = li & 0xF;
-            int lz = (li >> 4) & 0xF;
-            int ly = (li >> 8) & 0xF;
-            chunk.multiblock[chunkIndex(ox + lx, oy + ly, oz + lz)] = mb_id;
-        }
+    uint16_t psz = 0;
+    if (!r.readU16(psz) || psz == 0)
+      return false;
+    std::vector<uint16_t> palette(psz);
+    for (int i = 0; i < psz; ++i) {
+      if (!r.readU16(palette[i]))
+        return false;
     }
 
-    return true;
+    uint8_t bpi = 0;
+    if (!r.readU8(bpi))
+      return false;
+
+    if (bpi > 0) {
+      int total_bits = SEC_VOL * bpi;
+      int total_bytes = (total_bits + 7) / 8;
+      if (r.pos + total_bytes > r.size)
+        return false;
+
+      BitReader br{r.data + r.pos, 0};
+      for (int li = 0; li < SEC_VOL; ++li) {
+        uint32_t pal_idx = br.read(bpi);
+        if (pal_idx >= psz)
+          return false;
+
+        uint16_t bid = palette[pal_idx];
+        int lx = li & 0xF;
+        int lz = (li >> 4) & 0xF;
+        int ly = (li >> 8) & 0xF;
+        int gx = ox + lx;
+        int gy = oy + ly;
+        int gz = oz + lz;
+        chunk.blocks[chunkIndex(gx, gy, gz)] = bid;
+      }
+      r.pos += total_bytes;
+    } else {
+      uint16_t uniform_bid = palette[0];
+      for (int ly = 0; ly < SEC_SZ; ++ly)
+        for (int lz = 0; lz < SEC_SZ; ++lz)
+          for (int lx = 0; lx < SEC_SZ; ++lx)
+            chunk.blocks[chunkIndex(ox + lx, oy + ly, oz + lz)] = uniform_bid;
+    }
+
+    uint16_t mc = 0;
+    if (!r.readU16(mc))
+      return false;
+    for (int i = 0; i < mc; ++i) {
+      uint16_t li = 0;
+      uint8_t meta = 0;
+      if (!r.readU16(li) || !r.readU8(meta))
+        return false;
+      int lx = li & 0xF;
+      int lz = (li >> 4) & 0xF;
+      int ly = (li >> 8) & 0xF;
+      chunk.meta[chunkIndex(ox + lx, oy + ly, oz + lz)] = meta;
+    }
+
+    uint16_t mbc = 0;
+    if (!r.readU16(mbc))
+      return false;
+    for (int i = 0; i < mbc; ++i) {
+      uint16_t li = 0;
+      uint32_t mb_id = 0;
+      if (!r.readU16(li) || !r.readU32(mb_id))
+        return false;
+      int lx = li & 0xF;
+      int lz = (li >> 4) & 0xF;
+      int ly = (li >> 8) & 0xF;
+      chunk.multiblock[chunkIndex(ox + lx, oy + ly, oz + lz)] = mb_id;
+    }
+  }
+
+  return true;
 }
