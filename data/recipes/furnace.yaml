@@ -3,7 +3,7 @@
 class: furnace
 recipes:
 
-  - name: minecraft:blasting_iron_ore
+  - name: base:blasting_iron_ore
     inputs:
       - { item: 3, count: 1 }
     outputs:
@@ -12,7 +12,7 @@ recipes:
     min_tier: 0
     max_tier: 32767
 
-  - name: minecraft:furnace_beef
+  - name: base:furnace_beef
     inputs:
       - { item: 1, count: 1 }
     outputs:
@@ -21,7 +21,7 @@ recipes:
     min_tier: 0
     max_tier: 32767
 
-  - name: minecraft:furnace_gold_ore
+  - name: base:furnace_gold_ore
     inputs:
       - { item: 5, count: 1 }
     outputs:
@@ -31,7 +31,7 @@ recipes:
     min_tier: 0
     max_tier: 32767
 
-  - name: minecraft:furnace_iron_ore
+  - name: base:furnace_iron_ore
     inputs:
       - { item: 3, count: 1 }
     outputs:
@@ -41,7 +41,7 @@ recipes:
     min_tier: 0
     max_tier: 32767
 
-  - name: minecraft:smelting_cobblestone
+  - name: base:smelting_cobblestone
     inputs:
       - { item: 7, count: 1 }
     outputs:

@@ -42,7 +42,7 @@
 ```sql
 CREATE TABLE items (
     id          INTEGER PRIMARY KEY,  -- uint16 (0–65535)
-    name        TEXT NOT NULL UNIQUE,  -- "minecraft:iron_ingot"
+    name        TEXT NOT NULL UNIQUE,  -- "base:iron_ingot"
     stack_size  INTEGER DEFAULT 64,
     meta        INTEGER DEFAULT 0
 );

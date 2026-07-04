@@ -56,14 +56,14 @@ interface ItemStack {
 
 | Field | Type | Description |
 |------|------|-------------|
-| `item` | string | Item identifier in the format `namespace:item_name`. Use `minecraft:` for vanilla items. |
+| `item` | string | Item identifier in the format `namespace:item_name`. Use `base:` for vanilla items. |
 | `count` | number | Quantity of items, must be positive (1+). |
 | `metadata` | number | Item NBT tag or damage value. Use `0` if unspecified. |
 
 **Example:**
 ```json
 {
-    "item": "minecraft:iron_ore",
+    "item": "base:iron_ore",
     "count": 1,
     "metadata": 0
 }
@@ -96,16 +96,16 @@ Each machine category uses a **single dedicated file** containing all recipes fo
 ```json
 [
     {
-        "id": "minecraft:crafting/stone_pickaxe",
+        "id": "base:crafting/stone_pickaxe",
         "inputs": [
             {
-                "item": "minecraft:stick",
+                "item": "base:stick",
                 "count": 2
             }
         ],
         "outputs": [
             {
-                "item": "minecraft:stone_pickaxe",
+                "item": "base:stone_pickaxe",
                 "count": 1
             }
         ],
@@ -114,16 +114,16 @@ Each machine category uses a **single dedicated file** containing all recipes fo
         "energyCost": 0
     },
     {
-        "id": "minecraft:furnace/iron_ore_smelt",
+        "id": "base:furnace/iron_ore_smelt",
         "inputs": [
             {
-                "item": "minecraft:iron_ore",
+                "item": "base:iron_ore",
                 "count": 1
             }
         ],
         "outputs": [
             {
-                "item": "minecraft:iron_ingot",
+                "item": "base:iron_ingot",
                 "count": 1
             }
         ],
@@ -161,7 +161,7 @@ Where `machine_type` is the string representation of the `MachineType` enum.
 
 ### Loading Order
 
-1. Base vanilla recipes (`minecraft:` namespace) load first
+1. Base vanilla recipes (`base:` namespace) load first
 2. Mod-added recipes load second
 3. Recipe manager validates and deduplicates by `id` field
 

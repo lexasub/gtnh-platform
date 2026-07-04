@@ -11,7 +11,7 @@
 namespace MachineRecipes {
 
 struct MachineRecipe {
-    std::string name;        // recipe key from JSON (e.g. "minecraft:macerator_iron_ore")
+    std::string name;        // recipe key from JSON (e.g. "base:macerator_iron_ore")
     std::vector<ItemStack> inputs;
     std::vector<ItemStack> outputs;
     uint32_t duration;

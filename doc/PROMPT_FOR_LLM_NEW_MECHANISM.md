@@ -63,9 +63,9 @@
 **macerator.json** (MachineType=1, один вход → один выход):
 ```json
 {
-  "minecraft:macerator_iron_ore": { "m": 1, "in": [[3]], "out": [[9, 2]], "dur": 400 },
-  "minecraft:macerator_gold_ore": { "m": 1, "in": [[5]], "out": [[9, 2]], "dur": 400 },
-  "minecraft:macerator_cobblestone": { "m": 1, "in": [[7]], "out": [[11]], "dur": 100 }
+  "base:macerator_iron_ore": { "m": 1, "in": [[3]], "out": [[9, 2]], "dur": 400 },
+  "base:macerator_gold_ore": { "m": 1, "in": [[5]], "out": [[9, 2]], "dur": 400 },
+  "base:macerator_cobblestone": { "m": 1, "in": [[7]], "out": [[11]], "dur": 100 }
 }
 ```
 
@@ -81,15 +81,15 @@
 **furnace.json** (MachineType=1, с опциональным eu):
 ```json
 {
-  "minecraft:furnace_beef": { "m": 1, "in": [[1]], "out": [[2]], "dur": 200 },
-  "minecraft:furnace_iron_ore": { "m": 1, "in": [[3]], "out": [[4]], "dur": 200, "eu": 0.7 }
+  "base:furnace_beef": { "m": 1, "in": [[1]], "out": [[2]], "dur": 200 },
+  "base:furnace_iron_ore": { "m": 1, "in": [[3]], "out": [[4]], "dur": 200, "eu": 0.7 }
 }
 ```
 
 **crafting_table.json** (MachineType=0, 9 слотов 3×3):
 ```json
 {
-  "minecraft:stick": {
+  "base:stick": {
     "m": 0,
     "in": [[13, 1], [0, 0], [0, 0], [13, 1], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]],
     "out": [[32, 4]],
@@ -104,18 +104,18 @@
 
 ```
 id,name,stack_size,meta
-0,minecraft:air,0,0
-1,minecraft:beef,64,0
-2,minecraft:cooked_beef,64,0
-3,minecraft:iron_ore,64,0
+0,base:air,0,0
+1,base:beef,64,0
+2,base:cooked_beef,64,0
+3,base:iron_ore,64,0
 ...и т.д.
-45,minecraft:brick_block,64,0
+45,base:brick_block,64,0
 ```
 
 **Правила:**
 - `id` — uint16, последовательный. Предыдущий ID = 45. Новые предметы **начинаются с 46**.
 - `name` — `{domain}:{name}`. Для GTNH-специфичных предметов используйте `gtnh:`.
-  Для ванильных — `minecraft:`.
+  Для ванильных — `base:`.
 - `stack_size` — 64 (обычные), 16 (вёдра/особые), 1 (инструменты).
 - `meta` — всегда 0 для базовых предметов.
 - **Не переопределяйте существующие ID 0-45.**

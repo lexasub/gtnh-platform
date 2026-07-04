@@ -66,7 +66,7 @@ static void test_recipe_manager_find_stick() {
     };
     auto* recipe = mgr.findRecipeByInputs(14, inputs);  // crafting table
     if (recipe) {
-        CHECK_EQ(recipe->id, std::string("minecraft:stick"), "2 planks match stick recipe");
+        CHECK_EQ(recipe->id, std::string("base:stick"), "2 planks match stick recipe");
     }
 
     PASS();

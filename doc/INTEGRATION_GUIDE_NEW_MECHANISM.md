@@ -67,7 +67,7 @@
 ### Добавление строк
 
 ```diff
- 45,minecraft:brick_block,64,0
+ 45,base:brick_block,64,0
 +46,gtnh:macerator,64,0
 +47,gtnh:compressor,64,0
 +48,gtnh:crushed_iron,64,0
@@ -79,7 +79,7 @@
 
 - **Блок машины** (можно поставить в мир): `gtnh:{machinename}` — ID должен совпадать с BlockType.
   Пример: машина Macerator → `gtnh:macerator` → ID=46 → `BlockType::Macerator = 46`.
-- **Ингредиенты**: `gtnh:{material}` или `minecraft:{vanilla_name}`.
+- **Ингредиенты**: `gtnh:{material}` или `base:{vanilla_name}`.
 - **Инструменты**: `gtnh:{item_name}`.
 
 ### Правила
