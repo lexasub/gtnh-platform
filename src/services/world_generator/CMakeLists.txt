@@ -2,7 +2,7 @@ set(CMAKE_CXX_STANDARD 26)
 find_package(Threads REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
-add_compile_options(-O3 -march=native -ffast-math)
+add_compile_options(-g -O3 -march=native -ffast-math)
 
 add_library(worldgeneratord
     WorldGenerator.cpp

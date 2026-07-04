@@ -112,8 +112,7 @@ void OreGenerator::generateOres(int32_t chunkX, int32_t chunkY, int32_t chunkZ,
                 continue; // Жила слишком далеко, пропускаем регион
             }
 
-            /* TODO MAY BE
-            * // После AABB culling, находим пересечение жилы с чанком
+            // После AABB culling, находим пересечение жилы с чанком
             int32_t startX = std::max(0, (int32_t)(centerX - radius) - baseX);
             int32_t endX = std::min(chunkSize - 1, (int32_t)(centerX + radius) - baseX);
             int32_t startY = std::max(0, (int32_t)(centerY - radius) - baseY);
@@ -125,16 +124,13 @@ void OreGenerator::generateOres(int32_t chunkX, int32_t chunkY, int32_t chunkZ,
             int32_t height = endY - startY + 1;
             int32_t depth = endZ - startZ + 1;
 
-            // Генерируем шум только для этой области
-            fnOre3D_->GenUniformGrid3D(noiseBuffer.data(), baseX + startX, baseY + startY, baseZ + startZ, width, height, depth, 0.1f, 0.1f, 0.1f, regionSeed);*/
             // ==========================================
             // SIMD ОПТИМИЗАЦИЯ 2: FASTNOISE 3D
             // Генерируем шум сразу для всего чанка.
             // Внутри FastNoise использует AVX2/SSE инструкции.
             // ==========================================
-            fnOre3D_->GenUniformGrid3D(noiseBuffer.data(), baseX, baseY, baseZ,
-                                       chunkSize, chunkSize, chunkSize,
-                                       0.1f, 0.1f, 0.1f, regionSeed);
+            // Генерируем шум только для этой области
+            fnOre3D_->GenUniformGrid3D(noiseBuffer.data(), baseX + startX, baseY + startY, baseZ + startZ, width, height, depth, 0.1f, 0.1f, 0.1f, regionSeed);
 
             // ==========================================
             // SIMD ОПТИМИЗАЦИЯ 3: ВЕКТОРИЗУЕМЫЙ ЦИКЛ
@@ -142,37 +138,37 @@ void OreGenerator::generateOres(int32_t chunkX, int32_t chunkY, int32_t chunkZ,
             // сам развернет это в SIMD-регистры.
             // ==========================================
 
-            for (int32_t y = 0; y < chunkSize; ++y) {
+            for (int32_t y = startY; y < endY; ++y) {
                 int32_t worldY = baseY + y;
                 float dy = worldY - centerY;
                 float dySq = dy * dy;
 
-                for (int32_t z = 0; z < chunkSize; ++z) {
+                for (int32_t z = startZ; z < endZ; ++z) {
                     int32_t worldZ = baseZ + z;
                     float dz = worldZ - centerZ;
                     float dyzSq = dySq + dz * dz;
 
-                    for (int32_t x = 0; x < chunkSize; ++x) {
-                        //TODO for alterinative GenUniformGrid3D int32_t idx = ((y - startY) * depth + (z - startZ)) * width + (x - startX);
+                    for (int32_t x = startX; x < endX; ++x) {
+                        int32_t noiseIdx = ((y - startY) * depth + (z - startZ)) * width + (x - startX);
                         int32_t worldX = baseX + x;
-                        int32_t idx = (y * chunkSize + z) * chunkSize + x;
+                        auto &currentBlock = blocks[(y * chunkSize + z) * chunkSize + x];
 
                         // Заменяем ТОЛЬКО камень (ID = 1)
-                        if (blocks[idx] != 1) continue;
+                        if (currentBlock != 1) continue;
 
                         float dx = worldX - centerX;
                         float distSq = dyzSq + dx * dx;
 
                         if (distSq < coreRadiusSq) {
-                            blocks[idx] = vein->primary_id;
+                            currentBlock = vein->primary_id;
                         }
                         else if (distSq < secondaryRadiusSq) {
-                            blocks[idx] = vein->secondary_id;
+                            currentBlock = vein->secondary_id;
                         }
                         else if (distSq < radiusSq) {
                             // Sporadic (вкрапления) зависят от 3D шума
-                            if (noiseBuffer[idx] > 0.5f) {
-                                blocks[idx] = vein->sporadic_id;
+                            if (noiseBuffer[noiseIdx] > 0.5f) {
+                                currentBlock = vein->sporadic_id;
                             }
                         }
                     }

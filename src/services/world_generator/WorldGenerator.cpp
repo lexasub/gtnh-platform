@@ -11,18 +11,25 @@
 #include "OreConfig.h"
 #include "OreGenerator.h"
 namespace {
-    thread_local FastNoise::SmartNode<FastNoise::Simplex> fnFractal_ = FastNoise::New<FastNoise::Simplex>();
+    thread_local FastNoise::SmartNode<FastNoise::Perlin> fnPerlin_ = FastNoise::New<FastNoise::Perlin>();
+    thread_local FastNoise::SmartNode<FastNoise::Simplex> fnSimplex_ = FastNoise::New<FastNoise::Simplex>();
     thread_local FastNoise::SmartNode<FastNoise::FractalFBm> fbm = FastNoise::New<FastNoise::FractalFBm>();
     thread_local std::array<float, 32 * 32> heights;
     thread_local std::array<float, 32 * 32 * 32> caveNoise;
+    /*
+    * Биомы: Добавить fnBiome_ (низкочастотный шум) для смены типов поверхности (трава/песок/снег)
+    * Деревья/растительность: Генерация на поверхности после основного террейна
+    */
+    thread_local bool initialized = false;
 
-    bool initialized = false;
     void init() {
         if (initialized) return;
-        fbm->SetSource(fnFractal_);
-        fbm->SetOctaveCount(4);
+        fnPerlin_->SetScale(25.0f);
+        fbm->SetSource(fnPerlin_);
+        fbm->SetOctaveCount(3);
         fbm->SetLacunarity(2.0f);
         fbm->SetGain(0.5f);
+        fnSimplex_->SetScale(35.0f);
         initialized = true;
     }
 }
@@ -37,6 +44,7 @@ float WorldGenerator::GetTerrainHeight(int worldX, int worldZ) { //TODO - via fa
     // Add detail with higher frequency noise
     noise += 0.5f * glm::perlin(glm::vec2(worldX * scale * 2.0f, worldZ * scale * 2.0f));
     noise += 0.25f * glm::perlin(glm::vec2(worldX * scale * 4.0f, worldZ * scale * 4.0f));
+    //float noise = fbm->GenSingle2D((float)worldX, (float)worldZ, 100);
     
     // Normalize to height range where stone/dirt/grass layers are clearly visible
     float height = 10.0f + noise * 8.0f;
@@ -53,23 +61,23 @@ void WorldGenerator::GenerateTerrain(Chunk& c, int cx, int cy, int cz) {
 
     /*for (int x = 0; x < 32; ++x) {
         for (int z = 0; z < 32; ++z) {
-            heights[x][z] = GetTerrainHeight(baseX + x, baseZ + z);
+            heights[z * 32 + x] = GetTerrainHeight(baseX + x, baseZ + z);
         }
     }*/
-    fbm->GenUniformGrid2D(heights.data(), baseX, baseZ, 32, 32, 0.02f, 0.02f, seed);
-    // Нормализация (FBM с 4 октавами дает диапазон примерно [-1.5, 1.5])
+    fbm->GenUniformGrid2D(heights.data(), baseX, baseZ, 32, 32, 1.0f, 1.0f, seed);
+    // Нормализация (FBM с 3 октавами дает диапазон примерно [-1.5, 1.5])
     for (int i = 0; i < 32 * 32; ++i) {
-        heights[i] = 64.0f + heights[i] * 20.0f; // Уровень моря 64, перепад ~40 блоков
+        heights[i] = 10.0f + heights[i] * 8.0f;
     }
 
-    fnFractal_->GenUniformGrid3D(caveNoise.data(), baseX, baseY, baseZ, 32, 32, 32, 0.05f, 0.05f, 0.05f, seed);
+    fnSimplex_->GenUniformGrid3D(caveNoise.data(), baseX, baseY, baseZ, 32, 32, 32, 1.0f, 1.0f, 1.0f, seed);
 
     for (int y = 0; y < 32; ++y) {
         int worldY = baseY + y;
         for (int z = 0; z < 32; ++z) {
             int z_offset = z * 32;
             for (int x = 0; x < 32; ++x) {
-                float terrainHeight = heights[z * 32 + x];
+                float terrainHeight = heights[z_offset + x];
 
                 uint16_t block = 0;
                 if (worldY < terrainHeight) { [[likely]]
@@ -80,7 +88,7 @@ void WorldGenerator::GenerateTerrain(Chunk& c, int cx, int cy, int cz) {
                     } else if (worldY < terrainHeight) {
                         block = 2; // grass
                     }
-                } else if (worldY < 0) { [[unlikely]]
+                } else if (worldY < 0) { [[unlikely]] //or 64?
                     block = 4; // water
                 }
 
@@ -92,7 +100,7 @@ void WorldGenerator::GenerateTerrain(Chunk& c, int cx, int cy, int cz) {
                     continue;
                 }
 
-                if (caveNoise[idx] > 0.4f) {
+                if (caveNoise[idx] > 0.9f) {
                     block = 0;
                 }
 
