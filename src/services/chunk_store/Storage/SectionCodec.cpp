@@ -185,6 +185,7 @@ void encodeSection(const Chunk &chunk, int section,
 
 
 void encodeChunk(const Chunk &chunk, std::vector<uint8_t> &buf) {
+  //TODO may be need cache encoded chunk (also we don't want encoded and not encoded in cache (mem X 2)
   buf.clear();
   writeU32(buf, MAGIC);
   writeU8(buf, 1);
