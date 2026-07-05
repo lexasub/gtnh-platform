@@ -7,6 +7,8 @@ int,name,stack,meta
 0:0:4,glass,,0
 0:0:5,obsidian,,0
 0:0:6,brick_block,,0
+0:0:7,dirt,,0
+0:0:8,grass,,0
 # BASE wood (prefix 0:10:00 = planks, 0:10:01 = slabs, 0:10:10 = doors, 0:10:11 = misc)
 0:10:00:0,oak_planks,,0
 0:10:00:1,spruce_planks,,0
