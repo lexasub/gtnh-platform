@@ -38,7 +38,7 @@
 // Макрос для завершения транзакции.
 // Логирует ошибку, если коммит не удался.
 #define LMDB_TX_COMMIT() \
-    if (int rc = mdb_txn_commit(txn); rc != 0) { \
+    if (int rc = mdb_txn_commit(txn); rc != 0) [[unlikely]] { \
         spdlog::error("mdb_txn_commit failed: {}", mdb_strerror(rc)); \
     }
 
@@ -295,7 +295,7 @@ bool ChunkStore::writeTransaction(int64_t key, const uint8_t* data, size_t size)
             continue; // retry
         }
 
-        if (rc != 0) {
+        if (rc != 0) [[unlikely]] {
             spdlog::error("mdb_put failed: {}", mdb_strerror(rc));
             if (txn) mdb_txn_abort(txn);
             return false;
@@ -405,7 +405,7 @@ void ChunkStore::flushDirtyChunks() {
         std::lock_guard lock(dirty_mutex_);
         local.swap(dirty_chunks_);
     }
-    if (local.empty()) return;
+    if (local.empty()) [[unlikely]] return;
 
     size_t saved = 0;
     for (const auto& key : local) {
@@ -437,7 +437,7 @@ void ChunkStore::flushDirtyChunks() {
             }
         }
     }
-    if (saved > 0)
+    if (saved > 0) [[likely]]
         spdlog::debug("Flushed {} dirty chunks to LMDB", saved);
 }
 
@@ -574,7 +574,7 @@ void ChunkStore::AsyncGetChunk(ChunkCoord coord, ChunkCallback callback) {
             return;
         }
 
-        if (!gen_queue_) {
+        if (!gen_queue_) [[unlikely]] {
             auto* empty = new Chunk();
             putCached(coord.x, coord.y, coord.z, empty);
             encodeAndDeliver(empty, key, callback);

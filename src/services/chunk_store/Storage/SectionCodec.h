@@ -334,7 +334,7 @@ inline bool decodeChunk(const uint8_t *data, size_t size, Chunk &chunk) {
       for (int ly = oy; ly < SEC_SZ + oy; ++ly)
         for (int lz = oz; lz < SEC_SZ + oz; ++lz)
           for (int lx = ox; lx < SEC_SZ + ox; ++lx)
-            chunk.blocks[chunkIndex( lx,  ly,  lz)] = uniform_bid;
+            chunk.GetBlock( lx,  ly,  lz) = uniform_bid;
     }
 
     uint16_t mc = 0;

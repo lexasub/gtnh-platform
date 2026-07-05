@@ -6,7 +6,7 @@
 #include <new>
 // TODO - may be use as struct, not class
 // 32³ flat arrays — 192 KB per chunk, fits L3 cache
-struct alignas(64) Chunk {
+struct alignas(64) Chunk { //TODO research - may be write such in SectionCodec (use sections for better brefetching) - do it only if in other places we may do it optimal
   static constexpr int SIZE = 32;
   static constexpr int VOLUME = SIZE * SIZE * SIZE;
   // TODO bool hasBlocks()
