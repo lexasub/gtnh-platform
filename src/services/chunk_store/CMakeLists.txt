@@ -37,6 +37,7 @@ add_executable(chunkd
 
     Storage/ChunkStore.cpp
     Storage/WorkQueue.cpp
+    Storage/SectionCodec.cpp
     World/ServerWorld.cpp
     main.cpp
 )
@@ -58,6 +59,7 @@ target_link_libraries(clock_cache_test PRIVATE Threads::Threads)
 add_executable(chunk_cache_test
     Storage/ChunkStore.cpp
     Storage/WorkQueue.cpp
+    Storage/SectionCodec.cpp
     Storage/chunk_cache_test.cpp
 )
 target_compile_options(chunk_cache_test PRIVATE -mcx16)
@@ -91,6 +93,7 @@ target_link_libraries(chunkd PRIVATE
 add_executable(chunk_store_cli_test
     chunk_store_cli_test.cpp
     Storage/ChunkStore.cpp
+    Storage/SectionCodec.cpp
     Storage/WorkQueue.cpp
 
 )
@@ -109,6 +112,7 @@ target_link_libraries(chunk_store_cli_test PRIVATE
 add_executable(chunkd_load_test
     Storage/chunkd_load_test.cpp
     Storage/ChunkStore.cpp
+    Storage/SectionCodec.cpp
     Storage/WorkQueue.cpp
 
 )
@@ -127,6 +131,7 @@ target_link_libraries(chunkd_load_test PRIVATE
 add_executable(chunk_dirty_test
     Storage/chunk_dirty_test.cpp
     Storage/ChunkStore.cpp
+    Storage/SectionCodec.cpp
     Storage/WorkQueue.cpp
 
 )

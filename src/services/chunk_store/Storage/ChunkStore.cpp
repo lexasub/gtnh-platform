@@ -37,7 +37,7 @@
 // Макрос для завершения транзакции.
 // Логирует ошибку, если коммит не удался.
 #define LMDB_TX_COMMIT() \
-    if (int rc = mdb_txn_commit(txn); rc != 0) { \
+    if (int rc = mdb_txn_commit(txn); rc != 0) [[unlikely]] { \
         spdlog::error("mdb_txn_commit failed: {}", mdb_strerror(rc)); \
     }
 
@@ -279,7 +279,7 @@ bool ChunkStore::writeTransaction(int64_t key, const Chunk &chunk) {
             continue; // retry
         }
 
-        if (rc != 0) {
+        if (rc != 0) [[unlikely]] {
             spdlog::error("mdb_put failed: {}", mdb_strerror(rc));
             if (txn) mdb_txn_abort(txn);
             return false;
@@ -381,17 +381,18 @@ void ChunkStore::flushDirtyChunks() {
         std::lock_guard lock(dirty_mutex_);
         local.swap(dirty_chunks_);
     }
-    if (local.empty()) return;
+    if (local.empty()) [[unlikely]] return;
 
     size_t saved = 0;
     for (const auto& key : local) {
         auto opt = cache_.get(key);
-        if (!opt) continue;
+        if (!opt) [[unlikely]] continue;
         auto* chunk = reinterpret_cast<const Chunk*>(*opt);
-        if (writeTransaction(key, *chunk))
+        if (writeTransaction(key, *chunk)) [[unlikely]]
             ++saved;
+        //TODO - may be send to client real chunk if not saved
     }
-    if (saved > 0)
+    if (saved > 0) [[likely]]
         spdlog::debug("Flushed {} dirty chunks to LMDB", saved);
 }
 
@@ -435,7 +436,7 @@ void ChunkStore::AsyncGetChunk(ChunkCoord coord,
         }
 
         // 2c) Not found — request generation
-        if (!gen_queue_) {
+        if (!gen_queue_) [[unlikely]] {
             // No generator — return empty chunk
             auto* empty = new Chunk();
             putCached(coord.x, coord.y, coord.z, empty);
@@ -443,15 +444,14 @@ void ChunkStore::AsyncGetChunk(ChunkCoord coord,
             return;
         }
       gen_queue_->requestChunk(coord,
-                                  [this, coord, callback = std::move(callback)](std::shared_ptr<Chunk> gen_chunk) mutable {
-                                      // Save generated chunk to LMDB (on gen thread)
-                                      //TODO, may be fix via queue ) HMM, WRITING TO in gen thread
-                                      writeTransaction(makeKey(coord.x, coord.y, coord.z), *gen_chunk);
+                                  [this, coord, sendCallback = std::move(callback)](std::shared_ptr<Chunk> gen_chunk) mutable {
                                       // Cache a copy (gen_queue owns the original shared_ptr)
                                       auto* cached_chunk = new Chunk();
                                       std::memcpy(cached_chunk, gen_chunk.get(), sizeof(Chunk));
-                                      putCached(coord.x, coord.y, coord.z, cached_chunk);
-                                      callback(cached_chunk);
+                                      putCached(coord.x, coord.y, coord.z, cached_chunk); //TODO - when many sendCallbacks, may be don't need upd cache any time
+                                      sendCallback(cached_chunk);
+                                      markDirty(coord.x, coord.y, coord.z); //use dirty mechanics for writing in single thread
+                                      //writeTransaction(makeKey(coord.x, coord.y, coord.z), *cached_chunk);
                                   });
     });
 }
