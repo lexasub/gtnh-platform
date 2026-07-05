@@ -13,6 +13,7 @@ namespace {
     thread_local std::uniform_int_distribution<int32_t> yDist(5, 60);
     thread_local std::uniform_real_distribution<float> sporadicChance(0.0f, 1.0f);
     thread_local FastNoise::SmartNode<FastNoise::Simplex> fnOre3D_ = FastNoise::New<FastNoise::Simplex>();
+    thread_local std::vector<const VeinDef*> candidates;
     // Буфер для 3D шума (переиспользуется, чтобы не аллоцировать память)
     thread_local std::array<float, 32*32*32> noiseBuffer;
 }
@@ -27,8 +28,8 @@ uint32_t OreGenerator::hashRegion(int32_t rx, int32_t rz, uint32_t seed) const {
 }
 
 const VeinDef* OreGenerator::selectVein(int32_t y) const {
+    candidates.clear();
     auto& config = OreConfig::instance();
-    std::vector<const VeinDef*> candidates;
     int32_t totalWeight = 0;
 
     for (const auto& vein : config.allVeins()) {
@@ -40,7 +41,7 @@ const VeinDef* OreGenerator::selectVein(int32_t y) const {
 
     if (candidates.empty() || totalWeight == 0) return nullptr;
 
-    std::uniform_int_distribution<int32_t> dist(0, totalWeight - 1);
+    std::uniform_int_distribution<int32_t> dist(0, totalWeight - 1); //TODO May be add cache for popular totalWeight?
     int32_t roll = dist(rng);
 
     int32_t currentWeight = 0;

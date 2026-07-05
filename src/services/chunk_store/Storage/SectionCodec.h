@@ -326,9 +326,9 @@ inline bool decodeChunk(const uint8_t *data, size_t size, Chunk &chunk) { //TODO
           return false;
 
         uint16_t bid = palette[pal_idx];
-        int lx = ox + li & 0xF;
-        int lz = oy + (li >> 4) & 0xF;
-        int ly = oz + (li >> 8) & 0xF;
+        int lx = (ox + li) & 0xF;
+        int lz = (oy + (li >> 4)) & 0xF;
+        int ly = (oz + (li >> 8)) & 0xF;
         chunk.GetBlock(lx, ly, lz) = bid;
       }
       r.pos += total_bytes;

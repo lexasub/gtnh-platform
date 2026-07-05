@@ -21,12 +21,12 @@ public:
 
   void
   requestChunk(ChunkCoord coord,
-               std::move_only_function<void(std::shared_ptr<Chunk>)> callback);
+               std::move_only_function<void(Chunk*)> callback);
   void stop();
 
 private:
   struct PendingEntry {
-    std::vector<std::move_only_function<void(std::shared_ptr<Chunk>)>>
+    std::vector<std::move_only_function<void(Chunk*)>>
         callbacks;
   };
   struct ChunkCoordHash {

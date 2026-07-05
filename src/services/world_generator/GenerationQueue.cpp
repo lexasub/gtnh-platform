@@ -17,7 +17,7 @@ GenerationQueue::~GenerationQueue() {
     stop();
 }
 
-void GenerationQueue::requestChunk(ChunkCoord coord, std::move_only_function<void(std::shared_ptr<Chunk>)> callback) {
+void GenerationQueue::requestChunk(ChunkCoord coord, std::move_only_function<void(Chunk*)> callback) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (auto it = pending_.find(coord); it != pending_.end()) {
@@ -56,11 +56,11 @@ void GenerationQueue::workerLoop() {
             tasks_.pop();
         }
 
-        auto chunk = std::make_shared<Chunk>();
+        auto chunk = new Chunk();
         generator_->GenerateTerrain(*chunk, chunkCoord.x, chunkCoord.y, chunkCoord.z);
         //spdlog::debug("Generated chunk ({},{},{})", chunkCoord.x, chunkCoord.y, chunkCoord.z);
 
-        std::vector<std::move_only_function<void(std::shared_ptr<Chunk>)>> cbs;
+        std::vector<std::move_only_function<void(Chunk*)>> cbs;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (auto it = pending_.find(chunkCoord); it != pending_.end()) {

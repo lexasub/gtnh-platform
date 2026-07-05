@@ -444,12 +444,9 @@ void ChunkStore::AsyncGetChunk(ChunkCoord coord,
             return;
         }
       gen_queue_->requestChunk(coord,
-                                  [this, coord, sendCallback = std::move(callback)](std::shared_ptr<Chunk> gen_chunk) mutable {
-                                      // Cache a copy (gen_queue owns the original shared_ptr)
-                                      auto* cached_chunk = new Chunk();
-                                      std::memcpy(cached_chunk, gen_chunk.get(), sizeof(Chunk));
-                                      putCached(coord.x, coord.y, coord.z, cached_chunk); //TODO - when many sendCallbacks, may be don't need upd cache any time
-                                      sendCallback(cached_chunk);
+                                  [this, coord, sendCallback = std::move(callback)](Chunk* gen_chunk) mutable {
+                                      putCached(coord.x, coord.y, coord.z, gen_chunk); //TODO - when many sendCallbacks, may be don't need upd cache any time
+                                      sendCallback(gen_chunk);
                                       markDirty(coord.x, coord.y, coord.z); //use dirty mechanics for writing in single thread
                                       //writeTransaction(makeKey(coord.x, coord.y, coord.z), *cached_chunk);
                                   });
