@@ -31,6 +31,7 @@ constexpr int SEC_CNT = 8;
 
 constexpr uint32_t MAGIC = 0x4B484347; // "GCHK"
 
+
 // Maps section index bit axis to origin: bit0=x, bit1=z, bit2=y
 inline int sectionOrigin(int section, int axis) {
   return ((section >> axis) & 1) * SEC_SZ;
@@ -146,7 +147,7 @@ struct Reader {
 // ─── encoder ──────────────────────────────────────────────────────
 
 void encodeSection(const Chunk &chunk, int section,
-                          std::vector<uint8_t> &buf);
+                  std::vector<uint8_t> &buf);
 
 void encodeChunk(const Chunk &chunk, std::vector<uint8_t> &buf);
 
@@ -329,7 +330,7 @@ inline bool decodeChunk(const uint8_t *data, size_t size, Chunk &chunk) {
         int gx = ox + lx;
         int gy = oy + ly;
         int gz = oz + lz;
-        chunk.blocks[chunkIndex(gx, gy, gz)] = bid;
+        chunk.GetBlock(gx, gy, gz) = bid;
       }
       r.pos += total_bytes;
     } else {
@@ -337,7 +338,7 @@ inline bool decodeChunk(const uint8_t *data, size_t size, Chunk &chunk) {
       for (int ly = 0; ly < SEC_SZ; ++ly)
         for (int lz = 0; lz < SEC_SZ; ++lz)
           for (int lx = 0; lx < SEC_SZ; ++lx)
-            chunk.blocks[chunkIndex(ox + lx, oy + ly, oz + lz)] = uniform_bid;
+            chunk.GetBlock(ox + lx, oy + ly, oz + lz) = uniform_bid;
     }
 
     uint16_t mc = 0;

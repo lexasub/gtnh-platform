@@ -7,6 +7,7 @@ struct MetaEntry { uint16_t local_idx; uint8_t meta; };
 struct MbEntry  { uint16_t local_idx; uint32_t mb_id; };
 
 #include <algorithm>
+#include <array>
 
 void encodeSection(const Chunk &chunk, int section,
                    std::vector<uint8_t> &buf) {
