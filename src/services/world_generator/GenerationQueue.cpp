@@ -58,7 +58,7 @@ void GenerationQueue::workerLoop() {
         generator_->GenerateTerrain(*chunk, chunkCoord.x, chunkCoord.y, chunkCoord.z);
         //spdlog::debug("Generated chunk ({},{},{})", chunkCoord.x, chunkCoord.y, chunkCoord.z);
 
-        std::vector<std::move_only_function<void(std::shared_ptr<Chunk>)>> cbs;
+        std::vector<std::move_only_function<void(Chunk*)>> cbs;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             dedup_.erase(chunkCoord);
