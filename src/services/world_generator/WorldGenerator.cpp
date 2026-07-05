@@ -53,7 +53,7 @@ namespace {
     thread_local bool initialized = false;
 
     void init() {
-        if (initialized) return;
+        if (initialized) [[likely]] return;
 
         basePerlin->SetScale(1.0f / BASE_FREQ);
         baseFBM->SetSource(basePerlin);
@@ -103,6 +103,8 @@ void WorldGenerator::GenerateTerrain(Chunk& c, int cx, int cy, int cz) {
 
     for (int y = 0; y < CHUNK_SIZE; ++y) {
         int worldY = baseY + y;
+        int yShft = y << 10;
+        uint16_t* __restrict src_row = c.blocks.data() + yShft; // + 1 << 5 in cycle
         for (int z = 0; z < CHUNK_SIZE; ++z) {
             for (int x = 0; x < CHUNK_SIZE; ++x) {
                 float terrainHeight = heights[idx2(x, z)];
@@ -117,15 +119,16 @@ void WorldGenerator::GenerateTerrain(Chunk& c, int cx, int cy, int cz) {
                 }
 
                 if (block == BLOCK_AIR || block == BLOCK_WATER) {
-                    c.SetBlock(x, y, z, block);
+                    src_row[x] = block;
                     continue;
                 }
 
-                if (std::abs(caveNoise[idx3(x, y, z)]) < 0.12f && worldY < terrainHeight - 5.0f)
+                if (std::abs(caveNoise[idx3(x, y, z)]) < 0.12f && worldY < terrainHeight - 5.0f) // Распространение воды
                     block = (worldY < 0) ? BLOCK_WATER : BLOCK_AIR;
 
-                c.SetBlock(x, y, z, block);
+                src_row[x] = block;
             }
+            src_row += 1 << 5;
         }
     }
 
