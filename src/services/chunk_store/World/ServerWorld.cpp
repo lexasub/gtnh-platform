@@ -17,8 +17,10 @@ void ServerWorld::Init(int worldId, std::string dbPath, size_t cache_size, size_
     generator_.reset(new WorldGenerator());
 
     // Create generation queue and wire it to ChunkStore
-    gen_queue_ = std::make_unique<GenerationQueue>(generator_.get());
-    chunkStore_->SetGenerationQueue(gen_queue_.get());
+    gen_queue_ = std::make_unique<GenerationQueue>(generator_.get(), [this](ChunkCoord coord, std::shared_ptr<Chunk> chunk) {
+        chunkStore_->enqueueEncode(coord, std::move(chunk)); //TODO use func ptr instead lambda
+    });
+    chunkStore_->SetGenerationQueue(gen_queue_.get()); //TODO refactor bidi subscribe
 
     spdlog::info("ServerWorld {} initialized with ChunkStore and WorldGenerator", worldId);
 }
@@ -73,7 +75,7 @@ const Chunk* ServerWorld::GetChunk(const ChunkCoord &coord) {
 }
 
 void ServerWorld::AsyncGetChunk(ChunkCoord coord,
-                                std::move_only_function<void(const Chunk*)> callback) {
+                                ChunkStore::ChunkCallback callback) {
     chunkStore_->AsyncGetChunk(coord, std::move(callback));
 }
 

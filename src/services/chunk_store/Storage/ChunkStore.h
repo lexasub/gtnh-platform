@@ -6,6 +6,7 @@
 #include <asio.hpp>
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <condition_variable>
 #include <functional>
 #include <lmdb.h>
@@ -16,6 +17,11 @@
 
 class ChunkStore : public IBlockStore {
 public:
+  // Callback type: (flat Chunk*, palette-encoded sections) — palette is ready
+  // for network send, no re-encode needed. Palette is cached for flush.
+    using ChunkCallback =
+      std::move_only_function<void(std::shared_ptr<std::vector<uint8_t>>)>;
+
   explicit ChunkStore(const std::string &db_path, size_t cache_size = 1024,
                       size_t max_map_size = DEFAULT_MAX_MAP_SIZE);
   ~ChunkStore() override;
@@ -41,8 +47,8 @@ public:
   /// @see ServerWorld.h for Chunk* lifetime contract
   /// The pointer passed to the callback is valid ONLY during the synchronous
   /// invocation of the callback. Do NOT store or use after returning.
-  void AsyncGetChunk(ChunkCoord coord,
-                     std::move_only_function<void(const Chunk *)> callback);
+  /// palette_out is valid for the same duration — move/copy to retain.
+  void AsyncGetChunk(ChunkCoord coord, ChunkCallback callback);
   void AsyncSetBlock(ChunkCoord coord, BlockPos pos, uint16_t blockId,
                      uint8_t meta, uint32_t mbId,
                      std::function<void(bool)> callback = nullptr);
@@ -55,6 +61,10 @@ public:
 
   // Подключение очереди генерации (из world_generator)
   void SetGenerationQueue(class GenerationQueue *gen) { gen_queue_ = gen; }
+
+  // Called by ServerWorld when gen thread finishes generating a chunk.
+  // Pushes to encode queue; encode thread encodes + delivers + stores palette.
+  void enqueueEncode(ChunkCoord coord, std::shared_ptr<Chunk> chunk);
 
   // Dirty-chunk tracking for batch LMDB flush
   void markDirty(int32_t cx, int32_t cy, int32_t cz);
@@ -102,7 +112,34 @@ private:
 
   void flushThreadFunc();
 
+  // Encode queue: gen threads push (coord, flat chunk), encode thread pops,
+  // encodes once, delivers palette to callbacks + LMDB flush
+  struct EncodeTask {
+    ChunkCoord coord;
+    std::shared_ptr<Chunk> chunk;
+  };
+  std::deque<EncodeTask> encode_queue_;
+  mutable std::mutex encode_mutex_;
+  std::condition_variable encode_cv_;
+  std::thread encode_thread_;
+  std::atomic<bool> encode_running_{true};
+  void encodeLoop();
+  void encodeAndDeliver(const Chunk* chunk, int64_t key,
+                        ChunkCallback& callback);
+
+  // Pending callbacks for worldgen (coord key → callbacks waiting on encode)
+  mutable std::unordered_map<int64_t, std::vector<ChunkCallback>>
+      pending_gen_cbs_;
+
+  // Pre-encoded palette for flush thread (worldgen path: encode already done)
+  mutable std::unordered_map<int64_t, std::shared_ptr<std::vector<uint8_t>>>
+      pending_lmdb_;
+  mutable std::mutex lmdb_palette_mutex_;
+
   // Чтение/запись транзакций (низкоуровневые)
-  bool readTransaction(int64_t key, Chunk &out) const;
-  bool writeTransaction(int64_t key, const Chunk &chunk);
+  bool readTransaction(int64_t key, Chunk &out,
+      std::shared_ptr<std::vector<uint8_t>>* palette_out = nullptr) const;
+
+  // Write raw palette bytes directly (avoids re-encode on flush)
+  bool writeTransaction(int64_t key, const uint8_t* data, size_t size);
 };

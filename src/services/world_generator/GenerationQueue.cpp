@@ -5,8 +5,8 @@
 #include <cstdio>
 #include <utility>
 
-GenerationQueue::GenerationQueue(WorldGenerator* generator, size_t num_threads)
-    : generator_(generator) {
+GenerationQueue::GenerationQueue(WorldGenerator* generator, GenOutput output, size_t num_threads)
+    : generator_(generator), output_(std::move(output)) {
     for (size_t i = 0; i < num_threads; ++i) {
         workers_.emplace_back(&GenerationQueue::workerLoop, this);
     }
@@ -17,14 +17,12 @@ GenerationQueue::~GenerationQueue() {
     stop();
 }
 
-void GenerationQueue::requestChunk(ChunkCoord coord, std::move_only_function<void(std::shared_ptr<Chunk>)> callback) {
+void GenerationQueue::requestChunk(ChunkCoord coord) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (auto it = pending_.find(coord); it != pending_.end()) {
-            it->second.callbacks.push_back(std::move(callback));
+        if (dedup_.count(coord))
             return;
-        }
-        pending_[coord].callbacks.push_back(std::move(callback));
+        dedup_.insert(coord);
         tasks_.push(coord);
     }
     cv_.notify_one();
@@ -62,13 +60,10 @@ void GenerationQueue::workerLoop() {
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            if (auto it = pending_.find(chunkCoord); it != pending_.end()) {
-                auto cbs = std::move(it->second.callbacks);
-                pending_.erase(it);
-                for (size_t i = 0, n = cbs.size(); i < n; ++i) {
-                    cbs[i](chunk);
-                }
-            }
+            dedup_.erase(chunkCoord);
         }
+
+        if (output_)
+            output_(chunkCoord, std::move(chunk));
     }
 }

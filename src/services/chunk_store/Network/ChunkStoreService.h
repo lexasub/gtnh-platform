@@ -44,8 +44,6 @@ private:
                       uint32_t req_id, const Protocol::ChunkStoreMessage *req);
   void handleSetBlock(std::shared_ptr<asio::ip::tcp::socket> socket,
                       uint32_t req_id, const Protocol::ChunkStoreMessage *req);
-  void handleGetChunk(std::shared_ptr<asio::ip::tcp::socket> socket,
-                      uint32_t req_id, const Protocol::ChunkStoreMessage *req);
   void handleSaveChunk(std::shared_ptr<asio::ip::tcp::socket> socket,
                        uint32_t req_id, const Protocol::ChunkStoreMessage *req);
   void handleSetBlockCAS(std::shared_ptr<asio::ip::tcp::socket> socket,

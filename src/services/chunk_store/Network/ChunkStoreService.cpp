@@ -84,9 +84,6 @@ void ChunkStoreService::onReadPayload(std::error_code ec, std::shared_ptr<asio::
         case Protocol::ChunkStoreRequest_SetBlockReq:
             handleSetBlock(socket, msg->req_id(), msg);
             break;
-        case Protocol::ChunkStoreRequest_GetChunkReq:
-            handleGetChunk(socket, msg->req_id(), msg);
-            break;
         case Protocol::ChunkStoreRequest_SaveChunkReq:
             handleSaveChunk(socket, msg->req_id(), msg);
             break;
@@ -146,34 +143,6 @@ void ChunkStoreService::handleSetBlock(std::shared_ptr<asio::ip::tcp::socket> so
         auto frame = Protocol::CreateChunkStoreFrame(fb, Protocol::ChunkStorePayload_ChunkStoreReply, reply.Union());
         fb.Finish(frame);
         // Отправляем ответ в том же io_context (потокобезопасно)
-        asio::post(io_context_, [this, socket, fb = std::move(fb)]() mutable {
-            EnqueueWrite(socket, fb);
-        });
-    });
-}
-
-void ChunkStoreService::handleGetChunk(std::shared_ptr<asio::ip::tcp::socket> socket,
-                                        uint32_t req_id,
-                                        const Protocol::ChunkStoreMessage* req) {
-    auto* coord = req->request_as_GetChunkReq()->coord();
-    ChunkCoord c{coord->x(), coord->y(), coord->z()};
-    // Callback-based — no detached threads, no std::future
-    world_.AsyncGetChunk(c, [this, socket, req_id, c](const Chunk* chunk) {
-        if (!chunk) {
-            sendError(socket, req_id, "Failed to get chunk");
-            return;
-        }
-        flatbuffers::FlatBufferBuilder fb(256*1024);
-        Protocol::Vec3i vec(c.x, c.y, c.z);
-        auto blocks_fb = fb.CreateVector(chunk->blocks.data(), Chunk::VOLUME);
-        auto meta_fb   = fb.CreateVector(chunk->meta.data(), Chunk::VOLUME);
-        auto mb_fb     = fb.CreateVector(chunk->multiblock.data(), Chunk::VOLUME);
-        auto chunk_data = Protocol::CreateChunkData(fb, &vec, blocks_fb, meta_fb, mb_fb);
-        auto resp = Protocol::CreateGetChunkResp(fb, chunk_data);
-        auto reply = Protocol::CreateChunkStoreReply(fb, req_id,
-                     Protocol::ChunkStoreResponse_GetChunkResp, resp.Union());
-        auto frame = Protocol::CreateChunkStoreFrame(fb, Protocol::ChunkStorePayload_ChunkStoreReply, reply.Union());
-        fb.Finish(frame);
         asio::post(io_context_, [this, socket, fb = std::move(fb)]() mutable {
             EnqueueWrite(socket, fb);
         });

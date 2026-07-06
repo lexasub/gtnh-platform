@@ -4,6 +4,8 @@
 #include <functional>
 #include <memory>
 
+#include "services/chunk_store/Storage/ChunkStore.h"//TODO don't include for ChunkStore::ChunkCallback
+
 class ChunkStore;      // forward
 class WorldGenerator;  // forward
 class GenerationQueue; // forward
@@ -27,7 +29,7 @@ public:
                      uint32_t mbId,
                      std::function<void(bool)> callback = nullptr);
   void AsyncGetChunk(ChunkCoord coord,
-                     std::move_only_function<void(const Chunk *)> callback);
+                     ChunkStore::ChunkCallback callback);
 
   /// CALLBACK INVARIANT: Chunk* validity contract
   /// The Chunk* pointer returned to the callback is valid ONLY during the

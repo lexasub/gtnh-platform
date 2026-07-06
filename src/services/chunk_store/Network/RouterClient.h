@@ -64,7 +64,7 @@ private:
   void publishBlockChanged(int32_t x, int32_t y, int32_t z, uint16_t block_id,
                            uint8_t meta, uint32_t mb_id);
   void publishChunkLoadedCompressed(int32_t cx, int32_t cy, int32_t cz,
-                                    const Chunk &chunk);
+                                    std::shared_ptr<std::vector<uint8_t>> palette);
 
   // Async write queue
   void EnqueueWrite(std::shared_ptr<std::vector<uint8_t>> frame);

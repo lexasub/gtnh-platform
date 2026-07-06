@@ -5,8 +5,6 @@
 #include <spdlog/spdlog.h>
 #include <cstring>
 #include <common/coords/Coords.h>
-#include "../Chunk/Chunk.h"
-#include "../Storage/SectionCodec.h"
 
 enum MsgType : uint8_t {
     MsgSubscribe   = 0x01,
@@ -135,13 +133,11 @@ void RouterClient::onPublish(const uint8_t* data, size_t len) {
     auto exec = socket_.get_executor();
     world_.AsyncGetChunk(coord,
                          [self = weak_from_this(), coord, exec = std::move(exec)]
-                 (const Chunk* chunk) {
-                             if (!chunk) return;
-                             Chunk copy;
-                             std::memcpy(&copy, chunk, sizeof(Chunk));
-                             asio::post(exec, [self, coord, copy = std::move(copy)] {
+                 (std::shared_ptr<std::vector<uint8_t>> palette) {
+                             if (!palette || palette->empty()) return;
+                             asio::post(exec, [self, coord, palette = std::move(palette)] {
                                   if (auto s = self.lock())
-                                      s->publishChunkLoadedCompressed(coord.x, coord.y, coord.z, copy);
+                                      s->publishChunkLoadedCompressed(coord.x, coord.y, coord.z, std::move(palette));
                              });
                          });
 }
@@ -158,14 +154,10 @@ void RouterClient::publishBlockChanged(int32_t x, int32_t y, int32_t z,
 }
 
 void RouterClient::publishChunkLoadedCompressed(int32_t cx, int32_t cy, int32_t cz,
-                                                 const Chunk& chunk) {
-    std::vector<uint8_t> palette_data;
-    encodeChunk(chunk, palette_data);
-    //spdlog::info("Server: encoded chunk ({},{},{}) palette_size={}", cx, cy, cz, palette_data.size());
-
-    flatbuffers::FlatBufferBuilder fb(palette_data.size() + 128);
+                                                 std::shared_ptr<std::vector<uint8_t>> palette) {
+    flatbuffers::FlatBufferBuilder fb(palette->size() + 128);
     Protocol::Vec3i coord(cx, cy, cz);
-    auto palette_fb = fb.CreateVector(palette_data.data(), palette_data.size());
+    auto palette_fb = fb.CreateVector(palette->data(), palette->size());
     auto compressed = Protocol::CreateCompressedChunkData(fb, &coord, palette_fb);
     fb.Finish(compressed);
 

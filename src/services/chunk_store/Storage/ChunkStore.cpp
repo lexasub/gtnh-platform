@@ -66,6 +66,9 @@ ChunkStore::ChunkStore(const std::string& db_path, size_t, size_t max_map_size)
 
     // Запуск flush thread (batch save of dirty chunks)
     flush_thread_ = std::thread([this] { flushThreadFunc(); });
+
+    // Запуск encode thread (encode + send + store palette for flush)
+    encode_thread_ = std::thread([this] { encodeLoop(); });
 }
 
 void ChunkStore::open() {
@@ -98,6 +101,11 @@ void ChunkStore::close() {
         if (t.joinable()) t.join();
     }
     io_threads_.clear();
+
+    // Stop encode thread first — drain pending encodes before flush
+    encode_running_ = false;
+    encode_cv_.notify_one();
+    if (encode_thread_.joinable()) encode_thread_.join();
 
     // Stop flush thread (wake from CV wait) and drain remaining dirty chunks
     flush_running_ = false;
@@ -175,7 +183,9 @@ void ChunkStore::SetBlock(ChunkCoord coord, BlockPos pos, uint16_t blockId, uint
 }
 
 bool ChunkStore::SaveChunk(const Chunk &chunk, ChunkCoord coord) {
-    writeTransaction(makeKey(coord.x, coord.y, coord.z), chunk);
+    std::vector<uint8_t> encoded;
+    encodeChunk(chunk, encoded);
+    writeTransaction(makeKey(coord.x, coord.y, coord.z), encoded.data(), encoded.size());
     // Don't erase from cache — the chunk is now up-to-date in both LMDB and cache.
     // Erasing forces a cache miss + LMDB read on the next get for no benefit.
     return true;
@@ -191,8 +201,8 @@ void ChunkStore::putCached(int32_t cx, int32_t cy, int32_t cz, Chunk* chunk) con
     cache_.put(makeKey(cx, cy, cz), reinterpret_cast<uintptr_t>(chunk));
 }
 
-// Read from LMDB with proper transaction handling
-bool ChunkStore::readTransaction(int64_t key, Chunk &chunk) const {
+bool ChunkStore::readTransaction(int64_t key, Chunk& chunk,
+                                 std::shared_ptr<std::vector<uint8_t>>* palette_out) const {
     LMDB_TX_START(txn, MDB_RDONLY);
 
     MDB_val key_val = {sizeof(int64_t), &key};
@@ -212,14 +222,21 @@ bool ChunkStore::readTransaction(int64_t key, Chunk &chunk) const {
         return false;
     }
 
-    // Try new palette-encoded format first, then fall back to raw struct for
-    // backward compatibility with pre-refactor data.mdb files.
     if (data_val.mv_size >= 6 && decodeChunk(
             static_cast<const uint8_t*>(data_val.mv_data), data_val.mv_size, chunk)) {
+        // Copy raw palette bytes before decode so caller can send directly.
+        // The mdb_val is only valid inside this transaction, so we must copy.
+        if (palette_out) {
+            auto palette = std::make_shared<std::vector<uint8_t>>(
+                static_cast<const uint8_t*>(data_val.mv_data),
+                static_cast<const uint8_t*>(data_val.mv_data) + data_val.mv_size);
+            *palette_out = std::move(palette);
+        }
         LMDB_TX_COMMIT();
         return true;
     }
 
+    // old format, TODO remove
     if (data_val.mv_size == sizeof(Chunk)) {
         std::memcpy(&chunk, data_val.mv_data, sizeof(Chunk));
         LMDB_TX_COMMIT();
@@ -259,14 +276,8 @@ bool ChunkStore::growMapSize() {
     return true;
 }
 
-// Write to LMDB with proper transaction handling + auto-resize on MDB_MAP_FULL.
-bool ChunkStore::writeTransaction(int64_t key, const Chunk &chunk) {
-    // Encode to palette format — local buffer, NOT shared (thread-safe).
-    std::vector<uint8_t> encoded;
-    encodeChunk(chunk, encoded);
-    MDB_val data_val = {encoded.size(), encoded.data()};
-
-    // Retry loop: on MDB_MAP_FULL we grow the mapsize and retry once.
+bool ChunkStore::writeTransaction(int64_t key, const uint8_t* data, size_t size) {
+    MDB_val data_val = {size, const_cast<uint8_t*>(data)};
     for (int attempt = 0; attempt < 2; ++attempt) {
         LMDB_TX_START(txn, 0);
         MDB_val key_val = {sizeof(int64_t), &key};
@@ -326,6 +337,10 @@ void ChunkStore::setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t 
         local.meta[idx]   = meta;
         chunk = new Chunk(std::move(local));
         putCached(cx, cy, cz, chunk);
+        {
+            std::lock_guard lock(lmdb_palette_mutex_);
+            pending_lmdb_.erase(key);
+        }
         markDirty(cx, cy, cz);
         spdlog::debug("Block set at [{},{},{}] -> id={} meta={}", x, y, z, id, meta);
         return;
@@ -333,6 +348,10 @@ void ChunkStore::setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t 
 
     chunk->blocks[idx] = id;
     chunk->meta[idx]   = meta;
+    {
+        std::lock_guard lock(lmdb_palette_mutex_);
+        pending_lmdb_.erase(key);
+    }
     markDirty(cx, cy, cz);
 
     spdlog::debug("Block set at [{},{},{}] -> id={} meta={}", x, y, z, id, meta);
@@ -388,8 +407,30 @@ void ChunkStore::flushDirtyChunks() {
         auto opt = cache_.get(key);
         if (!opt) continue;
         auto* chunk = reinterpret_cast<const Chunk*>(*opt);
-        if (writeTransaction(key, *chunk))
-            ++saved;
+
+        std::shared_ptr<std::vector<uint8_t>> palette;
+        {
+            std::lock_guard lock(lmdb_palette_mutex_);
+            auto it = pending_lmdb_.find(key);
+            if (it != pending_lmdb_.end())
+                palette = it->second;
+        }
+        if (palette) {
+            if (writeTransaction(key, palette->data(), palette->size())) {
+                ++saved;
+                std::lock_guard lock(lmdb_palette_mutex_);
+                pending_lmdb_.erase(key);
+            }
+        } else {
+            std::vector<uint8_t> encoded;
+            encodeChunk(*chunk, encoded);
+            if (writeTransaction(key, encoded.data(), encoded.size())) {
+                ++saved;
+                auto new_pal = std::make_shared<std::vector<uint8_t>>(std::move(encoded));
+                std::lock_guard lock(lmdb_palette_mutex_);
+                pending_lmdb_.emplace(key, std::move(new_pal));
+            }
+        }
     }
     if (saved > 0)
         spdlog::debug("Flushed {} dirty chunks to LMDB", saved);
@@ -408,49 +449,121 @@ void ChunkStore::flushThreadFunc() {
     }
 }
 
-void ChunkStore::AsyncGetChunk(ChunkCoord coord,
+void ChunkStore::enqueueEncode(ChunkCoord coord, std::shared_ptr<Chunk> chunk) {
+    std::lock_guard lock(encode_mutex_);
+    encode_queue_.push_back(EncodeTask{coord, std::move(chunk)});
+    encode_cv_.notify_one();
+}
 
-    std::move_only_function<void(const Chunk*)> callback) {
-    // 1) Check cache first — if hit, callback immediately on caller thread
+void ChunkStore::encodeLoop() { //may be need merge with db thread? but it may scaled if encode is bootleneak(next commits will optimize encoding)
+    pthread_setname_np(pthread_self(), "chunk-encode");
+    while (encode_running_) {
+        EncodeTask task;
+        {
+            std::unique_lock lock(encode_mutex_);
+            encode_cv_.wait(lock, [this] {
+                return !encode_running_.load() || !encode_queue_.empty();
+            });
+            if (!encode_running_ && encode_queue_.empty()) break;
+            task = std::move(encode_queue_.front());
+            encode_queue_.pop_front();
+        }
+
+        std::vector<uint8_t> encoded;
+        encodeChunk(*task.chunk, encoded);
+        auto palette = std::make_shared<std::vector<uint8_t>>(std::move(encoded));
+        int64_t key = makeKey(task.coord.x, task.coord.y, task.coord.z);
+
+        {
+            std::lock_guard lock(lmdb_palette_mutex_);
+            pending_lmdb_.emplace(key, palette);
+        }
+        // Cache BEFORE consuming callbacks — concurrent AsyncGetChunk that
+        // fires mid-delivery finds the chunk via cache hit (with palette)
+        // instead of racing through LMDB-miss → pending_gen_cbs_ duplicate.
+        auto* cached = new Chunk(std::move(*task.chunk));
+        putCached(task.coord.x, task.coord.y, task.coord.z, cached);
+        markDirty(task.coord.x, task.coord.y, task.coord.z);
+
+        std::vector<ChunkCallback> callbacks;
+        {
+            std::lock_guard lock(encode_mutex_);
+            if (auto it = pending_gen_cbs_.find(key); it != pending_gen_cbs_.end()) {
+                callbacks = std::move(it->second);
+                pending_gen_cbs_.erase(it);
+            }
+        }
+        for (auto& cb : callbacks) {
+            cb(palette);
+        }
+    }
+}
+
+void ChunkStore::encodeAndDeliver(const Chunk* chunk, int64_t key,
+                                  ChunkCallback& callback) {
+    std::vector<uint8_t> encoded;
+    encodeChunk(*chunk, encoded);
+    auto palette = std::make_shared<std::vector<uint8_t>>(std::move(encoded));
+    {
+        std::lock_guard lock(lmdb_palette_mutex_);
+        pending_lmdb_.emplace(key, palette);
+    }
+    callback(std::move(palette));
+}
+
+void ChunkStore::AsyncGetChunk(ChunkCoord coord, ChunkCallback callback) {
+    int64_t key = makeKey(coord.x, coord.y, coord.z);
+
+    // Fast path: cache hit with pre-encoded palette
     if (auto* cached = getCached(coord.x, coord.y, coord.z)) {
-        callback(cached);
+        std::shared_ptr<std::vector<uint8_t>> palette;
+        {
+            std::lock_guard lock(lmdb_palette_mutex_);
+            auto it = pending_lmdb_.find(key);
+            if (it != pending_lmdb_.end())
+                palette = it->second;
+        }
+        if (palette) {
+            callback(std::move(palette));
+        }
+        else {
+            encodeAndDeliver(cached, key, callback);
+        }
         return;
     }
 
-    // 2) Post to I/O pool for LMDB read
-    asio::post(io_pool_, [this, coord, callback = std::move(callback)]() mutable {
-        int64_t key = makeKey(coord.x, coord.y, coord.z);
-
-        // 2a) Try reading from LMDB
+    // Slow path: LMDB read or worldgen (offloaded to I/O pool)
+    asio::post(io_pool_, [this, coord, key, callback = std::move(callback)]() mutable {
+        std::shared_ptr<std::vector<uint8_t>> palette;
         Chunk chunk;
-        bool found = readTransaction(key, chunk);
 
-        // 2b) Found in LMDB — use as-is (even if all-zeros / air chunk). Only
-        //     request generation if the chunk has never been generated before.
-        if (found) {
+        if (readTransaction(key, chunk, &palette)) {
             auto* chunk_ptr = new Chunk(std::move(chunk));
             putCached(coord.x, coord.y, coord.z, chunk_ptr);
-            callback(chunk_ptr);
+            if (palette) {
+                // Palette-encoded in LMDB — cache + deliver (no re-encode)
+                {
+                    std::lock_guard lock(lmdb_palette_mutex_);
+                    pending_lmdb_.emplace(key, palette);
+                }
+                callback(std::move(palette));
+            } else {
+                encodeAndDeliver(chunk_ptr, key, callback);
+            }
             return;
         }
 
-        // 2c) Not found — request generation
         if (!gen_queue_) {
-            // No generator — return empty chunk
             auto* empty = new Chunk();
             putCached(coord.x, coord.y, coord.z, empty);
-            callback(empty);
+            encodeAndDeliver(empty, key, callback);
             return;
         }
-      gen_queue_->requestChunk(coord,
-                                  [this, coord, callback = std::move(callback)](std::shared_ptr<Chunk> gen_chunk) mutable {
-                                      // Save generated chunk to LMDB (on gen thread)
-                                      writeTransaction(makeKey(coord.x, coord.y, coord.z), *gen_chunk);
-                                      // Cache a copy (gen_queue owns the original shared_ptr)
-                                      auto* cached_chunk = new Chunk();
-                                      std::memcpy(cached_chunk, gen_chunk.get(), sizeof(Chunk));
-                                      putCached(coord.x, coord.y, coord.z, cached_chunk);
-                                      callback(cached_chunk);
-                                  });
+
+        {
+            std::lock_guard lock(encode_mutex_);
+            pending_gen_cbs_[key].push_back(std::move(callback));
+        }
+        gen_queue_->requestChunk(coord);
     });
 }
