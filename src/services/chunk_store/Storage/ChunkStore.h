@@ -64,7 +64,7 @@ public:
 
   // Called by ServerWorld when gen thread finishes generating a chunk.
   // Pushes to encode queue; encode thread encodes + delivers + stores palette.
-  void enqueueEncode(ChunkCoord coord, std::shared_ptr<Chunk> chunk);
+  void enqueueEncode(ChunkCoord coord, Chunk* chunk);
 
   // Dirty-chunk tracking for batch LMDB flush
   void markDirty(int32_t cx, int32_t cy, int32_t cz);
@@ -116,12 +116,12 @@ private:
   // encodes once, delivers palette to callbacks + LMDB flush
   struct EncodeTask {
     ChunkCoord coord;
-    std::shared_ptr<Chunk> chunk;
+    Chunk* chunk;
   };
   std::deque<EncodeTask> encode_queue_;
   mutable std::mutex encode_mutex_;
   std::condition_variable encode_cv_;
-  std::thread encode_thread_;
+  std::vector<std::thread> encode_threads_;
   std::atomic<bool> encode_running_{true};
   void encodeLoop();
   void encodeAndDeliver(const Chunk* chunk, int64_t key,

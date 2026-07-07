@@ -46,14 +46,29 @@ struct BitWriter {
   std::vector<uint8_t> &buf;
   int bit_pos = 0;
 
-  void write(uint32_t val, int bits) {
-    for (int i = 0; i < bits; ++i) {
-      if (bit_pos % 8 == 0)
-        buf.push_back(0);
-      if ((val >> i) & 1)
-        buf[bit_pos / 8] |= static_cast<uint8_t>(1 << (bit_pos % 8));
-      ++bit_pos;
+  void write(uint16_t (&val)[SEC_VOL], int bits) {
+    size_t start = buf.size();
+    size_t total_bits = SEC_VOL * bits;
+    buf.resize(start + (total_bits + 7) / 8, 0);  // один resize, zero-fill
+
+    uint8_t* __restrict dst = buf.data() + start;
+    uint8_t byte = 0;
+    int bit_idx = 0;
+
+    for (int j = 0; j < SEC_VOL; ++j) {
+      uint16_t v = val[j];
+      for (int i = 0; i < bits; ++i) {
+        byte |= static_cast<uint8_t>((v & 1) << bit_idx);
+        v >>= 1;
+        if (++bit_idx == 8) {
+          *dst++ = byte;
+          byte = 0;
+          bit_idx = 0;
+        }
+      }
     }
+    if (bit_idx != 0)
+      *dst = byte;
   }
 };
 
@@ -130,104 +145,10 @@ struct Reader {
 
 // ─── encoder ──────────────────────────────────────────────────────
 
-inline void encodeSection(const Chunk &chunk, int section,
-                          std::vector<uint8_t> &buf) {
-  int ox = sectionOrigin(section, 0);
-  int oy = sectionOrigin(section, 2);
-  int oz = sectionOrigin(section, 1);
+void encodeSection(const Chunk &chunk, int section,
+                          std::vector<uint8_t> &buf);
 
-  std::unordered_map<uint16_t, uint16_t> palette_map;
-  std::vector<uint16_t> palette;
-
-  struct MetaEntry {
-    uint16_t local_idx;
-    uint8_t meta;
-  };
-  struct MbEntry {
-    uint16_t local_idx;
-    uint32_t mb_id;
-  };
-  std::vector<MetaEntry> meta_entries;
-  std::vector<MbEntry> mb_entries;
-
-  uint16_t indices[SEC_VOL];
-
-  for (int ly = 0; ly < SEC_SZ; ++ly) {
-    for (int lz = 0; lz < SEC_SZ; ++lz) {
-      for (int lx = 0; lx < SEC_SZ; ++lx) {
-        int gx = ox + lx;
-        int gy = oy + ly;
-        int gz = oz + lz;
-        int ci = chunkIndex(gx, gy, gz);
-        int li = localIndex(lx, ly, lz);
-
-        uint16_t bid = chunk.blocks[ci];
-        auto it = palette_map.find(bid);
-        if (it == palette_map.end()) {
-          uint16_t idx = static_cast<uint16_t>(palette.size());
-          palette_map[bid] = idx;
-          palette.push_back(bid);
-          indices[li] = idx;
-        } else {
-          indices[li] = it->second;
-        }
-
-        uint8_t m = chunk.meta[ci];
-        if (m != 0)
-          meta_entries.push_back({static_cast<uint16_t>(li), m});
-
-        uint32_t mb = chunk.multiblock[ci];
-        if (mb != 0)
-          mb_entries.push_back({static_cast<uint16_t>(li), mb});
-      }
-    }
-  }
-
-  uint16_t psz = static_cast<uint16_t>(palette.size());
-  writeU16(buf, psz);
-  for (auto bid : palette)
-    writeU16(buf, bid);
-
-  int bpi_val = 0;
-  if (psz > 1) {
-    uint32_t tmp = psz - 1;
-    while (tmp > 0) {
-      ++bpi_val;
-      tmp >>= 1;
-    }
-  }
-  auto bpi = static_cast<uint8_t>(bpi_val);
-  writeU8(buf, bpi);
-
-  if (bpi > 0) {
-    BitWriter bw{buf, static_cast<int>(buf.size()) * 8};
-    for (int i = 0; i < SEC_VOL; ++i)
-      bw.write(indices[i], bpi);
-  }
-
-  uint16_t mc = static_cast<uint16_t>(meta_entries.size());
-  writeU16(buf, mc);
-  for (auto &e : meta_entries) {
-    writeU16(buf, e.local_idx);
-    writeU8(buf, e.meta);
-  }
-
-  uint16_t mbc = static_cast<uint16_t>(mb_entries.size());
-  writeU16(buf, mbc);
-  for (auto &e : mb_entries) {
-    writeU16(buf, e.local_idx);
-    writeU32(buf, e.mb_id);
-  }
-}
-
-inline void encodeChunk(const Chunk &chunk, std::vector<uint8_t> &buf) {
-  buf.clear();
-  writeU32(buf, MAGIC);
-  writeU8(buf, 1);
-  writeU8(buf, SEC_CNT);
-  for (int s = 0; s < SEC_CNT; ++s)
-    encodeSection(chunk, s, buf);
-}
+void encodeChunk(const Chunk &chunk, std::vector<uint8_t> &buf);
 
 // ─── section offset table ─────────────────────────────────────────
 // Scans the compressed buffer and records byte offset for each of the 8

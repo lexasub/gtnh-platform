@@ -19,7 +19,7 @@ public:
   /// Output callback: gen thread calls this when a chunk is generated.
   /// ChunkStore sets this to push into the encode queue.
   using GenOutput =
-      std::move_only_function<void(ChunkCoord, std::shared_ptr<Chunk>)>;
+      std::move_only_function<void(ChunkCoord, Chunk*)>;
 
   GenerationQueue(WorldGenerator *generator, GenOutput output,
                   size_t num_threads = 8); // TODO - dynamic threads

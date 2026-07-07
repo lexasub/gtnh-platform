@@ -54,7 +54,7 @@ void GenerationQueue::workerLoop() {
             tasks_.pop();
         }
 
-        auto chunk = std::make_shared<Chunk>();
+        auto chunk = new Chunk;
         generator_->GenerateTerrain(*chunk, chunkCoord.x, chunkCoord.y, chunkCoord.z);
         //spdlog::debug("Generated chunk ({},{},{})", chunkCoord.x, chunkCoord.y, chunkCoord.z);
 
@@ -64,6 +64,6 @@ void GenerationQueue::workerLoop() {
         }
 
         if (output_)
-            output_(chunkCoord, std::move(chunk));
+            output_(chunkCoord, chunk);
     }
 }

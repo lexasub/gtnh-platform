@@ -1,6 +1,7 @@
 #include "ChunkStore.h"
 #include "SectionCodec.h"
 #include "../../world_generator/GenerationQueue.h"
+#include <cstddef>
 #include <cstring>
 #include <lmdb.h>
 #include <memory>
@@ -68,7 +69,10 @@ ChunkStore::ChunkStore(const std::string& db_path, size_t, size_t max_map_size)
     flush_thread_ = std::thread([this] { flushThreadFunc(); });
 
     // Запуск encode thread (encode + send + store palette for flush)
-    encode_thread_ = std::thread([this] { encodeLoop(); });
+    // Чем больше тредов, тем больше cond wait (если мало задач на encoding)
+    encode_threads_.push_back(std::thread([this] { encodeLoop(); }));
+    encode_threads_.push_back(std::thread([this] { encodeLoop(); }));
+    //encode_threads_.push_back(std::thread([this] { encodeLoop(); }));
 }
 
 void ChunkStore::open() {
@@ -105,8 +109,9 @@ void ChunkStore::close() {
     // Stop encode thread first — drain pending encodes before flush
     encode_running_ = false;
     encode_cv_.notify_one();
-    if (encode_thread_.joinable()) encode_thread_.join();
-
+    for (auto& encode_thread_ : encode_threads_) {
+        if (encode_thread_.joinable()) encode_thread_.join();
+    }
     // Stop flush thread (wake from CV wait) and drain remaining dirty chunks
     flush_running_ = false;
     flush_wake_cv_.notify_one();
@@ -404,9 +409,6 @@ void ChunkStore::flushDirtyChunks() {
 
     size_t saved = 0;
     for (const auto& key : local) {
-        auto opt = cache_.get(key);
-        if (!opt) continue;
-        auto* chunk = reinterpret_cast<const Chunk*>(*opt);
 
         std::shared_ptr<std::vector<uint8_t>> palette;
         {
@@ -422,9 +424,12 @@ void ChunkStore::flushDirtyChunks() {
                 pending_lmdb_.erase(key);
             }
         } else {
+            auto opt = cache_.get(key);
+            if (!opt) continue;
+            auto* chunk = reinterpret_cast<const Chunk*>(*opt);
             std::vector<uint8_t> encoded;
             encodeChunk(*chunk, encoded);
-            if (writeTransaction(key, encoded.data(), encoded.size())) {
+            if (writeTransaction(key, encoded.data(), encoded.size())) [[likely]] {
                 ++saved;
                 auto new_pal = std::make_shared<std::vector<uint8_t>>(std::move(encoded));
                 std::lock_guard lock(lmdb_palette_mutex_);
@@ -449,52 +454,68 @@ void ChunkStore::flushThreadFunc() {
     }
 }
 
-void ChunkStore::enqueueEncode(ChunkCoord coord, std::shared_ptr<Chunk> chunk) {
+void ChunkStore::enqueueEncode(ChunkCoord coord, Chunk* chunk) {
     std::lock_guard lock(encode_mutex_);
-    encode_queue_.push_back(EncodeTask{coord, std::move(chunk)});
+    encode_queue_.push_back(EncodeTask{coord, chunk});
     encode_cv_.notify_one();
 }
 
 void ChunkStore::encodeLoop() { //may be need merge with db thread? but it may scaled if encode is bootleneak(next commits will optimize encoding)
-    pthread_setname_np(pthread_self(), "chunk-encode");
+    static std::atomic<int> thread_counter{0};
+    int thread_id = thread_counter++;
+    char name[16];
+    snprintf(name, sizeof(name), "chunk-encode-%d", thread_id);
+    pthread_setname_np(pthread_self(), name);
     while (encode_running_) {
-        EncodeTask task;
+        std::deque<EncodeTask> tasks;
+        //EncodeTask task;
         {
             std::unique_lock lock(encode_mutex_);
             encode_cv_.wait(lock, [this] {
                 return !encode_running_.load() || !encode_queue_.empty();
             });
             if (!encode_running_ && encode_queue_.empty()) break;
-            task = std::move(encode_queue_.front());
-            encode_queue_.pop_front();
+            /*task = std::move(encode_queue_.front());
+            encode_queue_.pop_front();*/
+            tasks.swap(encode_queue_);
         }
+        // Надеемся что тасок в очереди полно и queue + swap мы не зря сделали (ибо много на wait тратится)
+        while (!tasks.empty()) {
+            auto task = std::move(tasks.front());
+            tasks.pop_front();
+            std::vector<uint8_t> encoded;
+            encoded.reserve(Chunk::VOLUME / 8); // TODO change optimal inital size
+            encodeChunk(*task.chunk, encoded);
+            encoded.shrink_to_fit();
+            auto palette = std::make_shared<std::vector<uint8_t>>(std::move(encoded));
+            int64_t key = makeKey(task.coord.x, task.coord.y, task.coord.z);
+            // Cache BEFORE consuming callbacks — concurrent AsyncGetChunk that
+            // fires mid-delivery finds the chunk via cache hit (with palette)
+            // instead of racing through LMDB-miss → pending_gen_cbs_ duplicate.
+            putCached(task.coord.x, task.coord.y, task.coord.z, task.chunk);
+            markDirty(task.coord.x, task.coord.y, task.coord.z);
+            // TODO - may be select other treshold (and it may be different in cases - n players/etc)
+            //if (cntTasks < 16) { //tasks.size() before loop
+                //if current thread not overloaded - write db
+                //smaller - more waits encode_cv_,
+                //bigger - may overloaded, but i runned 2 threads
+                flushDirtyChunks(); // flush in current thread
+            //}
 
-        std::vector<uint8_t> encoded;
-        encodeChunk(*task.chunk, encoded);
-        auto palette = std::make_shared<std::vector<uint8_t>>(std::move(encoded));
-        int64_t key = makeKey(task.coord.x, task.coord.y, task.coord.z);
-
-        {
-            std::lock_guard lock(lmdb_palette_mutex_);
-            pending_lmdb_.emplace(key, palette);
-        }
-        // Cache BEFORE consuming callbacks — concurrent AsyncGetChunk that
-        // fires mid-delivery finds the chunk via cache hit (with palette)
-        // instead of racing through LMDB-miss → pending_gen_cbs_ duplicate.
-        auto* cached = new Chunk(std::move(*task.chunk));
-        putCached(task.coord.x, task.coord.y, task.coord.z, cached);
-        markDirty(task.coord.x, task.coord.y, task.coord.z);
-
-        std::vector<ChunkCallback> callbacks;
-        {
-            std::lock_guard lock(encode_mutex_);
-            if (auto it = pending_gen_cbs_.find(key); it != pending_gen_cbs_.end()) {
-                callbacks = std::move(it->second);
-                pending_gen_cbs_.erase(it);
+            std::vector<ChunkCallback> callbacks;
+            {
+                std::lock_guard lock(encode_mutex_);
+                if (auto it = pending_gen_cbs_.find(key); it != pending_gen_cbs_.end()) {
+                    callbacks = std::move(it->second);
+                    pending_gen_cbs_.erase(it);
+                }
             }
-        }
-        for (auto& cb : callbacks) {
-            cb(palette);
+            callbacks.front()(palette);
+            if (callbacks.size() > 1) [[unlikely]] { // many users whant generate chunk
+                for (size_t i = 1; i < callbacks.size(); ++i) {
+                    callbacks[i](palette);
+                }
+            }
         }
     }
 }
