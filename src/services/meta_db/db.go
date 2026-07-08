@@ -64,17 +64,6 @@ CREATE INDEX IF NOT EXISTS idx_player_quest_rewards_quest ON player_quest_reward
 CREATE INDEX IF NOT EXISTS idx_player_quest_rewards_redeemed ON player_quest_rewards(redeemed);
 `
 
-const entityStateSchema = `
-CREATE TABLE IF NOT EXISTS entity_state (
-	dim INTEGER NOT NULL,
-	x INTEGER NOT NULL,
-	y INTEGER NOT NULL,
-	z INTEGER NOT NULL,
-	blob BLOB,
-	PRIMARY KEY (dim, x, y, z)
-);
-`
-
 // MetaDB holds the SQLite connection and router reference.
 type MetaDB struct {
 	db *sql.DB
@@ -102,10 +91,8 @@ func NewMetaDB(dbPath string) (*MetaDB, error) {
 }
 
 func (m *MetaDB) initSchema() error {
-	if _, err := m.db.Exec(schema); err != nil {
-		return err
-	}
-	return m.initEntityStateSchema()
+	_, err := m.db.Exec(schema)
+	return err
 }
 
 // ---------------------------------------------------------------------------
@@ -269,55 +256,6 @@ func (m *MetaDB) GetPlayerPosition(playerID uint64) (Player, error) {
 	var p Player
 	err := m.db.QueryRow("SELECT id, x, y, z FROM players WHERE id = ?", playerID).Scan(&p.ID, &p.X, &p.Y, &p.Z)
 	return p, err
-}
-
-// ---------------------------------------------------------------------------
-// Entity state CRUD
-// ---------------------------------------------------------------------------
-
-func (m *MetaDB) initEntityStateSchema() error {
-	_, err := m.db.Exec(entityStateSchema)
-	return err
-}
-
-func (m *MetaDB) GetEntityState(dim, x, y, z int) ([]byte, error) {
-	var blob []byte
-	err := m.db.QueryRow(
-		"SELECT blob FROM entity_state WHERE dim = ? AND x = ? AND y = ? AND z = ?",
-		dim, x, y, z,
-	).Scan(&blob)
-	if err != nil {
-		return nil, err
-	}
-	return blob, nil
-}
-
-func (m *MetaDB) SetEntityState(dim, x, y, z int, blob []byte) error {
-	_, err := m.db.Exec(
-		`INSERT INTO entity_state (dim, x, y, z, blob) 
-		 VALUES (?, ?, ?, ?, ?)
-		 ON CONFLICT(dim, x, y, z) DO UPDATE SET blob = excluded.blob`,
-		dim, x, y, z, blob,
-	)
-	return err
-}
-
-func (m *MetaDB) DeleteEntityState(dim, x, y, z int) error {
-	result, err := m.db.Exec(
-		"DELETE FROM entity_state WHERE dim = ? AND x = ? AND y = ? AND z = ?",
-		dim, x, y, z,
-	)
-	if err != nil {
-		return fmt.Errorf("failed to delete entity state: %w", err)
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to check rows affected: %w", err)
-	}
-	if rows == 0 {
-		return fmt.Errorf("entity state not found at (%d,%d,%d) in dim %d", x, y, z, dim)
-	}
-	return nil
 }
 
 // ---------------------------------------------------------------------------
