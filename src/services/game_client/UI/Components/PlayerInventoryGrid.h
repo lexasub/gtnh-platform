@@ -40,5 +40,6 @@ inline int RenderPlayerInventoryGrid(InventoryState &inv, int startIndex,
   if (dragMgr)
     grid.SetDragManager(dragMgr);
 
+  // Use SlotGridComponent's Render() method which handles drag internally via grid.SetDragManager()
   return grid.Render();
 }

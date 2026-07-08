@@ -86,16 +86,30 @@ public:
   // Matches server InventoryActionHandler switch:
   //   0 = MOVE (swap src↔dst), 1 = SPLIT (half stack), 2 = DROP (clear src)
   static constexpr uint8_t kActionMove = 0;
+  static constexpr uint8_t kActionSplit = 1;
   static constexpr uint8_t kActionDrop = 2;
+  static constexpr uint8_t kActionQuickMove = 3;
   // Вызывается после завершения операции (drop/merge/swap/drop-outside)
   using ActionCallback =
       std::function<void(uint8_t actionType, uint8_t sourceSlot,
                          uint8_t targetSlot, uint8_t count)>;
   void SetActionCallback(ActionCallback cb) { cb_ = std::move(cb); }
 
+  // ── Machine action callback ─────────────────────────────────────────
+  using MachineActionCallback =
+      std::function<void(uint8_t actionType, uint8_t sourceSlot,
+                         uint8_t targetSlot, uint8_t count,
+                         BlockPos machinePos)>;
+  void SetMachineActionCallback(MachineActionCallback cb) { machineCb_ = std::move(cb); }
+
   // ── Sync с InventoryState (для совместимости) ─────────────────────
   void SyncTo(InventoryState &inv) const;
   void SyncFrom(const InventoryState &inv);
+
+  /// Notify DragManager when machine slot operations succeed/fail from server
+  void OnMachineSlotAck(uint8_t slotIdx, bool success);
+  using MachineSlotAckCallback = std::function<void(uint8_t slotIdx, bool success)>;
+  void SetMachineSlotAckCallback(MachineSlotAckCallback cb) { machineSlotAckCb_ = std::move(cb); }
 
 private:
   enum class State { Idle, Holding };
@@ -105,6 +119,8 @@ private:
   int sourceSlot_ = -1;
   int hoverSlot_ = -1;
   ActionCallback cb_;
+  MachineActionCallback machineCb_;
+  MachineSlotAckCallback machineSlotAckCb_;
 
   BlockPos machineDragPos_{};
   int machineDragSlotIdx_ = -1;

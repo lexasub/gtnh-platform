@@ -72,11 +72,12 @@ bool RenderSlot(const ItemStack& stack, bool selected,
 }
 
 // ── RenderSlotGrid ──────────────────────────────────────────────────────────
-int RenderSlotGrid(const std::vector<ItemStack>& slots,
+int RenderSlotGrid(std::vector<ItemStack>& slots,
                    int startIndex, int count, int cols,
                    int selectedSlot, const SlotStyle& style,
-                   std::function<void(int, int, bool)>* clickCb) {
-    spdlog::info("RenderSlotGrid entered start={} count={}", startIndex, count);
+                   std::function<void(int, int, bool)>* clickCb,
+                   DragManager* dragMgr) {
+    spdlog::info("RenderSlotGrid entered start={} count={} dragMgr={}", startIndex, count, dragMgr != nullptr);
     int clickedSlot = -1;
     int end = std::min(startIndex + count, static_cast<int>(slots.size()));
 
@@ -93,6 +94,11 @@ int RenderSlotGrid(const std::vector<ItemStack>& slots,
                 int button = ImGui::IsMouseClicked(ImGuiMouseButton_Right) ? 1 : 0;
                 bool shift = ImGui::GetIO().KeyShift;
                 (*clickCb)(globalIdx, button, shift);
+            }
+            if (dragMgr) {
+                int button = ImGui::IsMouseClicked(ImGuiMouseButton_Right) ? 1 : 0;
+                bool shift = ImGui::GetIO().KeyShift;
+                dragMgr->OnSlotActivated(globalIdx, slots, button, shift);
             }
         }
         ImGui::PopID();
@@ -257,21 +263,7 @@ int SlotGridComponent::Render() {
 
         // ── Item preview ──────────────────────────────────────────────────
         if (dm_ && dm_->IsDragging()) {
-            uint32_t itemColor = IM_COL32(
-                dm_->GetHeldItem().item_id * 50 % 256,
-                dm_->GetHeldItem().item_id * 80 % 256,
-                dm_->GetHeldItem().item_id * 30 % 256, 255);
-            ImVec2 mousePos = ImGui::GetIO().MousePos;
-            ImVec2 itemRectMin(mousePos.x + 4, mousePos.y + 4);
-            ImVec2 itemRectMax(mousePos.x + s.size - 4,
-                           mousePos.y + s.size - 4);
-            dl->AddRectFilled(itemRectMin, itemRectMax, itemColor, 2.0f);
-            if (s.showNumbers && dm_->GetHeldItem().count > 1) {
-                char buf[4];
-                std::snprintf(buf, sizeof(buf), "%d", dm_->GetHeldItem().count);
-                dl->AddText(ImVec2(mousePos.x + 4, mousePos.y + 4),
-                            IM_COL32(255, 255, 255, 255), buf);
-            }
+            dm_->RenderPreview(s);
         } else if (slots_[globalIdx].item_id != 0) {
             uint32_t itemColor = IM_COL32(
                 slots_[globalIdx].item_id * 50 % 256,

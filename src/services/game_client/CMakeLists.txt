@@ -229,5 +229,7 @@ target_include_directories(gameclient_drag_manager_test PRIVATE
 )
 target_link_libraries(gameclient_drag_manager_test PRIVATE
     glm::glm
+    imgui::imgui
+    spdlog::spdlog
 )
 add_test(NAME gameclient_drag_manager_test COMMAND gameclient_drag_manager_test)

@@ -88,5 +88,29 @@ private:
   float errorTimer_ = 0.0f;
 
   // ── Recipe completed flash ────────────────────────────────────────────
-  float recipeDoneFlash_ = 0.0f; // >0 means "show flash"
+  float recipeDoneFlash_ = 0.0f;
+
+  // ── Out-of-sync detection ──────────────────────────────────────────
+  // Tracks how many frames since last viable update. When the tick channel
+  // is healthy this should be 0-1 frames; if it exceeds kOutOfSyncFrames
+  // we display a warning.
+  int framesSinceUpdate_ = 0;
+  static constexpr int kOutOfSyncFrames = 30; // ~0.5s at 60fps
+
+  // ── Progress style per machine class ─────────────────────────────────
+  enum class ProgressStyle : uint8_t {
+    GENERIC,  // flat bar (fallback)
+    ARROW,    // furnace / macerator / compressor / extractor / alloy_smelter
+    SPINNER,  // mixer / electrolyser / chemical_reactor
+    FLAME,    // boiler / generator
+  };
+  ProgressStyle cachedStyle_ = ProgressStyle::GENERIC;
+  bool styleCached_ = false;
+
+  ProgressStyle ResolveProgressStyle(const MachineInfo *info);
+
+  // ── Render helpers ──────────────────────────────────────────────────
+  void RenderProgress(const MachineInfo *info, float prog);
+  void RenderEnergyBarImpl(EnergyType et, uint32_t energy, uint32_t energyMax);
+  void RenderOutOfSyncWarning();
 };
