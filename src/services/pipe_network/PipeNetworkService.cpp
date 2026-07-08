@@ -121,6 +121,8 @@ void PipeNetworkService::Start() {
     router_.Subscribe("fluid.node.update");
     router_.Subscribe("fluid.check.request");
     router_.Subscribe("fluid.consume.request");
+    router_.Subscribe("item.node.update");
+    router_.Subscribe("item.transfer.request");
     router_.Subscribe("world.blocks.changed");
 
     running_ = true;
@@ -164,6 +166,20 @@ void PipeNetworkService::tick() {
     // Tick item networks — move items through pipes
     network_manager_.tickItemNetworks();
 
+    // Publish item flow events for items consumed at machine sinks
+    for (const auto& ev : network_manager_.getConsumedItemEvents()) {
+        Protocol::Vec3i pos(ev.x, ev.y, ev.z);
+        flatbuffers::FlatBufferBuilder fbb;
+        auto event = Protocol::CreateItemFlowEvent(
+            fbb, ev.sinkNodeId, ev.sourceNodeId, 0,
+            ev.item.item_id, ev.item.count, &pos, 0);
+        fbb.Finish(event);
+        router_.Publish("item.flow",
+            {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+        spdlog::debug("[PipeNet] item {} x{} consumed at machine node {} ({},{},{})",
+                       ev.item.item_id, ev.item.count, ev.sinkNodeId, ev.x, ev.y, ev.z);
+    }
+
     // Tick the cable graph for packet-based electricity transport
     cable_graph_.tick();
 
@@ -192,6 +208,10 @@ void PipeNetworkService::onRouterMessage(const std::string& topic, const std::ve
         handleFluidCheckRequest(data);
     } else if (topic == "fluid.consume.request") {
         handleFluidConsumeRequest(data);
+    } else if (topic == "item.node.update") {
+        handleItemNodeUpdate(data);
+    } else if (topic == "item.transfer.request") {
+        handleItemTransferRequest(data);
     } else if (topic == "world.blocks.changed") {
         handleBlockChanged(data);
     }
@@ -488,6 +508,100 @@ void PipeNetworkService::handleFluidConsumeRequest(const std::vector<uint8_t>& d
     auto resp = Protocol::CreateFluidConsumeResp(fbb, consumed, remaining);
     fbb.Finish(resp);
     router_.Publish("fluid.consume.response", {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+}
+
+void PipeNetworkService::handleItemNodeUpdate(const std::vector<uint8_t>& data) {
+    auto* update = flatbuffers::GetRoot<Protocol::ItemNodeUpdate>(data.data());
+    if (!update || !update->pos()) return;
+
+    uint64_t protocol_id = update->node_id();
+    int32_t x = update->pos()->x();
+    int32_t y = update->pos()->y();
+    int32_t z = update->pos()->z();
+
+    uint64_t mgr_id;
+    if (auto it = protocol_to_mgr_.find(protocol_id); it == protocol_to_mgr_.end()) {
+        if (!network_manager_.addNodeWithId(protocol_id, x, y, z, 0)) {
+            spdlog::warn("Duplicate item node {}", protocol_id);
+            return;
+        }
+        mgr_id = protocol_id;
+        protocol_to_mgr_[protocol_id] = mgr_id;
+        spdlog::debug("Registered item node {} at ({},{},{})", protocol_id, x, y, z);
+    } else {
+        mgr_id = it->second;
+    }
+
+    int32_t cap = update->capacity();
+    bool is_source = update->is_source();
+    bool is_sink = update->is_sink();
+    network_manager_.setNodeItemProps(mgr_id, static_cast<uint8_t>(cap > 0 ? cap : 0), is_source);
+
+    // Item nodes use isItemSource / isItemSink (set via setNodeItemProps), NOT
+    // PipeNode::isSource/isSink which are energy-grid flags consumed by
+    // distributeEnergy(). Mutating them via const_cast would misclassify this
+    // item node as an energy generator/consumer — removed.
+
+    auto* items = update->items();
+    if (items) {
+        for (size_t i = 0; i < items->size(); ++i) {
+            auto* s = items->Get(i);
+            if (s->count() > 0 && s->item_id() > 0) {
+                network_manager_.addNodeItem(mgr_id, s->item_id(), s->count());
+            }
+        }
+    }
+
+    if (update->connected_nodes() && update->connected_nodes()->size() > 0) {
+        for (auto it_c = update->connected_nodes()->begin();
+             it_c != update->connected_nodes()->end(); ++it_c) {
+            uint64_t peer_proto = *it_c;
+            auto peer_it = protocol_to_mgr_.find(peer_proto);
+            if (peer_it != protocol_to_mgr_.end()) {
+                network_manager_.addEdge(mgr_id, peer_it->second);
+            }
+        }
+    } else {
+        static const int dx[6] = {0, 0, 0, 0, -1, 1};
+        static const int dy[6] = {-1, 1, 0, 0, 0, 0};
+        static const int dz[6] = {0, 0, -1, 1, 0, 0};
+        for (int f = 0; f < 6; ++f) {
+            uint64_t adjKey = posKey(x + dx[f], y + dy[f], z + dz[f]);
+            if (auto pit = pipe_nodes_.find(adjKey); pit != pipe_nodes_.end()) {
+                network_manager_.addEdge(mgr_id, pit->second);
+            }
+        }
+    }
+
+    spdlog::debug("handleItemNodeUpdate: node={} at ({},{},{}) source={} sink={} caps={} items={}",
+                  protocol_id, x, y, z, is_source, is_sink, cap,
+                  items ? static_cast<int>(items->size()) : 0);
+}
+
+void PipeNetworkService::handleItemTransferRequest(const std::vector<uint8_t>& data) {
+    auto* req = flatbuffers::GetRoot<Protocol::ItemTransferReq>(data.data());
+    if (!req || !req->pos()) return;
+
+    auto pit = protocol_to_mgr_.find(req->node_id());
+    if (pit == protocol_to_mgr_.end()) {
+        flatbuffers::FlatBufferBuilder fbb;
+        fbb.Finish(Protocol::CreateItemTransferResp(fbb, 0, req->count()));
+        router_.Publish("item.transfer.response",
+            {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+        return;
+    }
+
+    uint64_t mgr_id = pit->second;
+    network_manager_.setNodeItemProps(mgr_id, 0, true);
+    network_manager_.addNodeItem(mgr_id, req->item_id(), static_cast<uint8_t>(req->count()));
+
+    flatbuffers::FlatBufferBuilder fbb;
+    fbb.Finish(Protocol::CreateItemTransferResp(fbb, req->count(), 0));
+    router_.Publish("item.transfer.response",
+        {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+
+    spdlog::debug("handleItemTransferRequest: node={} item={} count={} queued for delivery",
+                  req->node_id(), req->item_id(), req->count());
 }
 
 } // namespace pipe_network

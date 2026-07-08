@@ -68,6 +68,10 @@ private:
   void handleFluidCheckRequest(const std::vector<uint8_t> &data);
   void handleFluidConsumeRequest(const std::vector<uint8_t> &data);
 
+  // Item node handlers
+  void handleItemNodeUpdate(const std::vector<uint8_t> &data);
+  void handleItemTransferRequest(const std::vector<uint8_t> &data);
+
   // Block change handler (pipe auto-detection)
   void handleBlockChanged(const std::vector<uint8_t> &data);
   static bool isPipeBlock(uint16_t block_id);

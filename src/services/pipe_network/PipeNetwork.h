@@ -11,6 +11,13 @@ struct ItemSlot {
   uint8_t count;
 };
 
+struct ConsumedItemEvent {
+  uint64_t sinkNodeId;
+  uint64_t sourceNodeId;
+  ItemSlot item;
+  int32_t x, y, z;  // world position of the sink
+};
+
 struct PipeNode {
   uint64_t id;
   int32_t x, y, z;
@@ -87,8 +94,9 @@ public:
 
   // Item network operations
   void rebuildItemNetworks();
-  void moveItemsInNetwork(uint64_t networkId);
+  std::vector<ConsumedItemEvent> moveItemsInNetwork(uint64_t networkId);
   void tickItemNetworks();
+  const std::vector<ConsumedItemEvent>& getConsumedItemEvents() const;
   uint64_t findNextItemHop(uint64_t currentNodeId, uint64_t networkId);
   PipeNetwork *getItemNetwork(uint64_t nodeId);
 
@@ -122,6 +130,8 @@ private:
   std::unordered_map<uint64_t, uint64_t>
       nodeToNetwork_; // node_id -> network_id
   std::unordered_map<uint64_t, PipeNetwork> networks_;
+
+  std::vector<ConsumedItemEvent> consumedItemEvents_;
 
   uint64_t nextNodeId_{1};
   uint64_t nextEdgeId_{1};

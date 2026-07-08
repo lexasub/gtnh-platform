@@ -455,12 +455,13 @@ uint64_t PipeNetworkManager::findNextItemHop(uint64_t currentNodeId, uint64_t ne
     return 0;
 }
 
-void PipeNetworkManager::moveItemsInNetwork(uint64_t networkId) {
+std::vector<ConsumedItemEvent> PipeNetworkManager::moveItemsInNetwork(uint64_t networkId) {
+    std::vector<ConsumedItemEvent> consumed;
     auto netIt = networks_.find(networkId);
-    if (netIt == networks_.end()) return;
+    if (netIt == networks_.end()) return consumed;
 
     PipeNetwork& net = netIt->second;
-    if (net.itemNodes.empty()) return;
+    if (net.itemNodes.empty()) return consumed;
 
     // Build adjacency for path finding
     std::unordered_map<uint64_t, std::vector<uint64_t>> adjacency;
@@ -492,7 +493,7 @@ void PipeNetworkManager::moveItemsInNetwork(uint64_t networkId) {
         }
     }
 
-    if (sources.empty() || sinks.empty()) return;
+    if (sources.empty() || sinks.empty()) return consumed;
 
     // Move one item from each source to the nearest sink
     for (uint64_t srcId : sources) {
@@ -556,20 +557,36 @@ void PipeNetworkManager::moveItemsInNetwork(uint64_t networkId) {
             if (sinkIt->second.itemCapacity > 0 &&
                 sinkIt->second.itemBuffer.size() < static_cast<size_t>(sinkIt->second.itemCapacity)) {
                 sinkIt->second.itemBuffer.push_back(moving);
+            } else {
+                // Item consumed at machine sink (capacity == 0)
+                ConsumedItemEvent ev;
+                ev.sinkNodeId = bestSink;
+                ev.sourceNodeId = srcId;
+                ev.item = moving;
+                ev.x = sinkIt->second.x;
+                ev.y = sinkIt->second.y;
+                ev.z = sinkIt->second.z;
+                consumed.push_back(ev);
             }
             // If sink has no item capacity, item is "consumed" by the machine
         }
     }
+    return consumed;
 }
 
 void PipeNetworkManager::tickItemNetworks() {
-    // Rebuild item networks to ensure fresh topology
+    consumedItemEvents_.clear();
     rebuildItemNetworks();
 
     for (auto& [netId, net] : networks_) {
         if (net.itemNodes.empty()) continue;
-        moveItemsInNetwork(netId);
+        auto evs = moveItemsInNetwork(netId);
+        consumedItemEvents_.insert(consumedItemEvents_.end(), evs.begin(), evs.end());
     }
+}
+
+const std::vector<ConsumedItemEvent>& PipeNetworkManager::getConsumedItemEvents() const {
+    return consumedItemEvents_;
 }
 
 void PipeNetworkManager::setNodeEnergy(uint64_t nodeId, int32_t energy, int32_t capacity,
