@@ -56,6 +56,32 @@ inline uint16_t pipeTypeToBlockId(PipeType type) {
   }
 }
 
+// Check if PipeType is a cable variant (not a pipe)
+inline bool isCableType(PipeType type) {
+  return type >= PipeType::CABLE_TIN;
+}
+
+// Map PipeType cable to voltage tier (1=LV/tin … 6=platinum)
+// Only valid when isCableType(type) is true
+inline uint8_t pipeTypeToCableTier(PipeType type) {
+  return static_cast<uint8_t>(type) - static_cast<uint8_t>(PipeType::CABLE_TIN) + 1;
+}
+
+// Cable tier → RGBA color for cable-specific rendering
+// Returns pointer to 4 uint8_t values [R, G, B, A]
+inline const uint8_t* cableTierColor(uint8_t tier) {
+  static constexpr uint8_t CABLE_TIER_COLORS[6][4] = {
+    {183, 115,  51, 255}, // 1 LV  tin       #B77333
+    {217, 166,  33, 255}, // 2 MV  gold      #D9A621
+    {102, 102, 102, 255}, // 3 HV  tungsten  #666666
+    {153, 153, 204, 255}, // 4 EV  platinum  #9999CC
+    {255, 204,  51, 255}, // 5 IV  (alu)     #FFCC33
+    { 51, 153, 255, 255}, // 6 LuV (platin)  #3399FF
+  };
+  if (tier < 1 || tier > 6) tier = 1;
+  return CABLE_TIER_COLORS[tier - 1];
+}
+
 class PipeMeshBuilder {
 public:
   PipeMeshBuilder() = default;
