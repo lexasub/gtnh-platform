@@ -50,6 +50,8 @@
 #include "ECS/Systems/DrillSystem.h"
 #include "ECS/Systems/ExplosionSystem.h"
 #include "Network/FluidClient.h"
+#include "Network/ItemClient.h"
+#include "ECS/Reactors/ItemFlowHandler.h"
 #include "Actions/WrenchHandler.h"
 #include "Actions/MiningCalculator.h"
 #include "ECS/components/ItemEnergyStorage.h"
@@ -142,6 +144,7 @@ int main(int argc, char* argv[]) {
     auto eventPublisher     = std::make_shared<simcore::RouterEventPublisher>(routerClient);
     auto pipeEnergyClient   = std::make_shared<simcore::PipeEnergyClient>(routerClient);
     auto fluidClient        = std::make_shared<simcore::FluidClient>(routerClient);
+    auto itemClient         = std::make_shared<simcore::ItemClient>(routerClient);
     auto inventoryStore     = std::make_shared<simcore::PlayerInventoryStore>();
     inventoryStore->setOnChange([routerClient](uint64_t player_id, uint16_t slot_index,
                                                 uint16_t item_id, uint8_t count, uint16_t meta) {
@@ -214,7 +217,7 @@ int main(int argc, char* argv[]) {
     simcore::MachineSystem* machineSystemRaw = nullptr;
     {
         auto ms = std::make_unique<simcore::MachineSystem>(
-            simulationEngine->reg(), recipeManager, eventPublisher, pipeEnergyClient);
+            simulationEngine->reg(), recipeManager, eventPublisher, pipeEnergyClient, itemClient);
         machineSystemRaw = ms.get();
         simulationEngine->registerSystem(std::move(ms));
     }
@@ -259,6 +262,8 @@ int main(int argc, char* argv[]) {
         simulationEngine->reg(), pipeEnergyClient));
     topicDispatcher->on("fluid.flow", std::make_unique<simcore::FluidFlowHandler>(
         simulationEngine->reg(), fluidClient));
+    topicDispatcher->on("item.flow", std::make_unique<simcore::ItemFlowHandler>(
+        simulationEngine->reg(), itemClient));
 
     // Crafting
     topicDispatcher->on("sim.craft.request", std::make_unique<simcore::CraftRequestHandler>(
@@ -343,6 +348,12 @@ simcore::ActionDispatcher dispatcher(casHandler,
             spdlog::trace("FluidConsumeResp: consumed={} remaining={}",
                            resp->consumed(), resp->remaining());
 
+        } else if (topic == "item.transfer.response") {
+            auto* resp = flatbuffers::GetRoot<Protocol::ItemTransferResp>(data.data());
+            if (!resp) return;
+            spdlog::debug("ItemTransferResp: transferred={} remaining={}",
+                          resp->transferred(), resp->remaining());
+
         } else if (topic == "player.chest.open") {
             flatbuffers::Verifier v(data.data(), data.size());
             if (!v.VerifyBuffer<Protocol::ChestOpenReq>(nullptr)) return;
@@ -406,6 +417,8 @@ simcore::ActionDispatcher dispatcher(casHandler,
     routerClient->Subscribe("player.actions");
     routerClient->Subscribe("world.blocks.changed");
     routerClient->Subscribe("fluid.consume.response");
+    routerClient->Subscribe("item.flow");
+    routerClient->Subscribe("item.transfer.response");
     routerClient->Subscribe("player.chest.open");
 
     spdlog::info("SimulationCore running, waiting for messages...");

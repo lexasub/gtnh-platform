@@ -69,6 +69,7 @@ add_library(simcored
         Network/RouterEventPublisher.cpp
         Network/PipeEnergyClient.cpp
         Network/FluidClient.cpp
+        Network/ItemClient.cpp
         Network/TopicDispatcher.cpp
         Network/clients/EntityStateStoreClient.cpp
         Network/clients/IoUringRouterClient.cpp
@@ -98,6 +99,7 @@ add_library(simcored
 
         ECS/Reactors/EnergyFlowHandler.cpp
         ECS/Reactors/FluidFlowHandler.cpp
+        ECS/Reactors/ItemFlowHandler.cpp
 
         ECS/Systems/HeatTransferSystem.cpp
         ECS/Systems/GeneratorSystem.cpp

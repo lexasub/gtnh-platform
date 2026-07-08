@@ -31,9 +31,7 @@ void ItemFlowHandler::handle(const std::vector<uint8_t>& data) {
         if (static_cast<int32_t>(pos.x) == x &&
             static_cast<int32_t>(pos.y) == y &&
             static_cast<int32_t>(pos.z) == z) {
-
-            auto* container = reg_.try_get<InventoryContainer>(entity);
-            if (container) {
+            if (auto* container = reg_.try_get<InventoryContainer>(entity)) {
                 container->addItem(item_id, static_cast<uint8_t>(count), 0);
                 spdlog::debug("ItemFlowHandler: item {} x{} delivered to machine at ({},{},{})",
                               item_id, count, x, y, z);
