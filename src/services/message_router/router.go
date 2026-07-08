@@ -114,6 +114,7 @@ type client struct {
 	lastSeen  atomic.Int64
 	dropped   atomic.Uint64
 	closeOnce sync.Once
+	done      chan struct{} // closed by Close(); Publish selects on this to avoid send-on-closed
 }
 
 func newClient(conn net.Conn) *client {
@@ -124,6 +125,7 @@ func newClient(conn net.Conn) *client {
 	c := &client{
 		conn:    conn,
 		sendChs: chs,
+		done:    make(chan struct{}),
 	}
 	c.lastSeen.Store(time.Now().UnixNano())
 	go c.writer()
@@ -186,18 +188,9 @@ func (c *client) writer() {
 	}
 }
 
-func (c *client) writeFrame(frame []byte) bool {
-	c.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
-	if _, err := c.conn.Write(frame); err != nil {
-		log.Printf("[writer] write error: %s err=%v", c.conn.RemoteAddr(), err)
-		c.Close()
-		return false
-	}
-	return true
-}
-
 func (c *client) Close() {
 	c.closeOnce.Do(func() {
+		close(c.done)
 		for _, ch := range c.sendChs {
 			close(ch)
 		}
@@ -320,34 +313,53 @@ func (r *Router) Publish(topic string, data []byte) {
 			bp := framePool.Get().(*[]byte)
 			allocPublishFrame(bp, topic, data)
 
-			if prio == PrioHigh {
-				// PrioHigh: blocking send — never drop, propagate backpressure
-				cl.sendChs[prio] <- bp
+			// Use done channel to avoid send-on-closed-channel panic when
+			// writeBuf calls Close() on write error while Publish holds only
+			// an RLock on subs.
+			select {
+			case cl.sendChs[prio] <- bp:
 				matched++
-			} else {
-				// PrioNormal/PrioLow: non-blocking with drop-on-full
-				select {
-				case cl.sendChs[prio] <- bp:
-					matched++
-				default:
-					// Channel full — drop the OLDEST message to make room for the latest.
+			case <-cl.done:
+				dropped++
+				cl.dropped.Add(1)
+				*bp = (*bp)[:0]
+				framePool.Put(bp)
+			default:
+				if prio == PrioHigh {
+					// PrioHigh: blocking send without drop — but channel was
+					// non-blocking-available AND client isn't done AND channel
+					// isn't full — this shouldn't fire unless writer is
+					// saturated. Re-select blocking.
+					select {
+					case cl.sendChs[prio] <- bp:
+						matched++
+					case <-cl.done:
+						dropped++
+						cl.dropped.Add(1)
+						*bp = (*bp)[:0]
+						framePool.Put(bp)
+					}
+				} else {
+					// PrioNormal/PrioLow: drop-oldest on full channel
 					select {
 					case old := <-cl.sendChs[prio]:
-						// drained one oldest, return its buffer to pool
 						*old = (*old)[:0]
 						framePool.Put(old)
-						// now retry
 						select {
 						case cl.sendChs[prio] <- bp:
 							matched++
+						case <-cl.done:
+							dropped++
+							cl.dropped.Add(1)
+							*bp = (*bp)[:0]
+							framePool.Put(bp)
 						default:
 							dropped++
 							cl.dropped.Add(1)
 							*bp = (*bp)[:0]
 							framePool.Put(bp)
 						}
-					default:
-						// nothing to drain (shouldn't happen with buffered chan, but handle)
+					case <-cl.done:
 						dropped++
 						cl.dropped.Add(1)
 						*bp = (*bp)[:0]
