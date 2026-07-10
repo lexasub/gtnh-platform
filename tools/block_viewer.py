@@ -299,6 +299,7 @@ class AppState:
         self.win_w = 900
         self.win_h = 700
         self._cli_block_faces: list[int | tuple[int, int]] | None = None
+        self._neighbor_faces: list[int | tuple[int, int]] | None = None
 
 
 STATE = AppState()
@@ -364,6 +365,16 @@ def display():
                     oz = bz - half + 0.5
                     draw_textured_cube(ox, oy, oz, faces, STATE.slot_map)
                     draw_wire_cube(ox, oy, oz, 0.5, 0.5, 0.5)
+        if STATE._neighbor_faces is not None:
+            neighbor_off = half + 1.0
+            for bx in range(n):
+                for by in range(n):
+                    for bz in range(n):
+                        ox = bx + neighbor_off + 0.5
+                        oy = by - half + 0.5
+                        oz = bz - half + 0.5
+                        draw_textured_cube(ox, oy, oz, STATE._neighbor_faces, STATE.slot_map)
+                        draw_wire_cube(ox, oy, oz, 0.4, 0.6, 0.8)
     else:
         draw_textured_cube(0, 0, 0, faces, STATE.slot_map)
         draw_wire_cube(0, 0, 0, 0.6, 0.6, 0.6)
@@ -374,8 +385,9 @@ def display():
 
     mode_str = "TILING" if STATE.tiling_mode else "SINGLE"
     grid_str = f"  grid={STATE.grid_size}x{STATE.grid_size}x{STATE.grid_size}" if STATE.tiling_mode else ""
+    neighbor_str = " + NEIGHBOR" if STATE._neighbor_faces is not None else ""
     info_lines = [
-        f"Block {block_id}  |  Mode: {mode_str}{grid_str}",
+        f"Block {block_id}  |  Mode: {mode_str}{grid_str}{neighbor_str}",
         "[SPACE] toggle mode  [<->] switch block  [v/^] grid size  [r] reset  [q] quit",
     ]
 
@@ -457,6 +469,10 @@ def main():
         help="Per-face rotation 0-3: PX,NX,PY,NY,PZ,NZ (e.g. --face-rot 0,0,1,0,0,0)",
     )
     parser.add_argument("--transparent", action="store_true", help="Mark block as transparent")
+    parser.add_argument(
+        "--neighbor",
+        help="Neighbor block face tiles for stitching check: PX,NX,PY,NY,PZ,NZ",
+    )
     args = parser.parse_args()
     data_dir = Path(args.data_dir)
 
@@ -511,6 +527,27 @@ def main():
         STATE._cli_block_faces = face_list
         print(f"  CLI override: faces={[str(x) for x in face_list]}")
 
+    if args.neighbor:
+        parts = [p.strip() for p in args.neighbor.split(",")]
+        if len(parts) != 6:
+            print("Error: --neighbor needs exactly 6 comma-separated tile IDs")
+            sys.exit(1)
+        neighbor_ids = [int(p) for p in parts]
+        neighbor_rots = cli_face_rots if cli_face_rots else [0] * 6
+        neighbor_list: list[int | tuple[int, int]] = []
+        for i in range(6):
+            tile_id = neighbor_ids[i]
+            rot = neighbor_rots[i]
+            csv_tile = tiles.get(tile_id)
+            csv_rot = csv_tile.rotate if csv_tile else 0
+            if rot != csv_rot:
+                key = add_rotated_tile(atlas_img, slot_map, png_cache, data_dir, tile_id, rot)
+                neighbor_list.append(key)
+            else:
+                neighbor_list.append(tile_id)
+        STATE._neighbor_faces = neighbor_list
+        print(f"  Neighbor: faces={[str(x) for x in neighbor_list]}")
+
     atlas_debug_path = data_dir / "_atlas_preview.png"
     atlas_img.save(atlas_debug_path)
     print(f"  Saved preview: {atlas_debug_path}")
@@ -538,7 +575,7 @@ def main():
             print(f"Warning: block_id {args.block_id} not in block_faces, using first available")
 
     STATE.grid_size = max(1, min(5, args.grid_size))
-    STATE.tiling_mode = args.tiling
+    STATE.tiling_mode = args.tiling or STATE._neighbor_faces is not None
     STATE.cam_dist = max(1.0, args.zoom)
 
     glClearColor(0.18, 0.20, 0.24, 1.0)
