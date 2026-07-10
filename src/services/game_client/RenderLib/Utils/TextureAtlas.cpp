@@ -26,6 +26,7 @@ static uint8_t s_tileAtlasX[256];
 static uint8_t s_tileAtlasY[256];
 static uint8_t s_srcPosX[256]; // tile_id → source PNG tile X (from textures.csv)
 static uint8_t s_srcPosY[256]; // tile_id → source PNG tile Y (from textures.csv)
+static uint8_t s_rotate[256];  // tile_id → rotation: 0=0°, 1=90°CW, 2=180°, 3=270°CW
 
 static std::vector<std::string> SplitCSV(const std::string& line) {
     std::vector<std::string> fields;
@@ -38,7 +39,7 @@ static std::vector<std::string> SplitCSV(const std::string& line) {
     return fields;
 }
 
-static bool LoadTextureRegistry(const char* dataDir) {
+static bool LoadTextureRegistry(const char* dataDir, uint8_t& nextAtlasSlot) {
     const std::string filename = std::string(dataDir) + "/textures/textures.csv";
     std::FILE* file = std::fopen(filename.c_str(), "r");
     if (!file) {
@@ -65,12 +66,15 @@ static bool LoadTextureRegistry(const char* dataDir) {
             uint16_t tileId = static_cast<uint16_t>(std::stoi(fields[0]));
             uint8_t tileX = static_cast<uint8_t>(std::stoi(fields[2]));
             uint8_t tileY = static_cast<uint8_t>(std::stoi(fields[3]));
+            uint8_t rotate = fields.size() >= 5 ? static_cast<uint8_t>(std::stoi(fields[4])) : 0;
             
-            // Source PNG position = atlas position (tiles are copied 1:1)
-            s_tileAtlasX[tileId] = tileX;
-            s_tileAtlasY[tileId] = tileY;
+            // Auto-assign atlas slot sequentially; tileX/Y are source PNG position only
+            s_tileAtlasX[tileId] = nextAtlasSlot % TextureAtlas::kDefaultTilesX;
+            s_tileAtlasY[tileId] = nextAtlasSlot / TextureAtlas::kDefaultTilesX;
             s_srcPosX[tileId] = tileX;
             s_srcPosY[tileId] = tileY;
+            s_rotate[tileId] = rotate & 3;
+            nextAtlasSlot++;
         } catch (const std::exception& e) {
             spdlog::warn("Error parsing texture registry row '{}': {}", lineStr, e.what());
             continue;
@@ -100,14 +104,14 @@ static bool LoadBlockFaceRegistry(const char* dataDir) {
         }
         
         auto fields = SplitCSV(lineStr);
-        if (fields.size() < 9) {
+        if (fields.size() < 8) {
             spdlog::warn("Malformed block face registry row: {}", lineStr);
             continue;
         }
         
         try {
             uint16_t blockId = static_cast<uint16_t>(std::stoi(fields[0]));
-            s_transparent[blockId] = (std::stoi(fields[8]) == 1);
+            s_transparent[blockId] = (std::stoi(fields[7]) == 1);
             
             // Each face_* value is a tile_id; look up its atlas grid position
             static constexpr int kFaceFields[6] = {1, 2, 3, 4, 5, 6}; // fields[1..6] = px,nx,py,ny,pz,nz
@@ -156,14 +160,20 @@ static bool LoadSourcePNG(const std::string& filename, std::vector<uint8_t>& atl
         }
         
         int tileSz = s_tileSize;
+        uint8_t rot = s_rotate[tileId] & 3;
         for (int py = 0; py < tileSz; ++py) {
             for (int px = 0; px < tileSz; ++px) {
                 int srcX = srcTx * tileSz + px;
                 int srcY = srcTy * tileSz + py;
                 int srcIdx = (srcY * width + srcX) * 4;
                 
-                int dstX = atlasTx * tileSz + px;
-                int dstY = atlasTy * tileSz + py;
+                int dstX, dstY;
+                switch (rot) {
+                    case 1: dstX = atlasTx * tileSz + (tileSz - 1 - py); dstY = atlasTy * tileSz + px;       break; // 90°CW
+                    case 2: dstX = atlasTx * tileSz + (tileSz - 1 - px); dstY = atlasTy * tileSz + (tileSz - 1 - py); break; // 180°
+                    case 3: dstX = atlasTx * tileSz + py;                dstY = atlasTy * tileSz + (tileSz - 1 - px); break; // 270°CW
+                    default: dstX = atlasTx * tileSz + px;               dstY = atlasTy * tileSz + py;              break; // 0°
+                }
                 int dstIdx = ((dstY * atlasW + dstX) * 4);
                 
                 for (int c = 0; c < 4; ++c) {
@@ -189,11 +199,13 @@ void TextureAtlas::Init(int tileSize) {
         s_srcPosX[id] = id % kDefaultTilesX;
         s_srcPosY[id] = id / kDefaultTilesY;
         s_transparent[id] = false;
+        s_rotate[id] = 0;
     }
     
-    // Load texture registry (overrides tile atlas/source positions from CSV)
+    // Load texture registry — auto-assigns atlas slots, tile_x/tile_y are source PNG only
     const char* dataDir = "data";
-    LoadTextureRegistry(dataDir);
+    uint8_t nextAtlasSlot = 0;
+    LoadTextureRegistry(dataDir, nextAtlasSlot);
     
     // Set default block face mapping: block N uses tile N for all faces
     for (uint16_t id = 0; id < 256; ++id) {
@@ -244,33 +256,30 @@ void TextureAtlas::Init(int tileSize) {
         LoadSourcePNG(filePair.first, atlasPixels, s_atlasW, s_atlasH, filePair.second);
     }
     
-    for (uint16_t id = 0; id < 256; ++id) {
-        bool hasSource = false;
-        for (const auto& filePair : fileToTileIds) {
-            auto it = std::find(filePair.second.begin(), filePair.second.end(), id);
-            if (it != filePair.second.end()) {
-                hasSource = true;
-                break;
-            }
+    // Mark atlas slots already filled by loaded source tiles
+    bool slotUsed[256] = {};
+    for (const auto& filePair : fileToTileIds)
+        for (uint16_t tileId : filePair.second) {
+            uint8_t slot = s_tileAtlasY[tileId] * kDefaultTilesX + s_tileAtlasX[tileId];
+            slotUsed[slot] = true;
         }
-        
-        if (!hasSource) {
-            uint8_t tx = s_tileX[id][0];
-            uint8_t ty = s_tileY[id][0];
-            if (tx < kDefaultTilesX && ty < kDefaultTilesY) {
-                int originX = tx * s_tileSize;
-                int originY = ty * s_tileSize;
-                for (int py = 0; py < s_tileSize; ++py) {
-                    for (int px = 0; px < s_tileSize; ++px) {
-                        int sx = px / 8;
-                        int sy = py / 8;
-                        bool isMagenta = ((sx + sy) & 1) == 0;
-                        int idx = ((originY + py) * s_atlasW + (originX + px)) * 4;
-                        if (isMagenta) {
-                            atlasPixels[idx + 0] = 0xFF; atlasPixels[idx + 1] = 0x00; atlasPixels[idx + 2] = 0xFF; atlasPixels[idx + 3] = 0xFF;
-                        } else {
-                            atlasPixels[idx + 0] = 0x00; atlasPixels[idx + 1] = 0x00; atlasPixels[idx + 2] = 0x00; atlasPixels[idx + 3] = 0xFF;
-                        }
+    
+    // Fill unused atlas slots with magenta/black checkerboard
+    for (int ty = 0; ty < kDefaultTilesY; ++ty) {
+        for (int tx = 0; tx < kDefaultTilesX; ++tx) {
+            if (slotUsed[ty * kDefaultTilesX + tx]) continue;
+            int originX = tx * s_tileSize;
+            int originY = ty * s_tileSize;
+            for (int py = 0; py < s_tileSize; ++py) {
+                for (int px = 0; px < s_tileSize; ++px) {
+                    int sx = px / 8;
+                    int sy = py / 8;
+                    bool isMagenta = ((sx + sy) & 1) == 0;
+                    int idx = ((originY + py) * s_atlasW + (originX + px)) * 4;
+                    if (isMagenta) {
+                        atlasPixels[idx + 0] = 0xFF; atlasPixels[idx + 1] = 0x00; atlasPixels[idx + 2] = 0xFF; atlasPixels[idx + 3] = 0xFF;
+                    } else {
+                        atlasPixels[idx + 0] = 0x00; atlasPixels[idx + 1] = 0x00; atlasPixels[idx + 2] = 0x00; atlasPixels[idx + 3] = 0xFF;
                     }
                 }
             }

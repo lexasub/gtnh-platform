@@ -41,6 +41,17 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
         {1,0,0}, {-1,0,0}, {0,1,0}, {0,-1,0}, {0,0,1}, {0,0,-1}
     }};
 
+    // Per-face UV axes: {u_comp_idx, u_neg, v_comp_idx, v_neg}
+    // neg=1 → value = 1 - component (axis reversed)
+    static constexpr std::array<std::array<uint8_t,4>,6> kUVAxis = {{
+        {2,0,1,0},  // +X: u=Z,     v=Y
+        {2,1,1,0},  // -X: u=1-Z,   v=Y
+        {0,0,2,1},  // +Y: u=X,     v=1-Z
+        {0,0,2,0},  // -Y: u=X,     v=Z
+        {0,0,1,0},  // +Z: u=X,     v=Y
+        {0,1,1,0},  // -Z: u=1-X,   v=Y
+    }};
+
     data.vertices.clear();
     data.indices.clear();
     data.transparentVertices.clear();
@@ -108,10 +119,13 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
                     const uint32_t c = GetBlockColor(block);
 
                     for (int v = 0; v < 4; ++v) {
+                        int ox = face[v][0], oy = face[v][1], oz = face[v][2];
+                        int vert[3] = {ox, oy, oz};
+                        const auto &axis = kUVAxis[f];
                         BlockVertex vertex = {
-                            .x = static_cast<float>(x + face[v][0]),
-                            .y = static_cast<float>(y + face[v][1]),
-                            .z = static_cast<float>(z + face[v][2]),
+                            .x = static_cast<float>(x + ox),
+                            .y = static_cast<float>(y + oy),
+                            .z = static_cast<float>(z + oz),
                             .normal = {nx, ny, nz, 0},
                             .color = {
                                 static_cast<uint8_t>((c >> 0) & 0xFF),
@@ -119,8 +133,8 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
                                 static_cast<uint8_t>((c >> 16) & 0xFF),
                                 static_cast<uint8_t>((c >> 24) & 0xFF)
                             },
-                            .u = uv.u0 + du * (v & 1),
-                            .v = uv.v0 + dv * ((v >> 1) & 1)
+                            .u = uv.u0 + du * (vert[axis[0]] ^ axis[1]),
+                            .v = uv.v0 + dv * (vert[axis[2]] ^ axis[3])
                         };
 
                         if (renderlib::TextureAtlas::IsTransparent(block)) {
