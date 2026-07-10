@@ -150,6 +150,7 @@ void World::EvictFarChunks(glm::vec3 cameraPos) {
 
 void World::EvictChunk(const ChunkCoord& coord) {
     uint64_t key = MakeChunkKey(coord);
+    pendingChanges_.erase(key);
     storage_.RemoveChunk(coord);
     pendingRequests_.unsafe_erase(key);
     std::lock_guard lock(pendingEvictedMtx_);
@@ -193,17 +194,24 @@ bool World::IsPending(const ChunkCoord& coord) const {
 std::shared_ptr<const ChunkView> World::OnChunkData(std::shared_ptr<ChunkView> chunk, const ChunkCoord &coord) {
     auto chunkPtr = storage_.StoreAndGetChunk(coord, std::move(chunk));
 
-    // TODO(diff-protocol): rebase pendingChanges_ over the fresh snapshot:
-    //   if (auto it = pendingChanges_.find(key); it != pendingChanges_.end()) {
-    //       for (auto& [pos, pblock] : it->second) {
-    //           int lx = pos.x & (CHUNK_SIZE - 1);
-    //           int ly = pos.y & (CHUNK_SIZE - 1);
-    //           int lz = pos.z & (CHUNK_SIZE - 1);
-    //           chunkPtr->SetBlock(lx, ly, lz, pblock.block_id);
-    //       }
-    //   }
-
     uint64_t key = MakeChunkKey(coord);
+
+    // Rebase pending changes over the fresh snapshot.
+    // Server might return stale chunk data (ChunkStore race: readTransaction vs
+    // CAS), so we re-apply any block updates that were committed locally.
+    auto it = pendingChanges_.find(key);
+    if (it != pendingChanges_.end()) {
+        for (const auto& [pk, pb] : it->second) {
+            int64_t bx = static_cast<int64_t>((pk >> 42) & 0x1FFFFF) - CHUNK_KEY_BIAS;
+            int64_t by = static_cast<int64_t>((pk >> 21) & 0x1FFFFF) - CHUNK_KEY_BIAS;
+            int64_t bz = static_cast<int64_t>(pk & 0x1FFFFF) - CHUNK_KEY_BIAS;
+            int lx = static_cast<int>(bx & (CHUNK_SIZE - 1));
+            int ly = static_cast<int>(by & (CHUNK_SIZE - 1));
+            int lz = static_cast<int>(bz & (CHUNK_SIZE - 1));
+            chunkPtr->SetBlock(lx, ly, lz, pb.block_id, pb.meta, pb.mb_id);
+        }
+    }
+
     pendingRequests_.unsafe_erase(key);//TODO - warn - возможно map прийдется использовать) или возвращаться к stl коллекции если + lock - если будут проблемы
     return chunkPtr;
 }
@@ -220,6 +228,11 @@ void World::OnBlockUpdate(BlockPos pos, uint16_t block_id, uint8_t meta, uint32_
     int ly = pos.y & (CHUNK_SIZE - 1);
     int lz = pos.z & (CHUNK_SIZE - 1);
     chunk->SetBlock(lx, ly, lz, block_id, meta, mb_id);
+
+    // Save pending change so OnChunkData can re-apply it over stale snapshots.
+    uint64_t ck = MakeChunkKey(cc);
+    uint64_t pk = MakeBlockPosKey(pos.x, pos.y, pos.z);
+    pendingChanges_[ck][pk] = {block_id, meta, mb_id};
 }
 
 bool World::IsBlockActionPending(BlockPos pos) const {
@@ -278,6 +291,7 @@ static uint64_t BlockPosKeyToChunkKey(uint64_t block_key) {
     return (ucx << 42) | (ucy << 21) | ucz;
 }
 
-// TODO(diff-protocol): OnBlockAck(pos)
-//   Erase the block from pendingChanges_ for its chunk.
-//   The server has committed our change.
+// pendingChanges_ are now populated in OnBlockUpdate and re-applied in
+// OnChunkData (protection against stale chunk snapshots). Cleaned up on
+// EvictChunk. No need to erase on BlockAck — repeated applies are idempotent
+// and the change must survive until the chunk is evicted.

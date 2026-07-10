@@ -8,6 +8,7 @@
 #include <oneapi/tbb/concurrent_hash_map.h>
 #include <oneapi/tbb/concurrent_unordered_set.h>
 #include <tbb/concurrent_unordered_set.h>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -107,24 +108,16 @@ private:
   mutable std::mutex pendingEvictedMtx_;
   std::vector<ChunkCoord> pendingEvicted_;
 
-  // TODO(diff-protocol): pendingChanges_ — blocks placed by client but not yet
-  //   acknowledged by the server.
-  //
-  //   struct PendingBlock {
-  //       BlockPos pos;
-  //       uint16_t block_id;
-  //   };
-  //   // multiset keyed by chunk key: each chunk may have 0..N pending blocks
-  //   // ChunkCoord → set of positions
-  //   tbb::concurrent_unordered_map<uint64_t,
-  //       std::unordered_set<BlockPos>, Uint64Hash> pendingChanges_;
-  //
-  //   Semantics:
-  //   - Populated BEFORE SendPlayerAction (if #ifdef WORLD_FAST_SEND)
-  //   - On ChunkData (full snapshot): rebase — apply snapshot, then overlay
-  //   pendingChanges_
-  //   - On BlockUpdate: apply server value, leave pending alone
-  //   - On BlockAck: erase from pendingChanges_
-  //   - GetBlockAt() returns pendingChanges_ value if present (optimistic
-  //   render)
+  // Pending block changes: when OnBlockUpdate is applied locally, we save
+  // the change here. OnChunkData (fresh snapshot from server) might overwrite
+  // it with stale data (see ChunkStore race: readTransaction vs CAS), so we
+  // re-apply pending changes over the fresh snapshot.
+  struct PendingBlock {
+    uint16_t block_id = 0;
+    uint8_t meta = 0;
+    uint32_t mb_id = 0;
+  };
+  // chunk key -> (block pos key -> pending block)
+  std::unordered_map<uint64_t, std::unordered_map<uint64_t, PendingBlock>>
+      pendingChanges_;
 };

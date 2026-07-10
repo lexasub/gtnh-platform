@@ -27,21 +27,34 @@ void MeshManager::OnBlockUpdate(BlockPos pos, uint16_t block_id, uint8_t meta,
                                  uint32_t mb_id, World& world) {
     world.OnBlockUpdate(pos, block_id, meta, mb_id);
 
+    auto rebuildChunk = [this, &world](const ChunkCoord& c) {
+        auto ch = world.GetChunk(c);
+        if (!ch) return;
+        uint64_t h = HashChunkData(ch->blocks_data(), ch->blocks_size());
+        if (meshCache_.CheckBuildHash(c, h))
+            return;
+        meshBuildGroup_.run([this, c, h, ch, &world] {
+            if (shuttingDown_) return;
+            ChunkNeighborCache cache;
+            cache.Init(world, c, ch.get());
+            auto meshData = ChunkMeshBuilder::Build(cache, ch);
+            meshCache_.EnqueueCreateMesh(c, h, std::move(meshData));
+        });
+    };
+
     ChunkCoord coord{pos.x >> 5, pos.y >> 5, pos.z >> 5};
-    auto chunk = world.GetChunk(coord);
-    if (!chunk) return;
+    rebuildChunk(coord);
 
-    uint64_t hash = HashChunkData(chunk->blocks_data(), chunk->blocks_size());
-    if (meshCache_.CheckBuildHash(coord, hash))
-        return;
-
-    meshBuildGroup_.run([this, coord, hash, chunk, &world] {
-        if (shuttingDown_) return;
-        ChunkNeighborCache cache;
-        cache.Init(world, coord, chunk.get());
-        auto meshData = ChunkMeshBuilder::Build(cache, chunk);
-        meshCache_.EnqueueCreateMesh(coord, hash, std::move(meshData));
-    });
+    // rebuild neighbors — block on boundary affects adjacent chunk mesh
+    int lx = pos.x & (CHUNK_SIZE - 1);
+    int ly = pos.y & (CHUNK_SIZE - 1);
+    int lz = pos.z & (CHUNK_SIZE - 1);
+    if (lx == 0)       rebuildChunk({coord.x - 1, coord.y, coord.z});
+    else if (lx == CHUNK_SIZE - 1) rebuildChunk({coord.x + 1, coord.y, coord.z});
+    if (ly == 0)       rebuildChunk({coord.x, coord.y - 1, coord.z});
+    else if (ly == CHUNK_SIZE - 1) rebuildChunk({coord.x, coord.y + 1, coord.z});
+    if (lz == 0)       rebuildChunk({coord.x, coord.y, coord.z - 1});
+    else if (lz == CHUNK_SIZE - 1) rebuildChunk({coord.x, coord.y, coord.z + 1});
 }
 
 void MeshManager::OnChunkData(ChunkCoord coord, std::shared_ptr<ChunkView> chunk,

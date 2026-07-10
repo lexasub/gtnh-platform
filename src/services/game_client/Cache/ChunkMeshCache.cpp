@@ -70,8 +70,11 @@ bool ChunkMeshCache::CheckBuildHash(const ChunkCoord& coord, uint64_t hash) cons
 }
 
 void ChunkMeshCache::ApplyMeshData(ChunkMeshBuilder::MeshData&& data, const ChunkCoord& coord, uint64_t contentHash) {
-    if (data.vertices.empty() && data.transparentVertices.empty())
+    if (data.vertices.empty() && data.transparentVertices.empty()) {
+        // Destroy old GPU buffers even if new mesh is empty (chunk became all-air).
+        DestroyMesh(coord);
         return;
+    }
 
     uint64_t key = MakeChunkKey(coord);
     MeshMap::accessor acc;

@@ -34,15 +34,15 @@ namespace simcore {
             if (pos) {
                 spdlog::info("CHUNK_REQUEST: player={} chunk=({},{},{})",
                              pa->player_id(), pos->x(), pos->y(), pos->z());
-                // TODO: загрузить чанк через ChunkStoreRepository::getChunk()
-                // и опубликовать результат в world.chunk.loaded
-                // НАХЕРА? если chunkd слушает эти события от клиента
             }
             return true;
         }
         default:
-            /*spdlog::warn("ActionDispatcher: unhandled PlayerAction type {}",
-                         static_cast<int>(pa->action()));*/
+            // Not a PlayerAction subtype we handle — might be SetBlockAction
+            // (FlatBuffers VerifyBuffer<PlayerAction> can pass on SetBlockAction
+            // data because both tables share the first few fields and the extra
+            // fields are optional). Returning false lets the caller try
+            // SetBlockAction verification instead.
             return false;
         }
     }
