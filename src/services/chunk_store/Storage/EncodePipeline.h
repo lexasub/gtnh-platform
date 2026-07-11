@@ -31,15 +31,10 @@ public:
     using ChunkCallback =
         std::move_only_function<void(std::shared_ptr<std::vector<uint8_t>>)>;
 
-    using OnEncodedFn =
-        std::move_only_function<void(int64_t key,
-                                     std::shared_ptr<std::vector<uint8_t>> palette)>;
-
     EncodePipeline() = default;
     ~EncodePipeline();
 
-    void start(ChunkCache& cache, LmdbStore& lmdb,
-               OnEncodedFn on_encoded);
+    void start(ChunkCache& cache, LmdbStore& lmdb);
     void stop();
 
     // Called by worldgen thread when chunk generation is done.
@@ -68,7 +63,6 @@ private:
 
     ChunkCache* cache_ = nullptr;
     LmdbStore* lmdb_ = nullptr;
-    OnEncodedFn on_encoded_;
     GenerationQueue* gen_queue_ = nullptr;
 
     std::deque<EncodeTask> encode_queue_;

@@ -9,11 +9,9 @@ EncodePipeline::~EncodePipeline() {
     stop();
 }
 
-void EncodePipeline::start(ChunkCache& cache, LmdbStore& lmdb,
-                            OnEncodedFn on_encoded) {
+void EncodePipeline::start(ChunkCache& cache, LmdbStore& lmdb) {
     cache_ = &cache;
     lmdb_ = &lmdb;
-    on_encoded_ = std::move(on_encoded);
 
     encode_threads_.push_back(std::thread([this] { encodeLoop(); }));
     encode_threads_.push_back(std::thread([this] { encodeLoop(); }));
@@ -77,9 +75,11 @@ void EncodePipeline::encodeLoop() {
             int64_t key = LmdbStore::makeKey(task.coord.x, task.coord.y, task.coord.z);
 
             cache_->put(key, task.chunk);
-            if (on_encoded_) {
-                on_encoded_(key, palette);
-            }
+
+            /*{ //in my opinion it's not needed
+                std::lock_guard lock(lmdb_palette_mutex_);
+                pending_lmdb_.emplace(key, std::move(palette));
+            }*/
 
             local_palettes.emplace_back(key, palette);
 

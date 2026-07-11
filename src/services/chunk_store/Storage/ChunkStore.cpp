@@ -26,10 +26,7 @@ ChunkStore::ChunkStore(const std::string& db_path, size_t, size_t max_map_size)
 
     // Wire up encode pipeline:
     //   on_encoded callback stores palette for AsyncGetChunk fast path.
-    encoder_.start(cache_, lmdb_, [this](int64_t key, auto palette) {
-        std::lock_guard lock(encoder_.lmdb_palette_mutex_);
-        encoder_.pending_lmdb_.emplace(key, std::move(palette));
-    });
+    encoder_.start(cache_, lmdb_);
 
     // Wire up flush pipeline — reads palettes from encoder's pending_lmdb_.
     flusher_.start(cache_, lmdb_, &encoder_.pending_lmdb_, &encoder_.lmdb_palette_mutex_);
