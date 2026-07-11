@@ -281,7 +281,8 @@ bool ChunkStore::growMapSize() {
     return true;
 }
 
-bool ChunkStore::writeTransaction(int64_t key, const uint8_t* data, size_t size, MDB_txn* txn) {
+bool ChunkStore::
+writeTransaction(int64_t key, const uint8_t* data, size_t size, MDB_txn* txn) {
     MDB_val data_val = {size, const_cast<uint8_t*>(data)};
     bool notInTransaction = txn == nullptr;
     for (int attempt = 0; attempt < 2; ++attempt) {
@@ -352,6 +353,9 @@ void ChunkStore::setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t 
         local.meta[idx]   = meta;
         chunk = new Chunk(std::move(local));
         putCached(cx, cy, cz, chunk);
+        // Clear stale palette so flush thread doesn't overwrite with old data.
+        // encodeLoop no longer writes to pending_lmdb_, so only pending palette
+        // here is from a prior encodeAndDeliver / AsyncGetChunk call.
         {
             std::lock_guard lock(lmdb_palette_mutex_);
             pending_lmdb_.erase(key);
@@ -426,14 +430,14 @@ bool ChunkStore::flushDirtyChunks() {
         {
             std::lock_guard lock(lmdb_palette_mutex_);
             auto it = pending_lmdb_.find(key);
-            if (it != pending_lmdb_.end())
+            if (it != pending_lmdb_.end()) {
                 palette = it->second;
+                pending_lmdb_.erase(it);
+            }
         }
         if (palette) {
             if (writeTransaction(key, palette->data(), palette->size(), txn)) {
                 ++saved;
-                std::lock_guard lock(lmdb_palette_mutex_);
-                pending_lmdb_.erase(key);
             }
         } else {
             auto opt = cache_.get(key);
@@ -443,9 +447,6 @@ bool ChunkStore::flushDirtyChunks() {
             encodeChunk(*chunk, encoded);
             if (writeTransaction(key, encoded.data(), encoded.size(), txn)) [[likely]] {
                 ++saved;
-                auto new_pal = std::make_shared<std::vector<uint8_t>>(std::move(encoded));
-                std::lock_guard lock(lmdb_palette_mutex_);
-                pending_lmdb_.emplace(key, std::move(new_pal));
             }
         }
     }
@@ -453,6 +454,25 @@ bool ChunkStore::flushDirtyChunks() {
     if (saved > 0) [[likely]]
         spdlog::debug("Flushed {} dirty chunks to LMDB", saved);
     return true;
+}
+
+bool ChunkStore::flushLocalEncoded(
+    std::vector<std::pair<int64_t, std::shared_ptr<std::vector<uint8_t>>>>& palettes) {
+    if (palettes.empty()) return false;
+
+    MDB_txn* txn = nullptr;
+    LMDB_TX_START(txn, 0);
+    size_t saved = 0;
+    for (auto& [key, palette] : palettes) {
+        if (writeTransaction(key, palette->data(), palette->size(), txn)) [[likely]] {
+            ++saved;
+        }
+    }
+    LMDB_TX_COMMIT();
+    if (saved > 0) [[likely]]
+        spdlog::debug("flushLocalEncoded: wrote {} encoded chunks to LMDB", saved);
+    palettes.clear();
+    return saved > 0;
 }
 
 void ChunkStore::flushThreadFunc() {
@@ -480,6 +500,8 @@ void ChunkStore::encodeLoop() { //may be need merge with db thread? but it may s
     char name[16];
     snprintf(name, sizeof(name), "chunk-encode-%d", thread_id);
     pthread_setname_np(pthread_self(), name);
+    std::vector<std::pair<int64_t, std::shared_ptr<std::vector<uint8_t>>>> local_palettes;
+    local_palettes.reserve(64);
     while (encode_running_) {
         std::deque<EncodeTask> tasks;
         //EncodeTask task;
@@ -515,10 +537,7 @@ void ChunkStore::encodeLoop() { //may be need merge with db thread? but it may s
                 //bigger - may overloaded, but i runned 2 threads
                 //flushDirtyChunks(); // flush in current thread
             //}
-            {
-                std::lock_guard lock(lmdb_palette_mutex_);
-                pending_lmdb_.emplace(key, palette);
-            }
+            local_palettes.emplace_back(key, palette);
             std::vector<ChunkCallback> callbacks;
             {
                 std::lock_guard lock(encode_mutex_);
@@ -534,7 +553,14 @@ void ChunkStore::encodeLoop() { //may be need merge with db thread? but it may s
                 }
             }
         }
-        flushDirtyChunks(); // flush in current thread
+        flushLocalEncoded(local_palettes); // flush in current thread
+        if (size_t size = local_palettes.size(); size > 128) {
+            local_palettes.resize(std::max(size / 2, static_cast<size_t>(64)));
+        }
+    }
+    // Drain any remaining palettes on shutdown
+    if (!local_palettes.empty()) {
+        flushLocalEncoded(local_palettes);
     }
 }
 

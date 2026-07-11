@@ -69,6 +69,10 @@ public:
   // Dirty-chunk tracking for batch LMDB flush
   void markDirty(int32_t cx, int32_t cy, int32_t cz);
   bool flushDirtyChunks();
+  // Flush pre-encoded palettes directly (bypasses pending_lmdb_ lookup).
+  // Called from encodeLoop with thread-local data to avoid lock contention.
+  bool flushLocalEncoded(
+      std::vector<std::pair<int64_t, std::shared_ptr<std::vector<uint8_t>>>>& palettes);
 
   static constexpr size_t DEFAULT_MAX_MAP_SIZE =
       256ULL * 1024 * 1024 * 1024; // 256 GB
