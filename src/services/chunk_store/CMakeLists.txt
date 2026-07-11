@@ -33,6 +33,10 @@ add_custom_target(chunkd_fbs
 
 add_library(chunkd_storage
     Storage/ChunkStore.cpp
+        Storage/disk/LmdbStore.cpp
+    Storage/EncodePipeline.cpp
+        Storage/disk/FlushPipeline.cpp
+    Storage/CASHandler.cpp
     Storage/WorkQueue.cpp
     Storage/SectionCodec.cpp
 )
@@ -47,7 +51,6 @@ add_executable(chunkd
     Network/ChunkStoreService.cpp
     Network/RouterClient.cpp
 
-    World/ServerWorld.cpp
     main.cpp
 )
 

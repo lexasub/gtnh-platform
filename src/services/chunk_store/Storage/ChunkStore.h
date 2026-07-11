@@ -1,53 +1,53 @@
 #pragma once
 
-#include "ClockCache.h"
-#include "IBlockStore.h"
-#include "WorkQueue.h"
+#include "cache/ChunkCache.h"
+#include "disk/LmdbStore.h"
+#include "EncodePipeline.h"
+#include "disk/FlushPipeline.h"
+#include "CASHandler.h"
+#include <common/coords/Coords.h>
 #include <asio.hpp>
 #include <atomic>
 #include <chrono>
-#include <deque>
-#include <condition_variable>
 #include <functional>
-#include <lmdb.h>
-#include <mutex>
-#include <queue>
+#include <memory>
 #include <thread>
-#include <unordered_set>
+#include <vector>
 
-class ChunkStore : public IBlockStore {
+class GenerationQueue;
+
+// Facade over 4 storage components: cache, LMDB, encode pipeline, flush pipeline.
+// Single translation unit (ChunkStore.cpp) for full inlining.
+// Does NOT implement IBlockStore — LmdbStore does.
+class ChunkStore {
 public:
-  // Callback type: (flat Chunk*, palette-encoded sections) — palette is ready
-  // for network send, no re-encode needed. Palette is cached for flush.
-    using ChunkCallback =
-      std::move_only_function<void(std::shared_ptr<std::vector<uint8_t>>)>;
+  using ChunkCallback = EncodePipeline::ChunkCallback;
 
-  explicit ChunkStore(const std::string &db_path, size_t cache_size = 1024,
+  explicit ChunkStore(const std::string& db_path, size_t cache_size = 1024,
                       size_t max_map_size = DEFAULT_MAX_MAP_SIZE);
-  ~ChunkStore() override;
+  ~ChunkStore();
 
-  bool HasChunk(ChunkCoord c) const override;
-  const Chunk *GetChunk(ChunkCoord c) const override; // опасно, но оставляем
-  uint16_t GetBlockAt(BlockPos pos) const override;
-  void SetBlock(ChunkCoord coord, BlockPos pos, uint16_t blockId, uint8_t meta,
-                uint32_t mbId) override; // синхронный
-  bool SaveChunk(const Chunk &chunk, ChunkCoord coord) override;
+  // --- Synchronous (fast path, <1us on cache hit) ---
+  bool HasChunk(ChunkCoord c) const;
+  const Chunk* GetChunk(ChunkCoord c) const;
+  uint16_t GetBlockAt(BlockPos pos) const;
+  uint8_t GetMeta(int32_t x, int32_t y, int32_t z) const;
+  uint32_t GetMultiblock(int32_t x, int32_t y, int32_t z) const;
 
-  const Chunk *getCached(int32_t cx, int32_t cy, int32_t cz) const;
-
-  void putCached(int32_t cx, int32_t cy, int32_t cz, Chunk *chunk) const;
-
-  uint8_t getMeta(int32_t x, int32_t y, int32_t z);
-
-  uint32_t getMultiblock(int32_t x, int32_t y, int32_t z);
-
+  // setBlock — cache + modify + mark dirty. Does NOT persist immediately.
   void setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t meta);
 
-  // Асинхронные методы (callback-based, используют I/O pool вместо std::async)
-  /// @see ServerWorld.h for Chunk* lifetime contract
-  /// The pointer passed to the callback is valid ONLY during the synchronous
-  /// invocation of the callback. Do NOT store or use after returning.
-  /// palette_out is valid for the same duration — move/copy to retain.
+  // casBlock — delegate to CASHandler. Returns status + actual values.
+  using CASResult = CASHandler::Result;
+  CASResult casBlock(int32_t x, int32_t y, int32_t z,
+                       uint16_t expected_id, uint16_t new_id, uint8_t new_meta);
+
+  // SetBlock — sync wrapper, posts to I/O pool internally.
+  void SetBlock(ChunkCoord coord, BlockPos pos, uint16_t blockId,
+                  uint8_t meta, uint32_t mbId);
+  bool SaveChunk(const Chunk& chunk, ChunkCoord coord);
+
+  // --- Asynchronous (callback-based) ---
   void AsyncGetChunk(ChunkCoord coord, ChunkCallback callback);
   void AsyncSetBlock(ChunkCoord coord, BlockPos pos, uint16_t blockId,
                      uint8_t meta, uint32_t mbId,
@@ -55,95 +55,39 @@ public:
   void AsyncSaveChunk(std::shared_ptr<const Chunk> chunk, ChunkCoord coord,
                       std::function<void(bool)> callback = nullptr);
 
-  // Чтение метаданных (быстро, из кэша или LMDB read-only)
-  uint8_t GetMeta(int32_t x, int32_t y, int32_t z) const;
-  uint32_t GetMultiblock(int32_t x, int32_t y, int32_t z) const;
+  // --- Cache access (for encode pipeline) ---
+  const Chunk* getCached(int32_t cx, int32_t cy, int32_t cz) const;
+  void putCached(int64_t key, Chunk* chunk) const;
 
-  // Подключение очереди генерации (из world_generator)
-  void SetGenerationQueue(class GenerationQueue *gen) { gen_queue_ = gen; }
-
-  // Called by ServerWorld when gen thread finishes generating a chunk.
-  // Pushes to encode queue; encode thread encodes + delivers + stores palette.
+  // Called by worldgen thread when chunk generation is done.
   void enqueueEncode(ChunkCoord coord, Chunk* chunk);
 
-  // Dirty-chunk tracking for batch LMDB flush
+  // --- Dirty-tracking (for CASHandler) ---
   void markDirty(int32_t cx, int32_t cy, int32_t cz);
   bool flushDirtyChunks();
-  // Flush pre-encoded palettes directly (bypasses pending_lmdb_ lookup).
-  // Called from encodeLoop with thread-local data to avoid lock contention.
-  bool flushLocalEncoded(
-      std::vector<std::pair<int64_t, std::shared_ptr<std::vector<uint8_t>>>>& palettes);
 
   static constexpr size_t DEFAULT_MAX_MAP_SIZE =
-      256ULL * 1024 * 1024 * 1024; // 256 GB
+      256ULL * 1024 * 1024 * 1024;
   static constexpr auto FLUSH_INTERVAL = std::chrono::milliseconds(1500);
 
 private:
-  void open();
   void close();
-  static int64_t makeKey(int32_t cx, int32_t cy, int32_t cz);
+  static int64_t makeKey(int32_t cx, int32_t cy, int32_t cz)
+      { return LmdbStore::makeKey(cx, cy, cz); }
 
-  bool growMapSize();
+  // The 5 components
+  mutable ChunkCache cache_;
+  LmdbStore lmdb_;
+  EncodePipeline encoder_;
+  FlushPipeline flusher_;
+  CASHandler cas_;
+  WorldGenerator* generator_;
 
-  // Lock-free кэш (сырые указатели, владеет Chunk*, delete на вытеснение)
-  mutable ClockCache<uintptr_t, 1024> cache_;
-
-  // LMDB окружение
-  MDB_env *env_ = nullptr;
-  MDB_dbi dbi_ = 0;
-  std::string db_path_;
-  size_t maxMapSize_ = DEFAULT_MAX_MAP_SIZE;
-
-  // Serialise concurrent resize attempts
-  mutable std::mutex resizeMutex_;
-
-  // I/O thread pool (asio::io_context + 2 threads, replaces std::async)
+  // I/O pool for async operations (not owned by any single component)
   mutable asio::io_context io_pool_;
   using WorkGuard = asio::executor_work_guard<asio::io_context::executor_type>;
   mutable WorkGuard work_guard_{asio::make_work_guard(io_pool_)};
   mutable std::vector<std::thread> io_threads_;
 
-  // Указатель на очередь генерации (не владеет)
-  class GenerationQueue *gen_queue_ = nullptr;
-
-  // Dirty-chunk tracking for batch LMDB flush
-  mutable std::unordered_set<int64_t> dirty_chunks_;
-  mutable std::mutex dirty_mutex_;
-  std::thread flush_thread_;
-  std::atomic<bool> flush_running_{true};
-  std::mutex flush_wake_mutex_;
-  std::condition_variable flush_wake_cv_;
-
-  void flushThreadFunc();
-
-  // Encode queue: gen threads push (coord, flat chunk), encode thread pops,
-  // encodes once, delivers palette to callbacks + LMDB flush
-  struct EncodeTask {
-    ChunkCoord coord;
-    Chunk* chunk;
-  };
-  std::deque<EncodeTask> encode_queue_;
-  mutable std::mutex encode_mutex_;
-  std::condition_variable encode_cv_;
-  std::vector<std::thread> encode_threads_;
-  std::atomic<bool> encode_running_{true};
-  void encodeLoop();
-  void encodeAndDeliver(const Chunk* chunk, int64_t key,
-                        ChunkCallback& callback);
-
-  // Pending callbacks for worldgen (coord key → callbacks waiting on encode)
-  mutable std::unordered_map<int64_t, std::vector<ChunkCallback>>
-      pending_gen_cbs_;
-
-  // Pre-encoded palette for flush thread (worldgen path: encode already done)
-  mutable std::unordered_map<int64_t, std::shared_ptr<std::vector<uint8_t>>>
-      pending_lmdb_;
-  mutable std::mutex lmdb_palette_mutex_;
-
-  // Чтение/запись транзакций (низкоуровневые)
-  bool readTransaction(int64_t key, Chunk &out,
-      std::shared_ptr<std::vector<uint8_t>>* palette_out = nullptr) const;
-
-  // Write raw palette bytes directly (avoids re-encode on flush)
-  bool writeTransaction(int64_t key, const uint8_t* data, size_t size, MDB_txn* txn = nullptr);
+  class GenerationQueue* gen_queue_ = nullptr;
 };

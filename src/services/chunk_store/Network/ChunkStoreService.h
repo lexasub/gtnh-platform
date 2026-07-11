@@ -11,11 +11,11 @@
 #include <thread>
 #include <vector>
 
-class ServerWorld;
+class ChunkStore;
 
 class ChunkStoreService {
 public:
-  ChunkStoreService(ServerWorld &world, uint16_t port);
+  ChunkStoreService(ChunkStore &store, uint16_t port);
   ~ChunkStoreService();
 
   void start(); // запускает asio io_context в пуле потоков
@@ -60,7 +60,7 @@ private:
   void sendError(std::shared_ptr<asio::ip::tcp::socket> socket, uint32_t req_id,
                  const std::string &msg);
 
-  ServerWorld &world_;
+  ChunkStore &store_;
   asio::io_context io_context_;
   asio::strand<asio::io_context::executor_type> write_strand_;
   asio::ip::tcp::acceptor acceptor_;

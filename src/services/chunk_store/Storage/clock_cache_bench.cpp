@@ -10,7 +10,7 @@
 //   perf stat -e cycles,instructions,cache-references,cache-misses,branch-misses
 //     ./clock_cache_bench
 
-#include "ClockCache.h"
+#include "cache/ClockCache.h"
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>

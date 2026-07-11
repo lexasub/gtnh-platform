@@ -60,7 +60,7 @@ static void test_put_get() {
         chunk->meta[0] = 7;
         chunk->multiblock[0] = 12345;
 
-        store.putCached(1, 2, 3, chunk);
+        store.putCached(LmdbStore::makeKey(1, 2, 3), chunk);
 
         const Chunk* got = store.getCached(1, 2, 3);
         CHECK(got != nullptr, "getCached should return non-null after put");
@@ -93,13 +93,13 @@ static void test_overwrite() {
 
         auto* c1 = new Chunk();
         c1->blocks[0] = 100;
-        store.putCached(0, 0, 0, c1);
+        store.putCached(0, c1);
         CHECK(store.getCached(0, 0, 0) != nullptr, "should be cached");
 
         // Overwrite with a new chunk — old one is deleted by eviction callback
         auto* c2 = new Chunk();
         c2->blocks[0] = 200;
-        store.putCached(0, 0, 0, c2);
+        store.putCached(0, c2);
 
         const Chunk* got = store.getCached(0, 0, 0);
         CHECK(got != nullptr, "should still be cached after overwrite");
@@ -128,7 +128,7 @@ static void test_save_erases() {
 
         auto* chunk = new Chunk();
         chunk->blocks[0] = 42;
-        store.putCached(5, 6, 7, chunk);
+        store.putCached(LmdbStore::makeKey(5, 6, 7), chunk);
         CHECK(store.getCached(5, 6, 7) != nullptr, "cache should have it");
 
         // SaveChunk writes to LMDB and keeps the cache entry (both up-to-date).
@@ -164,7 +164,7 @@ static void test_multiple_keys() {
         for (int i = 0; i < 50; ++i) {
             auto* chunk = new Chunk();
             chunk->blocks[0] = static_cast<uint16_t>(i);
-            store.putCached(i, i + 1, i + 2, chunk);
+            store.putCached(LmdbStore::makeKey(i, i + 1, i + 2), chunk);
         }
 
         for (int i = 0; i < 50; ++i) {
@@ -234,7 +234,7 @@ static void test_concurrent() {
                     int64_t k = static_cast<int64_t>(rand_r(&seed) & 1023);
                     auto* chunk = new Chunk();
                     chunk->blocks[0] = static_cast<uint16_t>(k);
-                    store.putCached(static_cast<int32_t>(k), 0, 0, chunk);
+                    store.putCached(static_cast<int32_t>(k), chunk);
                 }
             });
         }

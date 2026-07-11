@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../World/ServerWorld.h"
 #include "chunkstore_generated.h"
 #include <array>
 #include <asio.hpp>
@@ -26,11 +25,12 @@
 //   Subscribe: world.blocks.set, world.chunk.load
 //   Publish:   world.blocks.changed, world.chunk.loaded
 
+class ChunkStore;
 struct Chunk;
 
 class RouterClient : public std::enable_shared_from_this<RouterClient> {
 public:
-  explicit RouterClient(ServerWorld &world);
+  explicit RouterClient(ChunkStore &store);
   ~RouterClient();
 
   // Initiate connection to router. Non-blocking — returns immediately.
@@ -70,7 +70,7 @@ private:
   void EnqueueWrite(std::shared_ptr<std::vector<uint8_t>> frame);
   void DoWrite();
 
-  ServerWorld &world_;
+  ChunkStore &store_;
 
   asio::io_context io_context_;
   asio::ip::tcp::socket socket_;

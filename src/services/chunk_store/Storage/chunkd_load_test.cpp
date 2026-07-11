@@ -123,7 +123,7 @@ static void test_setblock_concurrent() {
         for (int i = 0; i < 4 * kChunksPerThread; ++i) {
             auto* c = new Chunk();
             c->blocks[0] = static_cast<uint16_t>(i);
-            store.putCached(i, 0, 0, c);
+            store.putCached(i, c);
         }
 
         uint64_t start = now_ns();
@@ -155,7 +155,7 @@ static void test_mixed_read_write() {
         for (int i = 0; i < kChunks; ++i) {
             auto* c = new Chunk();
             c->blocks[0] = static_cast<uint16_t>(i);
-            store.putCached(i, 0, 0, c);
+            store.putCached(i, c);
         }
 
         std::atomic<bool> stop{false};
@@ -227,7 +227,7 @@ static void test_flush_latency() {
         for (int i = 0; i < 100; ++i) {
             auto* c = new Chunk();
             c->blocks[0] = 42;
-            store.putCached(i, 0, 0, c);
+            store.putCached(i, c);
         }
 
         constexpr int kCycles = 1000;
@@ -273,7 +273,7 @@ static void test_flush_batch_latency() {
         for (int i = 0; i < 500; ++i) {
             auto* c = new Chunk();
             c->blocks[0] = 42;
-            store.putCached(i, 0, 0, c);
+            store.putCached(i, c);
         }
 
         struct BatchResult { const char* label; int count; uint64_t ns; };
@@ -312,7 +312,7 @@ static void test_eviction_stress() {
         for (int i = 0; i < kChunks; ++i) {
             auto* c = new Chunk();
             c->blocks[0] = static_cast<uint16_t>(i);
-            store.putCached(i, 0, 0, c);
+            store.putCached(i, c);
         }
 
         // 4 writer threads — mark chunks as dirty (cycling through all 2000)
@@ -549,7 +549,7 @@ static void test_long_running_stress() {
         for (int i = 0; i < kChunks; ++i) {
             auto* c = new Chunk();
             c->blocks[0] = static_cast<uint16_t>(i);
-            store.putCached(i, 0, 0, c);
+            store.putCached(i, c);
         }
 
         // 4 writers (setBlock via markDirty)

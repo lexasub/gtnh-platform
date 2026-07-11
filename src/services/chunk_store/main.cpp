@@ -5,6 +5,7 @@
 #include <csignal>
 #include <cstdlib>
 #include <atomic>
+#include <memory>
 #include <thread>
 #include <string_view>
 
@@ -30,29 +31,28 @@ int main(int argc, char* argv[]) {
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
 
-    ServerWorld world;
-    world.Init(0, db_path, 2048, db_max_size_mb * 1024ULL * 1024ULL);
+    ChunkStore store(db_path, 2048, db_max_size_mb * 1024ULL * 1024ULL);
 
-    ChunkStoreService tcp_service(world, tcp_port);
-    auto router = std::make_shared<RouterClient>(world);
+    ChunkStoreService tcp_service(store, tcp_port);
+    auto router = std::make_shared<RouterClient>(store);
 
     router->connect(router_host, router_port);
     std::thread router_thread([router] { router->run(); });
 
-    tcp_service.start(); // Запускает сервис в пуле worker-потоков
+    tcp_service.start();
 
-    // Основной поток ждет сигнала остановки
+    // Main loop waiting for stop signal
     while (!g_stop.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    // Останавливаем сервисы в обратном порядке запуска
-    spdlog::info("Получен сигнал остановки, начинаем завершение работы...");
+    // Shutdown in reverse order
+    spdlog::info("Shutdown signal received, stopping services...");
     router->stop();
     if (router_thread.joinable()) router_thread.join();
     router.reset();
-    
-    tcp_service.stop(); // Это остановит worker-потоки и позволит main завершиться
+
+    tcp_service.stop();
 
     spdlog::info("ChunkStore shutdown complete");
     return 0;

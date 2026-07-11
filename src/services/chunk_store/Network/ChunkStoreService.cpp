@@ -2,12 +2,11 @@
 #include "FrameCodec.h"
 #include <spdlog/spdlog.h>
 #include <utility>
-#include "../World/ServerWorld.h"
 #include "../Storage/ChunkStore.h"
 #include <common/coords/Coords.h>
 
-ChunkStoreService::ChunkStoreService(ServerWorld& world, uint16_t port)
-    : world_(world), io_context_(),
+ChunkStoreService::ChunkStoreService(ChunkStore& store, uint16_t port)
+    : store_(store), io_context_(),
       write_strand_(io_context_.get_executor()),
       acceptor_(io_context_, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), port)) {}
 
@@ -112,11 +111,9 @@ void ChunkStoreService::handleGetBlock(std::shared_ptr<asio::ip::tcp::socket> so
                                         const Protocol::ChunkStoreMessage* req) {
     auto* pos = req->request_as_GetBlockReq()->pos();
     BlockPos bp{pos->x(), pos->y(), pos->z()};
-    // GetBlockAt – синхронный, но быстрый (кэш+LMDB read-only). Можно оставить.
-    uint16_t block = world_.GetBlockAt(bp);
-    uint8_t  meta  = world_.GetChunkStore()->GetMeta(bp.x, bp.y, bp.z);
-    uint32_t mb_id = world_.GetChunkStore()->GetMultiblock(bp.x, bp.y, bp.z);
-    // Отправляем ответ
+    uint16_t block = store_.GetBlockAt(bp);
+    uint8_t  meta  = store_.GetMeta(bp.x, bp.y, bp.z);
+    uint32_t mb_id = store_.GetMultiblock(bp.x, bp.y, bp.z);
     flatbuffers::FlatBufferBuilder fb(64);
     auto resp = Protocol::CreateGetBlockResp(fb, block, meta, mb_id);
     auto reply = Protocol::CreateChunkStoreReply(fb, req_id,
@@ -134,15 +131,16 @@ void ChunkStoreService::handleSetBlock(std::shared_ptr<asio::ip::tcp::socket> so
     uint16_t block_id = req->request_as_SetBlockReq()->block_id();
     uint8_t  meta     = req->request_as_SetBlockReq()->meta();
 
-    // Асинхронная установка блока
-    world_.SetBlockAsync(bp, block_id, meta, 0, [this, socket, req_id](bool success) {
+    ChunkCoord coord{bp.x >> 5, bp.y >> 5, bp.z >> 5};
+    BlockPos local{bp.x & 31, bp.y & 31, bp.z & 31};
+    store_.AsyncSetBlock(coord, local, block_id, meta, 0,
+                         [this, socket, req_id](bool success) {
         flatbuffers::FlatBufferBuilder fb(64);
         auto resp = Protocol::CreateSetBlockResp(fb, success);
         auto reply = Protocol::CreateChunkStoreReply(fb, req_id,
                      Protocol::ChunkStoreResponse_SetBlockResp, resp.Union());
         auto frame = Protocol::CreateChunkStoreFrame(fb, Protocol::ChunkStorePayload_ChunkStoreReply, reply.Union());
         fb.Finish(frame);
-        // Отправляем ответ в том же io_context (потокобезопасно)
         asio::post(io_context_, [this, socket, fb = std::move(fb)]() mutable {
             EnqueueWrite(socket, fb);
         });
@@ -154,7 +152,6 @@ void ChunkStoreService::handleSaveChunk(std::shared_ptr<asio::ip::tcp::socket> s
                                          const Protocol::ChunkStoreMessage* req) {
     auto* coord = req->request_as_SaveChunkReq()->coord();
     ChunkCoord c{coord->x(), coord->y(), coord->z()};
-    // Восстанавливаем Chunk из FlatBuffer
     auto chunk = std::make_shared<Chunk>();
     auto* blocks_fb = req->request_as_SaveChunkReq()->blocks();
     auto* meta_fb   = req->request_as_SaveChunkReq()->meta();
@@ -165,7 +162,7 @@ void ChunkStoreService::handleSaveChunk(std::shared_ptr<asio::ip::tcp::socket> s
         std::memcpy(chunk->meta.data(), meta_fb->data(), Chunk::VOLUME*sizeof(uint8_t));
     if (mb_fb && mb_fb->size() == Chunk::VOLUME)
         std::memcpy(chunk->multiblock.data(), mb_fb->data(), Chunk::VOLUME*sizeof(uint32_t));
-    world_.GetChunkStore()->AsyncSaveChunk(std::move(chunk), c,
+    store_.AsyncSaveChunk(std::move(chunk), c,
         [this, socket, req_id](bool success) {
             flatbuffers::FlatBufferBuilder fb(64);
             auto resp = Protocol::CreateSaveChunkResp(fb, success);
@@ -189,49 +186,17 @@ void ChunkStoreService::handleSetBlockCAS(std::shared_ptr<asio::ip::tcp::socket>
     }
 
     auto* pos = cas_req->pos();
-    BlockPos bp{pos->x(), pos->y(), pos->z()};
-    uint16_t expected_id = cas_req->expected_block_id();
-    uint16_t new_block_id = cas_req->new_block_id();
-    uint8_t  meta         = cas_req->meta();
+    auto result = store_.casBlock(pos->x(), pos->y(), pos->z(),
+                                  cas_req->expected_block_id(),
+                                  cas_req->new_block_id(),
+                                  cas_req->meta());
 
-    ChunkCoord cc{bp.x >> 5, bp.y >> 5, bp.z >> 5};
-    int32_t lx = bp.x & 31;
-    int32_t ly = bp.y & 31;
-    int32_t lz = bp.z & 31;
-    uint32_t idx = (static_cast<uint32_t>(ly) << 10) |
-                   (static_cast<uint32_t>(lz) <<  5) |
-                   (static_cast<uint32_t>(lx));
-
-    const Chunk* chunk = world_.GetChunk(cc);
-    if (!chunk) {
-        sendError(socket, req_id, "Chunk not loaded");
-        return;
-    }
-
-    uint16_t current_block = chunk->blocks[idx];
-    uint8_t  current_meta  = chunk->meta[idx];
-
-    Protocol::CASStatus status;
-    uint16_t actual_block_id;
-    uint8_t  actual_meta;
-
-    if (current_block == expected_id) {
-        chunk->blocks[idx] = new_block_id;
-        chunk->meta[idx]   = meta;
-        status = Protocol::CASStatus::CASStatus_OK;
-        actual_block_id = new_block_id;
-        actual_meta     = meta;
-
-        // Mark dirty for batch LMDB flush
-        world_.GetChunkStore()->markDirty(cc.x, cc.y, cc.z);
-    } else {
-        status = Protocol::CASStatus::CASStatus_CONFLICT;
-        actual_block_id = current_block;
-        actual_meta     = current_meta;
-    }
+    Protocol::CASStatus status = (result.status == ChunkStore::CASResult::Ok)
+        ? Protocol::CASStatus::CASStatus_OK
+        : Protocol::CASStatus::CASStatus_CONFLICT;
 
     flatbuffers::FlatBufferBuilder fb(64);
-    auto resp = Protocol::CreateSetBlockCASResp(fb, status, actual_block_id, actual_meta);
+    auto resp = Protocol::CreateSetBlockCASResp(fb, status, result.actual_block, result.actual_meta);
     auto reply = Protocol::CreateChunkStoreReply(fb, req_id,
                  Protocol::ChunkStoreResponse_SetBlockCASResp, resp.Union());
     auto frame = Protocol::CreateChunkStoreFrame(fb, Protocol::ChunkStorePayload_ChunkStoreReply, reply.Union());

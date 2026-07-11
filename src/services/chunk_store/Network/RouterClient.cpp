@@ -2,6 +2,7 @@
 #include "FrameCodec.h"
 #include "core_generated.h"
 #include "chunkstore_generated.h"
+#include "../Storage/ChunkStore.h"
 #include <spdlog/spdlog.h>
 #include <cstring>
 #include <common/coords/Coords.h>
@@ -14,8 +15,8 @@ enum MsgType : uint8_t {
     MsgHeartbeat   = 0x05,
 };
 
-RouterClient::RouterClient(ServerWorld& world)
-    : world_(world), socket_(io_context_), heartbeat_timer_(io_context_),
+RouterClient::RouterClient(ChunkStore& store)
+    : store_(store), socket_(io_context_), heartbeat_timer_(io_context_),
       reconnect_timer_(io_context_), write_strand_(io_context_.get_executor()) {}
 
 RouterClient::~RouterClient() { stop(); }
@@ -131,7 +132,7 @@ void RouterClient::onPublish(const uint8_t* data, size_t len) {
     }
     ChunkCoord coord{pos->x(), pos->y(), pos->z()};
     auto exec = socket_.get_executor();
-    world_.AsyncGetChunk(coord,
+    store_.AsyncGetChunk(coord,
                          [self = weak_from_this(), coord, exec = std::move(exec)]
                  (std::shared_ptr<std::vector<uint8_t>> palette) {
                              if (!palette || palette->empty()) return;

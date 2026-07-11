@@ -4,6 +4,7 @@
 
 #include "ChunkStore.h"
 #include "../Chunk/Chunk.h"
+#include "disk/LmdbStore.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -158,7 +159,7 @@ static void test_evicted_skip() {
         for (int i = 0; i < 1100; ++i) {
             auto* chunk = new Chunk();
             chunk->blocks[0] = static_cast<uint16_t>(i);
-            store.putCached(i, 0, 0, chunk);
+            store.putCached(i, chunk);
         }
 
         // Mark early chunk (likely evicted) + recent chunk (definitely in cache)
@@ -305,7 +306,7 @@ static void test_concurrent_mark() {
         for (int i = 0; i < kChunks; ++i) {
             auto* chunk = new Chunk();
             chunk->blocks[0] = static_cast<uint16_t>(1000 + i);
-            store.putCached(i, 0, 0, chunk);
+            store.putCached(i, chunk);
         }
 
         std::atomic<int> ready{0};
@@ -363,7 +364,7 @@ static void test_concurrent_mark_flush() {
         for (int i = 0; i < kChunks; ++i) {
             auto* chunk = new Chunk();
             chunk->blocks[0] = static_cast<uint16_t>(i);
-            store.putCached(i, 0, 0, chunk);
+            store.putCached(i, chunk);
         }
 
         std::thread writer([&]() {
@@ -420,7 +421,7 @@ static void test_concurrent_stress() {
         for (int i = 0; i < kChunks; ++i) {
             auto* chunk = new Chunk();
             chunk->blocks[0] = static_cast<uint16_t>(i);
-            store.putCached(i, 0, 0, chunk);
+            store.putCached(i, chunk);
         }
 
         std::vector<std::thread> threads;
@@ -492,7 +493,7 @@ static void test_mark_from_io_thread() {
         // Put a chunk in cache
         auto* chunk = new Chunk();
         chunk->blocks[0] = 999;
-        store.putCached(5, 5, 5, chunk);
+        store.putCached(LmdbStore::makeKey(5, 5, 5), chunk);
 
         // Simulate CAS handler: modify chunk in-place + markDirty from another thread
         std::thread cas_thread([&]() {
