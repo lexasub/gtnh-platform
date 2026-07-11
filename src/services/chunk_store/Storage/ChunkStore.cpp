@@ -20,7 +20,6 @@
 // Макрос для начала транзакции.
 // Если ошибка — логирует, делает abort транзакции (если она создалась), прерывает выполнение функции.
 #define LMDB_TX_START(txn_var, flags) \
-    MDB_txn* txn_var = nullptr; \
     if (int rc = mdb_txn_begin(env_, nullptr, (flags), &txn_var); rc != 0) { \
         spdlog::error("mdb_txn_begin failed: {}", mdb_strerror(rc)); \
         return false; \
@@ -208,6 +207,7 @@ void ChunkStore::putCached(int32_t cx, int32_t cy, int32_t cz, Chunk* chunk) con
 
 bool ChunkStore::readTransaction(int64_t key, Chunk& chunk,
                                  std::shared_ptr<std::vector<uint8_t>>* palette_out) const {
+    MDB_txn* txn = nullptr;
     LMDB_TX_START(txn, MDB_RDONLY);
 
     MDB_val key_val = {sizeof(int64_t), &key};
@@ -281,15 +281,21 @@ bool ChunkStore::growMapSize() {
     return true;
 }
 
-bool ChunkStore::writeTransaction(int64_t key, const uint8_t* data, size_t size) {
+bool ChunkStore::writeTransaction(int64_t key, const uint8_t* data, size_t size, MDB_txn* txn) {
     MDB_val data_val = {size, const_cast<uint8_t*>(data)};
+    bool notInTransaction = txn == nullptr;
     for (int attempt = 0; attempt < 2; ++attempt) {
-        LMDB_TX_START(txn, 0);
+        if (notInTransaction) {
+            LMDB_TX_START(txn, 0);
+        }
         MDB_val key_val = {sizeof(int64_t), &key};
 
         int rc = mdb_put(txn, dbi_, &key_val, &data_val, 0);
         if (rc == MDB_MAP_FULL) {
-            if (txn) mdb_txn_abort(txn);
+            if (notInTransaction) {
+                mdb_txn_abort(txn);
+                txn = nullptr;
+            }
             if (!growMapSize())
                 return false;
             continue; // retry
@@ -297,11 +303,15 @@ bool ChunkStore::writeTransaction(int64_t key, const uint8_t* data, size_t size)
 
         if (rc != 0) [[unlikely]] {
             spdlog::error("mdb_put failed: {}", mdb_strerror(rc));
-            if (txn) mdb_txn_abort(txn);
+            if (notInTransaction) {
+                mdb_txn_abort(txn);
+            }
             return false;
         }
 
-        LMDB_TX_COMMIT();
+        if (notInTransaction) {
+            LMDB_TX_COMMIT();
+        }
         return true;
     }
 
@@ -399,14 +409,16 @@ void ChunkStore::markDirty(int32_t cx, int32_t cy, int32_t cz) {
     dirty_chunks_.insert(key);
 }
 
-void ChunkStore::flushDirtyChunks() {
+bool ChunkStore::flushDirtyChunks() {
     std::unordered_set<int64_t> local;
     {
         std::lock_guard lock(dirty_mutex_);
         local.swap(dirty_chunks_);
     }
-    if (local.empty()) [[unlikely]] return;
+    if (local.empty()) [[unlikely]] return false;
 
+    MDB_txn* txn = nullptr;
+    LMDB_TX_START(txn, 0);
     size_t saved = 0;
     for (const auto& key : local) {
 
@@ -418,7 +430,7 @@ void ChunkStore::flushDirtyChunks() {
                 palette = it->second;
         }
         if (palette) {
-            if (writeTransaction(key, palette->data(), palette->size())) {
+            if (writeTransaction(key, palette->data(), palette->size(), txn)) {
                 ++saved;
                 std::lock_guard lock(lmdb_palette_mutex_);
                 pending_lmdb_.erase(key);
@@ -429,7 +441,7 @@ void ChunkStore::flushDirtyChunks() {
             auto* chunk = reinterpret_cast<const Chunk*>(*opt);
             std::vector<uint8_t> encoded;
             encodeChunk(*chunk, encoded);
-            if (writeTransaction(key, encoded.data(), encoded.size())) [[likely]] {
+            if (writeTransaction(key, encoded.data(), encoded.size(), txn)) [[likely]] {
                 ++saved;
                 auto new_pal = std::make_shared<std::vector<uint8_t>>(std::move(encoded));
                 std::lock_guard lock(lmdb_palette_mutex_);
@@ -437,8 +449,10 @@ void ChunkStore::flushDirtyChunks() {
             }
         }
     }
+    LMDB_TX_COMMIT();
     if (saved > 0) [[likely]]
         spdlog::debug("Flushed {} dirty chunks to LMDB", saved);
+    return true;
 }
 
 void ChunkStore::flushThreadFunc() {
@@ -499,9 +513,12 @@ void ChunkStore::encodeLoop() { //may be need merge with db thread? but it may s
                 //if current thread not overloaded - write db
                 //smaller - more waits encode_cv_,
                 //bigger - may overloaded, but i runned 2 threads
-                flushDirtyChunks(); // flush in current thread
+                //flushDirtyChunks(); // flush in current thread
             //}
-
+            {
+                std::lock_guard lock(lmdb_palette_mutex_);
+                pending_lmdb_.emplace(key, palette);
+            }
             std::vector<ChunkCallback> callbacks;
             {
                 std::lock_guard lock(encode_mutex_);
@@ -517,6 +534,7 @@ void ChunkStore::encodeLoop() { //may be need merge with db thread? but it may s
                 }
             }
         }
+        flushDirtyChunks(); // flush in current thread
     }
 }
 

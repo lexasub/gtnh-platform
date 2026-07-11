@@ -68,7 +68,7 @@ public:
 
   // Dirty-chunk tracking for batch LMDB flush
   void markDirty(int32_t cx, int32_t cy, int32_t cz);
-  void flushDirtyChunks();
+  bool flushDirtyChunks();
 
   static constexpr size_t DEFAULT_MAX_MAP_SIZE =
       256ULL * 1024 * 1024 * 1024; // 256 GB
@@ -141,5 +141,5 @@ private:
       std::shared_ptr<std::vector<uint8_t>>* palette_out = nullptr) const;
 
   // Write raw palette bytes directly (avoids re-encode on flush)
-  bool writeTransaction(int64_t key, const uint8_t* data, size_t size);
+  bool writeTransaction(int64_t key, const uint8_t* data, size_t size, MDB_txn* txn = nullptr);
 };
