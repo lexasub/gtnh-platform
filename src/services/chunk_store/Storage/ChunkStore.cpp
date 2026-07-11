@@ -160,7 +160,7 @@ const Chunk * ChunkStore::GetChunk(ChunkCoord c) const {
     if (auto* cached = getCached(c.x, c.y, c.z))
         return cached;
 
-    auto chunk = new Chunk;
+    auto chunk = new Chunk();
     readTransaction(makeKey(c.x, c.y, c.z), *chunk);
 
     putCached(c.x, c.y, c.z, chunk);
@@ -336,7 +336,7 @@ void ChunkStore::setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t 
     // putCached would evict it → callback deletes → flush thread UAF.
     Chunk* chunk = const_cast<Chunk*>(getCached(cx, cy, cz));
     if (!chunk) {
-        Chunk local;
+        Chunk local{};
         readTransaction(key, local);
         local.blocks[idx] = id;
         local.meta[idx]   = meta;

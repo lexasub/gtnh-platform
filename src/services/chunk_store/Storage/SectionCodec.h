@@ -280,8 +280,6 @@ inline bool decodeSingleSection(const uint8_t *data, size_t size, int section,
 // ─── decoder ──────────────────────────────────────────────────────
 
 inline bool decodeChunk(const uint8_t *data, size_t size, Chunk &chunk) {
-  std::memset(&chunk, 0, sizeof(Chunk));
-
   Reader r{data, size, 0};
 
   uint32_t magic = 0;

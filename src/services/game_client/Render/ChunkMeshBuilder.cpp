@@ -61,10 +61,10 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
         return data;
     }
 
-    data.vertices.reserve(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 8); //24/3 - 1/3 filled
-    data.indices.reserve(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 12); //36/3 - 1/3 filled
-    data.transparentVertices.reserve(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 8); //24/3 - 1/3 filled
-    data.transparentIndices.reserve(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 12); //36/3 - 1/3 filled
+    data.vertices.reserve(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 4); //24/6 - 1/6 filled
+    data.indices.reserve(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 6); //36/6 - 1/6 filled
+    data.transparentVertices.reserve(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 4); //24/4 - 1/4 filled
+    data.transparentIndices.reserve(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE * 6); //36/4 - 1/4 filled
 
 
     uint16_t idx = 0; //TODO may be > uint16_t - 32x32x32 x 6x4 = 76 432 > 65 536
@@ -159,6 +159,8 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
     }
     data.vertices.shrink_to_fit();
     data.indices.shrink_to_fit();
+    data.transparentVertices.shrink_to_fit();
+    data.transparentIndices.shrink_to_fit();
 
     return std::move(data);
 }
