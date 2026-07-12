@@ -14,3 +14,5 @@
 ## 4. Multi-dimension
 - [ ] 4.1 Drill dimension-aware (dimension field in DrillComponent)
 - [ ] 4.2 Support drilling in any dimension
+
+## Note: DrillSystem core (spiral BFS, mining progress, energy, output buffer) is implemented in DrillSystem.cpp (241 lines). This change covers remaining gaps: persistence, pipe integration, UI, multi-dim.

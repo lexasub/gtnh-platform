@@ -193,17 +193,20 @@ src/
 
 - ✅ **Core MVP**: 10 services, FlatBuffers protocol, MessageRouter pub/sub
 - ✅ **Crafting Pipeline**: Workbench crafting end-to-end (CraftRequest→RecipeManager→CraftResponse), 6 JSON recipe types
-- ✅ **PipeNetwork**: BFS energy/fluid/item graphs, CableGraph, MessageRouter integration, overheat/explosion
-- ✅ **Electric Tools**: DrillSystem (spiral BFS, progress, energy), BatteryBuffer, wrench side config
-- ✅ **Autonomous Mining**: DrillSystem MVP — mining progress, output buffer, energy consumption
-- ✅ **Heat/Boiler**: Overheat detection, water→steam conversion, explosion
-- 🟡 **Inventory System**: Protocol + MetaDB + EntityStateStore implemented, drag-and-drop + persistence pending
-- 🔴 **Multiblocks L2**: SpatialIndex, generic pattern library, EBF/Boiler tick — not started
-- 🔴 **Item/Fluid Pipes**: CableGraph wired, actual pipe transport not implemented
-- 🔴 **Ore Generation**: WorldGenerator flat only, vein generation not started
+- ✅ **PipeNetwork**: CableGraph (388 lines) + PipeNetworkManager (626 lines) — energy/fluid/item BFS, overheat/explosion, loss calc
+- ✅ **Electric Tools**: DrillSystem (241 lines, spiral BFS, progress, energy), BatteryBufferSystem, WrenchHandler, SideConfig
+- ✅ **Autonomous Mining**: DrillSystem — spiral BFS ore search, mining progress, output buffer, energy consumption
+- ✅ **Heat/Boiler**: HeatTransferSystem (159 lines) — 6-neighbor propagation, overheat detection (90%/100%), ExplosionSystem, environment cooling
+- ✅ **Ore Generation**: OreGenerator (179 lines) — GTNH-style vein system, primary/secondary/sporadic, 3D Simplex noise, SIMD, ores.json config
+- ✅ **Questbook**: MetaDB quest storage (quest_handlers.go, quest_progress.go, reward_handlers.go) + QuestBookWindow (234 lines)
+- 🟡 **Inventory System**: Protocol + MetaDB + EntityStateStore implemented, drag-and-drop + persistence partially wired
+- 🟡 **Item/Fluid Transport**: PipeNetworkManager handles item/fluid BFS. Gaps: machine inventory insertion, fluid→machine integration
+- 🟡 **Multiblocks L2**: Electrolyser pattern only. SpatialIndex = stub. EBF/Boiler/LCR patterns not implemented
+- 🔴 **Transformers**: Step-up/down voltage transformers not implemented
+- 🔴 **Side Config Integration**: WrenchHandler cycles in-memory. Persistence + PipeNetwork routing by side_config not wired
 
 See `ROADMAP.md` for details.
 
 ---
 
-**Generated**: 2026-06-28 | **Branch**: master
+**Generated**: 2026-07-12 | **Branch**: master
