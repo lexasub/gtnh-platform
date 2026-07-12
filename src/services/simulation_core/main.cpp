@@ -48,6 +48,7 @@
 #include "ECS/Systems/BatteryBufferSystem.h"
 #include "ECS/Systems/TransformerSystem.h"
 #include "ECS/Systems/DrillSystem.h"
+#include "ECS/Systems/RotareGeneratorSystem.h"
 #include "ECS/Systems/ExplosionSystem.h"
 #include "Network/FluidClient.h"
 #include "Network/ItemClient.h"
@@ -95,6 +96,44 @@ entt::entity findEntityAt(const entt::registry& reg, int32_t x, int32_t y, int32
 // =========================================================================
 //  main — composition root
 // =========================================================================
+
+void spawnECSSystems(std::shared_ptr<simcore::ChunkStoreRepository> blockRepository, std::shared_ptr<simcore::RouterEventPublisher> eventPublisher, std::shared_ptr<simcore::PipeEnergyClient> pipeEnergyClient, std::shared_ptr<simcore::SimulationEngine> simulationEngine) {
+    {
+        auto es = std::make_unique<simcore::ExplosionSystem>(
+            simulationEngine->reg(), eventPublisher);
+        simulationEngine->registerSystem(std::move(es));
+    }
+    {
+        auto gs = std::make_unique<simcore::GeneratorSystem>(
+            simulationEngine->reg(), eventPublisher, pipeEnergyClient);
+        simulationEngine->registerSystem(std::move(gs));
+    }
+    {
+        auto cgs = std::make_unique<simcore::CreativeGeneratorSystem>(
+            simulationEngine->reg(), eventPublisher, pipeEnergyClient);
+        simulationEngine->registerSystem(std::move(cgs));
+    }
+    {
+        auto bs = std::make_unique<simcore::BoilerSystem>(
+            simulationEngine->reg(), eventPublisher, pipeEnergyClient);
+        simulationEngine->registerSystem(std::move(bs));
+    }
+    {
+        auto ts = std::make_unique<simcore::TransformerSystem>(
+            simulationEngine->reg(), eventPublisher, pipeEnergyClient);
+        simulationEngine->registerSystem(std::move(ts));
+    }
+    {
+        auto ds = std::make_unique<simcore::DrillSystem>(
+            simulationEngine->reg(), blockRepository, eventPublisher, pipeEnergyClient);
+        simulationEngine->registerSystem(std::move(ds));
+    }
+    {
+        auto rgs = std::make_unique<simcore::RotareGeneratorSystem>(
+            simulationEngine->reg(), eventPublisher, pipeEnergyClient);
+        simulationEngine->registerSystem(std::move(rgs));
+    }
+}
 
 int main(int argc, char* argv[]) {
     const char*  router_host     = (argc > 1) ? argv[1] : "127.0.0.1";
@@ -209,32 +248,12 @@ int main(int argc, char* argv[]) {
             simulationEngine->reg(), *machineRegistry, eventPublisher);
         simulationEngine->registerSystem(std::move(hts));
     }
-    {
-        auto es = std::make_unique<simcore::ExplosionSystem>(
-            simulationEngine->reg(), eventPublisher);
-        simulationEngine->registerSystem(std::move(es));
-    }
     simcore::MachineSystem* machineSystemRaw = nullptr;
     {
         auto ms = std::make_unique<simcore::MachineSystem>(
             simulationEngine->reg(), recipeManager, eventPublisher, pipeEnergyClient, itemClient);
         machineSystemRaw = ms.get();
         simulationEngine->registerSystem(std::move(ms));
-    }
-    {
-        auto gs = std::make_unique<simcore::GeneratorSystem>(
-            simulationEngine->reg(), eventPublisher, pipeEnergyClient);
-        simulationEngine->registerSystem(std::move(gs));
-    }
-    {
-        auto cgs = std::make_unique<simcore::CreativeGeneratorSystem>(
-            simulationEngine->reg(), eventPublisher, pipeEnergyClient);
-        simulationEngine->registerSystem(std::move(cgs));
-    }
-    {
-        auto bs = std::make_unique<simcore::BoilerSystem>(
-            simulationEngine->reg(), eventPublisher, pipeEnergyClient);
-        simulationEngine->registerSystem(std::move(bs));
     }
     simcore::BatteryBufferSystem* batteryBufferRaw = nullptr;
     {
@@ -243,16 +262,14 @@ int main(int argc, char* argv[]) {
         batteryBufferRaw = bbs.get();
         simulationEngine->registerSystem(std::move(bbs));
     }
-    {
-        auto ts = std::make_unique<simcore::TransformerSystem>(
-            simulationEngine->reg(), eventPublisher, pipeEnergyClient);
-        simulationEngine->registerSystem(std::move(ts));
-    }
-    {
-        auto ds = std::make_unique<simcore::DrillSystem>(
-            simulationEngine->reg(), blockRepository, eventPublisher, pipeEnergyClient);
-        simulationEngine->registerSystem(std::move(ds));
-    }
+    spawnECSSystems(blockRepository, eventPublisher, pipeEnergyClient, simulationEngine);
+
+    // ── Generic machine interaction handlers ──
+    simulationEngine->registerMachineInteractionHandler(
+        simcore::RotareGeneratorSystem::kRotareGeneratorBlockId,
+        [engine = simulationEngine.get()](int32_t x, int32_t y, int32_t z, uint64_t) -> bool {
+            return engine->tryActivateRotareGenerator(x, y, z);
+        });
 
     // ── Topic-based message dispatch (O(1) unordered_map, no if-else chain) ──
     auto topicDispatcher = std::make_shared<simcore::TopicDispatcher>();
@@ -312,7 +329,8 @@ int main(int argc, char* argv[]) {
             break;
         }
     });
-simcore::ActionDispatcher dispatcher(casHandler,
+
+    simcore::ActionDispatcher dispatcher(casHandler,
     [inventoryStore](uint64_t player_id, uint16_t item_id, uint8_t count, int32_t target_slot) {
         inventoryStore->giveItem(player_id, item_id, count, target_slot);
     });
@@ -329,7 +347,7 @@ simcore::ActionDispatcher dispatcher(casHandler,
     // ── Router message handler (composition root — wires topics to services) ──
     routerClient->SetServiceName("simcore");
     routerClient->OnMessage([&](const std::string& topic, const std::vector<uint8_t>& data) {
-        if (topic == "player.actions") {
+        if (topic == "player.actions") { // TODO use such topicdispatcher
             dispatcher.dispatch(data);
         } else if (topic == "world.blocks.changed") {
             chunkHandler.handle(data);

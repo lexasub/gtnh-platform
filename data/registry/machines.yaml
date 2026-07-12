@@ -24,6 +24,11 @@ energy_types:
     label: "EU"
     tiers: [0, 1, 2, 3, 4, 5]
 
+  # Rotation: kinetic/click-generated
+  - type: ROTATION
+    label: "RU"
+    tiers: [0]
+
 machine_classes:
 
   # ── Furnace ──────────────────────────────────────────────
@@ -167,6 +172,31 @@ machine_classes:
         energy:
           capacity: 1000000
           max_output: 100000
+
+      # Kinetic/rotation generator — player clicks to spin, produces ROTATION
+      - block_id: 120
+        name: rotare_generator
+        energy_out: ROTATION
+        tier: 0
+        role: producer
+        slots: { input: 0, output: 0 }
+        energy:
+          capacity: 5000
+          max_output: 64
+
+  # ── Rotare Macerator (ROTATION-powered) ──────────────────
+  - class: macerator
+    variants:
+      - block_id: 121
+        name: rotare_macerator
+        energy_in: ROTATION
+        tier: 0
+        role: consumer
+        slots: { input: 1, output: 1 }
+        energy:
+          capacity: 5000
+          usage: 16
+        multiplier: { duration: 1.2, output: 1.0, eu: 0.5 }
 
   # ── Crafting Table ───────────────────────────────────────
   # Manual (no energy) — player 3×3 workbench

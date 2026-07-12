@@ -97,28 +97,25 @@ void InteractionSystem::Update(const Camera& camera, const InputState& input,
         //  the server should deduplicate based on player action cooldown)
     }
 
-    // Right-click: place block from selected inventory slot
+    // Right-click: place block or interact with machine
     if (input.mouseRightPressed) {
         BlockPos placePos = raycaster_.GetPlacementPos(ray);
         if (placePos.x != std::numeric_limits<int32_t>::max()) {
-            // Debounce: skip if action already in-flight for this position
             if (!world.IsBlockActionPending(placePos)) {
                 auto currentBlockType = world.GetBlockAt(placePos);
                 uint16_t placedBlockId = getSelectedBlockId();
-                if (placedBlockId == 0) {
-                    spdlog::info("Right click: no block selected in hotbar");
-                    return;
-                }
-                spdlog::info("Right click at ({},{},{}) block_id={} from slot {}",
+                spdlog::info("Right click at ({},{},{}) existing={} placed={}",
                              placePos.x, placePos.y, placePos.z,
-                             placedBlockId, inventory_->selectedSlot);
+                             currentBlockType, placedBlockId);
                 netClient.SendBlockAction(
                     Protocol::PlayerActionType::PlayerActionType_RIGHT_MOUSE_CLICK,
                     placePos.x, placePos.y, placePos.z,
                     currentBlockType, placedBlockId,
                     0, player_id);
                 world.MarkBlockActionSent(placePos);
-                consumeSelectedSlot();
+                if (placedBlockId != 0) { // TODO - consume wen simcored say us that need consume, because we have many cases withot consuming item
+                    consumeSelectedSlot();
+                }
             }
         }
     }
