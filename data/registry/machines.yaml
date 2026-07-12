@@ -34,7 +34,7 @@ machine_classes:
   # ── Furnace ──────────────────────────────────────────────
   - class: furnace
     variants:
-      - block_id: 36
+      - block_id: "1110:00:0"
         name: heat_furnace
         energy_in: HEAT
         tier: 0
@@ -48,7 +48,7 @@ machine_classes:
   # ── Macerator ────────────────────────────────────────────
   - class: macerator
     variants:
-      - block_id: 48
+      - block_id: "1110:00:1"
         name: heat_macerator
         energy_in: HEAT
         tier: 0
@@ -59,7 +59,7 @@ machine_classes:
           usage: 32
         multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
 
-      - block_id: 51
+      - block_id: "1110:00:3"
         name: steam_macerator
         energy_in: STEAM
         tier: 0
@@ -73,7 +73,7 @@ machine_classes:
   # ── Compressor ───────────────────────────────────────────
   - class: compressor
     variants:
-      - block_id: 52
+      - block_id: "1110:00:4"
         name: steam_compressor
         energy_in: STEAM
         tier: 0
@@ -87,7 +87,7 @@ machine_classes:
   # ── Alloy Smelter ───────────────────────────────────────
   - class: alloy_smelter
     variants:
-      - block_id: 58
+      - block_id: "1110:00:7"
         name: bronze_alloy_smelter
         energy_in: STEAM
         tier: 0
@@ -101,7 +101,7 @@ machine_classes:
   # ── Extractor ────────────────────────────────────────────
   - class: extractor
     variants:
-      - block_id: 59
+      - block_id: "1110:00:5"
         name: steam_extractor
         energy_in: STEAM
         tier: 0
@@ -115,7 +115,7 @@ machine_classes:
   # ── Mixer ────────────────────────────────────────────────
   - class: mixer
     variants:
-      - block_id: 60
+      - block_id: "1110:00:6"
         name: steam_mixer
         energy_in: STEAM
         tier: 0
@@ -130,7 +130,7 @@ machine_classes:
   - class: boiler
     variants:
       # Burns solid fuel → produces steam
-      - block_id: 49
+      - block_id: "1110:01:0"
         name: steam_solid_boiler
         energy_out: STEAM
         tier: 0
@@ -140,7 +140,7 @@ machine_classes:
           max_output: 32
 
       # Consumes steam → produces HEAT (steam→heat converter)
-      - block_id: 50
+      - block_id: "1110:01:1"
         name: steam_heat_boiler
         energy_in: STEAM
         energy_out: HEAT
@@ -154,7 +154,7 @@ machine_classes:
   - class: generator
     variants:
       # Burns solid fuel → produces HEAT
-      - block_id: 46
+      - block_id: "1110:00:2"
         name: heat_generator
         energy_out: HEAT
         tier: 0
@@ -164,7 +164,7 @@ machine_classes:
           max_output: 32
 
       # Infinite ELECTRICITY source (creative)
-      - block_id: 63
+      - block_id: "1110:01:2"
         name: creative_generator
         energy_out: ELECTRICITY
         tier: 10
@@ -174,7 +174,7 @@ machine_classes:
           max_output: 100000
 
       # Kinetic/rotation generator — player clicks to spin, produces ROTATION
-      - block_id: 120
+      - block_id: "1110:01:3"
         name: rotare_generator
         energy_out: ROTATION
         tier: 0
@@ -187,7 +187,7 @@ machine_classes:
   # ── Rotare Macerator (ROTATION-powered) ──────────────────
   - class: macerator
     variants:
-      - block_id: 121
+      - block_id: "1110:00:8"
         name: rotare_macerator
         energy_in: ROTATION
         tier: 0
@@ -202,7 +202,7 @@ machine_classes:
   # Manual (no energy) — player 3×3 workbench
   - class: crafting_table
     variants:
-      - block_id: 14
+      - block_id: "0:10:11:1"
         name: crafting_table
         tier: 0
         role: consumer
@@ -212,7 +212,7 @@ machine_classes:
   # (class defined but no block placed yet — recipes exist with m=0)
   - class: electrolyser
     variants:
-      - block_id: 0
+      - block_id: "0"
         name: placeholder_electrolyser
         energy_in: ELECTRICITY
         tier: 0
@@ -223,7 +223,7 @@ machine_classes:
   # ── Chemical Reactor ─────────────────────────────────────
   - class: chemical_reactor
     variants:
-      - block_id: 0
+      - block_id: "0"
         name: placeholder_chemical_reactor
         energy_in: ELECTRICITY
         tier: 0
@@ -234,7 +234,7 @@ machine_classes:
   # ── Assembler ────────────────────────────────────────────
   - class: assembler
     variants:
-      - block_id: 0
+      - block_id: "0"
         name: placeholder_assembler
         energy_in: ELECTRICITY
         tier: 0
@@ -245,7 +245,7 @@ machine_classes:
   # ── Crystallizer ─────────────────────────────────────────
   - class: crystallizer
     variants:
-      - block_id: 0
+      - block_id: "0"
         name: placeholder_crystallizer
         energy_in: ELECTRICITY
         tier: 0
