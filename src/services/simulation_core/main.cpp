@@ -21,6 +21,7 @@
 #include "Crafting/RecipeCompletedHandler.h"
 #include "Actions/MachineSlotHandler.h"
 #include "Actions/ToolActionHandler.h"
+#include "Actions/WrenchActionHandler.h"
 #include "Actions/MiningCalculator.h"
 #include "ECS/components/ItemEnergyStorage.h"
 #include "Storage/InventoryLoadHandler.h"
@@ -349,6 +350,16 @@ int main(int argc, char* argv[]) {
 
     simcore::WorldContainerInventory worldContainers(
         simulationEngine->reg(), entityStateClient);
+
+    // ── Wrench Handler ─────────────────────────────────────────────────────
+    auto wrenchHandler = std::make_shared<simcore::WrenchHandler>(
+        simulationEngine->reg(), eventPublisher, entityStateClient);
+
+    // ── Register WrenchHandler with ToolActionHandler ─────────────────────────────────
+    auto wrenchActionHandler = std::make_unique<simcore::WrenchActionHandler>(
+        wrenchHandler);
+    wrenchActionHandler->setRouter(routerClient);
+    topicDispatcher->on("player.wrench.action", std::move(wrenchActionHandler));
 
     // ── Router message handler (composition root — wires topics to services) ──
     routerClient->SetServiceName("simcore");

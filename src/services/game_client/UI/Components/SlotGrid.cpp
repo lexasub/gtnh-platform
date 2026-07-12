@@ -2,6 +2,7 @@
 #include "UI/Core/DragManager.h"
 #include "Common/Inventory.h"
 #include "Crafting/ClientItemRegistry.h"
+#include <data/registry/ToolIds.h>
 #include <imgui.h>
 #include <cstdio>
 #include <algorithm>
@@ -211,16 +212,16 @@ int SlotGridComponent::Render() {
                 if (cnt > 1) {
                     ImGui::Text("x%d", cnt);
                 }
-                // Tool energy display (items 90-95)
+                // Tool energy display
                 uint32_t capacity = 0;
                 const char* toolName = nullptr;
-                switch (id) { // TODO use some registry
-                    case 90: capacity = 1000; toolName = "Drill (ULV)"; break;
-                    case 91: capacity = 4000; toolName = "Drill (LV)"; break;
-                    case 92: capacity = 16000; toolName = "Drill (MV)"; break;
-                    case 93: capacity = 64000; toolName = "Drill (HV)"; break;
-                    case 94: capacity = 4000; toolName = "Chainsaw (LV)"; break;
-                    case 95: toolName = "Wrench"; break;
+                switch (id) {
+                    case ITEM_DRILL_ULV:  capacity = 1000;  toolName = "Drill (ULV)"; break;
+                    case ITEM_DRILL_LV:   capacity = 4000;  toolName = "Drill (LV)"; break;
+                    case ITEM_DRILL_MV:   capacity = 16000; toolName = "Drill (MV)"; break;
+                    case ITEM_DRILL_HV:   capacity = 64000; toolName = "Drill (HV)"; break;
+                    case ITEM_CHAINSAW_LV: capacity = 4000; toolName = "Chainsaw (LV)"; break;
+                    case ITEM_WRENCH:     toolName = "Wrench"; break;
                 }
                 if (capacity > 0) {
                     float pct = (meta * 100.0f) / capacity;

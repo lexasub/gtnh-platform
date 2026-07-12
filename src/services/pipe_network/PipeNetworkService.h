@@ -77,6 +77,9 @@ private:
   static bool isPipeBlock(uint16_t block_id);
   static bool isCableBlock(uint16_t block_id);
   static uint64_t posKey(int32_t x, int32_t y, int32_t z);
+
+  // Machine config handler (side_config sync from wrench)
+  void handleMachineConfigUpdated(const std::vector<uint8_t> &data);
 };
 
 } // namespace pipe_network

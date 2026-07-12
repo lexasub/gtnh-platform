@@ -37,6 +37,7 @@ enum EnergyType : uint8 {
   ELECTRICITY = 0,
   HEAT = 1,
   STEAM = 2,
+  ROTATION = 3,
 }
 
 enum ToolActionType : uint8 {

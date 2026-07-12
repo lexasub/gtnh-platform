@@ -1,4 +1,6 @@
 #include "TextureAtlas.h"
+#include "../../common/OpenHashMap.h"
+#include <common/ItemId.h>
 #include <bgfx/bgfx.h>
 #include <vector>
 #include <cstring>
@@ -10,15 +12,12 @@
 
 namespace renderlib {
 
-UVRect TextureAtlas::s_uvCache[256][6] = {};
+static OpenHashMap<uint16_t, BlockFaces, 128, 0xFFFF> s_blockFaces;
 
 static bgfx::TextureHandle s_texture = BGFX_INVALID_HANDLE;
 static int s_tileSize = 16;
 static int s_atlasW = 256;
 static int s_atlasH = 256;
-static uint8_t s_tileX[256][6]{};
-static uint8_t s_tileY[256][6]{};
-static bool s_transparent[256]{};
 static bool s_initialized = false;
 
 // tile_id → atlas grid position (populated from textures.csv, fallback to id%16, id/16)
@@ -110,16 +109,26 @@ static bool LoadBlockFaceRegistry(const char* dataDir) {
         }
         
         try {
-            uint16_t blockId = static_cast<uint16_t>(std::stoi(fields[0]));
-            s_transparent[blockId] = (std::stoi(fields[7]) == 1);
+            std::string blockIdStr = fields[0];
+            if (!blockIdStr.empty() && blockIdStr.front() == '"')
+                blockIdStr = blockIdStr.substr(1);
+            if (!blockIdStr.empty() && blockIdStr.back() == '"')
+                blockIdStr.pop_back();
             
-            // Each face_* value is a tile_id; look up its atlas grid position
-            static constexpr int kFaceFields[6] = {1, 2, 3, 4, 5, 6}; // fields[1..6] = px,nx,py,ny,pz,nz
+            uint16_t blockId = ItemId::pack(blockIdStr);
+            bool transparent = (std::stoi(fields[7]) == 1);
+            
+            BlockFaces faces;
+            faces.transparent = transparent;
+            
+            static constexpr int kFaceFields[6] = {1, 2, 3, 4, 5, 6};
             for (int f = 0; f < 6; ++f) {
                 uint16_t tileId = static_cast<uint16_t>(std::stoi(fields[kFaceFields[f]]));
-                s_tileX[blockId][f] = s_tileAtlasX[tileId];
-                s_tileY[blockId][f] = s_tileAtlasY[tileId];
+                faces.tileX[f] = s_tileAtlasX[tileId];
+                faces.tileY[f] = s_tileAtlasY[tileId];
             }
+            
+            s_blockFaces.insert(blockId, faces);
         } catch (const std::exception& e) {
             spdlog::warn("Error parsing block face registry row '{}': {}", lineStr, e.what());
             continue;
@@ -192,30 +201,18 @@ void TextureAtlas::Init(int tileSize) {
     s_atlasW = kDefaultTilesX * s_tileSize;
     s_atlasH = kDefaultTilesY * s_tileSize;
     
-    // Initialize position arrays with defaults
     for (uint16_t id = 0; id < 256; ++id) {
         s_tileAtlasX[id] = id % kDefaultTilesX;
         s_tileAtlasY[id] = id / kDefaultTilesY;
         s_srcPosX[id] = id % kDefaultTilesX;
         s_srcPosY[id] = id / kDefaultTilesY;
-        s_transparent[id] = false;
         s_rotate[id] = 0;
     }
     
-    // Load texture registry — auto-assigns atlas slots, tile_x/tile_y are source PNG only
     const char* dataDir = "data";
     uint8_t nextAtlasSlot = 0;
     LoadTextureRegistry(dataDir, nextAtlasSlot);
     
-    // Set default block face mapping: block N uses tile N for all faces
-    for (uint16_t id = 0; id < 256; ++id) {
-        for (int f = 0; f < 6; ++f) {
-            s_tileX[id][f] = s_tileAtlasX[id];  // tile N at its atlas position
-            s_tileY[id][f] = s_tileAtlasY[id];
-        }
-    }
-    
-    // Load block face overrides from CSV
     LoadBlockFaceRegistry(dataDir);
     
     std::vector<uint8_t> atlasPixels(s_atlasW * s_atlasH * 4, 0);
@@ -286,20 +283,6 @@ void TextureAtlas::Init(int tileSize) {
         }
     }
     
-    const float halfU = 0.5f / s_atlasW;
-    const float halfV = 0.5f / s_atlasH;
-    for (uint16_t id = 0; id < 256; ++id) {
-        for (int f = 0; f < 6; ++f) {
-            float tx = s_tileX[id][f];
-            float ty = s_tileY[id][f];
-            float u0 = (tx * s_tileSize) / s_atlasW + halfU;
-            float v0 = (ty * s_tileSize) / s_atlasH + halfV;
-            float u1 = ((tx+1)*s_tileSize) / s_atlasW - halfU;
-            float v1 = ((ty+1)*s_tileSize) / s_atlasH - halfV;
-            s_uvCache[id][f] = {u0, v0, u1, v1};
-        }
-    }
-    
     const bgfx::Memory* mem = bgfx::copy(atlasPixels.data(), static_cast<uint32_t>(atlasPixels.size()));
     s_texture = bgfx::createTexture2D(static_cast<uint16_t>(s_atlasW), static_cast<uint16_t>(s_atlasH),
                                       false, 1, bgfx::TextureFormat::RGBA8, BGFX_TEXTURE_NONE, mem);
@@ -309,26 +292,41 @@ void TextureAtlas::Init(int tileSize) {
 
 bool TextureAtlas::IsTransparent(uint16_t blockId) {
     if (!s_initialized) return false;
-    return s_transparent[blockId & 0xFF];
+    auto* entry = s_blockFaces.find(blockId);
+    return entry ? entry->transparent : false;
 }
 
-UVRect TextureAtlas::GetUV(uint16_t tileId, int face) {
-    // tileId не должен выходить за 255, face < 6
-    return s_uvCache[tileId][face];
+UVRect TextureAtlas::GetUV(uint16_t blockId, int face) {
+    if (!s_initialized || face < 0 || face >= 6) return {0, 0, 1, 1};
+    auto* entry = s_blockFaces.find(blockId);
+    if (!entry) return {0, 0, 1, 1};
+    float tx = entry->tileX[face];
+    float ty = entry->tileY[face];
+    float halfU = 0.5f / s_atlasW;
+    float halfV = 0.5f / s_atlasH;
+    return {
+        (tx * s_tileSize) / s_atlasW + halfU,
+        (ty * s_tileSize) / s_atlasH + halfV,
+        ((tx+1) * s_tileSize) / s_atlasW - halfU,
+        ((ty+1) * s_tileSize) / s_atlasH - halfV
+    };
 }
 
 void TextureAtlas::Shutdown() {
     s_initialized = false;
     if (bgfx::isValid(s_texture)) bgfx::destroy(s_texture);
     s_texture = BGFX_INVALID_HANDLE;
-    std::memset(s_transparent, 0, sizeof(s_transparent));
-    std::memset(s_tileX, 0, sizeof(s_tileX));
-    std::memset(s_tileY, 0, sizeof(s_tileY));
-    std::memset(s_uvCache, 0, sizeof(s_uvCache));
+    s_blockFaces.clear();
 }
 
 bgfx::TextureHandle TextureAtlas::GetTextureHandle() {
     return s_texture;
+}
+
+const BlockFaces* TextureAtlas::GetBlockFaces(uint16_t blockId) {
+    if (!s_initialized) return nullptr;
+    auto* entry = s_blockFaces.find(blockId);
+    return entry;
 }
 
 } // namespace renderlib

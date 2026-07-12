@@ -1,5 +1,4 @@
 #include "ToolActionHandler.h"
-#include "WrenchHandler.h"
 #include "../ECS/components/ItemEnergyStorage.h"
 #include "ECS/SimulationEngine.h"
 #include "Storage/PlayerInventoryStore.h"
@@ -19,12 +18,7 @@ void ToolActionHandler::handle(const std::vector<uint8_t>& data) {
     flatbuffers::FlatBufferBuilder fbb(128); std::vector<uint8_t> respData;
     switch (action->action()) {
     case Protocol::ToolActionType_WRENCH_CYCLE: {
-        WrenchHandler wh(engine_->reg());
-        auto r = wh.cycleFace(action->player_id(), p->x(), p->y(), p->z(), action->face());
-        auto err = r.error.empty() ? 0 : fbb.CreateString(r.error);
-        auto roles = fbb.CreateVector(r.allRoles, 6);
-        auto resp = Protocol::CreateToolActionResp(fbb, r.success, err, 0, 0, r.newRole, roles);
-        fbb.Finish(resp); respData.assign(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()); break;
+        break;
     }
     case Protocol::ToolActionType_MINE_BLOCK: {
         uint16_t toolId = action->item_id(); uint8_t slotIdx = action->slot_idx();

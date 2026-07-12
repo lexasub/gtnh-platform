@@ -75,13 +75,14 @@ struct MockEventPublisher : simcore::IEventPublisher {
         block_changed_count++;
     }
     void publishBlockEntityUpdate(int32_t x, int32_t y, int32_t z,
-                                  uint16_t machine_type,
-                                  const std::vector<uint8_t>&,
-                                  float progress,
-                                  uint32_t energy,
-                                  EnergyType,
-                                  uint32_t,
-                                  int) override {
+                                   uint16_t machine_type,
+                                   const std::vector<uint8_t>&,
+                                   float progress,
+                                   uint32_t energy,
+                                   EnergyType,
+                                   uint32_t,
+                                   int,
+                                   float) override {
         block_entity_update_count++;
         last_x = x; last_y = y; last_z = z;
         last_machine_id = machine_type;
@@ -93,6 +94,9 @@ struct MockEventPublisher : simcore::IEventPublisher {
                                     uint16_t, bool,
                                     uint16_t, uint8_t, uint16_t,
                                     const char*) override {}
+
+    void publishMachineConfigUpdatedEvent(int32_t, int32_t, int32_t,
+                                          const std::array<uint8_t, 6>&) override {}
 };
 
 static std::string g_consumersPath, g_producersPath;

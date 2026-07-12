@@ -193,7 +193,7 @@ uint64_t SimulationEngine::matchElectrolyser(uint32_t anchor_x, uint32_t anchor_
         for (auto entity : view) {
             auto [pos, blk] = view.get(entity);
             if (pos.x == ux && pos.y == uy && pos.z == uz) {
-                if (blk.id != 1) return 0;
+                if (blk.id != ItemId::pack("0:0:1")) return 0;
                 found = true;
                 break;
             }

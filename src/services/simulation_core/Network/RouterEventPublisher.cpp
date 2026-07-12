@@ -45,13 +45,14 @@ void RouterEventPublisher::publishBlockChangedEvent(int32_t x, int32_t y, int32_
 }
 
 void RouterEventPublisher::publishBlockEntityUpdate(int32_t x, int32_t y, int32_t z,
-                                                      uint16_t machine_id,
-                                                      const std::vector<uint8_t>& inventory_data,
-                                                      float progress,
-                                                      uint32_t energy,
-                                                      EnergyType energy_type,
-                                                      uint32_t energy_capacity,
-                                                      int slots_in)
+                                                       uint16_t machine_id,
+                                                       const std::vector<uint8_t>& inventory_data,
+                                                       float progress,
+                                                       uint32_t energy,
+                                                       EnergyType energy_type,
+                                                       uint32_t energy_capacity,
+                                                       int slots_in,
+                                                       float heat_ratio)
 {
     flatbuffers::FlatBufferBuilder builder(128);
 
@@ -88,7 +89,7 @@ void RouterEventPublisher::publishBlockEntityUpdate(int32_t x, int32_t y, int32_
         input_items.empty() ? nullptr : &input_items,
         output_items.empty() ? nullptr : &output_items,
         nullptr,                                       // fluid_tanks
-        0.0f,                                          // temperature
+        heat_ratio,                                    // temperature (used as heat_ratio for overheat warnings)
         0,                                             // network_id
         0,                                             // flags
         0,                                             // mb_id
@@ -125,6 +126,22 @@ void RouterEventPublisher::publishMachineSlotResponse(
     fbb.Finish(resp);
     std::vector<uint8_t> data(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
     router_->Publish("player.machine.slot.response", std::move(data));
+}
+
+void RouterEventPublisher::publishMachineConfigUpdatedEvent(int32_t x, int32_t y, int32_t z,
+                                                           const std::array<uint8_t, 6> &side_config)
+{
+    flatbuffers::FlatBufferBuilder builder(128);
+    auto pos = Protocol::Vec3i(x, y, z);
+    std::vector<uint8_t> faces(side_config.begin(), side_config.end());
+    auto config = Protocol::CreateMachineConfigUpdatedDirect(builder, &pos, 0, 0, &faces);
+    builder.Finish(config);
+    std::vector<uint8_t> event_data(builder.GetBufferPointer(),
+                                    builder.GetBufferPointer() + builder.GetSize());
+    router_->Publish("world.machine.config.updated", event_data);
+    spdlog::debug("Published MachineConfigUpdatedEvent: at ({},{},{}) side_config={}{}{}{}{}{}",
+                  x, y, z, (int)side_config[0], (int)side_config[1], (int)side_config[2],
+                  (int)side_config[3], (int)side_config[4], (int)side_config[5]);
 }
 
 } // namespace simcore

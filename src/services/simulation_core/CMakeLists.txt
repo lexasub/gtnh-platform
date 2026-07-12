@@ -87,6 +87,7 @@ add_library(simcored
         Actions/ElectricDrillHandler.cpp
         Actions/MachineSlotHandler.cpp
         Actions/ToolActionHandler.cpp
+        Actions/WrenchActionHandler.cpp
 
         World/ChunkEventHandler.cpp
         World/BlockTransforms.cpp

@@ -12,14 +12,23 @@ struct WrenchCycleResult {
   uint8_t allRoles[6];
 };
 
+class IEventPublisher;
+class EntityStateStoreClient;
+
 class WrenchHandler {
 public:
-  explicit WrenchHandler(entt::registry &registry) : m_registry(registry) {}
+  WrenchHandler(entt::registry &registry,
+                std::shared_ptr<IEventPublisher> events,
+                std::shared_ptr<EntityStateStoreClient> entityState);
   WrenchCycleResult cycleFace(uint64_t playerId, int32_t x, int32_t y,
                               int32_t z, uint8_t face);
 
+  entt::entity findEntityAt(const entt::registry &reg, int32_t x, int32_t y, int32_t z);
+
 private:
   entt::registry &m_registry;
+  std::shared_ptr<IEventPublisher> events_;
+  std::shared_ptr<EntityStateStoreClient> entityState_;
 };
 
 } // namespace simcore
