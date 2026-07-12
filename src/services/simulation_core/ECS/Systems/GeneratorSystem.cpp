@@ -1,5 +1,7 @@
 #include "GeneratorSystem.h"
-#include "MachineRegistry.h"
+#include "../../common/ItemId.h"
+#include "../../libs/machine_registry/MachineRegistry.h"
+#include "../components/HeatIntakeComponent.h"
 #include <cstring>
 #include <spdlog/spdlog.h>
 
@@ -7,15 +9,15 @@ namespace simcore {
 
 namespace {
     inline bool isGenerator(uint16_t block_id) {
-        return block_id == 46 || block_id == 49;
+        return block_id == ItemId::pack("1110:00:2") || block_id == ItemId::pack("1110:01:0");
     }
 }
 
 const std::unordered_map<uint16_t, int32_t>& GeneratorSystem::FuelValues() {
     static const std::unordered_map<uint16_t, int32_t> kFuel = {
-        {44, 8000},   // coal
-        {13, 2000},   // oak_planks
-        {32, 500},    // stick
+        {ItemId::pack("0:11110:2"), 8000},   // coal
+        {ItemId::pack("0:10:00:0"), 2000},   // oak_planks
+        {ItemId::pack("0:11110:0"), 500},    // stick
     };
     return kFuel;
 }
@@ -122,6 +124,10 @@ void GeneratorSystem::tick(float /*dt*/) {
         if (auto* info = MachineRegistry::instance()->Get(machine.machine_id)) {
             slotsIn = info->slots_in;
         }
+        float heatRatio = 0.0f;
+        if (auto* hic = reg_.try_get<HeatIntakeComponent>(ent)) {
+            heatRatio = hic->ratio();
+        }
         events_->publishBlockEntityUpdate(
             machine.x, machine.y, machine.z,
             machine.machine_id,
@@ -130,7 +136,8 @@ void GeneratorSystem::tick(float /*dt*/) {
             static_cast<uint32_t>(energy.current),
             energy.type,
             static_cast<uint32_t>(energy.capacity),
-            slotsIn);
+            slotsIn,
+            heatRatio);
     }
 }
 

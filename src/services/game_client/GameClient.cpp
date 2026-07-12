@@ -119,9 +119,11 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
         if (reg && reg->All().size() > 0) {
             MachineRegistry::setInstance(reg.release());
             spdlog::info("Loaded machine registry from {}", yaml_path);
+            BlockUIFactory::LoadFromRegistry(*MachineRegistry::instance());
+        } else {
+            spdlog::warn("Machine registry empty or failed to load from {}", yaml_path);
         }
     }
-    BlockUIFactory::LoadFromRegistry(*MachineRegistry::instance());
 
     // ── Network ──────────────────────────────────────────────────────────
     netClient_ = std::make_shared<NetClient>();

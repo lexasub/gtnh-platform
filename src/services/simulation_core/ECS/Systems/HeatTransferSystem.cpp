@@ -9,6 +9,8 @@
 #include "HeatConstants.h"
 #include <spdlog/spdlog.h>
 
+#include "../../common/ItemId.h"
+
 namespace simcore {
 
 HeatTransferSystem::HeatTransferSystem(entt::registry& reg,
@@ -142,7 +144,7 @@ void HeatTransferSystem::tick(float /*dt*/) {
                         static_cast<int32_t>(np.y) != ny ||
                         static_cast<int32_t>(np.z) != nz) continue;
                     auto* block = reg_.try_get<Block>(neighbor);
-                    if (block && block->id == 9) { adjacent_to_water = true; break; }
+                    if (block && block->id == ItemId::pack("0:0:9")) { adjacent_to_water = true; break; }
                 }
                 if (adjacent_to_water) break;
             }

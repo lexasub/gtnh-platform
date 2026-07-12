@@ -6,9 +6,10 @@
 
 namespace simcore {
 
-// Ore block IDs
+// Ore block IDs — from items.csv (source of truth)
 static constexpr uint16_t kOreBlocks[] = {
-    3u, 5u, 19u, 23u, 25u, 27u, 87u, 88u, 89u, 90u
+    ORE_IRON, ORE_GOLD, ORE_TIN, ORE_COPPER, ORE_URANIUM, ORE_QUARTZ,
+    ORE_COAL, ORE_REDSTONE, ORE_LAPIS, ORE_DIAMOND, ORE_ELECTRUM
 };
 
 // Layer order: 0, -1, +1, -2, +2, -3, +3...
@@ -43,15 +44,18 @@ bool DrillSystem::isOreBlock(uint16_t block_id) {
 
 uint16_t DrillSystem::oreToDrop(uint16_t oreBlockId) {
     switch (oreBlockId) {
-    case ORE_IRON:     return ItemId::pack("0:110:1");  // iron_ingot
-    case ORE_GOLD:     return ItemId::pack("0:110:2");  // gold_ingot
-    case ORE_TIN:      return ItemId::pack("0:110:3");  // tin_ingot
-    case ORE_ELECTRUM: return ItemId::pack("0:110:4");  // electrum_ingot
-    case ORE_COAL:     return ItemId::pack("0:11110:2"); // coal
-    case ORE_REDSTONE: return 0;  // no drop item yet
-    case ORE_LAPIS:    return 0;  // no drop item yet
-    case ORE_DIAMOND:  return 0;  // no drop item yet
-    default:           return 0;
+    case ORE_IRON:      return ItemId::pack("0:110:1");
+    case ORE_GOLD:      return ItemId::pack("0:110:2");
+    case ORE_TIN:       return ItemId::pack("0:110:3");
+    case ORE_ELECTRUM:  return ItemId::pack("0:110:4");
+    case ORE_COPPER:    return ItemId::pack("0:1110:1:0:1");
+    case ORE_URANIUM:   return ItemId::pack("0:110:5");
+    case ORE_QUARTZ:    return ItemId::pack("0:1110:1:1:2");
+    case ORE_COAL:      return ItemId::pack("0:11110:2");
+    case ORE_REDSTONE:  return 0;
+    case ORE_LAPIS:     return 0;
+    case ORE_DIAMOND:   return 0;
+    default:            return 0;
     }
 }
 

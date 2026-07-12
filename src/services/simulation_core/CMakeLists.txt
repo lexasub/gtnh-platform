@@ -110,7 +110,7 @@ add_library(simcored
         ECS/Systems/DrillSystem.cpp
         ECS/Systems/ExplosionSystem.cpp
         ECS/Systems/TransformerSystem.cpp
-        ECS/Systems/TransformerSystem.cpp
+        ECS/Systems/RotareGeneratorSystem.cpp
 
         RecipeManager/RecipeManager.cpp
 )
