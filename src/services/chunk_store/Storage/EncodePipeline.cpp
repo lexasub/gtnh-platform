@@ -103,6 +103,7 @@ void EncodePipeline::encodeLoop() {
         }
         if (size_t size = local_palettes.size(); size > 128) {
             local_palettes.resize(std::max(size / 2, static_cast<size_t>(64))); // подрезаем в 2 раза, надеемся что следующий батч будет меньше
+            local_palettes.shrink_to_fit();
         }
     }
     if (!local_palettes.empty()) {

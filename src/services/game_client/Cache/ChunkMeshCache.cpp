@@ -32,13 +32,18 @@ void ChunkMeshCache::EnqueueDestroyMesh(const ChunkCoord& coord) {
 }
 
 void ChunkMeshCache::ProcessPendingOps() {
-    MeshCreateRequest createReq;
-    while (meshCreateQueue_.try_pop(createReq)) {
-        ApplyMeshData(std::move(createReq.data), createReq.coord, createReq.contentHash);
-    }
+    // Process destroys FIRST.  A destroy may have been enqueued for a coord
+    // whose create is still in-flight (race: eviction before mesh build
+    // finishes).  By draining destroys first we avoid creating a stale entry
+    // and then having to destroy it — the create simply finds no entry and
+    // bails (or overwrites, which is also correct for a rebuild).
     MeshDestroyRequest destroyReq;
     while (meshDestroyQueue_.try_pop(destroyReq)) {
         DestroyMesh(destroyReq.coord);
+    }
+    MeshCreateRequest createReq;
+    while (meshCreateQueue_.try_pop(createReq)) {
+        ApplyMeshData(std::move(createReq.data), createReq.coord, createReq.contentHash);
     }
 }
 

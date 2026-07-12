@@ -29,7 +29,7 @@ public:
   size_t multiblock_size() const { return Chunk::VOLUME; }
 
 private:
-  std::shared_ptr<std::vector<uint8_t>> compressed_;
+  mutable std::shared_ptr<std::vector<uint8_t>> compressed_;
   mutable std::unique_ptr<Chunk> flat_; // lazily decoded on first block access
 
   void ensureFlat() const;

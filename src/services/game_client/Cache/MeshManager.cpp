@@ -72,6 +72,10 @@ void MeshManager::OnChunkData(ChunkCoord coord, std::shared_ptr<ChunkView> chunk
 
     meshBuildGroup_.run([this, coord, hash, shared, &world] {
         if (shuttingDown_) return;
+        // Chunk may have been evicted while mesh build was in flight.
+        // Without this guard we create an orphan mesh entry that is never
+        // cleaned up (the destroy was already processed before we enqueued).
+        if (!world.HasChunk(coord)) return;
         ChunkNeighborCache cache;
         cache.Init(world, coord, shared.get());
         auto meshData = ChunkMeshBuilder::Build(cache, shared);
