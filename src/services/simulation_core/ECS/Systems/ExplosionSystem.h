@@ -1,11 +1,6 @@
 #pragma once
 
 #include "../../Network/IEventPublisher.h"
-#include "../components/HeatSlowComponent.h"
-#include "../components/MachineComponent.h"
-#include "../components/OverheatComponent.h"
-#include "../components/Position.h"
-#include "HeatConstants.h"
 #include "ISystem.h"
 #include <entt/entt.hpp>
 #include <memory>
