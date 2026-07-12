@@ -7,5 +7,7 @@ constexpr float OVERHEAT_CRITICAL_THRESHOLD = 1.00f;
 constexpr float ENVIRONMENT_COOLING_RATE = 4.0f;
 constexpr float WATER_COOLING_MULTIPLIER = 3.0f;
 constexpr uint32_t EXPLOSION_DELAY_TICKS = 60;
+constexpr uint32_t COOLANT_COOLING_AMOUNT = 50;
+constexpr uint32_t COOLANT_ITEM_ID = 0x99999; // Placeholder for coolant bucket item
 } // namespace HeatConstants
 } // namespace simcore

@@ -49,6 +49,7 @@
 #include "ECS/Systems/TransformerSystem.h"
 #include "ECS/Systems/DrillSystem.h"
 #include "ECS/Systems/RotareGeneratorSystem.h"
+#include "ECS/Systems/CoolantSystem.h"
 #include "ECS/Systems/ExplosionSystem.h"
 #include "Network/FluidClient.h"
 #include "Network/ItemClient.h"
@@ -98,6 +99,11 @@ entt::entity findEntityAt(const entt::registry& reg, int32_t x, int32_t y, int32
 // =========================================================================
 
 void spawnECSSystems(std::shared_ptr<simcore::ChunkStoreRepository> blockRepository, std::shared_ptr<simcore::RouterEventPublisher> eventPublisher, std::shared_ptr<simcore::PipeEnergyClient> pipeEnergyClient, std::shared_ptr<simcore::SimulationEngine> simulationEngine) {
+    // TODO - may be lazy start - on use
+    {
+        auto cs = std::make_unique<simcore::CoolantSystem>(simulationEngine->reg());
+        simulationEngine->registerSystem(std::move(cs));
+    }
     {
         auto es = std::make_unique<simcore::ExplosionSystem>(
             simulationEngine->reg(), eventPublisher);

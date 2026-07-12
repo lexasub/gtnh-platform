@@ -1,5 +1,12 @@
 #include "HeatTransferSystem.h"
 #include "../components/Block.h"
+#include "../components/HeatIntakeComponent.h"
+#include "../components/HeatSlowComponent.h"
+#include "../components/MachineComponent.h"
+#include "../components/MultiblockController.h"
+#include "../components/OverheatComponent.h"
+#include "../components/Position.h"
+#include "HeatConstants.h"
 #include <spdlog/spdlog.h>
 
 namespace simcore {
@@ -93,7 +100,7 @@ void HeatTransferSystem::tick(float /*dt*/) {
     // Pass 2: Overheat detection
     // ═══════════════════════════════════════════════════════════════════
     {
-        auto oh_view = reg_.view<HeatIntakeComponent>();
+        auto oh_view = reg_.view<HeatIntakeComponent, MultiblockController>();
         for (auto ent : oh_view) {
             auto& hic = oh_view.get<HeatIntakeComponent>(ent);
             float r = hic.ratio();
