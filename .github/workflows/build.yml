@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: anti-drift guards
-        run: sh ci/check.sh tooling
+        run: bash ci/check.sh tooling
 
   build:
     runs-on: ubuntu-24.04

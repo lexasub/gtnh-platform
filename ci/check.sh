@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # ci/check.sh — the in-repo gate. SINGLE source of truth for "is this repo OK".
 #
 # Run identically by: a developer locally, pre-commit hooks, and CI.
