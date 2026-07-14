@@ -9,6 +9,8 @@ crafting, and electric tools. (Gtnh inspired game in future)
 
 Built with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + Asio TCP).
 
+![ScreenShot](/screenshots/main.jpg)
+
 ## Git History & Contributing
 
 **Git history**: The current commit is the initial one. The development history was volatile (architecture and protocol changed multiple times), so I'll squash into a single clean commit once I set up the remote. If you need a draft branch with the full messy history (bad commit messages, broken intermediate states) — I can grant access separately.
