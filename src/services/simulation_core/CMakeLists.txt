@@ -71,6 +71,7 @@ add_library(simcored
         Network/FluidClient.cpp
         Network/ItemClient.cpp
         Network/TopicDispatcher.cpp
+        Network/SimCoreMessageHandler.cpp
         Network/clients/EntityStateStoreClient.cpp
         Network/clients/IoUringRouterClient.cpp
         Network/clients/IoUringChunkClient.cpp
