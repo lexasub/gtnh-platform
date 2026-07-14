@@ -1,5 +1,4 @@
-#ifndef ITEM_REGISTRY_H
-#define ITEM_REGISTRY_H
+#pragma once
 
 #include <common/ItemId.h>
 #include <spdlog/spdlog.h>
@@ -53,5 +52,3 @@ private:
 };
 
 } // namespace RecipeManager
-
-#endif

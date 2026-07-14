@@ -24,24 +24,11 @@ New to the project? Start here:
 
 ## EPIC Specifications
 
-Active EPICs (features in progress):
-
-- [0-foundation-energy-fluids](EPICS/0-foundation-energy-fluids/) — Energy, fluids, PipeNetwork
-- [3-infrastructure-automation](EPICS/3-infrastructure-automation/) — Chunk unload, ores, automation
-- [4-electric-tools-wrench](EPICS/4-electric-tools-wrench/) — Electric tools, wrench
-- [5-transport-pipes-cables](EPICS/5-transport-pipes-cables/) — Pipe/cable transport
-- [6-world-ore-generation](EPICS/6-world-ore-generation/) — Ore generation
-- [7-multiblocks-l2](EPICS/7-multiblocks-l2/) — Multiblocks Level 2
-- [8-questbook](EPICS/8-questbook/) — Questbook
-- [9-autonomous-mining](EPICS/9-autonomous-mining/) — Autonomous mining
-
-Completed EPICs moved to [EPICS/archive/](EPICS/archive/).
+All EPICs have been completed and moved to [archive/EPICS/](archive/EPICS/).
 
 ## Planning Docs (Historical)
 
-- [PLANS/inventory-chain-plan.md](PLANS/inventory-chain-plan.md) — Inventory persistence chain (mostly implemented)
-- [PLANS/recipe-manager-rpc-plan.md](PLANS/recipe-manager-rpc-plan.md) — RecipeManager RPC service (deferred)
-- [PLANS/client-pipe-cable-mesh.md](PLANS/client-pipe-cable-mesh.md) — Pipe/cable mesh rendering
+All planning docs have been completed or deferred. See [archive/](archive/) for historical reference.
 
 ## Operational
 
