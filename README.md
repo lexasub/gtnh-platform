@@ -128,24 +128,6 @@ cmake -GNinja -DCMAKE_TOOLCHAIN_FILE=$PWD/conan_toolchain.cmake .. # -DCMAKE_BUI
 
 > **Note:** If Conan registry is unavailable in your region, see Option B.
 
-**Option B — Pre-built (build once, reuse):** TODO rewrite
-
-Dependencies that aren't in Conan (bgfx, FastNoise2, cmake-imgui, ImGuizmo) are always built manually. Use the setup script:
-
-```bash
-./scripts/build-deps.sh
-```
-
-This clones and builds all external dependencies into `$HOME/.gtnh-deps/`. Once built, subsequent `cmake` runs use the cached `.a`/`.so` files — no rebuild on `rm -rf build`.
-
-```bash
-rm -rf build && mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$HOME/.gtnh-deps
-make -j
-```
-
-For Conan users, the script is optional — Conan pulls everything automatically (except the four above, which still need manual cloning into `third_party/`).
-
 **Go 1.22+** — for MessageRouter and MetaDB services.
 
 ## Quick Start

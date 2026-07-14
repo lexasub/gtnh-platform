@@ -1,0 +1,52 @@
+# Large vendored deps — don't explore these
+third_party/
+bgfx/
+
+# Build artifacts
+build/
+cmake-build-*/
+conan*/
+install/
+
+# Generated code
+src/protocol/generated/
+
+# Compiled shaders
+shaders/*.bin
+
+# Runtime data / databases
+*.db
+*.sqlite*
+chunkdb/
+metadb.sqlite
+nightly.db
+
+# Profiling / debug
+perf.data*
+*.heapsnapshot
+*.heapprofile
+*.profraw
+*.gcda
+*.gcno
+callgrind.out.*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+venv/
+.venv/
+__pycache__/
+
+# Agent tooling (not for distribution)
+.agent/
+.opencode/
+.kilo/
+omo/
+.codegraph/
+.cache/
+agent/
+.sisyphus/

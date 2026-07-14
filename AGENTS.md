@@ -23,8 +23,8 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 ## OVERVIEW
 
-Distributed Minecraft-style platform with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + Asio TCP) connects 9 services via message router.
-It's ONLY linux project, no windows support
+Distributed Minecraft-style platform with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + Asio TCP) connects 10 services via message router.
+Linux-only project. No Windows/macOS support.
 
 ## STRUCTURE
 
@@ -59,6 +59,7 @@ src/
 | SpatialIndex | `src/services/spatial_index/` | C++ |
 | MetaDB | `src/services/meta_db/` | Go |
 | EntityStateStore | `src/services/entity_state_store/` | C++ |
+| RecipeManager | `src/libs/recipe_manager_lib/` | C++ (shared lib) |
 | GameClient | `src/services/game_client/` | C++ |
 
 ## WHERE TO LOOK
@@ -77,6 +78,7 @@ src/
 | Player saves              | `src/services/meta_db/`              | SQLite, transactional saves        |
 | Crafting recipes          | `data/recipes/`                      | JSON files per machine type        |
 | Item registry             | `data/registry/`                     | items.csv + items.db               |
+| Recipe system             | `src/libs/recipe_manager_lib/`       | JSON recipes, ConditionEvaluator    |
 | Rendering, input, audio   | `src/services/game_client/`          | bgfx, GLFW, ImGui                  |
 
 ## CONVENTIONS
@@ -93,19 +95,37 @@ src/
 - ❌ Parsing JSON in Gateway (must be zero-copy binary only)
 - ❌ Storing multiblock controllers in ChunkStore (Simulation owns them)
 
-## COMMANDS
+## BUILD & RUN
+
+**NEVER rebuild from scratch.** Dependencies are pre-installed. See README.md Build section for full details.
+
+**NEVER delete `cmake-build-debug/` or `cmake-build-release/`** — they contain Conan-generated toolchain files. Recreating them requires `conan install` + network access.
 
 ```bash
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j
+# Build (use existing cmake-build dir — has Conan toolchain already)
+cd cmake-build-debug
+ninja -j5
 
-# Run (order matters)
-./build/routerd
-./build/chunkd
-./build/gatewayd
-./build/simcored
-./build/client
+# Or for release build:
+cd cmake-build-release
+ninja -j5
+
+# Run (order matters, from repo root)
+./cmake-build-release/routerd            # 1. Internal pub/sub (Go, :4000)
+./cmake-build-release/chunkd             # 2. World persistence (C++, :5001)
+./cmake-build-release/entitystated       # 3. Entity state (C++, :5200)
+./cmake-build-release/gatewayd           # 4. TCP gateway (C++, :7777 ctrl + :7778 bulk)
+./cmake-build-release/simcored           # 5. Simulation (C++, 20Hz tick)
+./cmake-build-release/meta-dbd           # 6. Player DB (Go, :5005 + :5006)
+./cmake-build-release/pipe_networkd      # 7. Energy/fluid transport (C++)
+./cmake-build-release/client             # 8. Game client (C++, bgfx)
+```
+
+**If build fails**: Check `conan install` was run. See README.md for Conan setup.
+
+**Tests**:
+```bash
+cd cmake-build-debug && ctest --output-on-failure -j$(nproc)
 ```
 
 ## NOTES
@@ -185,86 +205,6 @@ Can run 2 instances (one per dimension) without interference.
 
 **MetaDB** (Go): Player-bound data (inventories, position, stats). SQLite. Connected to MessageRouter via router_client.go.
 
-## MVP PLAN (6 services, 2 days)
-
-### Day 1: World + Network
-- [ ] MessageRouter (Go): pub/sub on TCP, 50 lines
-- [ ] ChunkStore (C++): Chunk (32³ flat array), SetBlock/GetBlock, LMDB save/load
-- [ ] WorldGenerator (C++ stub): flat world (grass, stone, air)
-- [ ] Gateway (C++ asio): TCP accept, 1 client = 1 coroutine, sends ChunkSnapshot on connect. No LZ4, no rate limit — just pipe.
-
-### Day 2: Simulation + Client
-- [ ] SimulationCore (C++): subscribes to BlockChanged. Hardcoded 3×3×3 pattern. On match → creates MultiblockController, sends SetBlockMeta to ChunkStore
-- [ ] GameClient (C++): bgfx, FPS camera, DDA raycast, ImGui debug overlay. LMB places block → PlayerAction → Gateway → SimulationCore → ChunkStore
-- [ ] MetaDB (Go stub): SQLite, table `players(id, x, y, z)`. Writes position on logout
-
-### MVP Result
-6 processes. Run them, walk flat world, place blocks. If 3×3×3 special block pattern → ImGui shows "Multiblock #1 active". All communicate via TCP through MessageRouter. Kill SimulationCore — world persists, but new multiblocks don't form.
-
-### Startup Order
-```bash
-./build/routerd    # Internal pub/sub
-./build/chunkd     # World persistence
-./build/gatewayd   # TCP gateway
-./build/simcored   # Simulation
-./build/client     # Game client
-```
-
-## MVP ARTIFACTS
-
-### CMakeLists.txt
-```cmake
-cmake_minimum_required(VERSION 3.20)
-project(GTNHPlatform CXX C)
-
-set(CMAKE_CXX_STANDARD 26)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# Find Conan
-if(DEFINED ENV{CONAN_HOME})
-    set(Conan_FOUND TRUE)
-endif()
-
-# Conan imports all dependencies via CMakeDeps
-# No vcpkg needed — Conan handles everything
-```
-
-### FlatBuffers Schemas (src/protocol/)
-
-- **core.fbs**: Vec3i, Vec3f, ItemStack, Block, Chunk, PlayerAction, EntitySnapshot, CraftRequest, CraftResponse, GridUpdate, BlockAck
-- **gateway.fbs**: GatewayPayload union
-- **chunkstore.fbs**: GetBlock/SetBlock/GetChunk/SaveChunk RPC
-- **simcore.fbs**: BlockChangedReq, MatchPatternReq, TickReq
-- **recipe.fbs**: MachineType enum (0=NONE..5=CHEMICAL_REACTOR), CheckRecipeReq, CraftReq, EvaluateConditionsReq
-- **entity_state_store.fbs**: GetEntityStateReq/Resp, SetEntityStateReq/Ack
-- **tile_entity_store.fbs**: TileEntity save/load
-- **item_registry.fbs**: ItemRegistry sync
-- **chunk.fbs**: ChunkData wire format
-
-### Interface stubs (C++ headers)
-```cpp
-// Note: Early MVP interface stubs (IChunkStore, ISimulation, IGateway) 
-// have been superseded by FlatBuffers RPC protocol.
-```
-
-### go.mod
-```go
-module github.com/gtnh/platform
-
-go 1.22
-
-require (
-    github.com/google/flatbuffers v24.3.25+incompatible
-    github.com/mattn/go-sqlite3 v1.14.22
-)
-```
-
-### CMake + Conan setup
-```cmake
-# Conan handles all dependencies via CMakeDeps
-# No vcpkg section needed
-```
-
 ## TODO
 
 - [ ] CraftResponse UI feedback in WorkbenchWindow
@@ -277,7 +217,7 @@ require (
 
 ---
 
-**Generated**: 2026-06-07 | **Branch**: main
+**Generated**: 2026-07-14 | **Branch**: main
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:7510c1e2 -->
 ## Beads Issue Tracker

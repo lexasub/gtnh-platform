@@ -1,0 +1,62 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  tooling:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: anti-drift guards
+        run: sh ci/check.sh tooling
+
+  build:
+    runs-on: ubuntu-24.04
+    needs: [tooling]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            cmake ninja-build \
+            g++-13 clang-tidy \
+            liburing-dev \
+            libglm-dev \
+            libspdlog-dev \
+            libasio-dev \
+            nlohmann-json3-dev \
+            libsqlite3-dev \
+            liblmdb-dev \
+            libfmt-dev
+
+      - name: Install Conan
+        run: |
+          pip install conan --quiet
+          conan profile detect --force 2>/dev/null || true
+
+      - name: Configure CMake
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DGTNH_NET_TESTS=ON \
+            -GNinja
+
+      - name: Build
+        run: cmake --build build -j $(nproc)
+
+      - name: Run tests
+        working-directory: ./build
+        run: ctest --output-on-failure -j $(nproc)
