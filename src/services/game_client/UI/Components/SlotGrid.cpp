@@ -2,6 +2,7 @@
 #include "UI/Core/DragManager.h"
 #include "Common/Inventory.h"
 #include "Crafting/ClientItemRegistry.h"
+#include "RenderLib/Utils/TextureAtlas.h"
 #include <data/registry/ToolIds.h>
 #include <imgui.h>
 #include <cstdio>
@@ -109,8 +110,8 @@ int RenderSlotGrid(std::vector<ItemStack>& slots,
 }
 
 // ── RenderHotbar ────────────────────────────────────────────────────────────
-void RenderHotbar(const std::vector<ItemStack>& slots, int selectedSlot,
-                  const SlotStyle& style) {
+int RenderHotbar(const std::vector<ItemStack>& slots, int selectedSlot,
+                 const SlotStyle& style, DragManager* dragMgr) {
     SlotStyle s = NormalizedStyle(style);
     constexpr int kHotbarSlots = 10;
 
@@ -126,6 +127,9 @@ void RenderHotbar(const std::vector<ItemStack>& slots, int selectedSlot,
     dl->AddRectFilled(ImVec2(startX - 4.0f, y - 4.0f),
                       ImVec2(startX + totalW + 4.0f, y + s.size + 4.0f),
                       IM_COL32(0, 0, 0, 160), 4.0f);
+
+    ImVec2 mouse = ImGui::GetIO().MousePos;
+    int hoveredSlot = -1;
 
     for (int i = 0; i < kHotbarSlots; ++i) {
         float x = startX + i * static_cast<float>(s.size + s.padding);
@@ -145,20 +149,38 @@ void RenderHotbar(const std::vector<ItemStack>& slots, int selectedSlot,
         }
 
         if (static_cast<size_t>(i) < slots.size() && slots[i].item_id != 0) {
-            uint32_t itemColor = IM_COL32(
-                slots[i].item_id * 50 % 256,
-                slots[i].item_id * 80 % 256,
-                slots[i].item_id * 30 % 256, 255);
-            dl->AddRectFilled(ImVec2(pos.x + 4, pos.y + 4),
-                              ImVec2(pos.x + s.size - 4, pos.y + s.size - 4),
-                              itemColor, 2.0f);
+            auto uv = renderlib::TextureAtlas::GetItemUV(slots[i].item_id);
+            dl->AddImage(
+                renderlib::TextureAtlas::GetTextureHandle().idx,
+                ImVec2(pos.x + 4, pos.y + 4),
+                ImVec2(pos.x + s.size - 4, pos.y + s.size - 4),
+                ImVec2(uv.u0, uv.v0),
+                ImVec2(uv.u1, uv.v1));
+            if (s.showNumbers && slots[i].count > 1) {
+                char buf[4];
+                std::snprintf(buf, sizeof(buf), "%d", slots[i].count);
+                dl->AddText(ImVec2(pos.x + 4, pos.y + 4),
+                            IM_COL32(255, 255, 255, 255), buf);
+            }
         }
 
         // Key number
         char key[2] = {(i < 9) ? static_cast<char>('1' + i) : '0', 0};
         dl->AddText(ImVec2(pos.x + 4, pos.y + s.size + 2),
                     IM_COL32(200, 200, 200, 180), key);
+
+        // Hit test
+        if (mouse.x >= pos.x && mouse.x <= pos.x + slotSize.x &&
+            mouse.y >= pos.y && mouse.y <= pos.y + slotSize.y) {
+            hoveredSlot = i;
+        }
     }
+
+    if (dragMgr && hoveredSlot >= 0) {
+        dragMgr->UpdateHover(hoveredSlot);
+    }
+
+    return hoveredSlot;
 }
 
 // ── SlotGridComponent ───────────────────────────────────────────────────────
@@ -262,18 +284,15 @@ int SlotGridComponent::Render() {
                         s.selectedBorder, 2.0f, 0, 2.0f);
         }
 
-        // ── Item preview ──────────────────────────────────────────────────
-        if (dm_ && dm_->IsDragging()) {
-            dm_->RenderPreview(s);
-        } else if (slots_[globalIdx].item_id != 0) {
-            uint32_t itemColor = IM_COL32(
-                slots_[globalIdx].item_id * 50 % 256,
-                slots_[globalIdx].item_id * 80 % 256,
-                slots_[globalIdx].item_id * 30 % 256, 255);
-            ImVec2 itemRectMin(cursor.x + 4, cursor.y + 4);
-            ImVec2 itemRectMax(cursor.x + s.size - 4,
-                           cursor.y + s.size - 4);
-            dl->AddRectFilled(itemRectMin, itemRectMax, itemColor, 2.0f);
+        // ── Item icon ──────────────────────────────────────────────────
+        if (slots_[globalIdx].item_id != 0) {
+            auto uv = renderlib::TextureAtlas::GetItemUV(slots_[globalIdx].item_id);
+            dl->AddImage(
+                renderlib::TextureAtlas::GetTextureHandle().idx,
+                ImVec2(cursor.x + 4, cursor.y + 4),
+                ImVec2(cursor.x + s.size - 4, cursor.y + s.size - 4),
+                ImVec2(uv.u0, uv.v0),
+                ImVec2(uv.u1, uv.v1));
             if (s.showNumbers && slots_[globalIdx].count > 1) {
                 char buf[4];
                 std::snprintf(buf, sizeof(buf), "%d", slots_[globalIdx].count);
@@ -283,6 +302,10 @@ int SlotGridComponent::Render() {
         }
 
         ImGui::PopID();
+    }
+
+    if (dm_ && dm_->IsDragging()) {
+        dm_->RenderPreview(s);
     }
 
     // ── ESC cancels drag (returns item to source) ────────────────────────

@@ -74,6 +74,111 @@ Blocks without an entry use default mapping: `block_id → tile_id` (block N use
 - Format: `bgfx::TextureFormat::RGBA8`
 - Filtering: bilinear with half-pixel UV inset (prevents tile bleeding)
 
+## `data/textures/item_icons.csv` — Item Icon Mapping (PLANNED)
+
+Maps item IDs to a single tile ID for inventory/UI rendering.
+
+```
+item_id,tile_id
+```
+
+| Column    | Type   | Description |
+|-----------|--------|-------------|
+| `item_id` | string | Item identifier (same format as `items.csv`) |
+| `tile_id` | int    | Tile ID in the atlas (references `textures.csv`) |
+
+**Example:**
+```
+0:0:1,0          # stone → tile 0 (block texture reused)
+0:110:1,16       # iron_ingot → tile 16 (dedicated icon sprite)
+```
+
+### Resolution chain
+
+Item icons resolve in order:
+1. `item_icons.csv` — explicit mapping (highest priority)
+2. `block_faces.csv` — first face (`face_px`) of matching block_id (free for all blocks)
+3. Fallback — magenta/black checkerboard placeholder
+
+This means blocks, ores, and wood items get icons automatically from `block_faces.csv` without explicit entries. Only non-block items (ingots, tools, machines, cables, pipes, fluids) need entries in `item_icons.csv`.
+
+### What needs art (~60 items)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| Blocks/ores/wood | ~29 | stone, iron_ore, oak_planks — auto from `block_faces` |
+| Ingots/dusts/materials | ~15 | iron_ingot, tin_dust, bronze_plate |
+| Tools | ~9 | drill_lv, chainsaw_lv, wrench |
+| Machines | ~17 | heat_macerator, steam_compressor, creative_generator |
+| Cables/pipes | ~10 | cable_copper, fluid_pipe, item_pipe |
+| Buckets/fluids | ~8 | water_bucket, sulfuric_acid_bucket |
+
+All icons are 16×16 px pixel art (same as block tiles). Items in NEI/GTNH are 2D sprites, not 3D renders.
+
+---
+
+## `data/textures/textures_merge.csv` — Texture Compositing
+
+Overlays one tile on top of another at atlas load time (CPU, one-shot). Useful for ores on different stone types, decorative variants, etc.
+
+```
+composite_id,base_tile_id,overlay_tile_id
+```
+
+| Column         | Type | Description |
+|----------------|------|-------------|
+| `composite_id` | int  | New tile_id for the composited result (must not collide with existing tiles) |
+| `base_tile_id` | int  | tile_id from `textures.csv` (bottom layer, e.g. stone) |
+| `overlay_tile_id` | int | tile_id from `textures.csv` (top layer with alpha, e.g. ore sprite) |
+
+**Example:**
+```
+composite_id,base_tile_id,overlay_tile_id
+20,0,1          # often.png(0,0) + often.png(0,1) → composite tile 20
+21,2,1          # often.png(0,2) + often.png(0,1) → composite tile 21
+22,3,1          # often.png(0,3) + often.png(0,1) → composite tile 22
+```
+
+### How it works
+
+1. Base tiles are loaded into the atlas first (from `textures.csv`)
+2. `textures_merge.csv` is read after base tiles
+3. For each entry: overlay tile's source PNG is re-read, alpha-blended onto the base tile in the atlas (`src_over` compositing)
+4. Result is placed in the next free atlas slot; `composite_id` is registered in tile→atlas mapping
+5. Checkerboard fill skips all used slots (base + composite)
+
+### Usage
+
+Reference `composite_id` in `block_faces.csv` or `item_icons.csv` like any regular tile_id. The composited tile is indistinguishable from a hand-drawn tile.
+
+**Typical use case** (GTNH ores):
+```
+# textures_merge.csv — ore overlays
+20,0,1    # stone + copper_ore
+21,2,1    # netherrack + copper_ore
+22,3,1    # endstone + copper_ore
+```
+Then in `block_faces.csv`:
+```
+200,20,20,20,20,20,20,0   # copper_ore uses composite tile 20
+```
+
+---
+
+## Atlas Strategy
+
+**Single atlas, always resident.** All block tiles + item icons share one atlas.
+
+| Atlas size | Capacity | VRAM | Use case |
+|------------|----------|------|----------|
+| 256×256 | 256 tiles | 256 KB | **Current** — sufficient for blocks + items |
+| 512×512 | 1024 tiles | 1 MB | When machines/animations grow beyond 256 |
+| Texture2DArray | Unlimited | per-layer | If atlas packing becomes a bottleneck |
+
+**Caching/eviction**: None needed. 256 KB fits in VRAM permanently. No LRU, no tiered eviction. Revisit if animated textures or tile entity sprites are added.
+
+---
+
 ## Limitations
 
 ### Atlas capacity
@@ -86,6 +191,7 @@ See also: `kDefaultTilesX` / `kDefaultTilesY` in `TextureAtlas.h`, and all per-t
 
 ## Implementation
 
-- `src/services/game_client/RenderLib/Utils/TextureAtlas.cpp` — atlas builder
+- `src/services/game_client/RenderLib/Utils/TextureAtlas.cpp` — atlas builder (blocks + items)
+- `src/services/game_client/UI/Components/ItemColor.h` — **TO BE REPLACED** with UV lookup from atlas
 - `src/services/game_client/Render/ChunkMeshBuilder.cpp` — mesh builder (UV from face-local axes)
 - `shaders/fs_block.sc` — fragment shader (`texture2D(s_texAtlas, v_texcoord) * v_color`)

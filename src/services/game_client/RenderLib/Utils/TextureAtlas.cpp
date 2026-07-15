@@ -13,12 +13,14 @@
 namespace renderlib {
 
 static OpenHashMap<uint16_t, BlockFaces, 128, 0xFFFF> s_blockFaces;
+static OpenHashMap<uint16_t, uint16_t, 128, 0xFFFF> s_itemIcons; // item_id → tile_id (for item icon resolution, populated from item_icons.csv)
 
 static bgfx::TextureHandle s_texture = BGFX_INVALID_HANDLE;
 static int s_tileSize = 16;
 static int s_atlasW = 256;
 static int s_atlasH = 256;
 static bool s_initialized = false;
+static uint8_t s_nextAtlasSlot = 0; // tracks next free atlas slot across LoadTextureRegistry + LoadMergeRegistry
 
 // tile_id → atlas grid position (populated from textures.csv, fallback to id%16, id/16)
 static uint8_t s_tileAtlasX[256];
@@ -38,7 +40,7 @@ static std::vector<std::string> SplitCSV(const std::string& line) {
     return fields;
 }
 
-static bool LoadTextureRegistry(const char* dataDir, uint8_t& nextAtlasSlot) {
+static bool LoadTextureRegistry(const char* dataDir) {
     const std::string filename = std::string(dataDir) + "/textures/textures.csv";
     std::FILE* file = std::fopen(filename.c_str(), "r");
     if (!file) {
@@ -68,12 +70,12 @@ static bool LoadTextureRegistry(const char* dataDir, uint8_t& nextAtlasSlot) {
             uint8_t rotate = fields.size() >= 5 ? static_cast<uint8_t>(std::stoi(fields[4])) : 0;
             
             // Auto-assign atlas slot sequentially; tileX/Y are source PNG position only
-            s_tileAtlasX[tileId] = nextAtlasSlot % TextureAtlas::kDefaultTilesX;
-            s_tileAtlasY[tileId] = nextAtlasSlot / TextureAtlas::kDefaultTilesX;
+            s_tileAtlasX[tileId] = s_nextAtlasSlot % TextureAtlas::kDefaultTilesX;
+            s_tileAtlasY[tileId] = s_nextAtlasSlot / TextureAtlas::kDefaultTilesX;
             s_srcPosX[tileId] = tileX;
             s_srcPosY[tileId] = tileY;
             s_rotate[tileId] = rotate & 3;
-            nextAtlasSlot++;
+            s_nextAtlasSlot++;
         } catch (const std::exception& e) {
             spdlog::warn("Error parsing texture registry row '{}': {}", lineStr, e.what());
             continue;
@@ -110,9 +112,9 @@ static bool LoadBlockFaceRegistry(const char* dataDir) {
         
         try {
             std::string blockIdStr = fields[0];
-            if (!blockIdStr.empty() && blockIdStr.front() == '"')
+            if (!blockIdStr.empty() && blockIdStr.front() == '\"')
                 blockIdStr = blockIdStr.substr(1);
-            if (!blockIdStr.empty() && blockIdStr.back() == '"')
+            if (!blockIdStr.empty() && blockIdStr.back() == '\"')
                 blockIdStr.pop_back();
             
             uint16_t blockId = ItemId::pack(blockIdStr);
@@ -135,6 +137,163 @@ static bool LoadBlockFaceRegistry(const char* dataDir) {
         }
     }
     
+    std::fclose(file);
+    return true;
+}
+
+static bool LoadItemIconRegistry(const char* dataDir) {
+    const std::string filename = std::string(dataDir) + "/textures/item_icons.csv";
+    std::FILE* file = std::fopen(filename.c_str(), "r");
+    if (!file) {
+        spdlog::warn("Failed to open item icon registry: {}", filename);
+        return false;
+    }
+    
+    char line[1024];
+    bool hasHeader = false;
+    
+    while (std::fgets(line, sizeof(line), file)) {
+        std::string lineStr(line);
+        if (!hasHeader) {
+            hasHeader = true;
+            continue;
+        }
+        
+        auto fields = SplitCSV(lineStr);
+        if (fields.size() < 2) {
+            spdlog::warn("Malformed item icon registry row: {}", lineStr);
+            continue;
+        }
+        
+        try {
+            std::string itemIdStr = fields[0];
+            uint16_t itemId = ItemId::pack(itemIdStr);
+            uint16_t tileId = static_cast<uint16_t>(std::stoi(fields[1]));
+            
+            s_itemIcons.insert(itemId, tileId);
+        } catch (const std::exception& e) {
+            spdlog::warn("Error parsing item icon registry row '{}': {}", lineStr, e.what());
+            continue;
+        }
+    }
+    
+    std::fclose(file);
+    return true;
+}
+
+static bool LoadPNGRaw(const std::string& filename, std::vector<uint8_t>& out, unsigned int& w, unsigned int& h) {
+    std::string fullPath = std::string("data/textures/") + filename;
+    unsigned int error = lodepng::decode(out, w, h, fullPath);
+    if (error) {
+        spdlog::error("Failed to load PNG '{}': {}", filename, lodepng_error_text(error));
+        return false;
+    }
+    return true;
+}
+
+static bool LoadMergeRegistry(const char* dataDir, std::vector<uint8_t>& atlasPixels) {
+    const std::string filename = std::string(dataDir) + "/textures/textures_merge.csv";
+    std::FILE* file = std::fopen(filename.c_str(), "r");
+    if (!file) {
+        spdlog::info("No texture merge registry found (optional): {}", filename);
+        return false;
+    }
+
+    char line[1024];
+    bool hasHeader = false;
+
+    while (std::fgets(line, sizeof(line), file)) {
+        std::string lineStr(line);
+        if (!hasHeader) {
+            hasHeader = true;
+            continue;
+        }
+
+        auto fields = SplitCSV(lineStr);
+        if (fields.size() < 3) {
+            spdlog::warn("Malformed merge registry row: {}", lineStr);
+            continue;
+        }
+
+        try {
+            uint16_t compositeId = static_cast<uint16_t>(std::stoi(fields[0]));
+            uint16_t baseTileId = static_cast<uint16_t>(std::stoi(fields[1]));
+            uint16_t overlayTileId = static_cast<uint16_t>(std::stoi(fields[2]));
+
+            int tSz = s_tileSize;
+
+            // Read overlay tile source PNG
+            std::vector<uint8_t> overlayPng;
+            unsigned int ovW, ovH;
+            {
+                // Find overlay tile's source filename from textures.csv data
+                // Re-read textures.csv to get overlay's filename
+                const std::string texFile = std::string(dataDir) + "/textures/textures.csv";
+                std::FILE* tf = std::fopen(texFile.c_str(), "r");
+                if (!tf) { spdlog::warn("Cannot re-read textures.csv for merge"); continue; }
+                char tl[1024]; bool hdr = false; bool found = false;
+                while (std::fgets(tl, sizeof(tl), tf)) {
+                    std::string ts(tl);
+                    if (!hdr) { hdr = true; continue; }
+                    auto f = SplitCSV(ts);
+                    if (f.size() >= 4 && static_cast<uint16_t>(std::stoi(f[0])) == overlayTileId) {
+                        if (!LoadPNGRaw(f[1], overlayPng, ovW, ovH)) { std::fclose(tf); continue; }
+                        found = true; break;
+                    }
+                }
+                std::fclose(tf);
+                if (!found || overlayPng.empty()) { spdlog::warn("Overlay tile {} not found", overlayTileId); continue; }
+            }
+
+            uint8_t ovTx = s_srcPosX[overlayTileId];
+            uint8_t ovTy = s_srcPosY[overlayTileId];
+            uint8_t baseTx = s_tileAtlasX[baseTileId];
+            uint8_t baseTy = s_tileAtlasY[baseTileId];
+
+            uint8_t atlasTx = s_nextAtlasSlot % TextureAtlas::kDefaultTilesX;
+            uint8_t atlasTy = s_nextAtlasSlot / TextureAtlas::kDefaultTilesX;
+
+            s_tileAtlasX[compositeId] = atlasTx;
+            s_tileAtlasY[compositeId] = atlasTy;
+
+            for (int py = 0; py < tSz; ++py) {
+                for (int px = 0; px < tSz; ++px) {
+                    // Base pixel from atlas (already loaded)
+                    int bx = (baseTy * tSz + py) * s_atlasW + (baseTx * tSz + px);
+                    uint8_t br = atlasPixels[bx * 4 + 0];
+                    uint8_t bg = atlasPixels[bx * 4 + 1];
+                    uint8_t bb = atlasPixels[bx * 4 + 2];
+                    uint8_t ba = atlasPixels[bx * 4 + 3];
+
+                    // Overlay pixel from source PNG
+                    int ox = (ovTy * tSz + py) * ovW + (ovTx * tSz + px);
+                    uint8_t or2 = overlayPng[ox * 4 + 0];
+                    uint8_t og = overlayPng[ox * 4 + 1];
+                    uint8_t ob = overlayPng[ox * 4 + 2];
+                    uint8_t oa = overlayPng[ox * 4 + 3];
+
+                    // Alpha compositing: src over
+                    float a = oa / 255.0f;
+                    uint8_t cr = static_cast<uint8_t>(or2 * a + br * (1.0f - a));
+                    uint8_t cg = static_cast<uint8_t>(og * a + bg * (1.0f - a));
+                    uint8_t cb = static_cast<uint8_t>(ob * a + bb * (1.0f - a));
+                    uint8_t ca = static_cast<uint8_t>(oa + ba * (1.0f - a));
+
+                    int dx = (atlasTy * tSz + py) * s_atlasW + (atlasTx * tSz + px);
+                    atlasPixels[dx * 4 + 0] = cr;
+                    atlasPixels[dx * 4 + 1] = cg;
+                    atlasPixels[dx * 4 + 2] = cb;
+                    atlasPixels[dx * 4 + 3] = ca;
+                }
+            }
+
+            s_nextAtlasSlot++;
+            spdlog::info("Merged tile {} = base {} + overlay {}", compositeId, baseTileId, overlayTileId);
+        } catch (const std::exception& e) {
+            spdlog::warn("Error parsing merge row '{}': {}", lineStr, e.what());
+        }
+    }
+
     std::fclose(file);
     return true;
 }
@@ -210,10 +369,11 @@ void TextureAtlas::Init(int tileSize) {
     }
     
     const char* dataDir = "data";
-    uint8_t nextAtlasSlot = 0;
-    LoadTextureRegistry(dataDir, nextAtlasSlot);
+    s_nextAtlasSlot = 0;
+    LoadTextureRegistry(dataDir);
     
     LoadBlockFaceRegistry(dataDir);
+    LoadItemIconRegistry(dataDir);
     
     std::vector<uint8_t> atlasPixels(s_atlasW * s_atlasH * 4, 0);
     
@@ -253,13 +413,19 @@ void TextureAtlas::Init(int tileSize) {
         LoadSourcePNG(filePair.first, atlasPixels, s_atlasW, s_atlasH, filePair.second);
     }
     
-    // Mark atlas slots already filled by loaded source tiles
+    LoadMergeRegistry(dataDir, atlasPixels);
+    
+    // Mark atlas slots already filled by loaded source tiles + merge tiles
     bool slotUsed[256] = {};
-    for (const auto& filePair : fileToTileIds)
-        for (uint16_t tileId : filePair.second) {
+    for (const auto& filePair : fileToTileIds) {
+        for (uint16_t tileId: filePair.second) {
             uint8_t slot = s_tileAtlasY[tileId] * kDefaultTilesX + s_tileAtlasX[tileId];
             slotUsed[slot] = true;
         }
+    }
+    for (int i = 0; i < s_nextAtlasSlot; ++i) {
+        slotUsed[i] = true;
+    }
     
     // Fill unused atlas slots with magenta/black checkerboard
     for (int ty = 0; ty < kDefaultTilesY; ++ty) {
@@ -327,6 +493,42 @@ const BlockFaces* TextureAtlas::GetBlockFaces(uint16_t blockId) {
     if (!s_initialized) return nullptr;
     auto* entry = s_blockFaces.find(blockId);
     return entry;
+}
+
+UVRect TextureAtlas::GetItemUV(uint16_t itemId) {
+    if (!s_initialized) return {0, 0, 1, 1};
+    
+    // Resolution chain: 1. item_icons.csv, 2. block_faces.csv (first face), 3. default UV
+    if (auto* itemEntry = s_itemIcons.find(itemId)) {
+        uint16_t tileId = *itemEntry;
+        float tx = s_tileAtlasX[tileId];
+        float ty = s_tileAtlasY[tileId];
+        float halfU = 0.5f / s_atlasW;
+        float halfV = 0.5f / s_atlasH;
+        return {
+            (tx * s_tileSize) / s_atlasW + halfU,
+            (ty * s_tileSize) / s_atlasH + halfV,
+            ((tx+1) * s_tileSize) / s_atlasW - halfU,
+            ((ty+1) * s_tileSize) / s_atlasH - halfV
+        };
+    }
+    
+    // Fallback to block_faces.csv (first face)
+    if (auto* blockEntry = s_blockFaces.find(itemId)) {
+        float tx = blockEntry->tileX[0];
+        float ty = blockEntry->tileY[0];
+        float halfU = 0.5f / s_atlasW;
+        float halfV = 0.5f / s_atlasH;
+        return {
+            (tx * s_tileSize) / s_atlasW + halfU,
+            (ty * s_tileSize) / s_atlasH + halfV,
+            ((tx+1) * s_tileSize) / s_atlasW - halfU,
+            ((ty+1) * s_tileSize) / s_atlasH - halfV
+        };
+    }
+    
+    // Default UV (magenta/black checkerboard)
+    return {0, 0, 1, 1};
 }
 
 } // namespace renderlib

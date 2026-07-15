@@ -1,6 +1,6 @@
 #include "UI/Core/DragManager.h"
-#include "UI/Components/ItemColor.h"
 #include "UI/Components/SlotGrid.h"
+#include "RenderLib/Utils/TextureAtlas.h"
 #include <algorithm>
 #include <cstdio>
 #include <imgui.h>
@@ -213,14 +213,18 @@ void DragManager::RenderPreview(const SlotStyle& style) {
     if (state_ != State::Holding) return;
     if (heldItem_.item_id == 0) return;
 
-    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
     ImVec2 mousePos = ImGui::GetIO().MousePos;
     int sz = style.size;
 
-    uint32_t itemColor = ItemColor(heldItem_.item_id);
-    ImVec2 rectMin(mousePos.x + 4, mousePos.y + 4);
-    ImVec2 rectMax(mousePos.x + sz - 4, mousePos.y + sz - 4);
-    dl->AddRectFilled(rectMin, rectMax, itemColor, 2.0f);
+    auto uv = renderlib::TextureAtlas::GetItemUV(heldItem_.item_id);
+    dl->AddImage(
+        ImTextureID(static_cast<ImTextureID>(renderlib::TextureAtlas::GetTextureHandle().idx)),
+        ImVec2(mousePos.x + 4, mousePos.y + 4),
+        ImVec2(mousePos.x + sz - 4, mousePos.y + sz - 4),
+        ImVec2(uv.u0, uv.v0),
+        ImVec2(uv.u1, uv.v1)
+    );
 
     if (style.showNumbers && heldItem_.count > 1) {
         char buf[8];

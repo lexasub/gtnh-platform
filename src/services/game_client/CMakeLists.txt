@@ -228,6 +228,7 @@ target_include_directories(gameclient_drag_manager_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_link_libraries(gameclient_drag_manager_test PRIVATE
+    renderlib
     glm::glm
     imgui::imgui
     spdlog::spdlog

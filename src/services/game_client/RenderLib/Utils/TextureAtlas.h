@@ -19,6 +19,7 @@ public:
   static bgfx::TextureHandle GetTextureHandle();
   static bool IsTransparent(uint16_t blockId);
   static const BlockFaces* GetBlockFaces(uint16_t blockId);
+  static UVRect GetItemUV(uint16_t itemId);
 
   static constexpr int kDefaultTilesX = 16;
   static constexpr int kDefaultTilesY = 16;

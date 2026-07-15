@@ -8,6 +8,7 @@
 #include "Components/SlotGrid.h"
 #include "Core/ActionHandler.h"
 #include "Common/Types.h"
+#include "RenderLib/Utils/TextureAtlas.h"
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <cstdio>
@@ -164,12 +165,14 @@ void NeiPanel::RenderAllRecipes() {
         ImVec2 pos = ImGui::GetCursorScreenPos();
 
         // Icon
-        uint32_t itemColor = IM_COL32(
-            itemId * 50 % 256, itemId * 80 % 256, itemId * 30 % 256, 255);
+        auto uv = renderlib::TextureAtlas::GetItemUV(itemId);
         float iconOffsetX = (cellW - kIconSize) * 0.5f;
-        dl->AddRectFilled(ImVec2(pos.x + iconOffsetX, pos.y),
-                          ImVec2(pos.x + iconOffsetX + kIconSize, pos.y + kIconSize),
-                          itemColor, 2.0f);
+        dl->AddImage(
+            ImTextureID(static_cast<ImTextureID>(renderlib::TextureAtlas::GetTextureHandle().idx)),
+            ImVec2(pos.x + iconOffsetX, pos.y),
+            ImVec2(pos.x + iconOffsetX + kIconSize, pos.y + kIconSize),
+            ImVec2(uv.u0, uv.v0),
+            ImVec2(uv.u1, uv.v1));
 
         // Click/hover area spanning full cell width
         ImGui::InvisibleButton("cell", ImVec2(cellW, kIconSize + nameH + 2.0f));

@@ -40,8 +40,9 @@ int RenderSlotGrid(std::vector<ItemStack> &slots, int startIndex,
                    DragManager *dragMgr = nullptr);
 
 // Render a horizontal hotbar at bottom-center of the screen.
-void RenderHotbar(const std::vector<ItemStack> &slots, int selectedSlot,
-                  const SlotStyle &style = {});
+// Returns hovered slot index, or -1.
+int RenderHotbar(const std::vector<ItemStack> &slots, int selectedSlot,
+                 const SlotStyle &style = {}, DragManager *dragMgr = nullptr);
 
 // ── Stateful component ─────────────────────────────────────────────────────
 // Keeps hover state across frames for drag-and-drop interactions.
