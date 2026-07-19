@@ -15,6 +15,7 @@ MeshManager::~MeshManager() {
 
 // FNV-1a over the block array.
 uint64_t MeshManager::HashChunkData(const uint16_t* blocks, size_t count) {
+    if (!blocks) return 0;
     uint64_t h = 0xcbf29ce484222325ull;
     for (size_t i = 0; i < count; ++i) {
         h ^= blocks[i];
@@ -30,6 +31,7 @@ void MeshManager::OnBlockUpdate(BlockPos pos, uint16_t block_id, uint8_t meta,
     auto rebuildChunk = [this, &world](const ChunkCoord& c) {
         auto ch = world.GetChunk(c);
         if (!ch) return;
+        if (!ch->blocks_data()) return;
         uint64_t h = HashChunkData(ch->blocks_data(), ch->blocks_size());
         if (meshCache_.CheckBuildHash(c, h))
             return;
@@ -65,6 +67,7 @@ void MeshManager::OnChunkData(ChunkCoord coord, std::shared_ptr<ChunkView> chunk
     if (!world.IsPending(coord))
         return;
 
+    if (!chunk->blocks_data()) return;
     uint64_t hash = HashChunkData(chunk->blocks_data(), chunk->blocks_size());
     std::shared_ptr<const ChunkView> shared = world.OnChunkData(std::move(chunk), coord);
     if (meshCache_.CheckBuildHash(coord, hash))

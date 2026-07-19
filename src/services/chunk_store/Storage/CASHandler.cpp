@@ -1,6 +1,5 @@
 #include "CASHandler.h"
-#include "../Chunk/Chunk.h"
-#include "SectionCodec.h"
+#include "cache/MutableChunk.h"
 #include <spdlog/spdlog.h>
 
 CASHandler::CASHandler(ChunkCache& cache, LmdbStore& lmdb,
@@ -19,31 +18,34 @@ CASHandler::Result CASHandler::casBlock(int32_t x, int32_t y, int32_t z,
 
     std::lock_guard lock(mutex_);
 
-    Chunk* chunk = const_cast<Chunk*>(cache_.get(key));
+    MutableChunk* chunk = const_cast<MutableChunk*>(cache_.get(key));
     if (chunk == nullptr) {
-        Chunk local{};
-        if (!lmdb_.readRaw(key, local))
+        auto wire = lmdb_.readRawBytes(key);
+        if (!wire)
             return {Result::Conflict, 0, 0};
-        uint16_t cur = local.blocks[idx];
-        uint8_t  cur_m = local.meta[idx];
+        MutableChunk local;
+        if (!local.fromWire(wire->data(), wire->size()))
+            return {Result::Conflict, 0, 0};
+        uint16_t cur = local.getBlock(lx, ly, lz);
+        uint8_t  cur_m = local.getMeta(lx, ly, lz);
         if (cur != expected_id)
             return {Result::Conflict, cur, cur_m};
-        local.blocks[idx] = new_id;
-        local.meta[idx]   = new_meta;
-        chunk = new Chunk(std::move(local));
+        local.setBlock(lx, ly, lz, new_id);
+        local.setMeta(lx, ly, lz, new_meta);
+        chunk = new MutableChunk(std::move(local));
         cache_.put(key, chunk);
         pending_[key].push_back({idx, new_id, new_meta});
         notify_(key);
         return {Result::Ok, new_id, new_meta};
     }
 
-    uint16_t cur = chunk->blocks[idx];
-    uint8_t  cur_m = chunk->meta[idx];
+    uint16_t cur = chunk->getBlock(lx, ly, lz);
+    uint8_t  cur_m = chunk->getMeta(lx, ly, lz);
     if (cur != expected_id)
         return {Result::Conflict, cur, cur_m};
 
-    chunk->blocks[idx] = new_id;
-    chunk->meta[idx]   = new_meta;
+    chunk->setBlock(lx, ly, lz, new_id);
+    chunk->setMeta(lx, ly, lz, new_meta);
     pending_[key].push_back({idx, new_id, new_meta});
     notify_(key);
     return {Result::Ok, new_id, new_meta};
@@ -57,17 +59,25 @@ size_t CASHandler::flush() {
 
     // Read each chunk's current data from LMDB, apply CAS changes, re-encode, write.
     for (auto& [key, changes] : pending_) {
-        Chunk chunk;
-        if (!lmdb_.readRaw(key, chunk)) {
+        auto wire = lmdb_.readRawBytes(key);
+        if (!wire) {
             spdlog::warn("CASHandler::flush: chunk key {} not found in LMDB, skipping", key);
             continue;
         }
+        MutableChunk mc;
+        if (!mc.fromWire(wire->data(), wire->size())) {
+            spdlog::warn("CASHandler::flush: failed to decode key {}", key);
+            continue;
+        }
         for (auto& c : changes) {
-            chunk.blocks[c.idx] = c.block_id;
-            chunk.meta[c.idx]   = c.meta;
+            int lx = c.idx & 0xF;
+            int lz = (c.idx >> 4) & 0xF;
+            int ly = (c.idx >> 8) & 0xF;
+            mc.setBlock(lx, ly, lz, c.block_id);
+            mc.setMeta(lx, ly, lz, c.meta);
         }
         std::vector<uint8_t> encoded;
-        encodeChunk(chunk, encoded);
+        mc.encodeToWire(encoded);
         if (!lmdb_.writeRaw(key, encoded.data(), encoded.size())) {
             spdlog::error("CASHandler::flush: writeRaw failed for key {}", key);
         }

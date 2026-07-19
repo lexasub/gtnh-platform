@@ -64,6 +64,17 @@ CREATE INDEX IF NOT EXISTS idx_player_quest_rewards_quest ON player_quest_reward
 CREATE INDEX IF NOT EXISTS idx_player_quest_rewards_redeemed ON player_quest_rewards(redeemed);
 `
 
+const entityStateSchema = `
+CREATE TABLE IF NOT EXISTS entity_state (
+	dim INTEGER NOT NULL,
+	x INTEGER NOT NULL,
+	y INTEGER NOT NULL,
+	z INTEGER NOT NULL,
+	blob BLOB,
+	PRIMARY KEY (dim, x, y, z)
+);
+`
+
 // MetaDB holds the SQLite connection and router reference.
 type MetaDB struct {
 	db *sql.DB

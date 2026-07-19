@@ -54,8 +54,9 @@ void GenerationQueue::workerLoop() {
             tasks_.pop();
         }
 
-        auto chunk = new Chunk;
-        generator_->GenerateTerrain(*chunk, chunkCoord.x, chunkCoord.y, chunkCoord.z);
+        Chunk temp;
+        generator_->GenerateTerrain(temp, chunkCoord.x, chunkCoord.y, chunkCoord.z);
+        auto chunk = new MutableChunk(MutableChunk::fromBlocks(temp.blocks.data()));
         //spdlog::debug("Generated chunk ({},{},{})", chunkCoord.x, chunkCoord.y, chunkCoord.z);
 
         {

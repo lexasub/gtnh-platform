@@ -1,7 +1,7 @@
 #include "LmdbStore.h"
-#include "../SectionCodec.h"
 #include <cstring>
 #include <lmdb.h>
+#include <optional>
 #include <spdlog/spdlog.h>
 
 #define LMDB_TX_START(txn_var, flags) \
@@ -85,55 +85,6 @@ bool LmdbStore::HasChunk(ChunkCoord c) const {
     return rc == 0;
 }
 
-bool LmdbStore::readRaw(int64_t key, Chunk& out,
-                         std::shared_ptr<std::vector<uint8_t>>* palette_out) const {
-    MDB_txn* txn = nullptr;
-    LMDB_TX_START(txn, MDB_RDONLY);
-
-    MDB_val key_val = {sizeof(int64_t), &key};
-    MDB_val data_val = {};
-
-    int rc = mdb_get(txn, dbi_, &key_val, &data_val);
-
-    if (rc == MDB_NOTFOUND) {
-        out = Chunk{};
-        mdb_txn_commit(txn);
-        return false;
-    }
-
-    if (rc != 0) {
-        spdlog::error("mdb_get failed: {}", mdb_strerror(rc));
-        mdb_txn_abort(txn);
-        return false;
-    }
-
-    if (data_val.mv_size >= 6 &&
-        decodeChunk(static_cast<const uint8_t*>(data_val.mv_data),
-                    data_val.mv_size, out)) {
-        if (palette_out) {
-            auto palette = std::make_shared<std::vector<uint8_t>>(
-                static_cast<const uint8_t*>(data_val.mv_data),
-                static_cast<const uint8_t*>(data_val.mv_data) + data_val.mv_size);
-            *palette_out = std::move(palette);
-        }
-        LMDB_TX_COMMIT();
-        return true;
-    }
-
-    // old format
-    if (data_val.mv_size == sizeof(Chunk)) {
-        std::memcpy(&out, data_val.mv_data, sizeof(Chunk));
-        LMDB_TX_COMMIT();
-        return true;
-    }
-
-    spdlog::error("Data size mismatch for key {}. Expected section or {}, got {}",
-                  key, sizeof(Chunk), data_val.mv_size);
-    out = Chunk{};
-    mdb_txn_abort(txn);
-    return false;
-}
-
 bool LmdbStore::writeRaw(int64_t key, const uint8_t* data, size_t size) {
     MDB_txn* txn = nullptr;
     MDB_val data_val = {size, const_cast<uint8_t*>(data)};
@@ -162,6 +113,34 @@ bool LmdbStore::writeRaw(int64_t key, const uint8_t* data, size_t size) {
 
     spdlog::error("writeRaw: MDB_MAP_FULL after resize");
     return false;
+}
+
+std::optional<std::vector<uint8_t>> LmdbStore::readRawBytes(int64_t key) const {
+    MDB_txn* txn = nullptr;
+    if (int rc = mdb_txn_begin(env_, nullptr, MDB_RDONLY, &txn); rc != 0) {
+        spdlog::error("mdb_txn_begin failed: {}", mdb_strerror(rc));
+        return std::nullopt;
+    }
+
+    MDB_val key_val = {sizeof(int64_t), &key};
+    MDB_val data_val = {};
+
+    int rc = mdb_get(txn, dbi_, &key_val, &data_val);
+    if (rc == MDB_NOTFOUND) {
+        mdb_txn_abort(txn);
+        return std::nullopt;
+    }
+    if (rc != 0) {
+        spdlog::error("mdb_get failed: {}", mdb_strerror(rc));
+        mdb_txn_abort(txn);
+        return std::nullopt;
+    }
+
+    auto result = std::vector<uint8_t>(
+        static_cast<const uint8_t*>(data_val.mv_data),
+        static_cast<const uint8_t*>(data_val.mv_data) + data_val.mv_size);
+    mdb_txn_abort(txn);
+    return result;
 }
 
 bool LmdbStore::growMapSize() {

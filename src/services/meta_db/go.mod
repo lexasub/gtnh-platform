@@ -1,6 +1,6 @@
 module github.com/gtnh-platform/metadb
 
-go 1.21
+go 1.22
 
 require (
 	github.com/google/flatbuffers v24.3.25+incompatible

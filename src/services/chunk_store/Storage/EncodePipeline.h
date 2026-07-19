@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Chunk/Chunk.h"
+#include "cache/MutableChunk.h"
 #include "../../world_generator/GenerationQueue.h"
 #include <atomic>
 #include <condition_variable>
@@ -18,7 +18,7 @@ class LmdbStore;
 
 struct EncodeTask {
     ChunkCoord coord;
-    Chunk* chunk;
+    MutableChunk* chunk;
 };
 
 // Owns encode threads + palette cache + pending generation callbacks.
@@ -38,14 +38,14 @@ public:
     void stop();
 
     // Called by worldgen thread when chunk generation is done.
-    void enqueueEncode(ChunkCoord coord, Chunk* chunk);
+    void enqueueEncode(ChunkCoord coord, MutableChunk* chunk);
 
     // For gen queue wiring
     void SetGenerationQueue(GenerationQueue* gen) { gen_queue_ = gen; }
 
-    // Immediate encode + deliver (called from I/O pool, not encode thread).
-    void encodeAndDeliver(const Chunk* chunk, int64_t key,
-                          ChunkCallback& callback);
+    void markAsPendingLmdb(std::shared_ptr<std::vector<uint8_t>> palette, int64_t key);
+
+    std::shared_ptr<std::vector<uint8_t>> takePendingPalette(int64_t key);
 
     // Pending callbacks for worldgen (coord key -> callbacks waiting on encode).
     // Shared with AsyncGetChunk — accessed under encode_mutex_.
