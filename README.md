@@ -9,7 +9,7 @@ crafting, and electric tools. (Gtnh inspired game in future)
 
 Built with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + Asio TCP).
 
-![ScreenShot](/screenshots/main.jpg)
+![ScreenShot](screenshots/main.jpg)
 
 ## Git History & Contributing
 
