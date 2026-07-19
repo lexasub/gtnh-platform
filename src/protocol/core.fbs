@@ -63,6 +63,7 @@ table PlayerAction {
   face:uint8;
   count:uint8 = 1;
   block_id:uint16;
+  request_id:uint32 = 0;       // client-chosen id echoed in BlockAck
 }
 
 // CAS-based block placement: client sends expected_block_id for optimistic
@@ -74,6 +75,7 @@ table SetBlockAction {
   pos:Vec3i (required);
   expected_block_id:uint16;   // what client thinks is there now
   new_block_id:uint16;         // 0 = break
+  request_id:uint32 = 0;       // echoed in BlockAck
 }
 
 // Server confirmation for a PlayerAction or SetBlockAction.
@@ -84,6 +86,7 @@ table BlockAck {
   block_id:uint16;      // final block_id (ACCEPTED/CONFLICT)
   meta:uint8;            // final meta (ACCEPTED/CONFLICT)
   reason:string;         // human-readable (for REJECTED, e.g. "no permission")
+  request_id:uint32 = 0; // echoes the client's request_id from SetBlockAction
 }
 
 // ---------------------------------------------------------------------------

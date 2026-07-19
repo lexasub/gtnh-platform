@@ -10,6 +10,10 @@
 
 namespace gtnh::net {
 
+// Max write SQEs to submit per io_uring_submit call. Higher values batch more
+// writes into a single syscall but increase per-SQE latency.
+constexpr unsigned kWriteBatchLimit = 32;// 128 //TODO fix - 64, 128 - not loaded additionaly chunks
+
 std::atomic<uint64_t> IoUringConnection::next_generation_{1};
 
 IoUringConnection::IoUringConnection(int fd, const char* name, ConnectionTags tags)
@@ -525,7 +529,7 @@ void IoUringConnection::start_next_writes() {
     }
 
     unsigned batch_count = 0;
-    while (!write_queue_.empty() && batch_count < 32) {
+    while (!write_queue_.empty() && batch_count < kWriteBatchLimit) {
         io_uring_sqe* sqe;
         {
             std::lock_guard<std::mutex> sq_lock(sq_mutex_write_);

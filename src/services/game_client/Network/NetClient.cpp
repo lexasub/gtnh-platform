@@ -47,6 +47,14 @@ int NetClient::tcp_connect(const char* host, uint16_t port) {
 
     int flag = 1;
     ::setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+    int keepalive = 1;
+    ::setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+    int keepidle = 5;
+    ::setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
+    int keepintvl = 3;
+    ::setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
+    int keepcnt = 3;
+    ::setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(keepcnt));
 
     struct sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -230,6 +238,8 @@ void NetClient::do_reconnect() {
                      attempt + 1, max_reconnect_attempts_);
         reconnect_attempts_ = attempt + 1;
         reconnecting_ = false;
+        if (onReconnect_)
+            onReconnect_();
         return;
     }
 
@@ -276,6 +286,9 @@ void NetClient::OnMessage(uint8_t msg_type,
     size_t plen = data->size();
 
     switch (msg_type) {
+        case GatewayMsg::kCompressedChunkData:
+            ProcessKCompressedChunkData(std::move(data));
+            return;
         case GatewayMsg::kBlockAck:
             ProcessBlockAck(std::move(data));
             break;
@@ -522,7 +535,8 @@ void NetClient::ProcessBlockAck(std::shared_ptr<std::vector<uint8_t>> data) {
     if (onBlockAck_)
         onBlockAck_(BlockPos{pos->x(), pos->y(), pos->z()},
                     static_cast<uint8_t>(ack->status()),
-                    ack->block_id(), ack->meta());
+                    ack->block_id(), ack->meta(),
+                    ack->request_id());
 }
 
 // =========================================================================
@@ -570,10 +584,12 @@ void NetClient::SendBlockAction(Protocol::PlayerActionType action,
                                   uint8_t /*face*/, uint64_t player_id) {
     if (!ctrl_conn_ || !connected_ctrl_) return;
 
+    uint32_t rid = next_request_id_.fetch_add(1, std::memory_order_relaxed);
+
     flatbuffers::FlatBufferBuilder builder(64);
     auto pos = Protocol::Vec3i(x, y, z);
     auto act = Protocol::CreateSetBlockAction(builder, player_id, action, &pos,
-                                              currentBlockID, block_id);
+                                              currentBlockID, block_id, rid);
     builder.Finish(act);
 
     EnqueueWrite(GatewayMsg::kSetBlockAction, builder.GetBufferPointer(),

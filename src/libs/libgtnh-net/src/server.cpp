@@ -61,6 +61,14 @@ bool TcpServer::listen(uint16_t port, const char* name) {
             if (flags >= 0) fcntl(res, F_SETFL, flags | O_NONBLOCK);
             int opt = 1;
             setsockopt(res, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
+            int keepalive = 1;
+            setsockopt(res, SOL_SOCKET, SO_KEEPALIVE, &keepalive, sizeof(keepalive));
+            int keepidle = 5;
+            setsockopt(res, IPPROTO_TCP, TCP_KEEPIDLE, &keepidle, sizeof(keepidle));
+            int keepintvl = 3;
+            setsockopt(res, IPPROTO_TCP, TCP_KEEPINTVL, &keepintvl, sizeof(keepintvl));
+            int keepcnt = 3;
+            setsockopt(res, IPPROTO_TCP, TCP_KEEPCNT, &keepcnt, sizeof(keepcnt));
             if (on_accept) {
                 on_accept(res);
             }

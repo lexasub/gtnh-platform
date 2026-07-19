@@ -56,7 +56,8 @@ public:
   using BlockUpdateCallback =
       std::function<void(BlockPos, uint16_t, uint8_t, uint32_t)>;
   using BlockAckCallback = std::function<void(BlockPos pos, uint8_t status,
-                                              uint16_t block_id, uint8_t meta)>;
+                                              uint16_t block_id, uint8_t meta,
+                                              uint32_t request_id)>;
   using InventoryUpdateCallback =
       std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
   using CraftResponseCallback =
@@ -74,6 +75,7 @@ public:
       std::function<void(bool, uint8_t, const std::vector<uint8_t> &)>;
   using QuestUpdateCallback =
       std::function<void(uint8_t, std::shared_ptr<std::vector<uint8_t>>)>;
+  using ReconnectCallback = std::function<void()>;
 
   explicit NetClient();
   ~NetClient();
@@ -122,6 +124,9 @@ public:
   }
   void SetQuestUpdateCallback(QuestUpdateCallback cb) {
     onQuestUpdate_ = std::move(cb);
+  }
+  void SetReconnectCallback(ReconnectCallback cb) {
+    onReconnect_ = std::move(cb);
   }
 
   // ---- outbound messages -------------------------------------------------
@@ -177,6 +182,8 @@ private:
   std::atomic<bool> reconnecting_{false};
   std::atomic<bool> reconnect_requested_{false};
 
+  std::atomic<uint32_t> next_request_id_{1}; // monotonic counter for BlockAck matching
+
   void request_reconnect();
   void do_reconnect();
 
@@ -214,4 +221,5 @@ private:
   ChestOpenRespCallback onChestOpenResp_;
   ToolActionRespCallback onToolActionResp_;
   QuestUpdateCallback onQuestUpdate_;
+  ReconnectCallback onReconnect_;
 };

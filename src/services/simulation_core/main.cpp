@@ -266,6 +266,7 @@ int main(int argc, char* argv[]) {
     routerClient->Subscribe("item.flow");
     routerClient->Subscribe("item.transfer.response");
     routerClient->Subscribe("player.chest.open");
+    routerClient->Subscribe("player.inventory.load");
 
     spdlog::info("SimulationCore running, waiting for messages...");
 

@@ -66,7 +66,7 @@ struct MockEventPublisher : simcore::IEventPublisher {
     uint32_t last_energy = 0;
 
     void publishBlockAck(uint8_t, int32_t x, int32_t y, int32_t z,
-                         uint16_t, uint8_t, const char*) override {
+                         uint16_t, uint8_t, const char*, uint32_t) override {
         block_ack_count++;
         last_x = x; last_y = y; last_z = z;
     }

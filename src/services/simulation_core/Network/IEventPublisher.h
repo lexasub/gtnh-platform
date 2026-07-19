@@ -16,7 +16,8 @@ public:
   // Protocol::BlockAckStatus)
   virtual void publishBlockAck(uint8_t status, int32_t x, int32_t y, int32_t z,
                                uint16_t block_id, uint8_t meta,
-                               const char *reason) = 0;
+                               const char *reason,
+                               uint32_t request_id = 0) = 0;
 
   virtual void publishBlockChangedEvent(int32_t x, int32_t y, int32_t z,
                                         uint16_t block_id, uint8_t meta) = 0;

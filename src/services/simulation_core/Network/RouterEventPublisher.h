@@ -12,7 +12,8 @@ public:
 
   void publishBlockAck(uint8_t status, int32_t x, int32_t y, int32_t z,
                        uint16_t block_id, uint8_t meta,
-                       const char *reason) override;
+                       const char *reason,
+                       uint32_t request_id = 0) override;
 
   void publishBlockChangedEvent(int32_t x, int32_t y, int32_t z,
                                 uint16_t block_id, uint8_t meta) override;

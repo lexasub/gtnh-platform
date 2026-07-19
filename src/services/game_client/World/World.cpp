@@ -191,6 +191,10 @@ bool World::IsPending(const ChunkCoord& coord) const {
     return pendingRequests_.contains(MakeChunkKey(coord));
 }
 
+void World::ClearPendingRequests() {
+    pendingRequests_.clear();
+}
+
 std::shared_ptr<const ChunkView> World::OnChunkData(std::shared_ptr<ChunkView> chunk, const ChunkCoord &coord) {
     auto chunkPtr = storage_.StoreAndGetChunk(coord, std::move(chunk));
 

@@ -13,7 +13,8 @@ RouterEventPublisher::RouterEventPublisher(std::shared_ptr<IoUringRouterClient> 
 void RouterEventPublisher::publishBlockAck(uint8_t status,
                                            int32_t x, int32_t y, int32_t z,
                                            uint16_t block_id, uint8_t meta,
-                                           const char* reason)
+                                           const char* reason,
+                                           uint32_t request_id)
 {
     flatbuffers::FlatBufferBuilder builder(128);
     auto pos = Protocol::Vec3i(x, y, z);
@@ -23,12 +24,12 @@ void RouterEventPublisher::publishBlockAck(uint8_t status,
     }
     auto ack = Protocol::CreateBlockAck(builder, &pos,
                                         static_cast<Protocol::BlockAckStatus>(status),
-                                        block_id, meta, reason_off);
+                                        block_id, meta, reason_off, request_id);
     builder.Finish(ack);
     std::vector<uint8_t> ack_data(builder.GetBufferPointer(),
                                   builder.GetBufferPointer() + builder.GetSize());
     router_->Publish("player.actions.ack", ack_data);
-    spdlog::debug("Published BlockAck: status={} at ({},{},{}) id={}", status, x, y, z, block_id);
+    spdlog::debug("Published BlockAck: status={} at ({},{},{}) id={} request_id={}", status, x, y, z, block_id, request_id);
 }
 
 void RouterEventPublisher::publishBlockChangedEvent(int32_t x, int32_t y, int32_t z,
