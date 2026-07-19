@@ -32,16 +32,18 @@ void EncodePipeline::enqueueEncode(ChunkCoord coord, Chunk* chunk) {
     encode_cv_.notify_one();
 }
 
-void EncodePipeline::encodeAndDeliver(const Chunk* chunk, int64_t key,
-                                       ChunkCallback& callback) {
-    std::vector<uint8_t> encoded;
-    encodeChunk(*chunk, encoded);
-    auto palette = std::make_shared<std::vector<uint8_t>>(std::move(encoded));
-    {
-        std::lock_guard lock(lmdb_palette_mutex_);
-        pending_lmdb_.emplace(key, palette);
-    }
-    callback(std::move(palette));
+void EncodePipeline::markAsPendingLmdb(std::shared_ptr<std::vector<uint8_t>> palette, int64_t key) {
+    std::lock_guard lock(lmdb_palette_mutex_);
+    pending_lmdb_.emplace(key, palette);
+}
+
+std::shared_ptr<std::vector<uint8_t>> EncodePipeline::takePendingPalette(int64_t key) {
+    std::lock_guard lock(lmdb_palette_mutex_);
+    auto it = pending_lmdb_.find(key);
+    if (it == pending_lmdb_.end()) return nullptr;
+    auto palette = std::move(it->second);
+    pending_lmdb_.erase(it);
+    return palette;
 }
 
 void EncodePipeline::encodeLoop() {

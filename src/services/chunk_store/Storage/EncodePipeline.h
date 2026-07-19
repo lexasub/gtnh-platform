@@ -43,9 +43,9 @@ public:
     // For gen queue wiring
     void SetGenerationQueue(GenerationQueue* gen) { gen_queue_ = gen; }
 
-    // Immediate encode + deliver (called from I/O pool, not encode thread).
-    void encodeAndDeliver(const Chunk* chunk, int64_t key,
-                          ChunkCallback& callback);
+    void markAsPendingLmdb(std::shared_ptr<std::vector<uint8_t>> palette, int64_t key);
+
+    std::shared_ptr<std::vector<uint8_t>> takePendingPalette(int64_t key);
 
     // Pending callbacks for worldgen (coord key -> callbacks waiting on encode).
     // Shared with AsyncGetChunk — accessed under encode_mutex_.

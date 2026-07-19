@@ -32,10 +32,12 @@ add_custom_target(chunkd_fbs
 )
 
 add_library(chunkd_storage
+    Storage/cache/MutableChunk.cpp
+    Storage/cache/MutableSection.cpp
+    Storage/disk/LmdbStore.cpp
+    Storage/disk/FlushPipeline.cpp
     Storage/ChunkStore.cpp
-        Storage/disk/LmdbStore.cpp
     Storage/EncodePipeline.cpp
-        Storage/disk/FlushPipeline.cpp
     Storage/CASHandler.cpp
     Storage/WorkQueue.cpp
     Storage/SectionCodec.cpp

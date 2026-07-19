@@ -69,7 +69,8 @@ const Chunk* ChunkStore::GetChunk(ChunkCoord c) const {
     auto* cached = getCached(c.x, c.y, c.z);
     if (cached) return cached;
 
-    auto chunk = new Chunk();
+    Chunk* chunk = cache_.takeFromPool();
+    if (!chunk) chunk = new Chunk();
     if (lmdb_.readRaw(makeKey(c.x, c.y, c.z), *chunk)) {
         cache_.put(makeKey(c.x, c.y, c.z), chunk);
         return chunk;
@@ -117,7 +118,12 @@ void ChunkStore::setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t 
         lmdb_.readRaw(key, local);
         local.blocks[idx] = id;
         local.meta[idx]   = meta;
-        chunk = new Chunk(std::move(local));
+        chunk = cache_.takeFromPool();
+        if (!chunk) {
+            chunk = new Chunk(std::move(local));
+        } else {
+            *chunk = std::move(local);
+        }
         cache_.put(key, chunk);
         {
             std::lock_guard lock(encoder_.lmdb_palette_mutex_);
@@ -151,6 +157,14 @@ bool ChunkStore::SaveChunk(const Chunk& chunk, ChunkCoord coord) {
 
 const Chunk* ChunkStore::getCached(int32_t cx, int32_t cy, int32_t cz) const {
     return cache_.get(makeKey(cx, cy, cz));
+}
+
+const Chunk* ChunkStore::getCachedPinned(int32_t cx, int32_t cy, int32_t cz) {
+    return cache_.getPinned(makeKey(cx, cy, cz));
+}
+
+void ChunkStore::releaseCachedPinned(const Chunk* chunk) {
+    cache_.releasePinned(chunk);
 }
 
 void ChunkStore::putCached(int64_t key, Chunk* chunk) const {
@@ -203,21 +217,18 @@ void ChunkStore::enqueueEncode(ChunkCoord coord, Chunk* chunk) {
 void ChunkStore::AsyncGetChunk(ChunkCoord coord, ChunkCallback callback) {
     int64_t key = makeKey(coord.x, coord.y, coord.z);
 
-    if (auto* cached = getCached(coord.x, coord.y, coord.z)) {
-        std::shared_ptr<std::vector<uint8_t>> palette;
-        {
-            std::lock_guard lock(encoder_.lmdb_palette_mutex_);
-            auto it = encoder_.pending_lmdb_.find(key);
-            if (it != encoder_.pending_lmdb_.end()) {
-                palette = std::move(it->second);
-                encoder_.pending_lmdb_.erase(it);
-            }
-        }
-        if (palette) {
+    if (auto* cached = getCachedPinned(coord.x, coord.y, coord.z)) { // sync cache path
+        if (auto palette = encoder_.takePendingPalette(key)) {
+            releaseCachedPinned(cached);
             callback(std::move(palette));
-        } else {
-            encoder_.encodeAndDeliver(cached, key, callback);
+            return;
         }
+        std::vector<uint8_t> encoded;
+        encodeChunk(*cached, encoded);
+        releaseCachedPinned(cached);
+        auto palette = std::make_shared<std::vector<uint8_t>>(std::move(encoded));
+        encoder_.markAsPendingLmdb(palette, key);
+        callback(std::move(palette));
         return;
     }
 
@@ -226,13 +237,20 @@ void ChunkStore::AsyncGetChunk(ChunkCoord coord, ChunkCallback callback) {
         Chunk chunk;
 
         if (lmdb_.readRaw(key, chunk, &palette)) {
-            auto* chunk_ptr = new Chunk(std::move(chunk));
-            cache_.put(key, chunk_ptr);
-            if (palette) {
-                callback(std::move(palette));
-            } else {
-                encoder_.encodeAndDeliver(chunk_ptr, key, callback);
+            if (!palette) {
+                std::vector<uint8_t> encoded;
+                encodeChunk(chunk, encoded);
+                palette = std::make_shared<std::vector<uint8_t>>(std::move(encoded));
+                encoder_.markAsPendingLmdb(palette, key);
             }
+            Chunk* chunk_ptr = cache_.takeFromPool();
+            if (!chunk_ptr) {
+                chunk_ptr = new Chunk(std::move(chunk));
+            } else {
+                *chunk_ptr = std::move(chunk);
+            }
+            cache_.put(key, chunk_ptr);
+            callback(std::move(palette));
             return;
         }
         {

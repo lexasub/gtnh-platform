@@ -57,6 +57,8 @@ public:
 
   // --- Cache access (for encode pipeline) ---
   const Chunk* getCached(int32_t cx, int32_t cy, int32_t cz) const;
+  const Chunk* getCachedPinned(int32_t cx, int32_t cy, int32_t cz);
+  void releaseCachedPinned(const Chunk* chunk);
   void putCached(int64_t key, Chunk* chunk) const;
 
   // Called by worldgen thread when chunk generation is done.
