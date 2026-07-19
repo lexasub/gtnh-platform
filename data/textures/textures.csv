@@ -14,5 +14,9 @@ tile_id,filename,tile_x,tile_y,rotate
 13,often.png,3,1,0
 14,often.png,3,2,0
 15,often.png,3,3,0
-16,often.png,0,1,1
-17,often.png,1,1,0
+16,dirt.png,0,1,1
+17,dirt.png,1,1,0
+18,stone.png,0,1,1
+19,stone.png,1,1,0
+20,cobblestone.png,0,1,1
+21,cobblestone.png,1,1,0

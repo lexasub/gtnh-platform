@@ -1,122 +1,341 @@
 int,name,stack,meta
-# BASE terrain blocks (prefix 0:0)
-0:0:0,air,0,0
-0:0:1,stone,,0
-0:0:2,cobblestone,,0
-0:0:3,sand,,0
-0:0:4,glass,,0
-0:0:5,obsidian,,0
-0:0:6,brick_block,,0
-0:0:7,dirt,,0
-0:0:8,grass,,0
-# BASE wood (prefix 0:10:00 = planks, 0:10:01 = slabs, 0:10:10 = doors, 0:10:11 = misc)
-0:10:00:0,oak_planks,,0
-0:10:00:1,spruce_planks,,0
-0:10:00:2,birch_planks,,0
-0:10:01:0,oak_slab,,0
-0:10:01:1,spruce_slab,,0
-0:10:10:0,oak_door,,0
-0:10:10:1,spruce_door,,0
-0:10:11:0,chest,,0
-0:10:11:1,crafting_table,,0
-# INGOTS (0:110)
-0:110:1,iron_ingot,,0
-0:110:2,gold_ingot,,0
-0:110:3,tin_ingot,,0
-0:110:4,electrum_ingot,,0
-0:110:5,uranium_ingot,,0
-0:110:6,bronze_ingot,,0
+# BASE terrain blocks (prefix 0:0:0:0)
+0:0:0:0:0,air,0,0
+0:0:0:0:1,stone,,0
+0:0:0:0:2,cobblestone,,0
+0:0:0:0:3,sand,,0
+0:0:0:0:4,glass,,0
+0:0:0:0:5,obsidian,,0
+0:0:0:0:6,brick_block,,0
+0:0:0:0:7,dirt,,0
+0:0:0:0:8,grass,,0
+# BASE wood (prefix 0:0:0:1)
+0:0:0:1:0,oak_planks,,0
+0:0:0:1:1,spruce_planks,,0
+0:0:0:1:2,birch_planks,,0
+0:0:0:1:3,oak_slab,,0
+0:0:0:1:4,spruce_slab,,0
+0:0:0:1:5,oak_door,,0
+0:0:0:1:6,spruce_door,,0
+0:0:0:1:7,chest,,0
+0:0:0:1:8,crafting_table,,0
+# INGOTS (prefix 0:0:1:0)
+0:0:1:0:0,iron_ingot,,0
+0:0:1:0:1,gold_ingot,,0
+0:0:1:0:2,tin_ingot,,0
+0:0:1:0:3,electrum_ingot,,0
+0:0:1:0:4,uranium_ingot,,0
+0:0:1:0:5,bronze_ingot,,0
+0:0:1:0:6,kanthal_ingot,,0
+0:0:1:0:7,nichrome_ingot,,0
+0:0:1:0:8,stainless_steel_ingot,,0
+0:0:1:0:9,titanium_ingot,,0
+0:0:1:0:10,tungstensteel_ingot,,0
+0:0:1:0:11,aluminium_ingot,,0
+0:0:1:0:12,chromium_ingot,,0
+0:0:1:0:13,platinum_ingot,,0
+0:0:1:0:14,iridium_ingot,,0
+0:0:1:0:15,osmium_ingot,,0
+0:0:1:0:16,naquadah_ingot,,0
+# ORES (prefix 0:0:1:1)
+0:0:1:1:0,iron_ore,,0
+0:0:1:1:1,gold_ore,,0
+0:0:1:1:2,tin_ore,,0
+0:0:1:1:3,copper_ore,,0
+0:0:1:1:4,uranium_ore,,0
+0:0:1:1:5,quartz_ore,,0
+0:0:1:1:6,coal_ore,,0
+0:0:1:1:7,redstone_ore,,0
+0:0:1:1:8,lapis_ore,,0
+0:0:1:1:9,diamond_ore,,0
+0:0:1:1:10,electrum_ore,,0
 
-# MATERIALS ingots/plates/dusts (0:1110)
+# MATERIALS (prefix 0:1:0:0)
+# plates (0:1:0:0:0)
+0:1:0:0:0,bronze_plate,,0
+0:1:0:0:1,iron_plate,,0
+0:1:0:0:2,steel_plate,,0
+0:1:0:0:3,stainless_steel_plate,,0
+0:1:0:0:4,titanium_plate,,0
+0:1:0:0:5,tungstensteel_plate,,0
+0:1:0:0:6,aluminium_plate,,0
+0:1:0:0:7,chromium_plate,,0
+# dusts (0:1:0:0:10)
+0:1:0:0:10,tin_dust,,0
+0:1:0:0:11,copper_dust,,0
+0:1:0:0:12,bronze_dust,,0
+0:1:0:0:13,iron_dust,,0
+0:1:0:0:14,gold_dust,,0
+0:1:0:0:15,electrum_dust,,0
+# rods (0:1:0:0:20)
+0:1:0:0:20,rod,,0
+0:1:0:0:21,quartz_rod,,0
+0:1:0:0:22,crystal_rod,,0
+# wires (prefix 0:1:0:1)
+0:1:0:1:0,wire_tin,,0
+0:1:0:1:1,wire_copper,,0
+0:1:0:1:2,wire_gold,,0
+0:1:0:1:3,wire_aluminium,,0
+0:1:0:1:4,wire_tungsten,,0
+0:1:0:1:5,wire_platinum,,0
+0:1:0:1:6,wire_electrum,,0
+0:1:0:1:7,wire_silver,,0
+# cables (0:1:0:1:10)
+0:1:0:1:10,cable_tin,,0
+0:1:0:1:11,cable_copper,,0
+0:1:0:1:12,cable_gold,,0
+0:1:0:1:13,cable_aluminium,,0
+0:1:0:1:14,cable_tungsten,,0
+0:1:0:1:15,cable_platinum,,0
+# components (prefix 0:1:1:0)
+0:1:1:0:0,electric_motor,,0
+0:1:1:0:1,electric_piston,,0
+0:1:1:0:2,fluid_pump,,0
+0:1:1:0:3,conveyor_module,,0
+0:1:1:0:4,emitter,,0
+0:1:1:0:5,sensor,,0
+0:1:1:0:6,field_generator,,0
+0:1:1:0:7,robot_arm,,0
+0:1:1:0:8,solenoid,,0
+0:1:1:0:9,field_coil,,0
+0:1:1:0:10,sensor_lv,,0
+0:1:1:0:11,sensor_mv,,0
+0:1:1:0:12,sensor_hv,,0
+0:1:1:0:13,emitter_lv,,0
+0:1:1:0:14,emitter_mv,,0
+0:1:1:0:15,emitter_hv,,0
+# SMD components (0:1:1:0:20)
+0:1:1:0:20,resistor_smd,,0
+0:1:1:0:21,capacitor_smd,,0
+0:1:1:0:22,transistor_smd,,0
+0:1:1:0:23,diode_smd,,0
+0:1:1:0:24,inductor_smd,,0
+0:1:1:0:25,coil_smd,,0
+0:1:1:0:26,flip_flop_smd,,0
+0:1:1:0:27,logic_chip_smd,,0
+# circuits (prefix 0:1:1:1)
+0:1:1:1:0,circuit_board_empty,,0
+0:1:1:1:1,circuit_board_basic,,0
+0:1:1:1:2,electronic_circuit_lv,,0
+0:1:1:1:3,integrated_circuit_mv,,0
+0:1:1:1:4,advanced_circuit_hv,,0
+0:1:1:1:5,processor_circuit_ev,,0
+0:1:1:1:6,wetware_circuit_iv,,0
+0:1:1:1:7,quantum_circuit_luv,,0
+# advanced materials (0:1:1:1:10)
+0:1:1:1:10,carbon_fiber,,0
+0:1:1:1:11,graphene,,0
+0:1:1:1:12,neutronium,,0
+0:1:1:1:13,naquadah_alloy,,0
+0:1:1:1:14,hsse,,0
+0:1:1:1:15,polyethylene,,0
+0:1:1:1:16,pcb,,0
+0:1:1:1:17,fiberglass,,0
 
-0:1110:0:0:0,bronze_plate,,0
+# MANUAL TOOLS (prefix 0:0:0:2)
+0:0:0:2:0,stick,,0
+0:0:0:2:1,torch,,0
+0:0:0:2:2,coal,,0
+0:0:0:2:3,wooden_pickaxe,,0
+0:0:0:2:4,stone_pickaxe,,0
+0:0:0:2:5,iron_pickaxe,,0
+0:0:0:2:6,workbench_axe,,0
+0:0:0:2:7,workbench_shovel,,0
+0:0:0:2:8,workbench_sword,,0
+# BASE containers (prefix 0:0:0:3)
+0:0:0:3:0,water_bucket,16,0
+0:0:0:3:1,hydrogen_bucket,16,0
+0:0:0:3:2,sulfuric_acid_bucket,16,0
+0:0:0:3:3,empty_bucket,64,0
 
-0:1110:1:0:0,tin_dust,,0
-0:1110:1:0:1,copper_dust,,0
-0:1110:1:0:2,bronze_dust,,0
+# MACHINES (prefix 1:0:0:0)
+# processing (1:0:0:0:0)
+1:0:0:0:0,heat_furnace,,0
+1:0:0:0:1,heat_macerator,,0
+1:0:0:0:2,heat_generator,,0
+1:0:0:0:3,steam_macerator,,0
+1:0:0:0:4,steam_compressor,,0
+1:0:0:0:5,steam_extractor,,0
+1:0:0:0:6,steam_mixer,,0
+1:0:0:0:7,bronze_alloy_smelter,,0
+1:0:0:0:8,rotare_macerator,,0
+1:0:0:0:9,electric_furnace_lv,,0
+1:0:0:0:10,electric_furnace_mv,,0
+1:0:0:0:11,electric_furnace_hv,,0
+1:0:0:0:12,autoclave_lv,,0
+1:0:0:0:13,autoclave_mv,,0
+1:0:0:0:14,centrifuge_lv,,0
+1:0:0:0:15,centrifuge_mv,,0
+1:0:0:0:16,electrolyzer_lv,,0
+1:0:0:0:17,electrolyzer_mv,,0
+1:0:0:0:18,chemical_reactor_lv,,0
+1:0:0:0:19,chemical_reactor_mv,,0
+1:0:0:0:20,laser_engraver_lv,,0
+1:0:0:0:21,etching_tank,,0
+1:0:0:0:22,wiremill,,0
+1:0:0:0:23,bender,,0
+1:0:0:0:24,extruder,,0
+1:0:0:0:25,alloy_smelter_lv,,0
+1:0:0:0:26,alloy_smelter_mv,,0
+1:0:0:0:27,compressor_lv,,0
+1:0:0:0:28,compressor_mv,,0
+1:0:0:0:29,extractor_lv,,0
+1:0:0:0:30,extractor_mv,,0
+1:0:0:0:31,macerator_lv,,0
+1:0:0:0:32,macerator_mv,,0
+1:0:0:0:33,mixer_lv,,0
+1:0:0:0:34,mixer_mv,,0
+1:0:0:0:35,ore_washer,,0
+1:0:0:0:36,thermal_centrifuge,,0
+1:0:0:0:37,auto_disassembler,,0
+1:0:0:0:38,packer,,0
+1:0:0:0:39,unpacker,,0
+1:0:0:0:40,forge_hammer,,0
+1:0:0:0:41,canner,,0
+1:0:0:0:42,dehydrator,,0
+1:0:0:0:43,fluid_solidifier,,0
+# generation (prefix 1:0:0:1)
+1:0:0:1:0,steam_solid_boiler,,0
+1:0:0:1:1,steam_heat_boiler,,0
+1:0:0:1:2,creative_generator,,0
+1:0:0:1:3,rotare_generator,,0
+1:0:0:1:4,diesel_generator_lv,,0
+1:0:0:1:5,diesel_generator_mv,,0
+1:0:0:1:6,diesel_generator_hv,,0
+1:0:0:1:7,gas_turbine_lv,,0
+1:0:0:1:8,gas_turbine_mv,,0
+1:0:0:1:9,solar_panel_lv,,0
+1:0:0:1:10,solar_panel_mv,,0
+1:0:0:1:11,solar_panel_hv,,0
+1:0:0:1:12,semi_thermal_generator,,0
+1:0:0:1:13,naquadah_reactor,,0
+1:0:0:1:14,steam_turbine,,0
+1:0:0:1:15,combustion_generator,,0
+1:0:0:1:16,thermal_generator,,0
+# storage (prefix 1:0:1:0)
+1:0:1:0:0,battery_buffer_lv,,0
+1:0:1:0:1,battery_buffer_mv,,0
+1:0:1:0:2,battery_buffer_hv,,0
+1:0:1:0:3,charger,,0
+1:0:1:0:4,battery_buffer_ev,,0
+1:0:1:0:5,battery_buffer_iv,,0
+# conversion (prefix 1:0:1:1)
+1:0:1:1:0,transformer_lv_mv,,0
+1:0:1:1:1,transformer_mv_hv,,0
+1:0:1:1:2,transformer_hv_ev,,0
+1:0:1:1:3,transformer_ev_iv,,0
+1:0:1:1:4,transformer_iv_luv,,0
+# special (1:0:1:1:10)
+1:0:1:1:10,assembling_machine_lv,,0
+1:0:1:1:11,assembling_machine_mv,,0
+1:0:1:1:12,assembling_machine_hv,,0
+1:0:1:1:13,circuit_assembler,,0
+1:0:1:1:14,precision_laser_welder,,0
+1:0:1:1:15,implosion_compressor,,0
+1:0:1:1:16,multiblock_large_chemical_reactor,,0
+1:0:1:1:17,vacuum_freezer,,0
+1:0:1:1:18,industrial_smelter,,0
+1:0:1:1:19,industrial_grinder,,0
+1:0:1:1:20,industrial_squeezer,,0
+1:0:1:1:21,industrial_brewery,,0
+1:0:1:1:22,large_turbine,,0
+1:0:1:1:23,multi_smelter,,0
+1:0:1:1:24,advanced_database,,0
+1:0:1:1:25,cracker,,0
+1:0:1:1:26,distillation_tower,,0
+1:0:1:1:27,assembly_line,,0
+1:0:1:1:28,chemical_plant,,0
+1:0:1:1:29,pyrolyse_oven,,0
+1:0:1:1:30,coke_oven,,0
+1:0:1:1:31,large_combustion_reactor,,0
+1:0:1:1:32,extreme_combustion_reactor,,0
+1:0:1:1:33,multi_volume_hatch,,0
 
-0:1110:1:1:1,rod,,0
-0:1110:1:1:2,quartz,,0
-0:1110:1:1:3,crystal,,0
+# TOOLS + INFRA (prefix 1:1:0:0)
+# tools (1:1:0:0:0)
+1:1:0:0:0,drill_ulv,1,0
+1:1:0:0:1,drill_lv,1,0
+1:1:0:0:2,drill_mv,1,0
+1:1:0:0:3,drill_hv,1,0
+1:1:0:0:4,chainsaw_lv,1,0
+1:1:0:0:5,wrench,1,0
+1:1:0:0:6,chainsaw_mv,1,0
+1:1:0:0:7,chainsaw_hv,1,0
+1:1:0:0:8,wrench_mv,1,0
+1:1:0:0:9,wrench_hv,1,0
+1:1:0:0:10,jackhammer,1,0
+1:1:0:0:11,electric_soldering_iron,1,0
+# hulls (prefix 1:1:0:1)
+1:1:0:1:0,hull_lv,,0
+1:1:0:1:1,hull_mv,,0
+1:1:0:1:2,hull_hv,,0
+1:1:0:1:3,hull_ev,,0
+1:1:0:1:4,hull_iv,,0
+1:1:0:1:5,hull_luv,,0
+1:1:0:1:6,hull_zpm,,0
+# hatches (prefix 1:1:1:0)
+1:1:1:0:0,hatch_input_lv,,0
+1:1:1:0:1,hatch_input_mv,,0
+1:1:1:0:2,hatch_input_hv,,0
+1:1:1:0:3,hatch_input_ev,,0
+1:1:1:0:4,hatch_input_iv,,0
+1:1:1:0:10,hatch_output_lv,,0
+1:1:1:0:11,hatch_output_mv,,0
+1:1:1:0:12,hatch_output_hv,,0
+1:1:1:0:13,hatch_output_ev,,0
+1:1:1:0:14,hatch_output_iv,,0
+1:1:1:0:20,hatch_bus_input_lv,,0
+1:1:1:0:21,hatch_bus_input_mv,,0
+1:1:1:0:22,hatch_bus_input_hv,,0
+1:1:1:0:23,hatch_bus_input_ev,,0
+1:1:1:0:24,hatch_bus_input_iv,,0
+1:1:1:0:30,hatch_bus_output_lv,,0
+1:1:1:0:31,hatch_bus_output_mv,,0
+1:1:1:0:32,hatch_bus_output_hv,,0
+1:1:1:0:33,hatch_bus_output_ev,,0
+1:1:1:0:34,hatch_bus_output_iv,,0
+1:1:1:0:40,hatch_energy_input_lv,,0
+1:1:1:0:41,hatch_energy_input_mv,,0
+1:1:1:0:42,hatch_energy_input_hv,,0
+1:1:1:0:43,hatch_energy_input_ev,,0
+1:1:1:0:44,hatch_energy_input_iv,,0
+1:1:1:0:50,hatch_energy_output_lv,,0
+1:1:1:0:51,hatch_energy_output_mv,,0
+1:1:1:0:52,hatch_energy_output_hv,,0
+1:1:1:0:53,hatch_energy_output_ev,,0
+1:1:1:0:54,hatch_energy_output_iv,,0
+1:1:1:0:60,hatch_maintenance,,0
+1:1:1:0:61,hatch_dynamo,,0
+1:1:1:0:62,hatch_cleanroom,,0
+1:1:1:0:63,hatch_item_void,,0
+1:1:1:0:64,hatch_fluid_void,,0
 
-# BASE manual tools (prefix 0:11110)
-0:11110:0,stick,,0
-0:11110:1,torch,,0
-0:11110:2,coal,,0
-0:11110:3,wooden_pickaxe,,0
-0:11110:4,stone_pickaxe,,0
-0:11110:5,iron_pickaxe,,0
-0:11110:6,workbench_axe,,0
-0:11110:7,workbench_shovel,,0
-0:11110:8,workbench_sword,,0
-# BASE containers (prefix 0:11111)
-0:11111:0,water_bucket,16,0
-0:11111:1,hydrogen_bucket,16,0
-0:11111:2,sulfuric_acid_bucket,16,0
-0:11111:3,empty_bucket,64,0
-
-# ORES (prefix 10)
-10:0,iron_ore,,0
-10:1,gold_ore,,0
-10:2,tin_ore,,0
-10:3,coper_ore,,0
-10:4,uranium_ore,,0
-10:5,quartz_ore,,0
-10:6,coal_ore,,0
-10:7,redstone_ore,,0
-10:8,lapis_ore,,0
-10:9,diamond_ore,,0
-10:10,electrum_ore,,0
-
-#(prefix 110) empty
-# MACHINES (prefix 1110)
-# processing (111000) — furnace, macerator, compressor, extractor, mixer, smelter
-1110:00:0,heat_furnace,,0
-1110:00:1,heat_macerator,,0
-1110:00:2,heat_generator,,0
-1110:00:3,steam_macerator,,0
-1110:00:4,steam_compressor,,0
-1110:00:5,steam_extractor,,0
-1110:00:6,steam_mixer,,0
-1110:00:7,bronze_alloy_smelter,,0
-1110:00:8,rotare_macerator,,0
-# generation (111001) — produces energy/steam
-1110:01:0,steam_solid_boiler,,0
-1110:01:1,steam_heat_boiler,,0
-1110:01:2,creative_generator,,0
-1110:01:3,rotare_generator,,0
-# storage (111010) — batteries
-1110:10:0,battery_buffer_lv,,0
-1110:10:1,battery_buffer_mv,,0
-1110:10:2,battery_buffer_hv,,0
-1110:10:3,charger,,0
-# conversion (111011) — voltage transformation
-1110:11:0,transformer_mv_hv,,0
-1110:11:1,transformer_hv_ev,,0
-
-# TOOLS + INFRA (prefix 1111)
-# tools (111100)
-1111:00:0,drill_ulv,1,0
-1111:00:1,drill_lv,1,0
-1111:00:2,drill_mv,1,0
-1111:00:3,drill_hv,1,0
-1111:00:4,chainsaw_lv,1,0
-1111:00:5,wrench,1,0
-# cables (111101)
-1111:01:0,cable_tin,,0
-1111:01:1,cable_copper,,0
-1111:01:2,cable_gold,,0
-1111:01:3,cable_alu,,0
-1111:01:4,cable_tungsten,,0
-1111:01:5,cable_platinum,,0
-# pipes (111110)
-1111:10:0,fluid_pipe,,0
-1111:10:1,item_pipe,,0
-1111:10:2,dense_item_pipe,,0
-1111:10:3,dense_fluid_pipe,,0
-# fluids (111111)
-1111:11:0,water,,0
-1111:11:1,steam,,0
-1111:11:2,sulfuric_acid,,0
-1111:11:3,oxygen,,0
+# fluids (prefix 1:1:1:1)
+# pipes (prefix 1:1:1:1)
+1:1:1:1:0,fluid_pipe,,0
+1:1:1:1:1,item_pipe,,0
+1:1:1:1:2,dense_item_pipe,,0
+1:1:1:1:3,dense_fluid_pipe,,0
+1:1:1:1:4,superconductor_pipe,,0
+# fluids (1:1:1:1:10)
+1:1:1:1:10,water,,0
+1:1:1:1:11,steam,,0
+1:1:1:1:12,sulfuric_acid,,0
+1:1:1:1:13,oxygen,,0
+1:1:1:1:14,mercury,,0
+1:1:1:1:15,sodium,,0
+1:1:1:1:16,potassium,,0
+1:1:1:1:17,plasma,,0
+1:1:1:1:18,deuterium,,0
+1:1:1:1:19,tritium,,0
+1:1:1:1:20,helium3,,0
+1:1:1:1:21,naquadah,,0
+1:1:1:1:22,nitrogen,,0
+1:1:1:1:23,hydrogen,,0
+1:1:1:1:24,chlorine,,0
+1:1:1:1:25,fluorine,,0
+1:1:1:1:26,bromine,,0
+1:1:1:1:27,iodine,,0
+1:1:1:1:28,lubricant,,0
+1:1:1:1:29,concrete,,0
 
