@@ -1,8 +1,8 @@
 #pragma once
 
 #include "cache/ChunkCache.h"
+#include "cache/MutableChunk.h"
 #include "disk/LmdbStore.h"
-#include <common/coords/Coords.h>
 #include <cstdint>
 #include <functional>
 #include <mutex>

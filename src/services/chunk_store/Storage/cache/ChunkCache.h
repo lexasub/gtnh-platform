@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ClockCache.h"
-#include "../../Chunk/Chunk.h"
+#include "MutableChunk.h"
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -16,7 +16,7 @@ public:
     ChunkCache() noexcept {
         cache_.set_on_evict([this](uintptr_t val) {
             if (!val) return;
-            auto* chunk = reinterpret_cast<Chunk*>(val);
+            auto* chunk = reinterpret_cast<MutableChunk*>(val);
             std::lock_guard plk(pin_mutex_);
             if (pinned_.contains(chunk)) {
                 pending_evict_.insert(chunk);
@@ -31,23 +31,23 @@ public:
         });
     }
 
-    const Chunk* get(int64_t key) const noexcept {
+    const MutableChunk* get(int64_t key) const noexcept {
         auto opt = cache_.get(key);
-        return opt ? reinterpret_cast<const Chunk*>(*opt) : nullptr;
+        return opt ? reinterpret_cast<const MutableChunk*>(*opt) : nullptr;
     }
 
-    const Chunk* getPinned(int64_t key) noexcept {
+    const MutableChunk* getPinned(int64_t key) noexcept {
         std::lock_guard lock(pin_mutex_);
         auto opt = cache_.get(key);
         if (!opt) return nullptr;
-        auto* chunk = reinterpret_cast<Chunk*>(*opt);
+        auto* chunk = reinterpret_cast<MutableChunk*>(*opt);
         ++pinned_[chunk];
         return chunk;
     }
 
-    void releasePinned(const Chunk* chunk) noexcept {
+    void releasePinned(const MutableChunk* chunk) noexcept {
         if (!chunk) return;
-        auto* c = const_cast<Chunk*>(chunk);
+        auto* c = const_cast<MutableChunk*>(chunk);
         std::lock_guard lock(pin_mutex_);
         auto it = pinned_.find(c);
         if (it == pinned_.end()) return;
@@ -65,7 +65,7 @@ public:
         }
     }
 
-    void put(int64_t key, Chunk* chunk) noexcept {
+    void put(int64_t key, MutableChunk* chunk) noexcept {
         cache_.put(key, reinterpret_cast<uintptr_t>(chunk));
     }
 
@@ -73,10 +73,10 @@ public:
         cache_.erase(key);
     }
 
-    Chunk* takeFromPool() noexcept {
+    MutableChunk* takeFromPool() noexcept {
         std::lock_guard lock(pool_mutex_);
         if (pool_.empty()) return nullptr;
-        Chunk* chunk = pool_.back();
+        MutableChunk* chunk = pool_.back();
         pool_.pop_back();
         return chunk;
     }
@@ -90,9 +90,9 @@ public:
 
 private:
     mutable ClockCache<uintptr_t, 1024> cache_;
-    std::vector<Chunk*> pool_;
+    std::vector<MutableChunk*> pool_;
     mutable std::mutex pool_mutex_;
-    std::unordered_map<Chunk*, int> pinned_;
-    std::unordered_set<Chunk*> pending_evict_;
+    std::unordered_map<MutableChunk*, int> pinned_;
+    std::unordered_set<MutableChunk*> pending_evict_;
     mutable std::mutex pin_mutex_;
 };

@@ -74,6 +74,10 @@ add_executable(gameclientd
     World/ChunkView.cpp
     World/World.cpp
 
+    ${CMAKE_SOURCE_DIR}/src/services/chunk_store/Storage/cache/MutableChunk.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/chunk_store/Storage/cache/MutableSection.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/chunk_store/Storage/SectionCodec.cpp
+
 )
 
 

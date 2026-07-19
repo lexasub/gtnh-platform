@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Chunk/Chunk.h"
+#include "cache/MutableChunk.h"
 #include "../../world_generator/GenerationQueue.h"
 #include <atomic>
 #include <condition_variable>
@@ -18,7 +18,7 @@ class LmdbStore;
 
 struct EncodeTask {
     ChunkCoord coord;
-    Chunk* chunk;
+    MutableChunk* chunk;
 };
 
 // Owns encode threads + palette cache + pending generation callbacks.
@@ -38,7 +38,7 @@ public:
     void stop();
 
     // Called by worldgen thread when chunk generation is done.
-    void enqueueEncode(ChunkCoord coord, Chunk* chunk);
+    void enqueueEncode(ChunkCoord coord, MutableChunk* chunk);
 
     // For gen queue wiring
     void SetGenerationQueue(GenerationQueue* gen) { gen_queue_ = gen; }

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../chunk_store/Chunk/Chunk.h"
+#include "../chunk_store/Storage/cache/MutableChunk.h"
 #include <atomic>
 #include <common/coords/Coords.h>
 #include <condition_variable>
@@ -19,7 +19,7 @@ public:
   /// Output callback: gen thread calls this when a chunk is generated.
   /// ChunkStore sets this to push into the encode queue.
   using GenOutput =
-      std::move_only_function<void(ChunkCoord, Chunk*)>;
+      std::move_only_function<void(ChunkCoord, MutableChunk*)>;
 
   GenerationQueue(WorldGenerator *generator, GenOutput output,
                   size_t num_threads = 8); // TODO - dynamic threads

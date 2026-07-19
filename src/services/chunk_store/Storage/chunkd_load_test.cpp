@@ -9,7 +9,7 @@
 // All tests use temp LMDB databases (cleaned up on exit).
 
 #include "ChunkStore.h"
-#include "../Chunk/Chunk.h"
+#include "cache/MutableChunk.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -121,8 +121,8 @@ static void test_setblock_concurrent() {
 
         // Pre-populate cache with all chunks we'll touch
         for (int i = 0; i < 4 * kChunksPerThread; ++i) {
-            auto* c = new Chunk();
-            c->blocks[0] = static_cast<uint16_t>(i);
+            auto* c = new MutableChunk();
+            c->setBlock(0, 0, 0, static_cast<uint16_t>(i));
             store.putCached(i, c);
         }
 
@@ -153,8 +153,8 @@ static void test_mixed_read_write() {
 
         // Pre-populate cache
         for (int i = 0; i < kChunks; ++i) {
-            auto* c = new Chunk();
-            c->blocks[0] = static_cast<uint16_t>(i);
+            auto* c = new MutableChunk();
+            c->setBlock(0, 0, 0, static_cast<uint16_t>(i));
             store.putCached(i, c);
         }
 
@@ -178,7 +178,7 @@ static void test_mixed_read_write() {
                 while (!stop.load(std::memory_order_relaxed)) {
                     int ci = rand_r(&s) % kChunks;
                     auto* c = store.getCached(ci, 0, 0);
-                    if (c) { volatile auto v = c->blocks[0]; (void)v; }
+                    if (c) { volatile auto v = c->getBlock(0, 0, 0); (void)v; }
                     reads.fetch_add(1, std::memory_order_relaxed);
                 }
             });
@@ -225,8 +225,8 @@ static void test_flush_latency() {
 
         // Pre-populate 100 chunks in cache
         for (int i = 0; i < 100; ++i) {
-            auto* c = new Chunk();
-            c->blocks[0] = 42;
+            auto* c = new MutableChunk();
+            c->setBlock(0, 0, 0, 42);
             store.putCached(i, c);
         }
 
@@ -271,8 +271,8 @@ static void test_flush_batch_latency() {
 
         // Pre-populate 500 chunks
         for (int i = 0; i < 500; ++i) {
-            auto* c = new Chunk();
-            c->blocks[0] = 42;
+            auto* c = new MutableChunk();
+            c->setBlock(0, 0, 0, 42);
             store.putCached(i, c);
         }
 
@@ -310,8 +310,8 @@ static void test_eviction_stress() {
 
         // Pre-populate all 2000 chunks
         for (int i = 0; i < kChunks; ++i) {
-            auto* c = new Chunk();
-            c->blocks[0] = static_cast<uint16_t>(i);
+            auto* c = new MutableChunk();
+            c->setBlock(0, 0, 0, static_cast<uint16_t>(i));
             store.putCached(i, c);
         }
 
@@ -385,8 +385,8 @@ static void test_savechunk_throughput() {
 
         uint64_t start = now_ns();
         for (int i = 0; i < kChunks; ++i) {
-            Chunk c;
-            c.blocks[0] = static_cast<uint16_t>(i);
+            MutableChunk c;
+            c.setBlock(0, 0, 0, static_cast<uint16_t>(i));
             store.SaveChunk(c, {i, 0, 0});
         }
         uint64_t end = now_ns();
@@ -397,13 +397,13 @@ static void test_savechunk_throughput() {
             uint64_t ok = 0;
             for (int i = 0; i < kChunks; ++i) {
                 auto* c = store2.GetChunk({i, 0, 0});
-                if (c && c->blocks[0] == static_cast<uint16_t>(i)) ++ok;
+                if (c && c->getBlock(0, 0, 0) == static_cast<uint16_t>(i)) ++ok;
             }
             printf("  %-55s %lu/%d verified\n", "", ok, kChunks);
         }
 
         print_result({"SaveChunk x10k (unique keys, LMDB write)", uint64_t(kChunks), end - start},
-                     sizeof(Chunk));
+                     sizeof(MutableChunk));
     }
     remove_db(db);
 }
@@ -417,12 +417,12 @@ static void test_savechunk_overwrite() {
     {
         ChunkStore store(db);
 
-        Chunk c;
-        c.blocks[0] = 42;
+        MutableChunk c;
+        c.setBlock(0, 0, 0, 42);
 
         uint64_t start = now_ns();
         for (int i = 0; i < 10'000; ++i) {
-            c.blocks[0] = static_cast<uint16_t>(i);
+            c.setBlock(0, 0, 0, static_cast<uint16_t>(i));
             store.SaveChunk(c, {42, 0, 0});
         }
         uint64_t end = now_ns();
@@ -443,8 +443,8 @@ static void test_getchunk_bulk_read() {
         ChunkStore writer(db);
         constexpr int kChunks = 10'000;
         for (int i = 0; i < kChunks; ++i) {
-            Chunk c;
-            c.blocks[0] = static_cast<uint16_t>(i);
+            MutableChunk c;
+            c.setBlock(0, 0, 0, static_cast<uint16_t>(i));
             writer.SaveChunk(c, {i, 0, 0});
         }
     }
@@ -460,7 +460,7 @@ static void test_getchunk_bulk_read() {
         uint64_t end = now_ns();
 
         print_result({"GetChunk x10k (fresh LMDB, cold cache)", 10'000UL, end - start},
-                     sizeof(Chunk));
+                     sizeof(MutableChunk));
     }
     remove_db(db);
 }
@@ -547,8 +547,8 @@ static void test_long_running_stress() {
 
         // Pre-populate
         for (int i = 0; i < kChunks; ++i) {
-            auto* c = new Chunk();
-            c->blocks[0] = static_cast<uint16_t>(i);
+            auto* c = new MutableChunk();
+            c->setBlock(0, 0, 0, static_cast<uint16_t>(i));
             store.putCached(i, c);
         }
 
@@ -575,7 +575,7 @@ static void test_long_running_stress() {
                 while (!stop.load(std::memory_order_relaxed)) {
                     int ci = rand_r(&s) % kChunks;
                     auto* c = store.getCached(ci, 0, 0);
-                    if (c) { volatile auto v = c->blocks[0]; (void)v; }
+                    if (c) { volatile auto v = c->getBlock(0, 0, 0); (void)v; }
                     reads.fetch_add(1, std::memory_order_relaxed);
                 }
             });
@@ -616,7 +616,7 @@ int main() {
     setvbuf(stdout, NULL, _IOLBF, 0);
     printf("=== ChunkStore Load Tests ===\n");
     printf("  Platform: Linux, C++26, ClockCache<1024>\n");
-    printf("  Chunk size: %zu bytes raw, ~260 bytes palette-encoded\n\n", sizeof(Chunk));
+    printf("  MutableChunk size: %zu bytes (palette-native)\n\n", sizeof(MutableChunk));
 
     // Warmup — instantiate + open LMDB once
     {

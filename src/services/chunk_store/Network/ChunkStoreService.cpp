@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 #include <utility>
 #include "../Storage/ChunkStore.h"
+#include "../Storage/cache/MutableChunk.h"
 #include <common/coords/Coords.h>
 
 ChunkStoreService::ChunkStoreService(ChunkStore& store, uint16_t port)
@@ -152,16 +153,11 @@ void ChunkStoreService::handleSaveChunk(std::shared_ptr<asio::ip::tcp::socket> s
                                          const Protocol::ChunkStoreMessage* req) {
     auto* coord = req->request_as_SaveChunkReq()->coord();
     ChunkCoord c{coord->x(), coord->y(), coord->z()};
-    auto chunk = std::make_shared<Chunk>();
     auto* blocks_fb = req->request_as_SaveChunkReq()->blocks();
-    auto* meta_fb   = req->request_as_SaveChunkReq()->meta();
-    auto* mb_fb     = req->request_as_SaveChunkReq()->multiblock();
-    if (blocks_fb && blocks_fb->size() == Chunk::VOLUME)
-        std::memcpy(chunk->blocks.data(), blocks_fb->data(), Chunk::VOLUME*sizeof(uint16_t));
-    if (meta_fb && meta_fb->size() == Chunk::VOLUME)
-        std::memcpy(chunk->meta.data(), meta_fb->data(), Chunk::VOLUME*sizeof(uint8_t));
-    if (mb_fb && mb_fb->size() == Chunk::VOLUME)
-        std::memcpy(chunk->multiblock.data(), mb_fb->data(), Chunk::VOLUME*sizeof(uint32_t));
+    uint16_t blocks[SEC_VOL * SEC_CNT] = {};
+    if (blocks_fb && blocks_fb->size() == SEC_VOL * SEC_CNT * sizeof(uint16_t))
+        std::memcpy(blocks, blocks_fb->data(), SEC_VOL * SEC_CNT * sizeof(uint16_t));
+    auto chunk = std::make_shared<MutableChunk>(MutableChunk::fromBlocks(blocks));
     store_.AsyncSaveChunk(std::move(chunk), c,
         [this, socket, req_id](bool success) {
             flatbuffers::FlatBufferBuilder fb(64);

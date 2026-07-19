@@ -1,7 +1,6 @@
 #include "EncodePipeline.h"
 #include "cache/ChunkCache.h"
 #include "disk/LmdbStore.h"
-#include "SectionCodec.h"
 #include <pthread.h>
 #include <spdlog/spdlog.h>
 
@@ -26,7 +25,7 @@ void EncodePipeline::stop() {
     encode_threads_.clear();
 }
 
-void EncodePipeline::enqueueEncode(ChunkCoord coord, Chunk* chunk) {
+void EncodePipeline::enqueueEncode(ChunkCoord coord, MutableChunk* chunk) {
     std::lock_guard lock(encode_mutex_);
     encode_queue_.push_back(EncodeTask{coord, chunk});
     encode_cv_.notify_one();
@@ -70,8 +69,8 @@ void EncodePipeline::encodeLoop() {
             auto task = std::move(tasks.front());
             tasks.pop_front();
             std::vector<uint8_t> encoded;
-            encoded.reserve(Chunk::VOLUME / 8); // TODO подобрать значение
-            encodeChunk(*task.chunk, encoded);
+            encoded.reserve(SEC_CNT * (SEC_VOL + 256 * 2 + 16)); // TODO подобрать значение
+            task.chunk->encodeToWire(encoded);
             encoded.shrink_to_fit();
             auto palette = std::make_shared<std::vector<uint8_t>>(std::move(encoded));
             int64_t key = LmdbStore::makeKey(task.coord.x, task.coord.y, task.coord.z);
@@ -88,7 +87,7 @@ void EncodePipeline::encodeLoop() {
             std::vector<ChunkCallback> callbacks;
             {
                 std::lock_guard lock(encode_mutex_);
-                if (auto it = pending_gen_cbs_.find(key); it != pending_gen_cbs_.end()) {
+                if (auto it = pending_gen_cbs_.find(key); it != pending_gen_cbs_.end()) [[likely]] {
                     callbacks = std::move(it->second);
                     pending_gen_cbs_.erase(it);
                 }
@@ -100,7 +99,7 @@ void EncodePipeline::encodeLoop() {
                 }
             }
         }
-        if (!local_palettes.empty()) [[unlikely]] {
+        if (!local_palettes.empty()) [[likely]] {
             lmdb_->writeBatch(local_palettes);
         }
         if (size_t size = local_palettes.size(); size > 128) {
