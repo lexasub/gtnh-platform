@@ -1,7 +1,8 @@
 #include "FlushPipeline.h"
 #include "../cache/ChunkCache.h"
+#include "../cache/MutableChunk.h"
 #include "LmdbStore.h"
-#include "../SectionCodec.h"
+#include <memory>
 #include <pthread.h>
 #include <spdlog/spdlog.h>
 
@@ -56,10 +57,11 @@ bool FlushPipeline::flushDirtyChunks() {
                 ++saved;
             }
         } else {
-            const Chunk* chunk = cache_->get(key);
-            if (!chunk) continue;
+            const MutableChunk* pinned = cache_->getPinned(key);
+            if (!pinned) continue;
             std::vector<uint8_t> encoded;
-            encodeChunk(*chunk, encoded);
+            pinned->encodeToWire(encoded);
+            cache_->releasePinned(pinned);
             if (lmdb_->writeRaw(key, encoded.data(), encoded.size())) [[likely]] {
                 ++saved;
             }

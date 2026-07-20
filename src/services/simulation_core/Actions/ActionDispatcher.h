@@ -3,6 +3,7 @@
 #include <flatbuffers/verifier.h>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace simcore {
@@ -17,11 +18,9 @@ public:
   ActionDispatcher(std::shared_ptr<SetBlockCASHandler> casHandler,
                    ItemGiveCallback onGiveItem = nullptr);
 
-  void dispatch(const std::vector<uint8_t> &data);
+  void dispatch(const std::vector<uint8_t> &data, const std::string &topic);
 
 private:
-  bool tryParseAsPlayerAction(const std::vector<uint8_t> &data,
-                              flatbuffers::Verifier &verifier);
   std::shared_ptr<SetBlockCASHandler> casHandler_;
   ItemGiveCallback onGiveItem_;
 };

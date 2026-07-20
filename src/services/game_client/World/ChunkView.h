@@ -5,14 +5,12 @@
 #include <span>
 #include <vector>
 
-#include "Chunk/Chunk.h"
+// Forward-declare: MutableChunk is heavy, avoid include in header.
+struct MutableChunk;
 
-// Compressed-palette-backed chunk data.
-// Constructor takes palette-encoded chunk (~2 KB) and decodes on first access.
-// GetBlock is O(1) after the lazy full decode.
 class ChunkView {
 public:
-  explicit ChunkView(std::shared_ptr<std::vector<uint8_t>> compressed);
+  explicit ChunkView(std::shared_ptr<std::vector<uint8_t>> wire_data);
 
   ~ChunkView();
 
@@ -24,13 +22,20 @@ public:
   const uint8_t *meta_data() const;
   const uint32_t *multiblock_data() const;
 
-  size_t blocks_size() const { return Chunk::VOLUME; }
-  size_t meta_size() const { return Chunk::VOLUME; }
-  size_t multiblock_size() const { return Chunk::VOLUME; }
+  static constexpr int VOLUME = 32 * 32 * 32;
+  size_t blocks_size() const { return VOLUME; }
+  size_t meta_size() const { return VOLUME; }
+  size_t multiblock_size() const { return VOLUME; }
 
 private:
-  mutable std::shared_ptr<std::vector<uint8_t>> compressed_;
-  mutable std::unique_ptr<Chunk> flat_; // lazily decoded on first block access
+  mutable std::shared_ptr<std::vector<uint8_t>> wire_data_;
+  mutable std::unique_ptr<MutableChunk> flat_;
+
+  // Lazy flat-export buffers for rendering.
+  mutable std::unique_ptr<uint16_t[]> flat_blocks_;
+  mutable std::unique_ptr<uint8_t[]> flat_meta_;
+  mutable std::unique_ptr<uint32_t[]> flat_mb_;
 
   void ensureFlat() const;
+  void ensureFlatArrays() const;
 };

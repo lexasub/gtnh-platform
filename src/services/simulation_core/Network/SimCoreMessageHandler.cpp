@@ -127,8 +127,8 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                              batteryBuffer, machineSystem]
                             (const std::string& topic, const std::vector<uint8_t>& data) {
         mainQueue.push([&, topic, data]() {
-            if (topic == "player.actions") {
-                dispatcher.dispatch(data);
+            if (topic == "player.action" || topic == "player.setblock") {
+                dispatcher.dispatch(data, topic);
             } else if (topic == "world.blocks.changed") {
                 chunkHandler.handle(data);
             } else if (topic == "energy.consume.response") {

@@ -3,7 +3,7 @@
 // Uses real temp LMDB database files — verifies data survives process boundaries.
 
 #include "ChunkStore.h"
-#include "../Chunk/Chunk.h"
+#include "cache/MutableChunk.h"
 #include "disk/LmdbStore.h"
 #include <cstdio>
 #include <cstdlib>
@@ -157,9 +157,9 @@ static void test_evicted_skip() {
 
         // Fill cache beyond capacity (ClockCache<1024>)
         for (int i = 0; i < 1100; ++i) {
-            auto* chunk = new Chunk();
-            chunk->blocks[0] = static_cast<uint16_t>(i);
-            store.putCached(i, chunk);
+            auto* chunk = new MutableChunk();
+            chunk->setBlock(0, 0, 0, static_cast<uint16_t>(i));
+            store.putCached(LmdbStore::makeKey(i, 0, 0), chunk);
         }
 
         // Mark early chunk (likely evicted) + recent chunk (definitely in cache)
@@ -304,9 +304,9 @@ static void test_concurrent_mark() {
 
         // Pre-populate cache with chunks
         for (int i = 0; i < kChunks; ++i) {
-            auto* chunk = new Chunk();
-            chunk->blocks[0] = static_cast<uint16_t>(1000 + i);
-            store.putCached(i, chunk);
+            auto* chunk = new MutableChunk();
+            chunk->setBlock(0, 0, 0, static_cast<uint16_t>(1000 + i));
+            store.putCached(LmdbStore::makeKey(i, 0, 0), chunk);
         }
 
         std::atomic<int> ready{0};
@@ -362,9 +362,9 @@ static void test_concurrent_mark_flush() {
         ChunkStore store(db_path);
 
         for (int i = 0; i < kChunks; ++i) {
-            auto* chunk = new Chunk();
-            chunk->blocks[0] = static_cast<uint16_t>(i);
-            store.putCached(i, chunk);
+            auto* chunk = new MutableChunk();
+            chunk->setBlock(0, 0, 0, static_cast<uint16_t>(i));
+            store.putCached(LmdbStore::makeKey(i, 0, 0), chunk);
         }
 
         std::thread writer([&]() {
@@ -419,9 +419,9 @@ static void test_concurrent_stress() {
         ChunkStore store(db_path);
 
         for (int i = 0; i < kChunks; ++i) {
-            auto* chunk = new Chunk();
-            chunk->blocks[0] = static_cast<uint16_t>(i);
-            store.putCached(i, chunk);
+            auto* chunk = new MutableChunk();
+            chunk->setBlock(0, 0, 0, static_cast<uint16_t>(i));
+            store.putCached(LmdbStore::makeKey(i, 0, 0), chunk);
         }
 
         std::vector<std::thread> threads;
@@ -441,7 +441,7 @@ static void test_concurrent_stress() {
                 while (!stop.load(std::memory_order_relaxed)) {
                     int chunk_id = rand_r(&seed) % kChunks;
                     if (auto* c = store.getCached(chunk_id, 0, 0)) {
-                        (void)c->blocks[0];
+                        (void)c->getBlock(0, 0, 0);
                     }
                 }
             });
@@ -491,14 +491,14 @@ static void test_mark_from_io_thread() {
         ChunkStore store(db_path);
 
         // Put a chunk in cache
-        auto* chunk = new Chunk();
-        chunk->blocks[0] = 999;
+        auto* chunk = new MutableChunk();
+        chunk->setBlock(0, 0, 0, 999);
         store.putCached(LmdbStore::makeKey(5, 5, 5), chunk);
 
         // Simulate CAS handler: modify chunk in-place + markDirty from another thread
         std::thread cas_thread([&]() {
-            const Chunk* c = store.getCached(5, 5, 5);
-            c->blocks[0] = 888;
+            MutableChunk* c = const_cast<MutableChunk*>(store.getCached(5, 5, 5));
+            c->setBlock(0, 0, 0, 888);
             store.markDirty(5, 5, 5);
         });
         cas_thread.join();

@@ -12,9 +12,35 @@ namespace simcore {
         , onGiveItem_(std::move(onGiveItem))
     {}
 
-    bool ActionDispatcher::tryParseAsPlayerAction(const std::vector<uint8_t> &data, flatbuffers::Verifier &verifier) {
-        if (!verifier.VerifyBuffer<Protocol::PlayerAction>()) {
-            return false;
+    void ActionDispatcher::dispatch(const std::vector<uint8_t>& data, const std::string& topic)
+    {
+        spdlog::info("ActionDispatcher: dispatch topic='{}' size={}", topic, data.size());
+
+        if (topic == "player.setblock") {
+            flatbuffers::Verifier v(data.data(), data.size());
+            if (!v.VerifyBuffer<Protocol::SetBlockAction>()) {
+                spdlog::error("ActionDispatcher: invalid SetBlockAction FlatBuffer");
+                return;
+            }
+            const Protocol::SetBlockAction* action = flatbuffers::GetRoot<Protocol::SetBlockAction>(data.data());
+            auto action_type = action->action();
+            if (action_type != Protocol::PlayerActionType_LEFT_MOUSE_CLICK && action_type != Protocol::PlayerActionType_RIGHT_MOUSE_CLICK) {
+                spdlog::warn("ActionDispatcher: unhandled SetBlockAction action type {}",
+                             static_cast<int>(action_type));
+                return;
+            }
+            if (casHandler_) {
+                casHandler_->handle((void*)action);
+            } else {
+                spdlog::warn("ActionDispatcher: CAS handler not available, dropping SetBlockAction");
+            }
+            return;
+        }
+
+        flatbuffers::Verifier v(data.data(), data.size());
+        if (!v.VerifyBuffer<Protocol::PlayerAction>()) {
+            spdlog::error("ActionDispatcher: invalid PlayerAction FlatBuffer on topic '{}'", topic);
+            return;
         }
         auto* pa = flatbuffers::GetRoot<Protocol::PlayerAction>(data.data());
 
@@ -27,7 +53,7 @@ namespace simcore {
             }
             spdlog::info("ITEM_ACTION: player={} item_id={} count={} target_slot={}",
                          pa->player_id(), item_id, count, pa->pos()->x());
-            return true;
+            return;
         }
         case Protocol::PlayerActionType_CHUNK_REQUEST: {
             auto* pos = pa->pos();
@@ -35,45 +61,15 @@ namespace simcore {
                 spdlog::info("CHUNK_REQUEST: player={} chunk=({},{},{})",
                              pa->player_id(), pos->x(), pos->y(), pos->z());
             }
-            return true;
+            return;
         }
+        case Protocol::PlayerActionType_UNLOAD:
+        case Protocol::PlayerActionType_MOVE:
+            return;
         default:
-            // Not a PlayerAction subtype we handle — might be SetBlockAction
-            // (FlatBuffers VerifyBuffer<PlayerAction> can pass on SetBlockAction
-            // data because both tables share the first few fields and the extra
-            // fields are optional). Returning false lets the caller try
-            // SetBlockAction verification instead.
-            return false;
-        }
-    }
-
-    void ActionDispatcher::dispatch(const std::vector<uint8_t>& data)
-    {
-
-        // Use fresh Verifier for each check — reusing the same verifier after
-        // VerifyBuffer<PlayerAction> (even if it returned false) can cause false
-        // negatives due to internal verifier state.
-        flatbuffers::Verifier v1(data.data(), data.size());
-        if (tryParseAsPlayerAction(data, v1)) return;
-
-        flatbuffers::Verifier v2(data.data(), data.size());
-        if (!v2.VerifyBuffer<Protocol::SetBlockAction>()) {
-            spdlog::error("ActionDispatcher: invalid SetBlockAction FlatBuffer");
+            spdlog::warn("ActionDispatcher: unhandled PlayerAction type {}",
+                         static_cast<int>(pa->action()));
             return;
-        }
-
-        const Protocol::SetBlockAction* action = flatbuffers::GetRoot<Protocol::SetBlockAction>(data.data());
-        auto action_type = action->action();
-        if (action_type != Protocol::PlayerActionType_LEFT_MOUSE_CLICK && action_type != Protocol::PlayerActionType_RIGHT_MOUSE_CLICK) {
-            spdlog::warn("ActionDispatcher: unhandled SetBlockAction action type {}",
-                         static_cast<int>(action_type));
-            return;
-        }
-
-        if (casHandler_) {
-            casHandler_->handle((void*)action);
-        } else {
-            spdlog::warn("ActionDispatcher: CAS handler not available, dropping SetBlockAction");
         }
     }
 

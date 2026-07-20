@@ -91,7 +91,7 @@ const (
 // PrioLow: best-effort (entities, simulation internals).
 func classifyTopic(topic string) Priority {
 	switch {
-	case topic == "player.actions.ack", topic == "player.actions":
+	case topic == "player.actions.ack", topic == "player.action", topic == "player.setblock":
 		return PrioHigh
 	case strings.HasPrefix(topic, "world."):
 		return PrioNormal

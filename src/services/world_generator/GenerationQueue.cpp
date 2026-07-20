@@ -54,16 +54,16 @@ void GenerationQueue::workerLoop() {
             tasks_.pop();
         }
 
-        auto chunk = new Chunk;
-        generator_->GenerateTerrain(*chunk, chunkCoord.x, chunkCoord.y, chunkCoord.z);
-        //spdlog::debug("Generated chunk ({},{},{})", chunkCoord.x, chunkCoord.y, chunkCoord.z);
+        Chunk temp;
+        generator_->GenerateTerrain(temp, chunkCoord.x, chunkCoord.y, chunkCoord.z);
+        auto chunk = new MutableChunk(MutableChunk::fromBlocks(temp.blocks.data()));
+
+        if (output_)
+            output_(chunkCoord, chunk);
 
         {
             std::lock_guard<std::mutex> lock(mutex_);
             dedup_.erase(chunkCoord);
         }
-
-        if (output_)
-            output_(chunkCoord, chunk);
     }
 }

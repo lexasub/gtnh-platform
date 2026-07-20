@@ -75,11 +75,6 @@ int main(int argc, char* argv[]) {
             spdlog::trace("Gateway: unhandled topic '{}' ({} bytes)", topic, len);
     };
 
-    gateway.on_client_message = [&](const uint8_t* data, size_t len) {
-        //spdlog::info("[GATEWAY] Publishing {} bytes to 'player.actions'", len);
-        gateway.publish("player.actions", data, len);
-    };
-
     if (!gateway.init()) {
         spdlog::error("Gateway: failed to init io_uring");
         return 1;
