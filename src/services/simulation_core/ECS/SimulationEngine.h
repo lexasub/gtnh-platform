@@ -18,6 +18,8 @@
 
 namespace simcore {
 
+using MachineInteractionHandler = std::function<bool(int32_t x, int32_t y, int32_t z, uint64_t player_id)>;
+
 // Pattern for electrolyser multiblock (3x3x3 minus corners? – keep as original)
 extern const std::vector<std::tuple<int32_t, int32_t, int32_t>>
     ELECTROLYSER_PATTERN;
@@ -52,6 +54,12 @@ public:
 
   entt::registry &reg() { return reg_; }
 
+  void onMachineInteracted(int32_t x, int32_t y, int32_t z,
+                           uint16_t machine_id, uint64_t player_id);
+  void registerMachineInteractionHandler(uint16_t machine_id, MachineInteractionHandler handler);
+  bool tryActivateRotareGenerator(int32_t x, int32_t y, int32_t z);
+  const MachineRegistry *getMachineRegistry() const { return machine_registry_; }
+
 private:
   bool isMachineBlock(uint16_t block_id) const;
   uint32_t defaultMachineSlotCount(uint16_t block_id) const;
@@ -63,6 +71,7 @@ private:
   entt::registry reg_;
   std::unordered_map<uint64_t, MultiblockController> controllers_;
   std::vector<std::unique_ptr<ISystem>> systems_;
+  std::unordered_map<uint16_t, MachineInteractionHandler> interaction_handlers_;
   uint64_t next_machine_id_ = 1;
   const MachineRegistry *machine_registry_ = nullptr;
 };

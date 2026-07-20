@@ -1,6 +1,15 @@
 #include "HeatTransferSystem.h"
 #include "../components/Block.h"
+#include "../components/HeatIntakeComponent.h"
+#include "../components/HeatSlowComponent.h"
+#include "../components/MachineComponent.h"
+#include "../components/MultiblockController.h"
+#include "../components/OverheatComponent.h"
+#include "../components/Position.h"
+#include "HeatConstants.h"
 #include <spdlog/spdlog.h>
+
+#include "../../common/ItemId.h"
 
 namespace simcore {
 
@@ -93,7 +102,7 @@ void HeatTransferSystem::tick(float /*dt*/) {
     // Pass 2: Overheat detection
     // ═══════════════════════════════════════════════════════════════════
     {
-        auto oh_view = reg_.view<HeatIntakeComponent>();
+        auto oh_view = reg_.view<HeatIntakeComponent, MultiblockController>();
         for (auto ent : oh_view) {
             auto& hic = oh_view.get<HeatIntakeComponent>(ent);
             float r = hic.ratio();
@@ -135,7 +144,7 @@ void HeatTransferSystem::tick(float /*dt*/) {
                         static_cast<int32_t>(np.y) != ny ||
                         static_cast<int32_t>(np.z) != nz) continue;
                     auto* block = reg_.try_get<Block>(neighbor);
-                    if (block && block->id == 9) { adjacent_to_water = true; break; }
+                    if (block && block->id == ItemId::pack("0:0:9")) { adjacent_to_water = true; break; }
                 }
                 if (adjacent_to_water) break;
             }

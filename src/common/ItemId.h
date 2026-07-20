@@ -28,10 +28,13 @@
 // ---------------------------------------------------------------------------
 namespace ItemId {
 
+// Forward declaration for use in category(), unpack(), toolTier(), toolType()
+constexpr uint16_t pack(std::string_view s);
+
 // ---------------------------------------------------------------------------
 // Category enum
 // ---------------------------------------------------------------------------
-enum Category : uint8_t {
+enum Category : uint8_t { //TODO real categories
   CAT_BASE = 0,
   CAT_ORES = 1,
   CAT_MATERIALS = 2,
@@ -41,19 +44,19 @@ enum Category : uint8_t {
 
 /// Decode top-level category from a packed ID based on prefix bits.
 constexpr Category category(uint16_t id) {
-  if (id < 0x8000)
+  if (id < ItemId::pack("10:0"))
     return CAT_BASE;
-  if (id < 0xC000)
+  if (id < ItemId::pack("110:0"))
     return CAT_ORES;
-  if (id < 0xE000)
+  if (id < ItemId::pack("1110:0"))
     return CAT_MATERIALS;
-  if (id < 0xF000)
+  if (id < ItemId::pack("1111:0"))
     return CAT_MACHINES;
   return CAT_INFRA;
 }
 
 /// Human-readable category name.
-constexpr const char *categoryName(Category c) {
+constexpr const char *categoryName(Category c) { //TODO - real mappings
   switch (c) {
   case CAT_BASE:
     return "BASE";
@@ -131,20 +134,16 @@ constexpr uint16_t pack(std::string_view s) {
 // Unpack: uint16_t → human-readable "prefix:payload" (top level only)
 // Sub-prefix levels not decoded — use category-specific helpers for that.
 // ---------------------------------------------------------------------------
-inline std::string unpack(uint16_t id) {
-  if (id < 0x8000) {
+inline std::string unpack(uint16_t id) { // TODO - implement for real categories (will changed)
+  if (id < ItemId::pack("10:0"))
     return "0:" + std::to_string(id & 0x7FFF);
-  }
-  if (id < 0xC000) {
-    return "10:" + std::to_string(id & 0x3FFF);
-  }
-  if (id < 0xE000) {
-    return "110:" + std::to_string(id & 0x1FFF);
-  }
-  if (id < 0xF000) {
-    return "1110:" + std::to_string(id & 0xFFF);
-  }
-  return "1111:" + std::to_string(id & 0xFFF);
+  if (id < ItemId::pack("110:0"))
+    return "10:" + std::to_string(id - ItemId::pack("10:0"));
+  if (id < ItemId::pack("1110:0"))
+    return "110:" + std::to_string(id - ItemId::pack("110:0"));
+  if (id < ItemId::pack("1111:0"))
+    return "1110:" + std::to_string(id - ItemId::pack("1110:0"));
+  return "1111:" + std::to_string(id - ItemId::pack("1111:0"));
 }
 
 // ---------------------------------------------------------------------------
@@ -156,18 +155,16 @@ inline std::string unpack(uint16_t id) {
 // ---------------------------------------------------------------------------
 constexpr int toolTier(uint16_t id) {
   // Check top 6 bits = 111100 (0xF000–0xF3FF range)
-  if ((id & 0xFC00) != 0xF000) {
-    return 0; // not a tool
-  }
-  // Payload is lower 10 bits; tier is high 5 bits of payload
-  uint16_t payload = id & 0x03FF;
+  if (id < ItemId::pack("1111:00:0") || id >= ItemId::pack("1111:01:0"))
+    return 0;
+  uint16_t payload = id - ItemId::pack("1111:00:0");
   return (payload >> 5) & 0x1F;
 }
 
 constexpr int toolType(uint16_t id) {
-  if ((id & 0xFC00) != 0xF000)
+  if (id < ItemId::pack("1111:00:0") || id >= ItemId::pack("1111:01:0"))
     return 0;
-  uint16_t payload = id & 0x03FF;
+  uint16_t payload = id - ItemId::pack("1111:00:0");
   return payload & 0x1F;
 }
 

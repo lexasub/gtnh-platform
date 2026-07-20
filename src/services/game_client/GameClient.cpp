@@ -62,8 +62,8 @@ void GameClient::subscribeNetClient() {
         });
 
     netClient_->SetBlockAckCallback(
-        [this](BlockPos pos, uint8_t status, uint16_t block_id, uint8_t meta) {
-
+        [this](BlockPos pos, uint8_t status, uint16_t block_id, uint8_t meta, uint32_t request_id) {
+            (void)request_id;// TODO
             if (status != static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED)) {
                 spdlog::warn("BlockAck CONFLICT at ({},{},{}) actual_id={}", pos.x, pos.y, pos.z, block_id);
             }
@@ -93,6 +93,11 @@ void GameClient::subscribeNetClient() {
         [this](std::shared_ptr<std::vector<uint8_t>> data) {
             uiMgr_.HandleNetwork(GatewayMsg::kRecipeCompleted, data->data());
         });
+
+    netClient_->SetReconnectCallback([this]() {
+        world_.ClearPendingRequests();
+        spdlog::info("Cleared pending chunk requests after bulk reconnect");
+    });
 }
 
 bool GameClient::Init(const std::string& shaderDir, int width, int height,
@@ -119,9 +124,11 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
         if (reg && reg->All().size() > 0) {
             MachineRegistry::setInstance(reg.release());
             spdlog::info("Loaded machine registry from {}", yaml_path);
+            BlockUIFactory::LoadFromRegistry(*MachineRegistry::instance());
+        } else {
+            spdlog::warn("Machine registry empty or failed to load from {}", yaml_path);
         }
     }
-    BlockUIFactory::LoadFromRegistry(*MachineRegistry::instance());
 
     // ── Network ──────────────────────────────────────────────────────────
     netClient_ = std::make_shared<NetClient>();

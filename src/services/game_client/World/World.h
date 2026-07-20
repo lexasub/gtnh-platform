@@ -86,6 +86,9 @@ public:
   // received).
   bool IsPending(const ChunkCoord &coord) const;
 
+  // Clear all pending chunk requests (used after reconnection)
+  void ClearPendingRequests();
+
   std::vector<ChunkCoord> TakeEvictedChunks();
 
   static float calcCandidateScore(glm::vec3 vec, glm::vec3 vec3,

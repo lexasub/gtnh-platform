@@ -5,19 +5,18 @@
 #include "PipeMeshBuilder.h"
 #include "CableMeshBuilder.h"
 #include "BlockRenderRegistry.h"
+#include <common/ItemId.h>
 #include <array>
 
 namespace {
     thread_local ChunkMeshBuilder::MeshData data;
 
-    /// Flat block color for MVP — no per-face brightness.
-    /// Format: 0xAABBGGRR (same as atlas, extracted as R=byte0, G=byte1, B=byte2, A=byte3).
     static constexpr uint32_t GetBlockColor(uint16_t blockId) {
         switch (blockId) {
-            case 1:  return 0xFF808080;  // stone - gray
-            case 2:  return 0xFF2B5A8B;  // dirt - brown
-            case 3:  return 0xFF50AF4C;  // grass - green
-            default: return 0xFFFFFFFF;  // white
+            case ItemId::pack("0:0:1"):  return 0xFF808080;  // stone
+            case ItemId::pack("0:0:2"):  return 0xFF2B5A8B;  // dirt
+            case ItemId::pack("0:0:3"):  return 0xFF50AF4C;  // grass
+            default: return 0xFFFFFFFF;
         }
     }
 }
@@ -107,7 +106,7 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
                         continue;
 
                     const auto &face = faces[f];
-                    auto uv = renderlib::TextureAtlas::GetUV(block & 0xFF, f);
+                    auto uv = renderlib::TextureAtlas::GetUV(block, f);
 
                     auto nx = static_cast<uint8_t>((normals[f][0] * 0.5f + 0.5f) * 255.0f);
                     auto ny = static_cast<uint8_t>((normals[f][1] * 0.5f + 0.5f) * 255.0f);

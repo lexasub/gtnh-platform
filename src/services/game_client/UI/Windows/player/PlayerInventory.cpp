@@ -50,22 +50,18 @@ void PlayerInventory::Render(InventoryState* /*playerInv*/) {
     if (++g_invFrame % 60 == 0) {
         //spdlog::info("PlayerInventory::Render open={} drag={}", state_.open, state_.isDragging);
     }
-    RenderHotbar(state_.slots, state_.selectedSlot);
+    int hotbarHover = RenderHotbar(state_.slots, state_.selectedSlot, SlotStyle{}, dragMgr_);
 
-    // Manual hotbar hover tracking (works outside ImGui windows)
-    {
-        SlotStyle s;
-        constexpr int kHS = 10;
-        float totalW = kHS * static_cast<float>(s.size + s.padding);
-        float startX = (ImGui::GetIO().DisplaySize.x - totalW) / 2.0f;
-        float y = ImGui::GetIO().DisplaySize.y - s.size - 20.0f;
-        ImVec2 mouse = ImGui::GetIO().MousePos;
-        if (mouse.y >= y && mouse.y <= y + static_cast<float>(s.size)) {
-            int slot = static_cast<int>((mouse.x - startX) / static_cast<float>(s.size + s.padding));
-            if (slot >= 0 && slot < kHS && static_cast<size_t>(slot) < state_.slots.size()) {
-                state_.hoveredItemId = state_.slots[slot].item_id;
-            }
-        }
+    if (hotbarHover >= 0 && static_cast<size_t>(hotbarHover) < state_.slots.size()) {
+        state_.hoveredItemId = state_.slots[hotbarHover].item_id;
+    }
+
+    if (!state_.open && hotbarHover >= 0 && dragMgr_ &&
+        (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
+         ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
+        int button = ImGui::IsMouseClicked(ImGuiMouseButton_Right) ? 1 : 0;
+        bool shift = ImGui::GetIO().KeyShift;
+        dragMgr_->OnSlotActivated(hotbarHover, state_.slots, button, shift);
     }
 
     if (!state_.open) return;

@@ -1,10 +1,16 @@
 #include "ExplosionSystem.h"
+#include "../components/HeatSlowComponent.h"
+#include "../components/MachineComponent.h"
+#include "../components/MultiblockController.h"
+#include "../components/OverheatComponent.h"
+#include "../components/Position.h"
+#include "HeatConstants.h"
 #include <spdlog/spdlog.h>
 
 namespace simcore {
 
 void ExplosionSystem::tick(float /*dt*/) {
-    auto view = reg_.view<MachineComponent, Position, OverheatComponent>();
+    auto view = reg_.view<MachineComponent, Position, OverheatComponent, MultiblockController>();
     std::vector<entt::entity> toDestroy;
 
     for (auto ent : view) {

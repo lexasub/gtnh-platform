@@ -1,4 +1,5 @@
 #include "ECS/SimulationEngine.h"
+#include "ECS/Systems/RotareGeneratorSystem.h"
 #include "Common/xyz.h"
 #include <common/ItemId.h>
 #include <spdlog/spdlog.h>
@@ -192,7 +193,7 @@ uint64_t SimulationEngine::matchElectrolyser(uint32_t anchor_x, uint32_t anchor_
         for (auto entity : view) {
             auto [pos, blk] = view.get(entity);
             if (pos.x == ux && pos.y == uy && pos.z == uz) {
-                if (blk.id != 1) return 0;
+                if (blk.id != ItemId::pack("0:0:1")) return 0;
                 found = true;
                 break;
             }
@@ -271,6 +272,44 @@ uint32_t SimulationEngine::defaultMachineSlotCount(uint16_t block_id) const
         if (info) return static_cast<uint32_t>(info->slots_in + info->slots_out);
     }
     return 0;
+}
+
+void SimulationEngine::registerMachineInteractionHandler(uint16_t machine_id, MachineInteractionHandler handler) {
+    interaction_handlers_[machine_id] = std::move(handler);
+}
+
+void SimulationEngine::onMachineInteracted(int32_t x, int32_t y, int32_t z,
+                                           uint16_t machine_id, uint64_t player_id) {
+    auto it = interaction_handlers_.find(machine_id);
+    if (it == interaction_handlers_.end()) {
+        spdlog::warn("No interaction handler for machine_id={}", machine_id);
+        return;
+    }
+    if (!it->second(x, y, z, player_id)) {
+        spdlog::debug("Interaction handler returned false for machine_id={}", machine_id);
+    }
+}
+
+bool SimulationEngine::tryActivateRotareGenerator(int32_t x, int32_t y, int32_t z) {
+    auto ent = findEntityAt(static_cast<uint32_t>(x), static_cast<uint32_t>(y), static_cast<uint32_t>(z));
+    if (ent == entt::null) return false;
+
+    auto* machine = reg_.try_get<MachineComponent>(ent);
+    if (!machine) return false;
+    if (machine->machine_id != RotareGeneratorSystem::kRotareGeneratorBlockId) return false;
+
+    auto* energy = reg_.try_get<EnergyStorage>(ent);
+    if (!energy) return false;
+
+    auto& state = reg_.emplace_or_replace<RotareState>(ent);
+    if (state.spinning) return false;
+
+    state.spinning = true;
+    state.remainingTicks = RotareGeneratorSystem::kSpinDurationTicks;
+    state.energyPerTick = RotareGeneratorSystem::kEnergyPerTick;
+
+    spdlog::info("Rotare generator activated at ({},{},{})", x, y, z);
+    return true;
 }
 
 } // namespace simcore

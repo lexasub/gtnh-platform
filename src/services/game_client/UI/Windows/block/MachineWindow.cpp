@@ -192,7 +192,8 @@ void MachineWindow::RenderProgress(const MachineInfo* info, float prog) {
 }
 
 // ── Energy bar with color-coding ───────────────────────────────────────────
-void MachineWindow::RenderEnergyBarImpl(EnergyType et, uint32_t energy, uint32_t energyMax) {
+void MachineWindow::RenderEnergyBarImpl(EnergyType et, uint32_t energy, uint32_t energyMax,
+                                         float heatRatio, uint64_t mbId) {
     const char* label = MachineRegistry::EnergyLabel(et);
     char buf[48];
     std::snprintf(buf, sizeof(buf), "%s: %u / %u", label, energy, energyMax);
@@ -208,7 +209,18 @@ void MachineWindow::RenderEnergyBarImpl(EnergyType et, uint32_t energy, uint32_t
 
     if (ratio > 0.0f) {
         ImVec2 fillEnd(p0.x + w * std::min(ratio, 1.0f), p1.y);
-        dl->AddRectFilled(p0, fillEnd, EnergyBarColor(et, ratio), 3.0f);
+        ImU32 barColor = EnergyBarColor(et, ratio);
+
+        // Overheat tints for multiblock machines only
+        if (mbId > 0) {
+            if (heatRatio >= 1.0f) {
+                barColor = IM_COL32(255, 40, 40, 255);  // Red: critical
+            } else if (heatRatio >= 0.9f) {
+                barColor = IM_COL32(255, 200, 0, 255);  // Yellow: warning
+            }
+        }
+
+        dl->AddRectFilled(p0, fillEnd, barColor, 3.0f);
     }
 
     dl->AddRect(p0, p1, IM_COL32(80, 80, 80, 255), 3.0f);
@@ -396,7 +408,9 @@ void MachineWindow::Render(InventoryState* playerInv) {
             ? pendingUpdate_.energyCapacity
             : (info ? (static_cast<uint32_t>(info->tier * 10000) > 0 ? static_cast<uint32_t>(info->tier * 10000) : 10000) : 10000);
         uint32_t energyVal = hasPendingUpdate_ ? pendingUpdate_.energy : 0;
-        RenderEnergyBarImpl(energyType, energyVal, energyMax);
+        RenderEnergyBarImpl(energyType, energyVal, energyMax,
+                            hasPendingUpdate_ ? pendingUpdate_.heatRatio : 0.0f,
+                            hasPendingUpdate_ ? pendingUpdate_.mbId : 0);
     }
 
     ImGui::Separator();
@@ -526,6 +540,8 @@ void MachineWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
     pendingUpdate_.progress = update->progress();
     pendingUpdate_.energyCapacity = update->energy_capacity();
     pendingUpdate_.energyType = static_cast<EnergyType>(update->energy_type());
+    pendingUpdate_.heatRatio = update->temperature();
+    pendingUpdate_.mbId = update->mb_id();
     framesSinceUpdate_ = 0;
 
     pendingUpdate_.inputItems.clear();

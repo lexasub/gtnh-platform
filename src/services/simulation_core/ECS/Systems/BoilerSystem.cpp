@@ -83,7 +83,10 @@ void BoilerSystem::tick(float /*dt*/) {
             {},
             0.0f,
             static_cast<uint32_t>(energy.current),
-            energy.type);
+            energy.type,
+            0,  // energy_capacity
+            -1, // slots_in
+            heatIntake.ratio());
     }
 }
 

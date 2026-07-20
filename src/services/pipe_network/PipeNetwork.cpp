@@ -2,6 +2,7 @@
 #include <queue>
 #include <algorithm>
 #include <cassert>
+#include <spdlog/spdlog.h>
 
 namespace pipenet {
 
@@ -24,6 +25,8 @@ uint64_t PipeNetworkManager::addNode(int32_t x, int32_t y, int32_t z, uint16_t b
     node.itemBuffer.clear();
     node.itemCapacity = 0;
     node.isItemSource = false;
+    node.heatStored = 0;
+    node.heatCapacity = 0;
     node.isSource = false;
     node.isSink = false;
     nodes_[id] = node;
@@ -47,6 +50,8 @@ bool PipeNetworkManager::addNodeWithId(uint64_t id, int32_t x, int32_t y, int32_
     node.itemBuffer.clear();
     node.itemCapacity = 0;
     node.isItemSource = false;
+    node.heatStored = 0;
+    node.heatCapacity = 0;
     node.isSource = false;
     node.isSink = false;
     nodes_[id] = node;
@@ -621,6 +626,131 @@ void PipeNetworkManager::addNodeItem(uint64_t nodeId, uint16_t itemId, uint8_t c
     auto it = nodes_.find(nodeId);
     if (it == nodes_.end()) return;
     it->second.itemBuffer.push_back({itemId, count});
+}
+
+void PipeNetworkManager::setNodeHeat(uint64_t nodeId, int32_t heat, int32_t capacity,
+                                     bool isSource, bool isSink) {
+    auto it = nodes_.find(nodeId);
+    if (it == nodes_.end()) return;
+    it->second.heatStored = heat;
+    it->second.heatCapacity = capacity;
+    it->second.isSource = isSource;
+    it->second.isSink = isSink;
+}
+
+void PipeNetworkManager::setNodeSideConfig(uint64_t nodeId,
+                                           const std::array<uint8_t, 6>& sideConfig) {
+    auto it = nodes_.find(nodeId);
+    if (it == nodes_.end()) return;
+    it->second.side_config = sideConfig;
+}
+
+std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeHeat(uint64_t networkId,
+                                                                          int32_t tickHeat) {
+    std::unordered_map<uint64_t, int32_t> deltas;
+    auto ni = networks_.find(networkId);
+    if (ni == networks_.end() || tickHeat == 0) return deltas;
+
+    PipeNetwork& net = ni->second;
+    
+    std::vector<uint64_t> heatSources;
+    std::vector<uint64_t> heatSinks;
+    
+    for (uint64_t nid : net.nodeIds) {
+        auto nodeIt = nodes_.find(nid);
+        if (nodeIt == nodes_.end()) continue;
+        
+        const auto& node = nodeIt->second;
+        
+        if (node.heatStored > node.heatCapacity * 0.9) {
+            heatSources.push_back(nid);
+        }
+        
+        if (node.heatStored < node.heatCapacity) {
+            heatSinks.push_back(nid);
+        }
+    }
+    
+    if (heatSources.empty() || heatSinks.empty()) return deltas;
+    
+    int32_t totalExcessHeat = 0;
+    for (uint64_t sourceId : heatSources) {
+        auto nodeIt = nodes_.find(sourceId);
+        if (nodeIt == nodes_.end()) continue;
+        const auto& node = nodeIt->second;
+        int32_t excess = node.heatStored - static_cast<int32_t>(node.heatCapacity * 0.9);
+        totalExcessHeat += excess;
+    }
+    
+    if (totalExcessHeat <= 0) return deltas;
+    
+    int32_t heatToFlow = std::min(tickHeat, totalExcessHeat);
+    heatToFlow = std::min(heatToFlow, HeatConstants::MAX_HEAT_PER_TICK);
+    
+    if (heatToFlow <= 0) return deltas;
+    
+    std::vector<std::pair<uint64_t, int32_t>> sortedSinks;
+    for (uint64_t sinkId : heatSinks) {
+        auto nodeIt = nodes_.find(sinkId);
+        if (nodeIt == nodes_.end()) continue;
+        sortedSinks.push_back({sinkId, nodeIt->second.heatStored});
+    }
+    
+    std::sort(sortedSinks.begin(), sortedSinks.end(),
+              [](const auto& a, const auto& b) { return a.second < b.second; });
+    
+    int32_t remainingHeat = heatToFlow;
+    for (auto& sinkPair : sortedSinks) {
+        if (remainingHeat <= 0) break;
+        
+        uint64_t sinkId = sinkPair.first;
+        auto nodeIt = nodes_.find(sinkId);
+        if (nodeIt == nodes_.end()) continue;
+        
+        auto& node = nodeIt->second;
+        
+        int32_t room = node.heatCapacity - node.heatStored;
+        if (room <= 0) continue;
+        
+        int32_t give = std::min(remainingHeat, room);
+        
+        for (uint64_t sourceId : heatSources) {
+            if (give <= 0) break;
+            
+            auto sourceIt = nodes_.find(sourceId);
+            if (sourceIt == nodes_.end()) continue;
+            
+            auto& sourceNode = sourceIt->second;
+            
+            int32_t currentExcess = sourceNode.heatStored - static_cast<int32_t>(sourceNode.heatCapacity * 0.9);
+            if (currentExcess <= 0) continue;
+            
+            int32_t take = std::min(give, currentExcess);
+            sourceNode.heatStored -= take;
+            node.heatStored += take;
+            
+            deltas[sourceId] -= take;
+            deltas[sinkId] += take;
+            
+            remainingHeat -= take;
+            give -= take;
+            
+            spdlog::debug("[PipeNet] heat transfer: node {} -> {} ({},{},{}) heat transferred: {}",
+                          sourceId, sinkId, node.x, node.y, node.z, take);
+        }
+    }
+    
+    net.totalEnergy = 0;
+    bool anySink = false;
+    for (uint64_t nid : net.nodeIds) {
+        auto nodeIt = nodes_.find(nid);
+        if (nodeIt == nodes_.end()) continue;
+        net.totalEnergy += nodeIt->second.heatStored;
+        if (nodeIt->second.isSink) anySink = true;
+    }
+    net.isActive = anySink && tickHeat != 0;
+
+    return deltas;
 }
 
 } // namespace pipenet

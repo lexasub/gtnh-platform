@@ -13,12 +13,14 @@ SetBlockCASHandler::SetBlockCASHandler(std::shared_ptr<IBlockRepository> repo,
                                        std::shared_ptr<IEventPublisher> publisher,
                                        std::shared_ptr<SimulationEngine> engine,
                                        ItemGiveCallback onGiveItem,
-                                       DrillUseCallback onDrillUse)
+                                       DrillUseCallback onDrillUse,
+                                       PostCallback postToMain)
     : repo_(std::move(repo))
     , publisher_(std::move(publisher))
     , engine_(std::move(engine))
     , onGiveItem_(std::move(onGiveItem))
     , onDrillUse_(std::move(onDrillUse))
+    , postToMain_(std::move(postToMain))
 {}
 
 void SetBlockCASHandler::handle(const void *table) {
@@ -35,11 +37,23 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
     uint16_t expected_block_id = action->expected_block_id();
     uint16_t new_block_id = action->new_block_id();
     uint64_t player_id = action->player_id();
+    uint32_t request_id = action->request_id();
 
     if (action_type == Protocol::PlayerActionType_RIGHT_MOUSE_CLICK && new_block_id == 0) {
+        if (engine_) {
+            auto* machineReg = engine_->getMachineRegistry();
+            if (machineReg && machineReg->IsMachine(expected_block_id)) {
+                engine_->onMachineInteracted(x, y, z, expected_block_id, player_id);
+                publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED),
+                                            x, y, z, expected_block_id, 0, "Machine interacted",
+                                            request_id);
+                return;
+            }
+        }
         spdlog::warn("SetBlockCASHandler: cannot place air at ({},{},{})", x, y, z);
         publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_REJECTED),
-                                    x, y, z, 0, 0, "Cannot place air");
+                                    x, y, z, 0, 0, "Cannot place air",
+                                    request_id);
         return;
     }
 
@@ -54,46 +68,51 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
     }
 
     publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED),
-        x, y, z, final_block_id, final_meta, nullptr);
+        x, y, z, final_block_id, final_meta, nullptr, request_id);
 
     repo_->setBlockCAS(x, y, z, expected_block_id, final_block_id, final_meta,
-        [this, x, y, z, final_block_id, final_meta, expected_block_id, new_block_id, player_id, action_type](const CASResult& result) {
-            if (result.status == 0) {
-                spdlog::info("Block CAS OK at ({},{},{}) final_id={}", x, y, z, final_block_id);
+        [this, x, y, z, final_block_id, final_meta, expected_block_id, new_block_id, player_id, action_type, request_id](const CASResult& result) {
+            auto processResult = [this, x, y, z, final_block_id, final_meta, expected_block_id, new_block_id, player_id, action_type, request_id](const CASResult& result) {
+                if (result.status == 0) {
+                    spdlog::info("Block CAS OK at ({},{},{}) final_id={}", x, y, z, final_block_id);
 
-                // Break: give the broken block to the player
-                if (action_type == Protocol::PlayerActionType_LEFT_MOUSE_CLICK) {
-                    uint16_t broken_block = expected_block_id;
-                    if (broken_block != 0 && onGiveItem_) {
-                        spdlog::info("Giving block {} to player {}", broken_block, player_id);
-                        onGiveItem_(player_id, broken_block, 1, -1);
+                    // Break: give the broken block to the player
+                    if (action_type == Protocol::PlayerActionType_LEFT_MOUSE_CLICK) {
+                        uint16_t broken_block = expected_block_id;
+                        if (broken_block != 0 && onGiveItem_) {
+                            spdlog::info("Giving block {} to player {}", broken_block, player_id);
+                            onGiveItem_(player_id, broken_block, 1, -1);
+                        }
+                        if (onDrillUse_) {
+                            onDrillUse_(player_id, x, y, z, broken_block);
+                        }
                     }
-                    if (onDrillUse_) {
-                        onDrillUse_(player_id, x, y, z, broken_block);
-                    }
-                }
 
-                // Place: consume the placed block from the player
-                if (action_type == Protocol::PlayerActionType_RIGHT_MOUSE_CLICK) {
-                    uint16_t placed_block = new_block_id;
-                    if (placed_block != 0 && onGiveItem_) {
-                        // Remove one by giving negative count (consumed on client side)
-                        // For now this is handled implicitly — client optimistically consumes
-                        spdlog::info("Placed block {} by player {}", placed_block, player_id);
+                    // Place: consume the placed block from the player
+                    if (action_type == Protocol::PlayerActionType_RIGHT_MOUSE_CLICK) {
+                        uint16_t placed_block = new_block_id;
+                        if (placed_block != 0 && onGiveItem_) {
+                            spdlog::info("Placed block {} by player {}", placed_block, player_id);
+                        }
                     }
-                }
 
-                publisher_->publishBlockChangedEvent(x, y, z, final_block_id, final_meta);
-                if (engine_) {
-                    engine_->onBlockChanged(static_cast<uint32_t>(x),
-                                            static_cast<uint32_t>(y),
-                                            static_cast<uint32_t>(z),
-                                            final_block_id, final_meta, 0);
+                    publisher_->publishBlockChangedEvent(x, y, z, final_block_id, final_meta);
+                    if (engine_) {
+                        engine_->onBlockChanged(static_cast<uint32_t>(x),
+                                                static_cast<uint32_t>(y),
+                                                static_cast<uint32_t>(z),
+                                                final_block_id, final_meta, 0);
+                    }
+                } else { // CONFLICT
+                    spdlog::warn("Block CAS CONFLICT at ({},{},{}) actual_id={}, from_id={}, to_id={}", x, y, z, result.block_id, expected_block_id, final_block_id);
+                    publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_CONFLICT),
+                                                x, y, z, result.block_id, result.meta, nullptr, request_id);
                 }
-            } else { // CONFLICT
-                spdlog::warn("Block CAS CONFLICT at ({},{},{}) actual_id={}, from_id={}, to_id={}", x, y, z, result.block_id, expected_block_id, final_block_id);
-                publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_CONFLICT),
-                                            x, y, z, result.block_id, result.meta, nullptr);
+            };
+            if (postToMain_) {
+                postToMain_([processResult, result]() { processResult(result); });
+            } else {
+                processResult(result);
             }
         });
 }

@@ -1,5 +1,6 @@
 #include "PipeNetworkService.h"
 #include "Client/MessageRouterClient.h"
+#include <core_generated.h>
 #include <pipe_network_generated.h>
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
@@ -124,6 +125,7 @@ void PipeNetworkService::Start() {
     router_.Subscribe("item.node.update");
     router_.Subscribe("item.transfer.request");
     router_.Subscribe("world.blocks.changed");
+    router_.Subscribe("world.machine.config.updated");
 
     running_ = true;
     scheduleTick();
@@ -214,6 +216,8 @@ void PipeNetworkService::onRouterMessage(const std::string& topic, const std::ve
         handleItemTransferRequest(data);
     } else if (topic == "world.blocks.changed") {
         handleBlockChanged(data);
+    } else if (topic == "world.machine.config.updated") {
+        handleMachineConfigUpdated(data);
     }
 }
 
@@ -602,6 +606,35 @@ void PipeNetworkService::handleItemTransferRequest(const std::vector<uint8_t>& d
 
     spdlog::debug("handleItemTransferRequest: node={} item={} count={} queued for delivery",
                   req->node_id(), req->item_id(), req->count());
+}
+
+void PipeNetworkService::handleMachineConfigUpdated(const std::vector<uint8_t>& data) {
+    flatbuffers::Verifier verifier(data.data(), data.size());
+    if (!verifier.VerifyBuffer<Protocol::MachineConfigUpdated>()) {
+        spdlog::warn("[PipeNet] invalid MachineConfigUpdated");
+        return;
+    }
+
+    const auto* event = flatbuffers::GetRoot<Protocol::MachineConfigUpdated>(data.data());
+    auto* pos = event->pos();
+    if (!pos || !event->faces()) return;
+
+    uint64_t key = posKey(pos->x(), pos->y(), pos->z());
+    auto pit = pipe_nodes_.find(key);
+    if (pit == pipe_nodes_.end()) return;
+
+    uint64_t mgr_id = pit->second;
+    std::array<uint8_t, 6> side_config;
+    auto* faces = event->faces();
+    for (int i = 0; i < 6 && i < static_cast<int>(faces->size()); ++i) {
+        side_config[i] = faces->Get(i);
+    }
+    network_manager_.setNodeSideConfig(mgr_id, side_config);
+
+    spdlog::debug("[PipeNet] side_config updated at ({},{},{}) via wrench: {}{}{}{}{}{}",
+                  pos->x(), pos->y(), pos->z(),
+                  (int)side_config[0], (int)side_config[1], (int)side_config[2],
+                  (int)side_config[3], (int)side_config[4], (int)side_config[5]);
 }
 
 } // namespace pipe_network

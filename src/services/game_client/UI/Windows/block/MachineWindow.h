@@ -30,6 +30,8 @@ struct BlockEntityUpdateData {
   EnergyType energyType = EnergyType::ELECTRICITY;
   std::vector<ItemStack> inputItems;
   std::vector<ItemStack> outputItems;
+  float heatRatio = 0.0f;      // Heat ratio (0.0 - 1.0+) for overheat warnings
+  uint64_t mbId = 0;           // Multiblock ID (0 = not a multiblock)
 };
 
 class MachineWindow : public BlockAttachedWindow {
@@ -111,6 +113,7 @@ private:
 
   // ── Render helpers ──────────────────────────────────────────────────
   void RenderProgress(const MachineInfo *info, float prog);
-  void RenderEnergyBarImpl(EnergyType et, uint32_t energy, uint32_t energyMax);
+  void RenderEnergyBarImpl(EnergyType et, uint32_t energy, uint32_t energyMax,
+                           float heatRatio = 0.0f, uint64_t mbId = 0);
   void RenderOutOfSyncWarning();
 };

@@ -9,6 +9,8 @@ crafting, and electric tools. (Gtnh inspired game in future)
 
 Built with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + Asio TCP).
 
+![ScreenShot](screenshots/main.jpg)
+
 ## Git History & Contributing
 
 **Git history**: The current commit is the initial one. The development history was volatile (architecture and protocol changed multiple times), so I'll squash into a single clean commit once I set up the remote. If you need a draft branch with the full messy history (bad commit messages, broken intermediate states) — I can grant access separately.
@@ -128,24 +130,6 @@ cmake -GNinja -DCMAKE_TOOLCHAIN_FILE=$PWD/conan_toolchain.cmake .. # -DCMAKE_BUI
 
 > **Note:** If Conan registry is unavailable in your region, see Option B.
 
-**Option B — Pre-built (build once, reuse):** TODO rewrite
-
-Dependencies that aren't in Conan (bgfx, FastNoise2, cmake-imgui, ImGuizmo) are always built manually. Use the setup script:
-
-```bash
-./scripts/build-deps.sh
-```
-
-This clones and builds all external dependencies into `$HOME/.gtnh-deps/`. Once built, subsequent `cmake` runs use the cached `.a`/`.so` files — no rebuild on `rm -rf build`.
-
-```bash
-rm -rf build && mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$HOME/.gtnh-deps
-make -j
-```
-
-For Conan users, the script is optional — Conan pulls everything automatically (except the four above, which still need manual cloning into `third_party/`).
-
 **Go 1.22+** — for MessageRouter and MetaDB services.
 
 ## Quick Start
@@ -193,17 +177,20 @@ src/
 
 - ✅ **Core MVP**: 10 services, FlatBuffers protocol, MessageRouter pub/sub
 - ✅ **Crafting Pipeline**: Workbench crafting end-to-end (CraftRequest→RecipeManager→CraftResponse), 6 JSON recipe types
-- ✅ **PipeNetwork**: BFS energy/fluid/item graphs, CableGraph, MessageRouter integration, overheat/explosion
-- ✅ **Electric Tools**: DrillSystem (spiral BFS, progress, energy), BatteryBuffer, wrench side config
-- ✅ **Autonomous Mining**: DrillSystem MVP — mining progress, output buffer, energy consumption
-- ✅ **Heat/Boiler**: Overheat detection, water→steam conversion, explosion
-- 🟡 **Inventory System**: Protocol + MetaDB + EntityStateStore implemented, drag-and-drop + persistence pending
-- 🔴 **Multiblocks L2**: SpatialIndex, generic pattern library, EBF/Boiler tick — not started
-- 🔴 **Item/Fluid Pipes**: CableGraph wired, actual pipe transport not implemented
-- 🔴 **Ore Generation**: WorldGenerator flat only, vein generation not started
+- ✅ **PipeNetwork**: CableGraph (388 lines) + PipeNetworkManager (626 lines) — energy/fluid/item BFS, overheat/explosion, loss calc
+- ✅ **Electric Tools**: DrillSystem (241 lines, spiral BFS, progress, energy), BatteryBufferSystem, WrenchHandler, SideConfig
+- ✅ **Autonomous Mining**: DrillSystem — spiral BFS ore search, mining progress, output buffer, energy consumption
+- ✅ **Heat/Boiler**: HeatTransferSystem (159 lines) — 6-neighbor propagation, overheat detection (90%/100%), ExplosionSystem, environment cooling
+- ✅ **Ore Generation**: OreGenerator (179 lines) — GTNH-style vein system, primary/secondary/sporadic, 3D Simplex noise, SIMD, ores.json config
+- ✅ **Questbook**: MetaDB quest storage (quest_handlers.go, quest_progress.go, reward_handlers.go) + QuestBookWindow (234 lines)
+- 🟡 **Inventory System**: Protocol + MetaDB + EntityStateStore implemented, drag-and-drop + persistence partially wired
+- 🟡 **Item/Fluid Transport**: PipeNetworkManager handles item/fluid BFS. Gaps: machine inventory insertion, fluid→machine integration
+- 🟡 **Multiblocks L2**: Electrolyser pattern only. SpatialIndex = stub. EBF/Boiler/LCR patterns not implemented
+- 🔴 **Transformers**: Step-up/down voltage transformers not implemented
+- 🔴 **Side Config Integration**: WrenchHandler cycles in-memory. Persistence + PipeNetwork routing by side_config not wired
 
 See `ROADMAP.md` for details.
 
 ---
 
-**Generated**: 2026-06-28 | **Branch**: master
+**Generated**: 2026-07-12 | **Branch**: master

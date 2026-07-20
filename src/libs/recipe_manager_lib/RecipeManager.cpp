@@ -381,6 +381,7 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
             if (ei == "HEAT")       recipe.energy_type = static_cast<uint8_t>(1);
             else if (ei == "STEAM") recipe.energy_type = static_cast<uint8_t>(2);
             else if (ei == "ELECTRICITY") recipe.energy_type = static_cast<uint8_t>(0);
+            else if (ei == "ROTATION") recipe.energy_type = static_cast<uint8_t>(3);
             else spdlog::warn("YAML recipe '{}': unknown energy_in '{}'", recipe.id, ei);
         }
 
@@ -398,18 +399,21 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
             }
         }
 
-        // Outputs (required)
-        if (!yaml["outputs"] || !yaml["outputs"].IsSequence()) {
-            spdlog::warn("YAML recipe '{}': missing or invalid 'outputs'", recipe.id);
-            return false;
-        }
-        auto outputs = yaml["outputs"];
-        for (size_t i = 0; i < outputs.size(); ++i) {
-            recipe.outputs.push_back(parseYamlOutputItem(outputs[i]));
-        }
-        if (recipe.outputs.empty()) {
-            spdlog::warn("YAML recipe '{}': empty outputs", recipe.id);
-            return false;
+        // Outputs (required unless generator/boiler — they produce energy_output, not items)
+        bool isProducer = (recipe.machine_class == "generator" || recipe.machine_class == "boiler");
+        if (!isProducer) {
+            if (!yaml["outputs"] || !yaml["outputs"].IsSequence()) {
+                spdlog::warn("YAML recipe '{}': missing or invalid 'outputs'", recipe.id);
+                return false;
+            }
+            auto outputs = yaml["outputs"];
+            for (size_t i = 0; i < outputs.size(); ++i) {
+                recipe.outputs.push_back(parseYamlOutputItem(outputs[i]));
+            }
+            if (recipe.outputs.empty()) {
+                spdlog::warn("YAML recipe '{}': empty outputs", recipe.id);
+                return false;
+            }
         }
 
         // Duration

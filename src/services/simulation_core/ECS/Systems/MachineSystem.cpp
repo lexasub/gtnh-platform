@@ -6,6 +6,7 @@
 #include "MachineRegistry.h"
 #include "../components/OverheatComponent.h"
 #include "../components/HeatSlowComponent.h"
+#include "../components/HeatIntakeComponent.h"
 
 namespace simcore {
 
@@ -66,6 +67,10 @@ void MachineSystem::tick(float /*dt*/) {
         int slt_in = 0;
         if (auto* minfo = MachineRegistry::instance()->Get(machine.machine_id))
             slt_in = minfo->slots_in;
+        float heatRatio = 0.0f;
+        if (auto* hic = reg_.try_get<HeatIntakeComponent>(ent)) {
+            heatRatio = hic->ratio();
+        }
         events_->publishBlockEntityUpdate(
             static_cast<int32_t>(machine.x),
             static_cast<int32_t>(machine.y),
@@ -76,7 +81,8 @@ void MachineSystem::tick(float /*dt*/) {
             energy.current,
             static_cast<EnergyType>(energy.type),
             static_cast<uint32_t>(energy.capacity),
-            slt_in);
+            slt_in,
+            heatRatio);
     }
 
     // ---- Pass 1: find new recipes for idle machines (skip managed_externally) ----
@@ -312,6 +318,10 @@ void MachineSystem::tick(float /*dt*/) {
             int slt_in = 0;
             if (auto* minfo = MachineRegistry::instance()->Get(machine.machine_id))
                 slt_in = minfo->slots_in;
+            float heatRatio = 0.0f;
+            if (auto* hic = reg_.try_get<HeatIntakeComponent>(ent)) {
+                heatRatio = hic->ratio();
+            }
             events_->publishBlockEntityUpdate(
                 machine.x, machine.y, machine.z,
                 machine.machine_id,
@@ -320,7 +330,8 @@ void MachineSystem::tick(float /*dt*/) {
                 static_cast<uint32_t>(energy.current),
                 energy.type,
                 static_cast<uint32_t>(energy.capacity),
-                slt_in);
+                slt_in,
+                heatRatio);
         }
     }
 }

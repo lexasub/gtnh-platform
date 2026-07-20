@@ -17,6 +17,7 @@ void ChunkView::ensureFlat() const {
         spdlog::error("ChunkView: decodeChunk failed");
         return;
     }
+    compressed_.reset(); // release compressed data after successful decode
 }
 
 uint16_t ChunkView::GetBlock(int x, int y, int z) const {

@@ -2,12 +2,14 @@
 #include <spdlog/spdlog.h>
 #include <cmath>
 #include <algorithm>
+#include "../../world_generator/OreTypes.h"
 
 namespace simcore {
 
-// Ore block IDs
+// Ore block IDs — from items.csv (source of truth)
 static constexpr uint16_t kOreBlocks[] = {
-    3, 5, 19, 23, 25, 27, 87, 88, 89, 90
+    ORE_IRON, ORE_GOLD, ORE_TIN, ORE_COPPER, ORE_URANIUM, ORE_QUARTZ,
+    ORE_COAL, ORE_REDSTONE, ORE_LAPIS, ORE_DIAMOND, ORE_ELECTRUM
 };
 
 // Layer order: 0, -1, +1, -2, +2, -3, +3...
@@ -40,19 +42,20 @@ bool DrillSystem::isOreBlock(uint16_t block_id) {
     return false;
 }
 
-uint16_t DrillSystem::oreToDrop(uint16_t block_id) {
-    switch (block_id) {
-        case 3:  return 4;   // iron_ore → iron_ingot
-        case 5:  return 6;   // gold_ore → gold_ingot
-        case 19: return 20;  // quartz_ore → quartz
-        case 23: return 24;  // electrum_ore → electrum_ingot
-        case 25: return 26;  // tin_ore → tin_ingot
-        case 27: return 28;  // uranium_ore → uranium_ingot
-        case 87: return 44;  // coal_ore → coal
-        case 88: return 88;  // redstone_ore
-        case 89: return 89;  // lapis_ore
-        case 90: return 90;  // diamond_ore
-        default: return block_id;
+uint16_t DrillSystem::oreToDrop(uint16_t oreBlockId) {
+    switch (oreBlockId) {
+    case ORE_IRON:      return ItemId::pack("0:110:1");
+    case ORE_GOLD:      return ItemId::pack("0:110:2");
+    case ORE_TIN:       return ItemId::pack("0:110:3");
+    case ORE_ELECTRUM:  return ItemId::pack("0:110:4");
+    case ORE_COPPER:    return ItemId::pack("0:1110:1:0:1");
+    case ORE_URANIUM:   return ItemId::pack("0:110:5");
+    case ORE_QUARTZ:    return ItemId::pack("0:1110:1:1:2");
+    case ORE_COAL:      return ItemId::pack("0:11110:2");
+    case ORE_REDSTONE:  return 0;
+    case ORE_LAPIS:     return 0;
+    case ORE_DIAMOND:   return 0;
+    default:            return 0;
     }
 }
 

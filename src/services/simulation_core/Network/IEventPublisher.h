@@ -1,6 +1,7 @@
 #pragma once
 #include "MachineRegistry.h"
 #include <cstdint>
+#include <array>
 #include <vector>
 
 // Forward declare Protocol types if needed, but we can keep status as integer.
@@ -15,7 +16,8 @@ public:
   // Protocol::BlockAckStatus)
   virtual void publishBlockAck(uint8_t status, int32_t x, int32_t y, int32_t z,
                                uint16_t block_id, uint8_t meta,
-                               const char *reason) = 0;
+                               const char *reason,
+                               uint32_t request_id = 0) = 0;
 
   virtual void publishBlockChangedEvent(int32_t x, int32_t y, int32_t z,
                                         uint16_t block_id, uint8_t meta) = 0;
@@ -27,13 +29,18 @@ public:
       int32_t x, int32_t y, int32_t z, uint16_t machine_type,
       const std::vector<uint8_t> &inventory_data, float progress,
       uint32_t energy, EnergyType energy_type = EnergyType::ELECTRICITY,
-      uint32_t energy_capacity = 0, int slots_in = -1) = 0;
+      uint32_t energy_capacity = 0, int slots_in = -1,
+      float heat_ratio = 0.0f) = 0;
 
   virtual void publishMachineSlotResponse(int32_t x, int32_t y, int32_t z,
                                           uint16_t slot_idx, bool success,
                                           uint16_t item_id, uint8_t count,
                                           uint16_t meta,
                                           const char *error = nullptr) = 0;
+
+  // Machine side config update: published when wrench cycles a face role
+  virtual void publishMachineConfigUpdatedEvent(int32_t x, int32_t y, int32_t z,
+                                                const std::array<uint8_t, 6> &side_config) = 0;
 };
 
 } // namespace simcore

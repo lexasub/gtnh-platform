@@ -1,10 +1,15 @@
 #pragma once
+#include <array>
 #include <cstdint>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 namespace pipenet {
+
+namespace HeatConstants {
+constexpr int32_t MAX_HEAT_PER_TICK = 1000; // Maximum heat flow per tick
+} // namespace HeatConstants
 
 struct ItemSlot {
   uint16_t item_id;
@@ -36,6 +41,13 @@ struct PipeNode {
   std::vector<ItemSlot> itemBuffer;
   uint8_t itemCapacity = 0;
   bool isItemSource = false;
+
+  // Heat handling
+  int32_t heatStored;    // current heat stored in this node
+  int32_t heatCapacity;  // max heat this node can hold
+
+  // Side config for machine sink routing
+  std::array<uint8_t, 6> side_config;
 
   bool isSource; // generator/input
   bool isSink;   // consumer/output
@@ -108,6 +120,11 @@ public:
   void setNodeItemProps(uint64_t nodeId, uint8_t itemCapacity,
                         bool isItemSource);
   void addNodeItem(uint64_t nodeId, uint16_t itemId, uint8_t count);
+  void setNodeHeat(uint64_t nodeId, int32_t heat, int32_t capacity,
+                   bool isSource, bool isSink);
+  void setNodeSideConfig(uint64_t nodeId, const std::array<uint8_t, 6>& sideConfig);
+
+  std::unordered_map<uint64_t, int32_t> distributeHeat(uint64_t networkId, int32_t tickHeat);
 
   // Query
   const PipeNode *getNode(uint64_t nodeId) const;

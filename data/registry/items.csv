@@ -79,10 +79,12 @@ int,name,stack,meta
 1110:00:5,steam_extractor,,0
 1110:00:6,steam_mixer,,0
 1110:00:7,bronze_alloy_smelter,,0
+1110:00:8,rotare_macerator,,0
 # generation (111001) — produces energy/steam
 1110:01:0,steam_solid_boiler,,0
 1110:01:1,steam_heat_boiler,,0
 1110:01:2,creative_generator,,0
+1110:01:3,rotare_generator,,0
 # storage (111010) — batteries
 1110:10:0,battery_buffer_lv,,0
 1110:10:1,battery_buffer_mv,,0

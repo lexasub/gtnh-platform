@@ -71,6 +71,7 @@ add_library(simcored
         Network/FluidClient.cpp
         Network/ItemClient.cpp
         Network/TopicDispatcher.cpp
+        Network/SimCoreMessageHandler.cpp
         Network/clients/EntityStateStoreClient.cpp
         Network/clients/IoUringRouterClient.cpp
         Network/clients/IoUringChunkClient.cpp
@@ -87,6 +88,7 @@ add_library(simcored
         Actions/ElectricDrillHandler.cpp
         Actions/MachineSlotHandler.cpp
         Actions/ToolActionHandler.cpp
+        Actions/WrenchActionHandler.cpp
 
         World/ChunkEventHandler.cpp
         World/BlockTransforms.cpp
@@ -110,7 +112,7 @@ add_library(simcored
         ECS/Systems/DrillSystem.cpp
         ECS/Systems/ExplosionSystem.cpp
         ECS/Systems/TransformerSystem.cpp
-        ECS/Systems/TransformerSystem.cpp
+        ECS/Systems/RotareGeneratorSystem.cpp
 
         RecipeManager/RecipeManager.cpp
 )

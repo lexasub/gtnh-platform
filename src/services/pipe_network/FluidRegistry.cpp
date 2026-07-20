@@ -28,9 +28,9 @@ void FluidRegistry::initDefaults() {
     registerFluid({ItemId::pack("1111:11:2"), "sulfuric_acid",  1.84f, 24.0f, 610});
 
     // Bucket items
-    registerFluid({ItemId::pack("0:1111:0"), "water",          1.0f,  1.0f, 373});
-    registerFluid({ItemId::pack("0:1111:1"), "hydrogen",       0.09f, 0.01f, 20});
-    registerFluid({ItemId::pack("0:1111:2"), "sulfuric_acid",  1.84f, 24.0f, 610});
+    registerFluid({ItemId::pack("0:11111:0"), "water",          1.0f,  1.0f, 373});
+    registerFluid({ItemId::pack("0:11111:1"), "hydrogen",       0.09f, 0.01f, 20});
+    registerFluid({ItemId::pack("0:11111:2"), "sulfuric_acid",  1.84f, 24.0f, 610});
 }
 
 FluidRegistry& FluidRegistry::instance() {

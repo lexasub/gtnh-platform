@@ -101,9 +101,13 @@ ImGuiKey GLFWKeyToImGuiKey(int key) {
     }
 }
 
+// Thread-local reusable staging buffers to minimize per-frame allocations
+thread_local std::vector<uint8_t> t_stagingVertexBuffer;
+thread_local std::vector<uint8_t> t_stagingIndexBuffer;
 } // anonymous namespace
 
 namespace renderlib {
+
 
 inline uint16_t ClipRectClamp(float v) {
     if (v < 0.0f) return 0;
@@ -231,21 +235,26 @@ void ImGuiBackend::RenderDrawData(ImDrawData* drawData) {
         fallbackLists.push_back({totalVerts - nv, totalIndices - ni, nv, ni, list});
     }
     if (fallbackLists.empty()) return;
-    std::vector<uint8_t> stagingV(totalVerts * sizeof(ImDrawVert));
-    std::vector<uint8_t> stagingI(totalIndices * sizeof(ImDrawIdx));
+    // Reuse thread-local buffers; grow only if needed
+    size_t vsize = totalVerts * sizeof(ImDrawVert);
+    size_t isize = totalIndices * sizeof(ImDrawIdx);
+    t_stagingVertexBuffer.reserve(vsize);
+    t_stagingIndexBuffer.reserve(isize);
+    uint8_t* stagingV = t_stagingVertexBuffer.data();
+    uint8_t* stagingI = t_stagingIndexBuffer.data();
     for (auto& fb : fallbackLists) {
-        memcpy(stagingV.data() + fb.startVert * sizeof(ImDrawVert),
+        memcpy(stagingV + fb.startVert * sizeof(ImDrawVert),
                fb.list->VtxBuffer.Data, fb.numVerts * sizeof(ImDrawVert));
         const ImDrawIdx* srcIdx = fb.list->IdxBuffer.Data;
-        uint8_t* dstIdx = stagingI.data() + fb.startIdx * sizeof(ImDrawIdx);
+        uint8_t* dstIdx = stagingI + fb.startIdx * sizeof(ImDrawIdx);
         for (uint32_t i = 0; i < fb.numIndices; ++i) {
             uint32_t newIdx = srcIdx[i] + fb.startVert;
             if (sizeof(ImDrawIdx) == 2) *((uint16_t*)dstIdx + i) = uint16_t(newIdx);
             else *((uint32_t*)dstIdx + i) = newIdx;
         }
     }
-    bgfx::update(vb_, 0, bgfx::copy(stagingV.data(), stagingV.size()));
-    bgfx::update(ib_, 0, bgfx::copy(stagingI.data(), stagingI.size()));
+    bgfx::update(vb_, 0, bgfx::copy(stagingV, vsize));
+    bgfx::update(ib_, 0, bgfx::copy(stagingI, isize));
     uint32_t globalIdxOffset = 0;
     for (auto& fb : fallbackLists) {
         uint32_t offset = 0;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
 
 # GTNH Platform — start all services and game client
 # Usage: ./run.sh [--build-dir <path>] [--db-dir <path>] [--resolution <WxH>] [--all] [--no-client]

@@ -1,0 +1,29 @@
+default_install_hook_types: [pre-commit, commit-msg]
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.md$'
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: local
+    hooks:
+      - id: validate-shell
+        name: shell strict mode (set -euo pipefail)
+        entry: python3 scripts/validate_shell.py
+        language: system
+        files: '\.sh$'
+        pass_filenames: false
+
+      - id: validate-forbidden
+        name: forbidden tokens in source code
+        entry: python3 scripts/validate_forbidden.py
+        language: system
+        files: '\.(cpp|hpp|h|go)$'
+        pass_filenames: false
