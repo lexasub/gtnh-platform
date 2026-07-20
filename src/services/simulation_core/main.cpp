@@ -260,7 +260,8 @@ int main(int argc, char* argv[]) {
     routerClient->Connect(router_host, router_port);
     chunkstoreClient->Connect(chunkstore_host, chunkstore_port);
 
-    routerClient->Subscribe("player.actions");
+    routerClient->Subscribe("player.action");
+    routerClient->Subscribe("player.setblock");
     routerClient->Subscribe("world.blocks.changed");
     routerClient->Subscribe("fluid.consume.response");
     routerClient->Subscribe("item.flow");

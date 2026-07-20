@@ -119,7 +119,7 @@ bool IoUringGateway::listen(uint16_t ctrl_port, uint16_t bulk_port) {
                                                        Protocol::PlayerActionType_CHUNK_REQUEST, &pos);
             fbb.Finish(action);
             spdlog::info("Gateway: sending CHUNK_REQUEST at chunk ({},{},{})", cx, cy, cz);
-            publish("player.actions", fbb.GetBufferPointer(), fbb.GetSize());
+            publish("player.action", fbb.GetBufferPointer(), fbb.GetSize());
         }
     };
 
@@ -377,7 +377,7 @@ else if (topic == "player.chest.open.response")
             auto action = Protocol::CreatePlayerAction(fbb, 0,
                                                        Protocol::PlayerActionType_CHUNK_REQUEST, &cp);
             fbb.Finish(action);
-            publish("player.actions", fbb.GetBufferPointer(), fbb.GetSize());
+            publish("player.action", fbb.GetBufferPointer(), fbb.GetSize());
             spdlog::info("Gateway: re-sent CHUNK_REQUEST at chunk ({},{},{})", cx, cy, cz);
         }
     }
@@ -400,7 +400,7 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
     case GatewayMsg::kPlayerAction: {
         flatbuffers::Verifier v(data, len);
         if (!v.VerifyBuffer<Protocol::PlayerAction>(nullptr)) { spdlog::error("Gateway: invalid PlayerAction on ctrl"); return; }
-        if (on_client_message) on_client_message(data, len);
+        publish("player.action", data, len);
         auto action = flatbuffers::GetRoot<Protocol::PlayerAction>(data);
         if (!action) return;
         uint64_t pid = action->player_id();
@@ -423,7 +423,7 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
     case GatewayMsg::kSetBlockAction: {
         flatbuffers::Verifier v(data, len);
         if (!v.VerifyBuffer<Protocol::SetBlockAction>(nullptr)) { spdlog::error("Gateway: invalid SetBlockAction on ctrl"); return; }
-        if (on_client_message) on_client_message(data, len);
+        publish("player.setblock", data, len);
         auto action = flatbuffers::GetRoot<Protocol::SetBlockAction>(data);
         if (!action) return;
         uint64_t pid = action->player_id();

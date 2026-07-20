@@ -108,7 +108,6 @@ public:
   void shutdown();
   void sendHeartbeat();
 
-  std::function<void(const uint8_t *data, size_t len)> on_client_message;
   std::function<void(const std::string &topic, const uint8_t *data, size_t len)>
       on_router_message;
 

@@ -53,7 +53,7 @@ void RouterClient::doConnect() {
             reconnect_delay_ = 1;
             reconnect_pending_ = false;
             doRegister();
-            subscribe("player.actions");
+            subscribe("player.action");
             scheduleHeartbeat();
             doReadHeader();
         });
@@ -61,7 +61,7 @@ void RouterClient::doConnect() {
 
 void RouterClient::doRegister() {
     const std::string name = "chunkstore";
-    std::vector<std::string> topics = {"player.actions"};
+    std::vector<std::string> topics = {"player.action"};
     std::vector<uint8_t> frame;
     FrameCodec::buildRegisterFrame(frame, name, topics);
     EnqueueWrite(std::make_shared<std::vector<uint8_t>>(std::move(frame)));
@@ -121,7 +121,7 @@ void RouterClient::onPublish(const uint8_t* data, size_t len) {
 
 
 
-    if (topic != "player.actions") return;
+    if (topic != "player.action") return;
     auto* action = flatbuffers::GetRoot<Protocol::PlayerAction>(fb_data);
     auto* pos = action->pos();
     auto act = action->action();

@@ -36,8 +36,8 @@ void MutableChunk::setMultiblock(int x, int y, int z, uint32_t mb_id) {
     sections[sec].setMultiblock(li, mb_id);
 }
 
-MutableChunk MutableChunk::fromBlocks(const uint16_t blocks[32768]) {
-    MutableChunk mc;
+MutableChunk MutableChunk::fromBlocks(const uint16_t blocks[SEC_VOL * SEC_CNT]) {
+    MutableChunk mc;  // TODO restrict, use ptrs
     for (int s = 0; s < SEC_CNT; ++s) {
         int ox = sectionOrigin(s, 0);
         int oy = sectionOrigin(s, 2);
@@ -72,12 +72,12 @@ bool MutableChunk::fromWire(const uint8_t *data, size_t size) {
     uint32_t magic = 0;
     if (!r.readU32(magic) || magic != MAGIC) return false;
     uint8_t ver = 0;
-    if (!r.readU8(ver) || ver < 1) return false;
+    if (!r.readU8(ver) || ver < 1) [[unlikely]] return false;
     uint8_t sec_cnt = 0;
     if (!r.readU8(sec_cnt) || sec_cnt != SEC_CNT) return false;
 
     for (int s = 0; s < SEC_CNT; ++s) {
-        if (!sections[s].fromWire(r)) return false;
+        if (!sections[s].fromWire(r)) [[unlikely]] return false;
     }
     return true;
 }
