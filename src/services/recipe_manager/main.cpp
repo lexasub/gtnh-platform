@@ -2,9 +2,12 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <signal.h>
 #include <atomic>
-#include <chrono>
 #include <thread>
 #include <cstdlib>
+#include <string>
+#include <string>
+
+#include "../../libs/libgtnh-common/metrics_util.h"
 
 #include "Client/MessageRouterClient.h"
 #include "RecipeManagerService.h"
@@ -16,7 +19,7 @@ using namespace gtnh::recipe_manager;
 static std::atomic<bool> g_running{true};
 
 static void signalHandler(int) {
-    g_running = false;
+    g_running.store(false, std::memory_order_release);
 }
 
 static std::string getDataDir() {
@@ -26,6 +29,11 @@ static std::string getDataDir() {
 }
 
 int main(int argc, char** argv) {
+    gtnh::metrics::printVersionAndExit("RecipeManager Service (reciped)", argc, argv);
+
+    gtnh::metrics::Collector metrics;
+    metrics.install();
+
     spdlog::set_default_logger(spdlog::stdout_color_mt("reciped"));
 
     signal(SIGINT, signalHandler);
@@ -76,6 +84,11 @@ int main(int argc, char** argv) {
     spdlog::info("RecipeManager ready");
 
     while (g_running) {
+        if (metrics.poll()) {
+            metrics.printMetrics("RecipeManager Service (reciped)",
+                std::string("Recipe Count: ") + std::to_string(recipes->recipeCount()));
+        }
+        
         ioCtx.poll_one();
         if (!g_running) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

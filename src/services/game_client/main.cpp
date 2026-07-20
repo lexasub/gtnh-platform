@@ -2,7 +2,10 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <pthread.h>
 #include <csignal>
+#include <atomic>
+#include <string>
 #include "GameClient.h"
+#include "libgtnh-common/metrics_util.h"
 
 static GameClient* g_client = nullptr;
 
@@ -16,6 +19,11 @@ static void signalHandler(int) {
 }
 
 int main(int argc, char* argv[]) {
+    gtnh::metrics::printVersionAndExit("GameClient (gtnh-client)", argc, argv);
+
+    gtnh::metrics::Collector metrics;
+    metrics.install();
+
     auto console = spdlog::stdout_color_mt("game_client");
     spdlog::set_default_logger(console);
     // Set to trace for IoUringClient SQE debugging, warn for normal use
@@ -58,6 +66,12 @@ int main(int argc, char* argv[]) {
     }
 
     spdlog::info("GameClient started");
+    
+    // Note: client.Run() blocks in render loop. For SIGUSR1 to work properly,
+    // GameClient::Run() would need to check g_print_metrics periodically.
+    // For now, signal handler is registered but metrics won't print during Run().
+    // This would require modifying GameClient class to poll the flag.
+    
     client.Run();
 
     return 0;

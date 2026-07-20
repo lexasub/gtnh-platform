@@ -259,6 +259,65 @@ func (m *MetaDB) GetPlayerPosition(playerID uint64) (Player, error) {
 }
 
 // ---------------------------------------------------------------------------
+// Entity state CRUD
+// ---------------------------------------------------------------------------
+
+func (m *MetaDB) initEntityStateSchema() error {
+	_, err := m.db.Exec(entityStateSchema)
+	return err
+}
+
+func (m *MetaDB) GetEntityState(dim, x, y, z int) ([]byte, error) {
+	var blob []byte
+	err := m.db.QueryRow(
+		"SELECT blob FROM entity_state WHERE dim = ? AND x = ? AND y = ? AND z = ?",
+		dim, x, y, z,
+	).Scan(&blob)
+	if err != nil {
+		return nil, err
+	}
+	return blob, nil
+}
+
+func (m *MetaDB) SetEntityState(dim, x, y, z int, blob []byte) error {
+	_, err := m.db.Exec(
+		`INSERT INTO entity_state (dim, x, y, z, blob) 
+		 VALUES (?, ?, ?, ?, ?)
+		 ON CONFLICT(dim, x, y, z) DO UPDATE SET blob = excluded.blob`,
+		dim, x, y, z, blob,
+	)
+	return err
+}
+
+func (m *MetaDB) DeleteEntityState(dim, x, y, z int) error {
+	result, err := m.db.Exec(
+		"DELETE FROM entity_state WHERE dim = ? AND x = ? AND y = ? AND z = ?",
+		dim, x, y, z,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to delete entity state: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to check rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("entity state not found at (%d,%d,%d) in dim %d", x, y, z, dim)
+	}
+	return nil
+}
+
+// GetPlayerCount returns the total number of players in the database.
+func (m *MetaDB) GetPlayerCount() int {
+	var count int
+	err := m.db.QueryRow("SELECT COUNT(*) FROM players").Scan(&count)
+	if err != nil {
+		return 0
+	}
+	return count
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 

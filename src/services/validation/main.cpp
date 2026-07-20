@@ -1,7 +1,11 @@
 #include "src/validation.h"
 #include <spdlog/spdlog.h>
 
-int main() {
+#include "libs/libgtnh-common/metrics_util.h"
+
+int main(int argc, char* argv[]) {
+    gtnh::metrics::printVersionAndExit("Validation Service (validationd)", argc, argv);
+
     spdlog::set_level(spdlog::level::debug);
     spdlog::info("Validation Service starting...");
 

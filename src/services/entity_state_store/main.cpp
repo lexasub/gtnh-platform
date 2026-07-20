@@ -4,6 +4,9 @@
 #include <csignal>
 #include <atomic>
 #include <memory>
+#include <string>
+
+#include "../../libs/libgtnh-common/metrics_util.h"
 
 #include "EntityStateStorage.h"
 #include "cache.h"
@@ -156,11 +159,16 @@ static void doReadFrame(std::shared_ptr<asio::ip::tcp::socket> socket, EntitySta
 
 [[maybe_unused]] static void handleSignal(int sig) {
     spdlog::info("Signal {} received, shutting down...", sig);
-    g_stop.store(true);
+    g_stop.store(true, std::memory_order_release);
     if (g_io) g_io->stop();
 }
 
 int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
+    gtnh::metrics::printVersionAndExit("EntityStateStore Service (entitystated)", argc, argv);
+
+    gtnh::metrics::Collector metrics;
+    metrics.install();
+
     std::string lmdb_path = "/tmp/lmdb";
     asio::io_context io_context;
     EntityStateStorage storage(lmdb_path, io_context, 1000);
@@ -234,6 +242,12 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     std::string chunkstore_host = "127.0.0.1";
     uint16_t chunkstore_port = 5001;
 
+    // Register signal handlers
+    std::signal(SIGINT, handleSignal);
+    std::signal(SIGTERM, handleSignal);
+    
+    g_io = &io_context;
+
     routerClient->Connect(router_host, router_port);
     chunkstoreClient->Connect(chunkstore_host, chunkstore_port);
 
@@ -242,7 +256,18 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     doAccept(tcp_acceptor, storage);
 
     spdlog::info("EntityStateService running, waiting for messages...");
-    io_context.run();
+    
+    // Run io_context in a loop that checks for signals
+    while (!g_stop.load()) {
+        // Check metrics first (lightweight atomic check)
+        if (metrics.poll()) {
+            metrics.printMetrics("EntityStateStore Service (entitystated)");
+        }
+        
+        // Then process network I/O
+        io_context.poll();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     storage.shutdown();
     spdlog::info("EntityStateService shutdown complete");
