@@ -13,9 +13,17 @@ import (
 	"time"
 )
 
+// Local import - no network dependency
+// Uses replace directive in go.mod for local build
+import "github.com/gtnh/platform/gtnh-common/metrics"
+
 func main() {
+	metrics.CheckVersionAndExit("MessageRouter Service (routerd)")
+
 	port := flag.Int("port", 4000, "TCP listen port")
 	flag.Parse()
+
+	startTime := time.Now()
 
 	router := NewRouter()
 	router.StartCleanup()
@@ -25,8 +33,12 @@ func main() {
 		log.Fatalf("listen: %v", err)
 	}
 
+	// Setup signal handling early, separate from main loop
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	go handleSignals(sig, listener, router, startTime, *port)
+
 	log.Printf("message_router listening on :%d", *port)
-	go handleSignals(listener)
 
 	for {
 		conn, err := listener.Accept()
@@ -38,13 +50,23 @@ func main() {
 	}
 }
 
-func handleSignals(l net.Listener) {
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
-	log.Println("shutting down...")
-	l.Close()
-	os.Exit(0)
+func handleSignals(sig chan os.Signal, l net.Listener, r *Router, startTime time.Time, port int) {
+	for {
+		s := <-sig
+		switch s {
+		case syscall.SIGUSR1:
+			metrics.PrintMetricsHeader("MessageRouter Service (routerd)")
+			log.Printf("Uptime: %s", metrics.FormatUptime(startTime))
+			log.Printf("TCP Port: %d", port)
+			log.Printf("Active Clients: %d", r.ClientCount())
+			log.Printf("Active Topics: %d", r.TopicCount())
+			metrics.PrintMetricsFooter()
+		case syscall.SIGINT, syscall.SIGTERM:
+			log.Println("shutting down...")
+			l.Close()
+			os.Exit(0)
+		}
+	}
 }
 
 func handleConn(r *Router, conn net.Conn) {

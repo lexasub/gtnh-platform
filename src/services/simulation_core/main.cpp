@@ -7,6 +7,8 @@
 #include <chrono>
 #include <vector>
 #include <array>
+#include <iostream>
+#include <string>
 #include <cstdint>
 
 #include "Network/clients/IoUringRouterClient.h"
@@ -42,6 +44,8 @@
 #include "machine_state_generated.h"
 #include <flatbuffers/flatbuffers.h>
 
+#include "../../libs/libgtnh-common/metrics_util.h"
+
 // ── Signal handling ────────────────────────────────────────────────────────
 // File-scope statics are acceptable here — std::signal requires function pointers.
 static std::atomic<bool>  g_stop{false};
@@ -49,7 +53,7 @@ static asio::io_context*  g_io  = nullptr;
 
 static void handleSignal(int sig) {
     spdlog::info("Signal {} received, shutting down...", sig);
-    g_stop.store(true);
+    g_stop.store(true, std::memory_order_release);
     if (g_io) g_io->stop();
 }
 
@@ -87,6 +91,11 @@ void spawnECSSystems(std::shared_ptr<simcore::ChunkStoreRepository> blockReposit
 } // anonymous namespace
 
 int main(int argc, char* argv[]) {
+    gtnh::metrics::printVersionAndExit("SimulationCore Service (simcored)", argc, argv);
+
+    gtnh::metrics::Collector metrics;
+    metrics.install();
+
     const char*  router_host     = (argc > 1) ? argv[1] : "127.0.0.1";
     uint16_t     router_port     = (argc > 2) ? static_cast<uint16_t>(std::atoi(argv[2])) : 4000;
     const char*  chunkstore_host = (argc > 3) ? argv[3] : "127.0.0.1";
@@ -279,6 +288,11 @@ int main(int argc, char* argv[]) {
 
     while (!g_stop) {
         auto now = std::chrono::steady_clock::now();
+
+        if (metrics.poll()) {
+            metrics.printMetrics("SimulationCore Service (simcored)",
+                std::string("Tick Interval: ") + std::to_string(TICK_INTERVAL.count()) + " ms");
+        }
 
         if (now - lastHb >= std::chrono::seconds(20)) {
             lastHb = now;

@@ -2,9 +2,11 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <signal.h>
 #include <atomic>
-#include <chrono>
 #include <thread>
 #include <cstdlib>
+#include <string>
+
+#include "../../libs/libgtnh-common/metrics_util.h"
 
 #include "Client/MessageRouterClient.h"
 #include "PipeNetworkService.h"
@@ -14,10 +16,15 @@ using namespace gtnh::pipe_network;
 static std::atomic<bool> g_running{true};
 
 static void signalHandler(int) {
-    g_running = false;
+    g_running.store(false, std::memory_order_release);
 }
 
 int main(int argc, char** argv) {
+    gtnh::metrics::printVersionAndExit("PipeNetwork Service (pipe_networkd)", argc, argv);
+
+    gtnh::metrics::Collector metrics;
+    metrics.install();
+
     spdlog::set_default_logger(spdlog::stdout_color_mt("pipe_networkd"));
 
     signal(SIGINT, signalHandler);
@@ -48,6 +55,10 @@ int main(int argc, char** argv) {
     spdlog::info("PipeNetwork service ready");
 
     while (g_running) {
+        if (metrics.poll()) {
+            metrics.printMetrics("PipeNetwork Service (pipe_networkd)");
+        }
+        
         ioCtx.poll_one();
         if (!g_running) break;
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

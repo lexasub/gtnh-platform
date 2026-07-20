@@ -2,9 +2,18 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
+
+// Local import - no network dependency
+// Uses replace directive in go.mod for local build
+import "github.com/gtnh/platform/gtnh-common/metrics"
 
 const (
 	dbPath = "metadb.sqlite"
@@ -12,6 +21,10 @@ const (
 )
 
 func main() {
+	metrics.CheckVersionAndExit("MetaDB Service (metadbd)")
+
+	startTime := time.Now()
+
 	m, err := NewMetaDB(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize MetaDB: %v", err)
@@ -31,6 +44,11 @@ func main() {
 	}
 	defer listener.Close()
 
+	// Setup signal handling early, separate from main loop
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGUSR1)
+	go handleSignals(sig, m, startTime)
+
 	log.Printf("MetaDB listening on %s", port)
 
 	for {
@@ -40,6 +58,20 @@ func main() {
 			continue
 		}
 		go handleConnection(conn, m)
+	}
+}
+
+func handleSignals(sig chan os.Signal, m *MetaDB, startTime time.Time) {
+	for {
+		<-sig
+		playerCount := m.GetPlayerCount()
+		
+		metrics.PrintMetricsHeader("MetaDB Service (metadbd)")
+		log.Printf("Uptime: %s", metrics.FormatUptime(startTime))
+		log.Printf("Database: %s", dbPath)
+		log.Printf("JSON RPC Port: %s", port)
+		log.Printf("Player Count: %d", playerCount)
+		metrics.PrintMetricsFooter()
 	}
 }
 

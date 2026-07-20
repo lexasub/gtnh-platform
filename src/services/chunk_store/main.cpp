@@ -8,12 +8,22 @@
 #include <memory>
 #include <thread>
 #include <string_view>
+#include <string>
+
+#include "../../libs/libgtnh-common/metrics_util.h"
 
 static std::atomic<bool> g_stop{false};
 
-static void handleSignal(int) { g_stop.store(true); }
+static void handleSignal(int) {
+    g_stop.store(true, std::memory_order_release);
+}
 
 int main(int argc, char* argv[]) {
+    gtnh::metrics::printVersionAndExit("ChunkStore Service (chunkd)", argc, argv);
+
+    gtnh::metrics::Collector metrics;
+    metrics.install();
+
     spdlog::set_level(spdlog::level::debug);
     std::string db_path = (argc > 1) ? argv[1] : "./chunkdb";
     uint16_t tcp_port = (argc > 2) ? static_cast<uint16_t>(std::atoi(argv[2])) : 5001;
@@ -43,6 +53,10 @@ int main(int argc, char* argv[]) {
 
     // Main loop waiting for stop signal
     while (!g_stop.load()) {
+        if (metrics.poll()) {
+            metrics.printMetrics("ChunkStore Service (chunkd)");
+        }
+
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 

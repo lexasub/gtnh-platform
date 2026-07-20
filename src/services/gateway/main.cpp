@@ -6,10 +6,12 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 
 #include <atomic>
-#include <chrono>
 #include <csignal>
 #include <cstdlib>
 #include <thread>
+#include <string>
+
+#include "../../libs/libgtnh-common/metrics_util.h"
 
 static std::atomic<bool> g_running{true};
 
@@ -18,6 +20,12 @@ extern "C" void handleSignal([[maybe_unused]] int sig) {
 }
 
 int main(int argc, char* argv[]) {
+    gtnh::metrics::printVersionAndExit("Gateway Service (gatewayd)", argc, argv);
+
+    gtnh::metrics::Collector metrics;
+    metrics.install();
+
+    // ── Normal argument parsing (for runtime configuration) ───────────────
     uint16_t router_port = 4000;
     uint16_t ctrl_port = 7777;
     uint16_t bulk_port = 7778;
@@ -40,6 +48,7 @@ int main(int argc, char* argv[]) {
     spdlog::info("Gateway starting: router=localhost:{} ctrl=:{} bulk=:{}",
                  router_port, ctrl_port, bulk_port);
 
+    // ── Register signal handlers ──────────────────────────────────────────
     std::signal(SIGINT, handleSignal);
     std::signal(SIGTERM, handleSignal);
     std::signal(SIGPIPE, SIG_IGN);
@@ -106,13 +115,21 @@ int main(int argc, char* argv[]) {
 
     spdlog::info("Gateway running — worker thread handles io_uring");
 
+    // ── Main event loop ───────────────────────────────────────────────────
     while (g_running) {
+        if (metrics.poll()) {
+            metrics.printMetrics("Gateway Service (gatewayd)",
+                std::string("Client Connected: ") + (gateway.has_client() ? "yes" : "no"));
+        }
+        
+        // ── Heartbeat timer ───────────────────────────────────────────────
         static auto lastHb = std::chrono::steady_clock::now();
         auto now = std::chrono::steady_clock::now();
         if (now - lastHb >= std::chrono::seconds(20)) {
             lastHb = now;
             gateway.sendHeartbeat();
         }
+        
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
