@@ -56,7 +56,7 @@ class TileInfo:
 class BlockFaceInfo:
     __slots__ = ("block_id", "faces", "transparent")
 
-    def __init__(self, block_id: int, faces: list[int], transparent: bool = False):
+    def __init__(self, block_id: str, faces: list[int], transparent: bool = False):
         self.block_id = block_id
         self.faces = faces
         self.transparent = transparent
@@ -87,7 +87,7 @@ def load_block_faces(csv_path: Path) -> dict[int, BlockFaceInfo]:
         for row in reader:
             if len(row) < 7:
                 continue
-            block_id = int(row[0])
+            block_id = row[0]
             faces = [int(row[i]) for i in range(1, 7)]
             transparent = len(row) > 7 and row[7].strip() == "1"
             blocks[block_id] = BlockFaceInfo(block_id, faces, transparent)
@@ -289,7 +289,7 @@ class AppState:
         self.mouse_y = 0
         self.mouse_down = False
         self.mouse_button = 0
-        self.block_ids: list[int] = []
+        self.block_ids: list[str] = []
         self.block_idx = 0
         self.tiling_mode = False
         self.grid_size = 3
