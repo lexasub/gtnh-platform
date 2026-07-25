@@ -53,6 +53,7 @@ public:
   explicit SimCoreMessageHandler(Deps deps);
   void setup();
   void wireOnMessage(WorldContainerInventory& worldContainers);
+  void subscribeAll();
 
 private:
   Deps deps_;

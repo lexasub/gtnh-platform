@@ -270,12 +270,19 @@ int main(int argc, char* argv[]) {
     chunkstoreClient->Connect(chunkstore_host, chunkstore_port);
 
     routerClient->Subscribe("player.actions");
+    routerClient->Subscribe("player.actions.setblock");
     routerClient->Subscribe("world.blocks.changed");
     routerClient->Subscribe("fluid.consume.response");
     routerClient->Subscribe("item.flow");
     routerClient->Subscribe("item.transfer.response");
     routerClient->Subscribe("player.chest.open");
     routerClient->Subscribe("player.inventory.load");
+
+    // Subscribe to ALL topic-handler topics registered in messageHandler.setup()
+    // (covers: player.inventory.actions, player.machine.slot, player.tool.action,
+    //  player.joined, player.wrench.action, sim.craft.request, recipe.completed,
+    //  energy.flow, fluid.flow, item.flow)
+    messageHandler.subscribeAll();
 
     spdlog::info("SimulationCore running, waiting for messages...");
 

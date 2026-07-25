@@ -222,21 +222,26 @@ std::shared_ptr<const ChunkView> World::OnChunkData(std::shared_ptr<ChunkView> c
 
 void World::OnBlockUpdate(BlockPos pos, uint16_t block_id, uint8_t meta, uint32_t mb_id) {
     ChunkCoord cc{pos.x >> 5, pos.y >> 5, pos.z >> 5};
+
+    // Always save pending change so OnChunkData can re-apply it over stale
+    // snapshots, even if the chunk is not yet loaded.  When the chunk arrives
+    // later, OnChunkData replays any pending changes for that chunk.
+    {
+        uint64_t ck = MakeChunkKey(cc);
+        uint64_t pk = MakeBlockPosKey(pos.x, pos.y, pos.z);
+        pendingChanges_[ck][pk] = {block_id, meta, mb_id};
+    }
+
     auto chunk = storage_.GetChunk(cc);
     if (!chunk) {
-        // Chunk not loaded — server update will arrive when it is.
-        // TODO(diff-protocol): cache pending updates for unloaded chunks
+        // Chunk not loaded yet — the replay in OnChunkData will apply the
+        // change when the chunk snapshot arrives from the server.
         return;
     }
     int lx = pos.x & (CHUNK_SIZE - 1);
     int ly = pos.y & (CHUNK_SIZE - 1);
     int lz = pos.z & (CHUNK_SIZE - 1);
     chunk->SetBlock(lx, ly, lz, block_id, meta, mb_id);
-
-    // Save pending change so OnChunkData can re-apply it over stale snapshots.
-    uint64_t ck = MakeChunkKey(cc);
-    uint64_t pk = MakeBlockPosKey(pos.x, pos.y, pos.z);
-    pendingChanges_[ck][pk] = {block_id, meta, mb_id};
 }
 
 bool World::IsBlockActionPending(BlockPos pos) const {

@@ -1,15 +1,12 @@
 #include "Actions/ActionDispatcher.h"
-#include "Actions/SetBlockCASHandler.h"
 #include "core_generated.h"
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
 
 namespace simcore {
 
-    ActionDispatcher::ActionDispatcher(std::shared_ptr<SetBlockCASHandler> casHandler,
-                                       ItemGiveCallback onGiveItem)
-        : casHandler_(std::move(casHandler))
-        , onGiveItem_(std::move(onGiveItem))
+    ActionDispatcher::ActionDispatcher(ItemGiveCallback onGiveItem)
+        : onGiveItem_(std::move(onGiveItem))
     {}
 
     bool ActionDispatcher::tryParseAsPlayerAction(const std::vector<uint8_t> &data, flatbuffers::Verifier &verifier) {
@@ -38,43 +35,14 @@ namespace simcore {
             return true;
         }
         default:
-            // Not a PlayerAction subtype we handle — might be SetBlockAction
-            // (FlatBuffers VerifyBuffer<PlayerAction> can pass on SetBlockAction
-            // data because both tables share the first few fields and the extra
-            // fields are optional). Returning false lets the caller try
-            // SetBlockAction verification instead.
             return false;
         }
     }
 
     void ActionDispatcher::dispatch(const std::vector<uint8_t>& data)
     {
-
-        // Use fresh Verifier for each check — reusing the same verifier after
-        // VerifyBuffer<PlayerAction> (even if it returned false) can cause false
-        // negatives due to internal verifier state.
-        flatbuffers::Verifier v1(data.data(), data.size());
-        if (tryParseAsPlayerAction(data, v1)) return;
-
-        flatbuffers::Verifier v2(data.data(), data.size());
-        if (!v2.VerifyBuffer<Protocol::SetBlockAction>()) {
-            spdlog::error("ActionDispatcher: invalid SetBlockAction FlatBuffer");
-            return;
-        }
-
-        const Protocol::SetBlockAction* action = flatbuffers::GetRoot<Protocol::SetBlockAction>(data.data());
-        auto action_type = action->action();
-        if (action_type != Protocol::PlayerActionType_LEFT_MOUSE_CLICK && action_type != Protocol::PlayerActionType_RIGHT_MOUSE_CLICK) {
-            spdlog::warn("ActionDispatcher: unhandled SetBlockAction action type {}",
-                         static_cast<int>(action_type));
-            return;
-        }
-
-        if (casHandler_) {
-            casHandler_->handle((void*)action);
-        } else {
-            spdlog::warn("ActionDispatcher: CAS handler not available, dropping SetBlockAction");
-        }
+        flatbuffers::Verifier v(data.data(), data.size());
+        tryParseAsPlayerAction(data, v);
     }
 
 } // namespace simcore

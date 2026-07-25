@@ -10,6 +10,8 @@
 #include <spdlog/spdlog.h>
 
 #include "../../common/ItemId.h"
+#include <unordered_map>
+#include <unordered_set>
 
 namespace simcore {
 
@@ -49,6 +51,18 @@ void HeatTransferSystem::tick(float /*dt*/) {
     };
 
     if (!producers.empty()) {
+        // Build spatial index for O(1) neighbour lookup
+        auto packPos = [](uint32_t x, uint32_t y, uint32_t z) -> uint64_t {
+            return (static_cast<uint64_t>(x) << 42) |
+                   (static_cast<uint64_t>(y) << 21) |
+                    static_cast<uint64_t>(z);
+        };
+        std::unordered_map<uint64_t, HeatProducer> producersByPos;
+        producersByPos.reserve(producers.size());
+        for (auto& prod : producers) {
+            producersByPos[packPos(prod.x, prod.y, prod.z)] = std::move(prod);
+        }
+
         for (auto ent : view) {
             auto& mc = view.get<MachineComponent>(ent);
             auto& energy = view.get<EnergyStorage>(ent);
@@ -67,32 +81,32 @@ void HeatTransferSystem::tick(float /*dt*/) {
                 int32_t nz = static_cast<int32_t>(pos.z) + d[2];
                 if (nx < 0 || ny < 0 || nz < 0) continue;
 
-                for (auto& prod : producers) {
-                    if (prod.entity == ent) continue;
-                    if (static_cast<int32_t>(prod.x) != nx ||
-                        static_cast<int32_t>(prod.y) != ny ||
-                        static_cast<int32_t>(prod.z) != nz) continue;
-                    if (prod.energy->current <= 0) continue;
+                auto prodIt = producersByPos.find(packPos(
+                    static_cast<uint32_t>(nx),
+                    static_cast<uint32_t>(ny),
+                    static_cast<uint32_t>(nz)));
+                if (prodIt == producersByPos.end()) continue;
+                auto& prod = prodIt->second;
+                if (prod.entity == ent) continue;
+                if (prod.energy->current <= 0) continue;
 
-                    int32_t available = prod.energy->current;
-                    int32_t transfer = std::min(needed, available);
-                    if (transfer <= 0) continue;
+                int32_t available = prod.energy->current;
+                int32_t transfer = std::min(needed, available);
+                if (transfer <= 0) continue;
 
-                    prod.energy->current -= transfer;
-                    energy.current += transfer;
-                    needed -= transfer;
+                prod.energy->current -= transfer;
+                energy.current += transfer;
+                needed -= transfer;
 
-                    // Sync HeatIntakeComponent
-                    if (auto* hic = reg_.try_get<HeatIntakeComponent>(ent)) {
-                        hic->heat_stored = energy.current;
-                    }
-
-                    spdlog::debug("[HeatTransfer] {} → {} transferred {} heat ({},{},{})",
-                                 mc.machine_id, static_cast<uint32_t>(ent),
-                                 transfer, pos.x, pos.y, pos.z);
-
-                    if (needed <= 0) break;
+                // Sync HeatIntakeComponent
+                if (auto* hic = reg_.try_get<HeatIntakeComponent>(ent)) {
+                    hic->heat_stored = energy.current;
                 }
+
+                spdlog::debug("[HeatTransfer] {} → {} transferred {} heat ({},{},{})",
+                             mc.machine_id, static_cast<uint32_t>(ent),
+                             transfer, pos.x, pos.y, pos.z);
+
                 if (needed <= 0) break;
             }
         }
@@ -124,6 +138,24 @@ void HeatTransferSystem::tick(float /*dt*/) {
     // Pass 3: Environment cooling
     // ═══════════════════════════════════════════════════════════════════
     {
+        // Pre-compute water block positions for O(1) neighbour lookup
+        auto packPos = [](uint32_t x, uint32_t y, uint32_t z) -> uint64_t {
+            return (static_cast<uint64_t>(x) << 42) |
+                   (static_cast<uint64_t>(y) << 21) |
+                    static_cast<uint64_t>(z);
+        };
+        std::unordered_set<uint64_t> waterPositions;
+        {
+            auto water_view = reg_.view<const Position, const Block>();
+            for (auto w : water_view) {
+                auto& wp = water_view.get<const Position>(w);
+                auto& wb = water_view.get<const Block>(w);
+                if (wb.id == ItemId::pack("0:0:9")) {
+                    waterPositions.insert(packPos(wp.x, wp.y, wp.z));
+                }
+            }
+        }
+
         auto cool_view = reg_.view<HeatIntakeComponent, Position>();
         for (auto ent : cool_view) {
             auto& hic = cool_view.get<HeatIntakeComponent>(ent);
@@ -137,16 +169,13 @@ void HeatTransferSystem::tick(float /*dt*/) {
                 int32_t nz = static_cast<int32_t>(pos.z) + d[2];
                 if (nx < 0 || ny < 0 || nz < 0) continue;
 
-                auto neighbor_view = reg_.view<const Position>();
-                for (auto neighbor : neighbor_view) {
-                    auto& np = neighbor_view.get<const Position>(neighbor);
-                    if (static_cast<int32_t>(np.x) != nx ||
-                        static_cast<int32_t>(np.y) != ny ||
-                        static_cast<int32_t>(np.z) != nz) continue;
-                    auto* block = reg_.try_get<Block>(neighbor);
-                    if (block && block->id == ItemId::pack("0:0:9")) { adjacent_to_water = true; break; }
+                if (waterPositions.contains(packPos(
+                        static_cast<uint32_t>(nx),
+                        static_cast<uint32_t>(ny),
+                        static_cast<uint32_t>(nz)))) {
+                    adjacent_to_water = true;
+                    break;
                 }
-                if (adjacent_to_water) break;
             }
 
             float cooling = HeatConstants::ENVIRONMENT_COOLING_RATE;

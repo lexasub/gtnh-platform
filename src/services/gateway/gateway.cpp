@@ -319,13 +319,13 @@ void IoUringGateway::on_router_publish(
     }
     spdlog::debug("Gateway: RX topic='{}' len={}", topic, plen);
 
-    // Bulk topics → bulk connection
+    // Bulk topics → bulk connection only (never ctrl — chunk data is large)
     if (topic == "world.chunk.loaded.compressed") {
         flatbuffers::Verifier v(payload, plen);
         if (v.VerifyBuffer<Protocol::CompressedChunkData>(nullptr)) {
             bool sent = send_to_client_bulk_raw(GatewayMsg::kCompressedChunkData, payload, plen);
-            spdlog::info("Gateway: compressed chunk received, bulk_sent={}", sent);
-            send_to_client_ctrl_raw(GatewayMsg::kCompressedChunkData, payload, plen);
+            if (!sent)
+                spdlog::warn("Gateway: compressed chunk dropped, no bulk client");
         } else
             spdlog::warn("Gateway: Router: invalid CompressedChunkData FlatBuffer");
     } else if (topic == "world.blocks.changed") {
@@ -423,7 +423,7 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
     case GatewayMsg::kSetBlockAction: {
         flatbuffers::Verifier v(data, len);
         if (!v.VerifyBuffer<Protocol::SetBlockAction>(nullptr)) { spdlog::error("Gateway: invalid SetBlockAction on ctrl"); return; }
-        if (on_client_message) on_client_message(data, len);
+        publish("player.actions.setblock", data, len);
         auto action = flatbuffers::GetRoot<Protocol::SetBlockAction>(data);
         if (!action) return;
         uint64_t pid = action->player_id();

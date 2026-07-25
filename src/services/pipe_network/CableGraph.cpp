@@ -26,12 +26,14 @@ void CableGraph::addCableNode(uint64_t nodeId, const CableDef& def, int32_t x, i
     node.temperature = 0.0f;
     node.maxSeenVoltage = 0;
     m_nodes[nodeId] = node;
+    m_posToNode[packPos(x, y, z)] = nodeId;
 }
 
 void CableGraph::removeCableNode(uint64_t nodeId) {
     auto it = m_nodes.find(nodeId);
     if (it == m_nodes.end()) return;
     
+    m_posToNode.erase(packPos(it->second.x, it->second.y, it->second.z));
     m_generatorToCable.erase(it->second.id);
     m_machineToCable.erase(it->second.id);
     m_nodes.erase(it);
@@ -72,15 +74,13 @@ void CableGraph::rebuildGraph() {
                 int32_t nx = x + off[0];
                 int32_t ny = y + off[1];
                 int32_t nz = z + off[2];
-                
-                for (const auto& pair2 : m_nodes) {
-                    const auto& node2 = pair2.second;
-                    if (node2.x == nx && node2.y == ny && node2.z == nz) {
-                        if (visited.find(node2.id) == visited.end()) {
-                            visited.insert(node2.id);
-                            q.push(node2.id);
-                        }
-                        break;
+
+                auto posIt = m_posToNode.find(packPos(nx, ny, nz));
+                if (posIt != m_posToNode.end()) {
+                    uint64_t neighborId = posIt->second;
+                    if (!visited.contains(neighborId)) {
+                        visited.insert(neighborId);
+                        q.push(neighborId);
                     }
                 }
             }
@@ -165,8 +165,8 @@ void CableGraph::tick() {
                         if (curIt == m_nodes.end()) continue;
 
                         bool isMachineAdjacent = false;
-                        for (const auto& pair : m_machineToCable) {
-                            if (pair.second == curId) {
+                        for (const auto &val: m_machineToCable | std::views::values) {
+                            if (val == curId) {
                                 isMachineAdjacent = true;
                                 break;
                             }
@@ -189,15 +189,14 @@ void CableGraph::tick() {
                             int32_t ny = cy + off[1];
                             int32_t nz = cz + off[2];
 
-                            for (const auto& pair : m_nodes) {
-                                const auto& other = pair.second;
-                                if (other.x == nx && other.y == ny && other.z == nz &&
-                                    visited.find(other.id) == visited.end()) {
-                                    visited.insert(other.id);
+                            auto posIt = m_posToNode.find(packPos(nx, ny, nz));
+                            if (posIt != m_posToNode.end()) {
+                                uint64_t neighborId = posIt->second;
+                                if (visited.find(neighborId) == visited.end()) {
+                                    visited.insert(neighborId);
                                     std::vector<uint64_t> newPath = curPath;
-                                    newPath.push_back(other.id);
-                                    q.push({other.id, newPath});
-                                    break;
+                                    newPath.push_back(neighborId);
+                                    q.push({neighborId, newPath});
                                 }
                             }
                         }
@@ -315,12 +314,10 @@ uint64_t CableGraph::findAdjacentCable(int32_t x, int32_t y, int32_t z) {
         int32_t nx = x + off[0];
         int32_t ny = y + off[1];
         int32_t nz = z + off[2];
-        
-        for (const auto& pair : m_nodes) {
-            const auto& node = pair.second;
-            if (node.x == nx && node.y == ny && node.z == nz) {
-                return node.id;
-            }
+
+        auto posIt = m_posToNode.find(packPos(nx, ny, nz));
+        if (posIt != m_posToNode.end()) {
+            return posIt->second;
         }
     }
     
@@ -367,16 +364,15 @@ std::vector<uint64_t> CableGraph::findPath(uint64_t fromCableNode, uint64_t toMa
             int32_t nx = x + off[0];
             int32_t ny = y + off[1];
             int32_t nz = z + off[2];
-            
-            for (const auto& pair : m_nodes) {
-                const auto& other = pair.second;
-                if (other.x == nx && other.y == ny && other.z == nz && 
-                    visited.find(other.id) == visited.end()) {
-                    visited.insert(other.id);
+
+            auto posIt = m_posToNode.find(packPos(nx, ny, nz));
+            if (posIt != m_posToNode.end()) {
+                uint64_t neighborId = posIt->second;
+                if (!visited.contains(neighborId)) {
+                    visited.insert(neighborId);
                     std::vector<uint64_t> newPath = currentPath;
-                    newPath.push_back(other.id);
-                    q.push({other.id, newPath});
-                    break;
+                    newPath.push_back(neighborId);
+                    q.push({neighborId, newPath});
                 }
             }
         }

@@ -39,7 +39,7 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
     uint64_t player_id = action->player_id();
     uint32_t request_id = action->request_id();
 
-    if (action_type == Protocol::PlayerActionType_RIGHT_MOUSE_CLICK && new_block_id == 0) {
+    if (action_type == Protocol::PlayerActionType_RIGHT_MOUSE_CLICK/* && new_block_id == 0*/) {
         if (engine_) {
             auto* machineReg = engine_->getMachineRegistry();
             if (machineReg && machineReg->IsMachine(expected_block_id)) {
@@ -50,11 +50,13 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
                 return;
             }
         }
-        spdlog::warn("SetBlockCASHandler: cannot place air at ({},{},{})", x, y, z);
-        publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_REJECTED),
-                                    x, y, z, 0, 0, "Cannot place air",
-                                    request_id);
-        return;
+        if (new_block_id == 0) {
+            spdlog::warn("SetBlockCASHandler: cannot place air at ({},{},{})", x, y, z);
+            publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_REJECTED),
+                                        x, y, z, 0, 0, "Cannot place air",
+                                        request_id);
+            return;
+        }
     }
 
     uint16_t final_block_id = (action_type == Protocol::PlayerActionType_LEFT_MOUSE_CLICK) ? 0 : new_block_id;

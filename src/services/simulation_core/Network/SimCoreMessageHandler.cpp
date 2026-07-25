@@ -99,7 +99,7 @@ void SimCoreMessageHandler::setup() {
         },
         postToMainThread);
 
-    dispatcher_ = std::make_shared<ActionDispatcher>(casHandler_,
+    dispatcher_ = std::make_shared<ActionDispatcher>(
         [inventoryStore = d.inventoryStore](uint64_t player_id, uint16_t item_id, uint8_t count, int32_t target_slot) {
             inventoryStore->giveItem(player_id, item_id, count, target_slot);
         });
@@ -115,6 +115,7 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
     auto& d = deps_;
     auto& mainQueue = *d.mainQueue;
     auto& dispatcher = *dispatcher_;
+    auto& casHandler = *casHandler_;
     auto& chunkHandler = *chunkHandler_;
     auto* batteryBuffer = d.batteryBuffer;
     auto* machineSystem = d.machineSystem;
@@ -122,12 +123,17 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
     auto routerClient = d.routerClient;
     auto topicDispatcher = topicDispatcher_;
 
-    routerClient->OnMessage([&mainQueue, &dispatcher, &chunkHandler, &worldContainers,
+    routerClient->OnMessage([&mainQueue, &dispatcher, &casHandler, &chunkHandler, &worldContainers,
                              topicDispatcher, routerClient, entityStateClient,
                              batteryBuffer, machineSystem]
                             (const std::string& topic, const std::vector<uint8_t>& data) {
         mainQueue.push([&, topic, data]() {
-            if (topic == "player.actions") {
+            if (topic == "player.actions.setblock") {
+                flatbuffers::Verifier v(data.data(), data.size());
+                if (!v.VerifyBuffer<Protocol::SetBlockAction>()) return;
+                auto* action = flatbuffers::GetRoot<Protocol::SetBlockAction>(data.data());
+                casHandler.handle((void*)action);
+            } else if (topic == "player.actions") {
                 dispatcher.dispatch(data);
             } else if (topic == "world.blocks.changed") {
                 chunkHandler.handle(data);
@@ -205,6 +211,12 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
             }
         });
     });
+}
+
+void SimCoreMessageHandler::subscribeAll() {
+    if (topicDispatcher_) {
+        topicDispatcher_->subscribeAll(deps_.routerClient);
+    }
 }
 
 } // namespace simcore

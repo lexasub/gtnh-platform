@@ -57,19 +57,14 @@ int main(int argc, char* argv[]) {
 
     gateway.on_router_message = [&](const std::string& topic,
                                      const uint8_t* data, size_t len) {
+        // NOTE: Only topics NOT already handled in on_router_publish() should be here.
+        // on_router_publish() handles: world.chunk.loaded.compressed, world.blocks.changed,
+        // entities.#, player.actions.ack, player.inventory.update, world.block_entity.update,
+        // sim.craft.response, player.machine.slot.response, player.tool.action.response,
+        // player.position.load, player.chest.open.response, multiblock events, quest topics.
         if (topic == "metadb.player.online") {
             gateway.publish_player_joined();
-        } else if (topic == "player.actions.ack")
-            gateway.send_to_client_ctrl_raw(GatewayMsg::kBlockAck, data, len);
-        else if (topic == "player.inventory.update")
-            gateway.send_to_client_ctrl_raw(GatewayMsg::kInventoryUpdate, data, len);
-        else if (topic == "sim.craft.response")
-            gateway.send_to_client_ctrl_raw(GatewayMsg::kCraftResponse, data, len);
-        else if (topic == "player.machine.slot.response")
-            gateway.send_to_client_ctrl_raw(GatewayMsg::kSetMachineSlotResp, data, len);
-        else if (topic == "world.block_entity.update")
-            gateway.send_to_client_ctrl_raw(GatewayMsg::kBlockEntityUpdate, data, len);
-        else if (topic == "recipe.completed")
+        } else if (topic == "recipe.completed")
             gateway.send_to_client_ctrl_raw(GatewayMsg::kRecipeCompleted, data, len);
         else
             spdlog::trace("Gateway: unhandled topic '{}' ({} bytes)", topic, len);
@@ -109,6 +104,7 @@ int main(int argc, char* argv[]) {
     gateway.subscribe("world.block_entity.update");
     gateway.subscribe("recipe.completed");
     gateway.subscribe("player.position.load");
+    gateway.subscribe("player.chest.open.response");
     gateway.subscribe("quest.completed");
     gateway.subscribe("quest.unlocked");
     gateway.subscribe("quest.progress.updated");

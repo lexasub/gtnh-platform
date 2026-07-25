@@ -2,6 +2,7 @@
 #include "RecipeManager.h"
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 
 namespace RecipeManager {
 
@@ -101,51 +102,49 @@ bool ConditionEvaluator::checkMachine(const MachineConditions& mach,
 
 bool ConditionEvaluator::checkSpecial(const std::vector<SpecialCondition>& recipeTags,
                                      const std::vector<SpecialCondition>& machineTags) const {
-    // For each recipe tag, check if machine has matching tag with compatible value
+    // Build hash map from machine tags: key → tag (O(machineTags))
+    std::unordered_map<uint16_t, const SpecialCondition*> machineTagMap;
+    machineTagMap.reserve(machineTags.size());
+    for (const auto& tag : machineTags) {
+        machineTagMap[tag.key] = &tag;
+    }
+
+    // For each recipe tag, O(1) lookup in machine tags
     for (const auto& recipeTag : recipeTags) {
-        bool foundMatch = false;
-        
-        for (const auto& machineTag : machineTags) {
-            // Keys must match
-            if (recipeTag.key != machineTag.key) {
-                continue;
-            }
-            
-            // Value types must match
-            if (recipeTag.value_type != machineTag.value_type) {
-                continue;
-            }
-            
-            // Values must match based on type
-            switch (recipeTag.value_type) {
-                case 0: // int32
-                    if (recipeTag.int_value != machineTag.int_value) {
-                        continue;
-                    }
-                    break;
-                case 1: // float
-                    if (std::abs(recipeTag.float_value - machineTag.float_value) > 0.001f) {
-                        continue;
-                    }
-                    break;
-                case 2: // string
-                    if (recipeTag.string_value != machineTag.string_value) {
-                        continue;
-                    }
-                    break;
-                default:
-                    continue; // unknown type
-            }
-            
-            foundMatch = true;
-            break;
+        auto it = machineTagMap.find(recipeTag.key);
+        if (it == machineTagMap.end()) {
+            return false; // key not found
         }
-        
-        if (!foundMatch) {
+
+        const auto& machineTag = *it->second;
+
+        // Value types must match
+        if (recipeTag.value_type != machineTag.value_type) {
             return false;
         }
+
+        // Values must match based on type
+        switch (recipeTag.value_type) {
+            case 0: // int32
+                if (recipeTag.int_value != machineTag.int_value) {
+                    return false;
+                }
+                break;
+            case 1: // float
+                if (std::abs(recipeTag.float_value - machineTag.float_value) > 0.001f) {
+                    return false;
+                }
+                break;
+            case 2: // string
+                if (recipeTag.string_value != machineTag.string_value) {
+                    return false;
+                }
+                break;
+            default:
+                return false; // unknown type
+        }
     }
-    
+
     return true;
 }
 

@@ -59,8 +59,16 @@ public:
     return m_explodedThisTick;
   }
 
+  // Pack 3 signed 32-bit ints into one 64-bit key for spatial lookup
+  static uint64_t packPos(int32_t x, int32_t y, int32_t z) {
+    return (static_cast<uint64_t>(static_cast<uint32_t>(x)) << 42) |
+           (static_cast<uint64_t>(static_cast<uint32_t>(y)) << 21) |
+            static_cast<uint64_t>(static_cast<uint32_t>(z));
+  }
+
 private:
   std::unordered_map<uint64_t, CableNode> m_nodes;
+  std::unordered_map<uint64_t, uint64_t> m_posToNode; // packPos(x,y,z) → nodeId
   std::vector<std::vector<uint64_t>> m_cableNetworks;
   std::unordered_map<uint64_t, uint64_t> m_generatorToCable;
   std::unordered_map<uint64_t, uint64_t> m_machineToCable;
