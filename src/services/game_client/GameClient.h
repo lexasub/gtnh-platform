@@ -34,10 +34,14 @@ private:
   void Update(float dt);
 
   // ---- Infrastructure ----
-  asio::io_context worldContext_;
+  asio::io_context worldContext_;       // block updates, chunks, world mutations
+  asio::io_context chunkLoadContext_;   // ChunkLoadManager (separate thread)
   asio::executor_work_guard<
       asio::io_context::basic_executor_type<std::allocator<void>, 0>>
       workGuard_;
+  asio::executor_work_guard<
+      asio::io_context::basic_executor_type<std::allocator<void>, 0>>
+      chunkLoadWorkGuard_;
   std::shared_ptr<NetClient> netClient_;
   NamedThreadPool &threadPool_ = NamedThreadPool::instance();
 

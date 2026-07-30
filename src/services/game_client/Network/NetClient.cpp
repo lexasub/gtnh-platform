@@ -508,6 +508,7 @@ void NetClient::ProcessBlockUpdate(std::shared_ptr<std::vector<uint8_t>> data) {
     }
 
     BlockPos bp{pos->x(), pos->y(), pos->z()};
+    spdlog::info("NetClient: BlockUpdate at ({},{},{}) id={} meta={}", bp.x, bp.y, bp.z, event->block_id(), event->meta());
     if (onBlockUpdate_)
         onBlockUpdate_(bp, event->block_id(), event->meta(), event->mb_id());
 }
@@ -531,6 +532,11 @@ void NetClient::ProcessBlockAck(std::shared_ptr<std::vector<uint8_t>> data) {
         spdlog::error("NetClient: BlockAck has no pos");
         return;
     }
+
+    spdlog::info("NetClient: BlockAck at ({},{},{}) status={} id={} meta={} rid={}",
+                 pos->x(), pos->y(), pos->z(),
+                 static_cast<int>(ack->status()),
+                 ack->block_id(), ack->meta(), ack->request_id());
 
     if (onBlockAck_)
         onBlockAck_(BlockPos{pos->x(), pos->y(), pos->z()},

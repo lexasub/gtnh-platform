@@ -17,7 +17,9 @@
 #include "machine_registry/MachineRegistry.h"
 #include <limits>
 
-GameClient::GameClient() : workGuard_(asio::make_work_guard(worldContext_)) {}
+GameClient::GameClient()
+    : workGuard_(asio::make_work_guard(worldContext_))
+    , chunkLoadWorkGuard_(asio::make_work_guard(chunkLoadContext_)) {}
 
 GameClient::~GameClient() {
     shuttingDown_ = true;
@@ -34,9 +36,11 @@ GameClient::~GameClient() {
     netClient_->SetBlockUpdateCallback(nullptr);
     netClient_->SetBlockAckCallback(nullptr);
 
-    // 4. Stop world thread
+    // 4. Stop both worker threads
     worldContext_.stop();
+    chunkLoadContext_.stop();
     workGuard_.reset();
+    chunkLoadWorkGuard_.reset();
     threadPool_.join();
 
     // 5. Destroy GPU resources before bgfx shutdown
@@ -52,8 +56,9 @@ void GameClient::RequestShutdown() {
 }
 
 void GameClient::subscribeNetClient() {
-    // Post world mutations to worldContext_ so all ChunkStorage access
-    // happens on the same thread as ChunkLoadManager.
+    // World mutations (block updates, chunks) go through worldContext_ for
+    // thread safety — ChunkLoadManager has its own chunkLoadContext_ and
+    // won't stall this thread.
     netClient_->SetBlockUpdateCallback(
         [this](BlockPos pos, uint16_t block_id, uint8_t meta, uint32_t mb_id) {
             asio::post(worldContext_, [this, pos, block_id, meta, mb_id]() {
@@ -63,11 +68,10 @@ void GameClient::subscribeNetClient() {
 
     netClient_->SetBlockAckCallback(
         [this](BlockPos pos, uint8_t status, uint16_t block_id, uint8_t meta, uint32_t request_id) {
-            (void)request_id;// TODO
             if (status != static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED)) {
                 spdlog::warn("BlockAck CONFLICT at ({},{},{}) actual_id={}", pos.x, pos.y, pos.z, block_id);
             }
-            asio::post(worldContext_, [this, pos, block_id, meta] {
+            asio::post(worldContext_, [this, pos, block_id, meta]() {
                 meshMgr_.OnBlockUpdate(pos, block_id, meta, 0, world_);
                 world_.ClearBlockActionPending(pos);
             });
@@ -167,6 +171,7 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
         return false;
     }
     threadPool_.addThread(worldContext_, "ClientWorld");
+    threadPool_.addThread(chunkLoadContext_, "ChunkLoad");
 
     return true;
 }
@@ -212,7 +217,7 @@ void GameClient::Update(float dt) {
     Frustum frustum =
         camera_.GetFrustum(static_cast<float>(width_) / static_cast<float>(height_));
 
-    asio::post(worldContext_,
+    asio::post(chunkLoadContext_,
                [this, frustum, pos = camera_.pos, fwd = camera_.GetForward(),
                 vel = velocity, dt]() {
                   chunkLoadManager_->Update(frustum, pos, fwd, vel, dt);
