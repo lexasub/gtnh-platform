@@ -216,7 +216,12 @@ std::shared_ptr<const ChunkView> World::OnChunkData(std::shared_ptr<ChunkView> c
         }
     }
 
-    pendingRequests_.unsafe_erase(key);//TODO - warn - возможно map прийдется использовать) или возвращаться к stl коллекции если + lock - если будут проблемы
+    // Keep the entry in pendingRequests_ until evict.  We don't erase here
+    // because pendingRequests_ is a tbb::concurrent_unordered_set with only
+    // unsafe_erase — calling it from worldContext_ while chunkLoadContext_
+    // reads the set concurrently would corrupt the data structure and cause
+    // duplicate chunk requests.  HasChunk check in RunLoadPass prevents
+    // re-request while the chunk is still loaded.
     return chunkPtr;
 }
 

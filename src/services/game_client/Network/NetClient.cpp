@@ -258,11 +258,23 @@ void NetClient::drain_queue(std::deque<QueuedMessage>& queue, bool is_bulk) {
         std::lock_guard<std::mutex> lock(is_bulk ? bulk_mutex_ : ctrl_mutex_);
         local.swap(queue);
     }
-    for (auto& msg : local) {
-        if (is_bulk)
+    if (is_bulk) {
+        // Priority: process BlockUpdate before chunks.  Single pass splits
+        // the batch into two vectors to avoid iterating the deque twice.
+        std::vector<QueuedMessage> slow;
+        slow.reserve(local.size());
+        for (auto& msg : local) {
+            if (msg.type == GatewayMsg::kBlockUpdate)
+                OnBulkMessage(msg.type, std::move(msg.data));
+            else
+                slow.push_back(std::move(msg));
+        }
+        for (auto& msg : slow)
             OnBulkMessage(msg.type, std::move(msg.data));
-        else
+    } else {
+        for (auto& msg : local) {
             OnMessage(msg.type, std::move(msg.data));
+        }
     }
 }
 
