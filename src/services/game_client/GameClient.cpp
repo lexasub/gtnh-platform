@@ -69,7 +69,7 @@ void GameClient::subscribeNetClient() {
     netClient_->SetBlockAckCallback(
         [this](BlockPos pos, uint8_t status, uint16_t block_id, uint8_t meta, uint32_t request_id) {
             if (status != static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED)) {
-                spdlog::warn("BlockAck CONFLICT at ({},{},{}) actual_id={}", pos.x, pos.y, pos.z, block_id);
+                spdlog::warn("BlockAck CONFLICT at ({},{},{}) actual_id={} rid={}", pos.x, pos.y, pos.z, block_id, request_id);
             }
             asio::post(worldContext_, [this, pos, block_id, meta]() {
                 meshMgr_.OnBlockUpdate(pos, block_id, meta, 0, world_);

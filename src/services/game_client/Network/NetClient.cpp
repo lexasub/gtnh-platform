@@ -13,6 +13,10 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
+#include <chrono>
+
+#define TRACE_LOG(tid, svc, op, dur_us) \
+    spdlog::info("[TRACE tid={}] {} {} {}us", (tid), (svc), (op), (dur_us))
 
 // =========================================================================
 //  Construction / destruction
@@ -513,6 +517,8 @@ void NetClient::ProcessBlockUpdate(std::shared_ptr<std::vector<uint8_t>> data) {
     }
 
     auto event = flatbuffers::GetRoot<Protocol::BlockChangedEvent>(payload);
+    TRACE_LOG(event->request_id(), "client", "recv_block_changed", 0);
+
     auto pos = event->pos();
     if (!pos) {
         spdlog::error("NetClient: BlockChangedEvent has no pos");
@@ -539,6 +545,7 @@ void NetClient::ProcessBlockAck(std::shared_ptr<std::vector<uint8_t>> data) {
     }
 
     auto ack = flatbuffers::GetRoot<Protocol::BlockAck>(payload);
+    TRACE_LOG(ack->request_id(), "client", "recv_block_ack", 0);
     auto pos = ack->pos();
     if (!pos) {
         spdlog::error("NetClient: BlockAck has no pos");

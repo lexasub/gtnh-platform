@@ -11,6 +11,10 @@
 #include <cstring>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <chrono>
+
+#define TRACE_LOG(tid, svc, op, dur_us) \
+    spdlog::info("[TRACE tid={}] {} {} {}us", (tid), (svc), (op), (dur_us))
 IoUringGateway::~IoUringGateway() { shutdown(); }
 
 // =========================================================================
@@ -329,7 +333,17 @@ void IoUringGateway::on_router_publish(
         } else
             spdlog::warn("Gateway: Router: invalid CompressedChunkData FlatBuffer");
     } else if (topic == "world.blocks.changed") {
+        uint32_t tid = 0;
+        flatbuffers::Verifier v(payload, plen);
+        if (v.VerifyBuffer<Protocol::BlockChangedEvent>(nullptr)) {
+            auto ev = flatbuffers::GetRoot<Protocol::BlockChangedEvent>(payload);
+            tid = ev->request_id();
+        }
+        auto t0 = std::chrono::steady_clock::now();
         send_to_client_bulk_raw(GatewayMsg::kBlockUpdate, payload, plen);
+        auto dur = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+        TRACE_LOG(tid, "gateway", "relay_block_changed", dur);
     } else if (topic.find("entities.") == 0) {
         flatbuffers::Verifier v(payload, plen);
         if (v.VerifyBuffer<Protocol::EntitySnapshot>(nullptr))

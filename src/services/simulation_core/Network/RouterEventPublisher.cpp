@@ -3,6 +3,7 @@
 #include "core_generated.h"
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
+#include <chrono>
 
 namespace simcore {
 
@@ -10,12 +11,18 @@ RouterEventPublisher::RouterEventPublisher(std::shared_ptr<IoUringRouterClient> 
     : router_(std::move(router))
 {}
 
+// Helper: log a trace line as structured JSON.  Greppable by tid=N.
+// Example: {"ts":"...","tid":7,"svc":"simcore","op":"publish_block_changed","dur_us":42}
+#define TRACE_LOG(tid, svc, op, dur_us) \
+    spdlog::info("[TRACE tid={}] {} {} {}us", (tid), (svc), (op), (dur_us))
+
 void RouterEventPublisher::publishBlockAck(uint8_t status,
                                            int32_t x, int32_t y, int32_t z,
                                            uint16_t block_id, uint8_t meta,
                                            const char* reason,
                                            uint32_t request_id)
 {
+    auto t0 = std::chrono::steady_clock::now();
     flatbuffers::FlatBufferBuilder builder(128);
     auto pos = Protocol::Vec3i(x, y, z);
     flatbuffers::Offset<flatbuffers::String> reason_off = 0;
@@ -29,20 +36,28 @@ void RouterEventPublisher::publishBlockAck(uint8_t status,
     std::vector<uint8_t> ack_data(builder.GetBufferPointer(),
                                   builder.GetBufferPointer() + builder.GetSize());
     router_->Publish("player.actions.ack", ack_data);
+    auto dur = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+    TRACE_LOG(request_id, "simcore", "publish_ack", dur);
     spdlog::debug("Published BlockAck: status={} at ({},{},{}) id={} request_id={}", status, x, y, z, block_id, request_id);
 }
 
 void RouterEventPublisher::publishBlockChangedEvent(int32_t x, int32_t y, int32_t z,
-                                                    uint16_t block_id, uint8_t meta)
+                                                    uint16_t block_id, uint8_t meta,
+                                                    uint32_t request_id)
 {
+    auto t0 = std::chrono::steady_clock::now();
     flatbuffers::FlatBufferBuilder builder(128);
     auto pos = Protocol::Vec3i(x, y, z);
-    auto event = Protocol::CreateBlockChangedEvent(builder, &pos, block_id, meta, 0);
+    auto event = Protocol::CreateBlockChangedEvent(builder, &pos, block_id, meta, 0, request_id);
     builder.Finish(event);
     std::vector<uint8_t> event_data(builder.GetBufferPointer(),
                                     builder.GetBufferPointer() + builder.GetSize());
     router_->Publish("world.blocks.changed", event_data);
-    spdlog::debug("Published BlockChangedEvent: id={} at ({},{},{})", block_id, x, y, z);
+    auto dur = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+    TRACE_LOG(request_id, "simcore", "publish_block_changed", dur);
+    spdlog::debug("Published BlockChangedEvent: id={} at ({},{},{}) request_id={}", block_id, x, y, z, request_id);
 }
 
 void RouterEventPublisher::publishBlockEntityUpdate(int32_t x, int32_t y, int32_t z,

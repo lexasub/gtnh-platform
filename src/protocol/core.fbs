@@ -266,6 +266,7 @@ table BlockChangedEvent {
   block_id:uint16;
   meta:uint8;
   mb_id:uint32;
+  request_id:uint32 = 0;  // echoes client's request_id from SetBlockAction
 }
 
 table MultiblockCreatedEvent {

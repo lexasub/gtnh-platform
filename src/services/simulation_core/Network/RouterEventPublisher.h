@@ -16,7 +16,8 @@ public:
                        uint32_t request_id = 0) override;
 
   void publishBlockChangedEvent(int32_t x, int32_t y, int32_t z,
-                                uint16_t block_id, uint8_t meta) override;
+                                uint16_t block_id, uint8_t meta,
+                                uint32_t request_id = 0) override;
 
   void publishBlockEntityUpdate(
       int32_t x, int32_t y, int32_t z, uint16_t machine_type,

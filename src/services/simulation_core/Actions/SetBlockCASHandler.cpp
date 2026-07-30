@@ -6,8 +6,12 @@
 #include "core_generated.h"
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
+#include <chrono>
 
 namespace simcore {
+
+#define TRACE_LOG(tid, svc, op, dur_us) \
+    spdlog::info("[TRACE tid={}] {} {} {}us", (tid), (svc), (op), (dur_us))
 
 SetBlockCASHandler::SetBlockCASHandler(std::shared_ptr<IBlockRepository> repo,
                                        std::shared_ptr<IEventPublisher> publisher,
@@ -72,8 +76,12 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
     publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED),
         x, y, z, final_block_id, final_meta, nullptr, request_id);
 
+    auto cas_t0 = std::chrono::steady_clock::now();
     repo_->setBlockCAS(x, y, z, expected_block_id, final_block_id, final_meta,
-        [this, x, y, z, final_block_id, final_meta, expected_block_id, new_block_id, player_id, action_type, request_id](const CASResult& result) {
+        [this, x, y, z, final_block_id, final_meta, expected_block_id, new_block_id, player_id, action_type, request_id, cas_t0](const CASResult& result) {
+            auto cas_dur = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - cas_t0).count();
+            TRACE_LOG(request_id, "cas_cb", "complete", cas_dur);
             auto processResult = [this, x, y, z, final_block_id, final_meta, expected_block_id, new_block_id, player_id, action_type, request_id](const CASResult& result) {
                 if (result.status == 0) {
                     spdlog::info("Block CAS OK at ({},{},{}) final_id={}", x, y, z, final_block_id);
@@ -98,7 +106,7 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
                         }
                     }
 
-                    publisher_->publishBlockChangedEvent(x, y, z, final_block_id, final_meta);
+                    publisher_->publishBlockChangedEvent(x, y, z, final_block_id, final_meta, request_id);
                     if (engine_) {
                         engine_->onBlockChanged(static_cast<uint32_t>(x),
                                                 static_cast<uint32_t>(y),

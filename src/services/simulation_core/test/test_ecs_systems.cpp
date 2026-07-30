@@ -71,7 +71,7 @@ struct MockEventPublisher : simcore::IEventPublisher {
         last_x = x; last_y = y; last_z = z;
     }
     void publishBlockChangedEvent(int32_t, int32_t, int32_t,
-                                  uint16_t, uint8_t) override {
+                                  uint16_t, uint8_t, uint32_t) override {
         block_changed_count++;
     }
     void publishBlockEntityUpdate(int32_t x, int32_t y, int32_t z,
