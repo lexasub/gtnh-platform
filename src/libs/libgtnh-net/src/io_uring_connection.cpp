@@ -296,9 +296,11 @@ void IoUringConnection::poll_loop(std::shared_ptr<std::promise<bool>> read_ready
                     goto poll_exit;
                 }
                 if (errno == EINTR || errno == EAGAIN) {
-                    // Spurious wakeup — retry instead of closing.
-                    spdlog::debug("{}: spurious POLLIN during payload read, retrying ({})", name_,
-                                   errno == EINTR ? "EINTR" : "EAGAIN");
+                    // Spurious POLLIN — buffer is empty, go back to poll()
+                    // to wait for the real data instead of busy-looping.
+                    spdlog::debug("{}: spurious POLLIN during payload read (got={}/{})", name_, got, payload_len);
+                    struct pollfd pfd{fd(), POLLIN, 0};
+                    ::poll(&pfd, 1, 50);
                     continue;
                 }
                 spdlog::error("{}: payload read error: {}", name_, std::strerror(errno));
