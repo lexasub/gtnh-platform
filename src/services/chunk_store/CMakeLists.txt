@@ -50,8 +50,8 @@ target_link_libraries(chunkd_storage
 )
 
 add_executable(chunkd
-    Network/ChunkStoreService.cpp
-    Network/RouterClient.cpp
+    Network/IoUringChunkStoreService.cpp
+    Network/IoUringRouterClient.cpp
 
     main.cpp
 )
@@ -60,7 +60,7 @@ add_executable(chunkd
 # flatbuffers.h (25.12) incompatible with our Conan flatc (25.9). Ensure Conan's version wins.
 include_directories(BEFORE SYSTEM ${flatbuffers_INCLUDE_DIRS} ${FBS_GEN_DIR})
 
-add_dependencies(chunkd chunkd_fbs asio::asio chunkd_storage)
+add_dependencies(chunkd chunkd_fbs asio::asio chunkd_storage gtnh-net)
 
 # Lock-free ClockCache test — header-only, no external deps beyond Threads
 add_executable(clock_cache_test
@@ -98,6 +98,8 @@ target_link_libraries(chunkd PRIVATE
     glm::glm
     spdlog::spdlog
     asio::asio
+    gtnh-net
+    uring
     Threads::Threads
     worldgeneratord
     chunkd_storage

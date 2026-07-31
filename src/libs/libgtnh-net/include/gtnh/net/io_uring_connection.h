@@ -97,8 +97,8 @@ private:
   void on_read_header_complete(int res);
   void on_read_payload_complete(int res);
   void on_write_complete(int res, uint64_t user_data);
-  void start_next_writes_locked();
   void start_next_writes();
+  void parse_incoming_();
   void cleanup();
 
   std::atomic<int> fd_{-1};
@@ -122,12 +122,37 @@ private:
   size_t payload_got_ = 0;
   uint32_t expected_payload_ = 0;
   std::vector<uint8_t> payload_buf_;
+
+  // Staging buffer for buffered read.  After poll() we read everything
+  // available in one read() syscall, then parse complete frames from
+  // the buffer.  Reduces read() syscalls from 2+ per message to 1.
+  // Frames are consumed by offset (read_pos_ → read_end_) and the buffer
+  // is compacted with a single memmove per parse_incoming_() call, so a
+  // burst of K frames costs one memmove instead of K.
+  static constexpr size_t kReadBufSize = 65536;
+  std::vector<uint8_t> read_buf_;
+  size_t read_pos_ = 0;  // consumed offset (head of next frame)
+  size_t read_end_ = 0;  // end of valid data
+
   std::chrono::steady_clock::time_point connect_start_ =
       std::chrono::steady_clock::now();
   bool grace_elapsed() const {
     return std::chrono::steady_clock::now() - connect_start_ >
            std::chrono::milliseconds(2000);
   }
+
+  // Poll loop — adaptive timeout + write-completion eventfd.
+  //
+  // poll_timeout_ grows on idle wakeups and resets on activity, so a fully
+  // idle connection stops paying poll()+read() syscall pairs.  The eventfd
+  // on the write ring wakes the loop instantly when a write completes, so
+  // the (possibly large) timeout never stalls the write refill window.
+  static constexpr unsigned kBasePollTimeout = 200;
+  static constexpr unsigned kMaxPollTimeout = 1000;
+  // -1 if eventfd()/io_uring_register_eventfd failed — falls back to
+  // timeout-only wakeup (write refill latency then bounded by poll_timeout_).
+  int write_eventfd_ = -1;
+  unsigned poll_timeout_ = kBasePollTimeout;
 
   // Write queue
   std::mutex write_mutex_;

@@ -2,9 +2,12 @@
 #include <gtnh/net/frame.h>
 
 #include <spdlog/spdlog.h>
+#include <algorithm>
 #include <cstring>
+#include <pthread.h>
 #include <poll.h>
 #include <signal.h>
+#include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -70,6 +73,26 @@ bool IoUringConnection::init_write_ring(unsigned entries) {
     unsigned wworkers[2] = {4, 4};
     io_uring_register_iowq_max_workers(&ring_write_, wworkers);
 
+    // Eventfd wakes the poll loop as soon as a write completion lands, so the
+    // loop's poll() timeout only bounds fully-idle wakeups and never stalls
+    // the write refill window.  Plain IORING_REGISTER_EVENTFD signals on the
+    // CQ empty->non-empty transition — exactly our drain-at-loop-top pattern.
+    write_eventfd_ = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
+    if (write_eventfd_ < 0) {
+        spdlog::warn("{}: eventfd() failed: {}, falling back to timeout wakeup",
+                     name_, std::strerror(errno));
+    } else {
+        int uring_rc = io_uring_register_eventfd(&ring_write_, write_eventfd_);
+        if (uring_rc != 0) {
+            spdlog::warn("{}: io_uring_register_eventfd failed (rc={}), falling back to timeout wakeup",
+                         name_, uring_rc);
+            ::close(write_eventfd_);
+            write_eventfd_ = -1;
+        } else {
+            spdlog::debug("{}: write ring eventfd registered", name_);
+        }
+    }
+
     write_ring_inited_.store(true, std::memory_order_release);
     spdlog::debug("{}: write ring init ({})", name_, entries);
     return true;
@@ -81,6 +104,10 @@ void IoUringConnection::exit_rings() {
     }
     if (write_ring_inited_.exchange(false, std::memory_order_acq_rel)) {
         io_uring_queue_exit(&ring_write_);
+    }
+    if (write_eventfd_ >= 0) {
+        ::close(write_eventfd_);
+        write_eventfd_ = -1;
     }
 }
 
@@ -94,14 +121,16 @@ bool IoUringConnection::start_reading() {
     auto read_ready = std::make_shared<std::promise<bool>>();
     auto fut = read_ready->get_future();
     poll_thread_ = std::thread([this, read_ready]() mutable {
+        pthread_setname_np(pthread_self(), name_.c_str());
         poll_loop(std::move(read_ready));
     });
 
     if (!fut.get()) {
-        // Read ring init failed — shut down
+        // Read ring init failed — shut down (exit_rings also closes the
+        // write-ring eventfd).
         running_.store(false, std::memory_order_release);
         poll_thread_.join();
-        io_uring_queue_exit(&ring_write_);
+        exit_rings();
         int old_fd = fd_.exchange(-1, std::memory_order_acq_rel);
         if (old_fd >= 0) {
             ::shutdown(old_fd, SHUT_RDWR);
@@ -147,10 +176,11 @@ void IoUringConnection::close() {
     }
 
     running_.store(false, std::memory_order_release);
-    // No NOP to wake the poll thread — it has a 50 ms timeout so it will
-    // notice running_ == false within that window. Also, the poll thread's
-    // exit handler may call cleanup() which frees the ring memory; submitting
-    // a NOP here would access the freed ring and crash.
+    // No NOP to wake the poll thread — a write completion (or the poll
+    // timeout, up to kMaxPollTimeout in full idle) will wake it and it will
+    // notice running_ == false. Also, the poll thread's exit handler may call
+    // cleanup() which frees the ring memory; submitting a NOP here would
+    // access the freed ring and crash.
     if (poll_thread_.joinable()) poll_thread_.join();
     // After join the poll thread has finished. Its exit handler may have
     // already called cleanup() (if the connection self-closed, e.g. peer
@@ -201,9 +231,9 @@ void IoUringConnection::poll_loop(std::shared_ptr<std::promise<bool>> read_ready
     // and a zero-filled buffer.
     // Write ring still uses io_uring.
     read_ready->set_value(true);
-
+    read_buf_.resize(kReadBufSize);
     io_uring_cqe* cqe = nullptr;
-    while (running_.load(std::memory_order_acquire)) {
+    while (running_.load(std::memory_order_acquire)) [[likely]] {
         {
             unsigned head = 0, wcount = 0;
             io_uring_for_each_cqe(&ring_write_, head, cqe) {
@@ -213,111 +243,148 @@ void IoUringConnection::poll_loop(std::shared_ptr<std::promise<bool>> read_ready
             if (wcount > 0) io_uring_cq_advance(&ring_write_, wcount);
         }
 
-        if (!running_.load(std::memory_order_acquire)) break;
+        if (!running_.load(std::memory_order_acquire)) [[likely]] break;
 
         {
-            struct pollfd pfd{fd(), POLLIN, 0};
-            int pret = ::poll(&pfd, 1, 50);
-            if (pret < 0) {
+            struct pollfd pfds[2] = {
+                {fd(), POLLIN, 0},
+                {write_eventfd_, POLLIN, 0}, // -1 → poll() ignores the entry
+            };
+            int pret = ::poll(pfds, 2, static_cast<int>(poll_timeout_));
+            if (pret < 0) [[unlikely]] {
                 if (errno == EINTR) continue;
                 spdlog::error("{}: poll error: {}", name_, std::strerror(errno));
                 break;
             }
-            if (pret == 0) continue;
+            if (pret == 0) {
+                // Fully idle — grow the timeout (bounded) so idle wakeups
+                // decay.  Write completions still wake us via the eventfd.
+                poll_timeout_ = std::min(poll_timeout_ * 2, kMaxPollTimeout);
+                continue;
+            }
+            poll_timeout_ = kBasePollTimeout;
+
+            if (write_eventfd_ >= 0 && (pfds[1].revents & (POLLIN | POLLERR))) {
+                // Write-ring completion wakeup — reset the eventfd counter or
+                // it stays readable and poll() would spin forever.
+                eventfd_t ev;
+                eventfd_read(write_eventfd_, &ev);
+            }
+
+            if (!(pfds[0].revents & (POLLIN | POLLHUP | POLLERR))) {
+                // Only the eventfd woke us — loop top drains the write CQ
+                // (and refills the write window) on the next iteration.
+                continue;
+            }
         }
 
+        // Single read into staging buffer — avoids 2+ read() syscalls per
+        // frame (header + payload).  parse_incoming_ handles frame extraction.
+        // Read appends at read_end_; parse_incoming_ compacts consumed bytes.
         {
-            ssize_t n = ::read(fd(), header_ + header_got_, 5 - header_got_);
-            if (n <= 0) {
-                if (n == 0) {
-                    spdlog::info("{}: peer closed (read=0)", name_);
-                    close();
-                    goto poll_exit;
-                }
+            ssize_t n = ::read(fd(), read_buf_.data() + read_end_,
+                               read_buf_.size() - read_end_);
+            if (n == 0) { //TODO or we have don't stable connection? [[unlikely]]
+                spdlog::info("{}: peer closed (read=0)", name_);
+                close();
+                cleanup();
+                return;
+            }
+            if (n < 0){ //TODO - which many errors we have? [[unlikely]]
                 if (errno == EINTR || errno == EAGAIN) {
-                    // Non-blocking read after spurious POLLIN wakeup —
-                    // retry next iteration instead of closing.
-                    spdlog::debug("{}: spurious POLLIN after poll(), retrying ({})", name_,
+                    spdlog::debug("{}: spurious POLLIN, retrying ({})", name_,
                                    errno == EINTR ? "EINTR" : "EAGAIN");
                     continue;
                 }
                 spdlog::error("{}: read error: {}", name_, std::strerror(errno));
                 close();
-                goto poll_exit;
+                cleanup();
+                return;
             }
-            header_got_ += static_cast<size_t>(n);
-            if (header_got_ < 5) continue;
+            read_end_ += static_cast<size_t>(n);
         }
 
-        uint32_t raw_len = frame::read_be32(header_);
-        if (raw_len < 1) {
-            spdlog::warn("{}: bad header: raw_len={} header_hex={:02x}{:02x}{:02x}{:02x}{:02x}",
-                          name_, raw_len,
-                          header_[0], header_[1], header_[2], header_[3], header_[4]);
-            // Grace period: don't count or close — kernel may emit stale zero-reads
-            // right after connection on this kernel version.
+        parse_incoming_();
+    }
+}
+
+// ── Buffered read ──────────────────────────────────────────────────────────
+
+void IoUringConnection::parse_incoming_() {
+    // Frames are consumed by offset and delivered in batches: the dispatch
+    // loop runs on_message back-to-back (predictable indirect call) and the
+    // consumed region is compacted with a single memmove per call.
+    struct PendingMsg {
+        uint8_t mt;
+        uint32_t len;
+        const uint8_t* data;
+    };
+    PendingMsg batch[64];
+    size_t pos = read_pos_;
+    size_t nb = 0;
+
+    auto flush = [&]() {
+        if (nb == 0 || !on_message) return;
+        for (size_t i = 0; i < nb; ++i) {
+            on_message(batch[i].mt, batch[i].data, batch[i].len);
+        }
+        nb = 0;
+    };
+
+    while (read_end_ - pos >= 5) {
+        uint32_t raw_len = frame::read_be32(read_buf_.data() + pos);
+        if (raw_len == 0) {
+            spdlog::warn("{}: bad header: raw_len=0", name_);
             if (grace_elapsed()) {
                 if (++consecutive_bad_headers_ > 3) {
                     spdlog::error("{}: too many bad headers, closing", name_);
                     close();
-                    goto poll_exit;
+                    return;
                 }
             }
-            header_got_ = 0;
+            // Slide 1 byte and retry — handles partial corruption.
+            ++pos;
             continue;
         }
         consecutive_bad_headers_ = 0;
-
-        header_got_ = 0;
-
-        if (raw_len == 1) {
-            uint8_t mt = header_[4];
-            if (on_message) on_message(mt, nullptr, 0);
-            continue;
-        }
 
         uint32_t payload_len = raw_len - 1;
         if (payload_len > kMaxPayload) {
             spdlog::error("{}: payload too large: {} (max {})", name_, payload_len, kMaxPayload);
             close();
-            goto poll_exit;
+            return;
         }
 
-        if (payload_buf_.size() < payload_len)
-            payload_buf_.resize(payload_len);
-
-        size_t got = 0;
-        while (got < payload_len) {
-            ssize_t n = ::read(fd(), payload_buf_.data() + got, payload_len - got);
-            if (n <= 0) {
-                if (n == 0) {
-                    spdlog::info("{}: peer closed during payload read", name_);
-                    close();
-                    goto poll_exit;
-                }
-                if (errno == EINTR || errno == EAGAIN) {
-                    // Spurious POLLIN — buffer is empty, go back to poll()
-                    // to wait for the real data instead of busy-looping.
-                    spdlog::debug("{}: spurious POLLIN during payload read (got={}/{})", name_, got, payload_len);
-                    struct pollfd pfd{fd(), POLLIN, 0};
-                    ::poll(&pfd, 1, 50);
-                    continue;
-                }
-                spdlog::error("{}: payload read error: {}", name_, std::strerror(errno));
-                close();
-                goto poll_exit;
-            }
-            got += static_cast<size_t>(n);
+        uint32_t frame_len = 4 + raw_len;
+        if (read_end_ - pos < frame_len) {
+            // Partial frame — wait for more data from next poll().
+            break;
         }
 
-        {
-            uint8_t mt = header_[4];
-            if (on_message) on_message(mt, payload_buf_.data(), got);
-        }
+        // Complete frame in buffer — deliver without extra copy.
+        batch[nb++] = {read_buf_[pos + 4], payload_len,
+                       payload_len ? read_buf_.data() + pos + 5 : nullptr};
+        pos += frame_len;
+
+        if (nb == 64) flush();
     }
+    read_pos_ = pos;
+    flush();
 
-poll_exit:
-    cleanup();
+    // Compact consumed region — one memmove per poll iteration.
+    // Keep at least kReadBufSize room for the next read().  Must be
+    // resize(), not reserve(): read() writes past size() and a reserve()
+    // reallocation would discard bytes beyond size() (frame corruption).
+    // resize() grows size() to match, so written bytes survive reallocation.
+    size_t tail = read_end_ - read_pos_;
+    if (read_buf_.size() - read_end_ < kReadBufSize) {
+        read_buf_.resize(read_end_ + kReadBufSize);
+    }
+    if (read_pos_ > 0) {
+        std::memmove(read_buf_.data(), read_buf_.data() + read_pos_, tail);
+        read_end_ = tail;
+        read_pos_ = 0;
+    }
 }
 
 // ── Read path ──────────────────────────────────────────────────────────────
@@ -530,8 +597,8 @@ void IoUringConnection::start_next_writes() {
         return;
     }
 
-    unsigned batch_count = 0;
-    while (!write_queue_.empty() && batch_count < kWriteBatchLimit) {
+    unsigned pending_limit = kWriteBatchLimit;
+    while (!write_queue_.empty() && pending_limit > 0 ) {
         io_uring_sqe* sqe;
         {
             std::lock_guard<std::mutex> sq_lock(sq_mutex_write_);
@@ -539,12 +606,12 @@ void IoUringConnection::start_next_writes() {
         }
         if (!sqe) {
             spdlog::warn("{}: SQ full, {} writes queued", name_, write_queue_.size());
-            break;
+            return;
         }
 
         auto op = std::move(write_queue_.front());
         write_queue_.pop_front();
-        ++batch_count;
+        --pending_limit;
 
         uint64_t seq = next_write_seq_++;
         io_uring_prep_write(sqe, write_fd, op->frame->data(),
@@ -553,10 +620,8 @@ void IoUringConnection::start_next_writes() {
         in_flight_writes_[seq] = std::move(op);
     }
 
-    if (batch_count > 0) {
-        std::lock_guard<std::mutex> sq_lock(sq_mutex_write_);
-        io_uring_submit(&ring_write_);
-    }
+    std::lock_guard<std::mutex> sq_lock(sq_mutex_write_);
+    io_uring_submit(&ring_write_);
 }
 
 void IoUringConnection::on_write_complete(int res, uint64_t user_data) {
@@ -600,7 +665,11 @@ void IoUringConnection::on_write_complete(int res, uint64_t user_data) {
 
     in_flight_writes_.erase(it);
     bool drained = in_flight_writes_.empty();
-    bool need_finalize = drained && close_pending_.load(std::memory_order_acquire);
+    if (!drained) {
+        lock.unlock();
+        return;
+    }
+    bool need_finalize = close_pending_.load(std::memory_order_acquire);
     lock.unlock();
 
     if (need_finalize) {
@@ -610,9 +679,8 @@ void IoUringConnection::on_write_complete(int res, uint64_t user_data) {
         // for_each macro and io_uring_cq_advance below).
         running_.store(false, std::memory_order_release);
         return;
-    } else if (drained) {
-        start_next_writes();
     }
+    start_next_writes();
 }
 
 } // namespace gtnh::net

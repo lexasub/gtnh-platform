@@ -2,11 +2,13 @@
 
 #include <spdlog/spdlog.h>
 #include <cstring>
+#include <pthread.h>
 #include <signal.h>
 
 namespace gtnh::net {
 
-bool IoUringContext::init(unsigned entries) {
+bool IoUringContext::init(unsigned entries, const char* name) {
+    name_ = name ? name : "uring";
     std::lock_guard<std::mutex> lock(sq_mutex_);
     if (initialized_) return true;
 
@@ -47,7 +49,10 @@ bool IoUringContext::init(unsigned entries) {
 
     initialized_ = true;
     running_.store(true, std::memory_order_release);
-    poll_thread_ = std::thread(&IoUringContext::poll_loop, this);
+    poll_thread_ = std::thread([this] {
+        pthread_setname_np(pthread_self(), name_.c_str());
+        poll_loop();
+    });
 
     spdlog::debug("IoUringContext: single ring init ({} entries)", entries);
     return true;

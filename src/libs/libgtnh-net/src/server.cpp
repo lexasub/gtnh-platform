@@ -42,7 +42,7 @@ bool TcpServer::listen(uint16_t port, const char* name) {
     listen_fd_ = fd;
     stopped_ = false;
 
-    if (!ctx_.init()) {
+    if (!ctx_.init(256, name_.c_str())) {
         spdlog::error("{}: IoUringContext init failed", name_);
         ::close(fd);
         listen_fd_ = -1;

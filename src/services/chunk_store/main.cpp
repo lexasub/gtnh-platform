@@ -1,6 +1,6 @@
 #include "Storage/ChunkStore.h"
-#include "Network/ChunkStoreService.h"
-#include "Network/RouterClient.h"
+#include "Network/IoUringChunkStoreService.h"
+#include "Network/IoUringRouterClient.h"
 #include <spdlog/spdlog.h>
 #include <csignal>
 #include <cstdlib>
@@ -43,13 +43,19 @@ int main(int argc, char* argv[]) {
 
     ChunkStore store(db_path, 2048, db_max_size_mb * 1024ULL * 1024ULL);
 
-    ChunkStoreService tcp_service(store, tcp_port);
-    auto router = std::make_shared<RouterClient>(store);
+    // io_uring-based TCP service (replaces old Asio ChunkStoreService)
+    IoUringChunkStoreService tcp_service(store);
+    if (!tcp_service.listen(tcp_port)) {
+        spdlog::critical("Failed to start TCP service on port {}", tcp_port);
+        return 1;
+    }
 
-    router->connect(router_host, router_port);
-    std::thread router_thread([router] { router->run(); });
-
-    tcp_service.start();
+    // io_uring-based Router client (replaces old Asio RouterClient)
+    IoUringRouterClient router(store);
+    if (!router.connect(router_host, router_port)) {
+        spdlog::critical("Failed to connect to router {}:{}", router_host, router_port);
+        return 1;
+    }
 
     // Main loop waiting for stop signal
     while (!g_stop.load()) {
@@ -62,10 +68,7 @@ int main(int argc, char* argv[]) {
 
     // Shutdown in reverse order
     spdlog::info("Shutdown signal received, stopping services...");
-    router->stop();
-    if (router_thread.joinable()) router_thread.join();
-    router.reset();
-
+    router.disconnect();
     tcp_service.stop();
 
     spdlog::info("ChunkStore shutdown complete");

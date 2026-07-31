@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <string>
 #include <thread>
 
 #include <liburing.h>
@@ -20,7 +21,7 @@ public:
   IoUringContext(IoUringContext &&) = delete;
   IoUringContext &operator=(IoUringContext &&) = delete;
 
-  bool init(unsigned entries = 256);
+  bool init(unsigned entries = 256, const char* name = "uring");
   void shutdown();
 
   io_uring_sqe *get_sqe();
@@ -31,6 +32,7 @@ private:
   void poll_loop();
 
   io_uring ring_{};
+  std::string name_;
 
   std::mutex sq_mutex_;
 
