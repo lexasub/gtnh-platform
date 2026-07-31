@@ -85,6 +85,7 @@ public:
   // Returns true if coord is in pendingRequests_ (chunk requested but not yet
   // received).
   bool IsPending(const ChunkCoord &coord) const;
+  size_t PendingCount() const { return pendingRequests_.size(); }
 
   // Clear all pending chunk requests (used after reconnection)
   void ClearPendingRequests();
@@ -106,6 +107,8 @@ private:
       tbb::concurrent_hash_map<uint64_t, int64_t>; // key → timestamp_ns
   ChunkStorage storage_;
   PendingSet pendingRequests_;         // chunks requested but not yet received
+  mutable std::mutex pendingRequestsMtx_; // guards unsafe_erase on pendingRequests_
+  tbb::concurrent_hash_map<uint64_t, int64_t> chunkRequestTimestamps_; // key → request time_ns
   BlockActionMap pendingBlockActions_; // block positions with in-flight
                                        // break/place actions
   mutable std::mutex pendingEvictedMtx_;
@@ -123,4 +126,5 @@ private:
   // chunk key -> (block pos key -> pending block)
   std::unordered_map<uint64_t, std::unordered_map<uint64_t, PendingBlock>>
       pendingChanges_;
+  mutable std::mutex pendingChangesMtx_; // guards pendingChanges_
 };

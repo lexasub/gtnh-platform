@@ -6,8 +6,10 @@
 
 #include <glm/glm.hpp>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <ranges>
+#include <spdlog/spdlog.h>
 
 ChunkLoadManager::ChunkLoadManager(World& world, NetClient& netClient)
     : world_(world), netClient_(netClient) {
@@ -19,16 +21,15 @@ void ChunkLoadManager::SetUpdateRate(float updatesPerSecond) {
 
 void ChunkLoadManager::Update(const Frustum& frustum, glm::vec3 cameraPos,
                                glm::vec3 forward, glm::vec3 velocity, float dt) {
-    // Rate limit: don't re-scan every frame (10 Hz default)
+    // Process eviction queue every frame (not rate-limited) so TTL decays smoothly
+    ProcessEvictionQueue(dt);
+
+    // Rate limit: don't re-scan every frame (30 Hz default)
     timeSinceUpdate_ += dt;
     if (timeSinceUpdate_ < updateInterval_)
         return;
     timeSinceUpdate_ = 0.0f;
 
-    // Full priority re-scan every tick. No movement/rotation short-circuit:
-    // the 10 Hz rate limit is enough — skipping scans on small motion is
-    // false economy because rotation changes the frustum even when the
-    // camera hasn't moved.
     RunLoadPass(frustum, cameraPos, forward, velocity);
 }
 
@@ -39,19 +40,32 @@ void ChunkLoadManager::RunLoadPass(const Frustum& frustum, glm::vec3 cameraPos,
     int centerZ = static_cast<int>(std::floor(cameraPos.z / CHUNK_SIZE));
 
     int R = World::VIEW_RADIUS;
-    int side = 2 * R + 1;
-    int total = side * side * side;
+    // Limit vertical range — chunks far above/below are just air or stone
+    // and don't need generating. ±3 chunks covers terrain height variance.
+    static constexpr int VERTICAL_RADIUS = 3;
 
     std::vector<ScoredChunk> candidates;
 
+    int xzSide = 2 * R + 1;
+    int ySide = 2 * VERTICAL_RADIUS + 1;
+    int xzSlice = xzSide * ySide;
+    int total = xzSide * xzSide * ySide;
     for (int idx = 0; idx < total; ++idx) {
         ChunkCoord coord{
-            (centerX + (idx / (side * side) - R)),
-            (centerY + (idx / side % side - R)),
-            (centerZ + (idx % side - R))
+            centerX + (idx / xzSlice) - R,
+            centerY + (idx % xzSlice) % ySide - VERTICAL_RADIUS,
+            centerZ + (idx % xzSlice) / ySide - R
         };
 
-        if (world_.HasChunk(coord) || world_.IsPending(coord))
+        if (world_.HasChunk(coord)) {
+            // Chunk is loaded AND in load radius — cancel any pending eviction.
+            // erase() is a no-op if not in the map, so this is safe for all coords.
+            uint64_t key = MakeChunkKey(coord);
+            evictionQueue_.erase(key);
+            continue;
+        }
+
+        if (world_.IsPending(coord))
             continue;
 
         glm::vec3 min(coord.x * CHUNK_SIZE, coord.y * CHUNK_SIZE, coord.z * CHUNK_SIZE);
@@ -68,8 +82,18 @@ void ChunkLoadManager::RunLoadPass(const Frustum& frustum, glm::vec3 cameraPos,
                           return a.priority > b.priority;
                       });
 
+    int sentCount = 0;
     for (const auto& req : candidates) {
-        world_.TryRequestChunk(req.coord, netClient_);
+        if (world_.TryRequestChunk(req.coord, netClient_))
+            sentCount++;
+    }
+
+    // Log loading rate every tick — shows how many new chunks we're requesting
+    if (sentCount > 0 || !candidates.empty()) {
+        spdlog::trace("load_run cam=({:.0f},{:.0f},{:.0f}) candidates={} sent={} pending={} loaded={}",
+                      cameraPos.x, cameraPos.y, cameraPos.z,
+                      candidates.size(), sentCount,
+                      world_.PendingCount(), world_.ChunkCount());
     }
 
     EvictFarChunks(cameraPos);
@@ -98,9 +122,38 @@ void ChunkLoadManager::EvictFarChunks(glm::vec3 cameraPos) {
     size_t evictCount = std::min(excess, entries.size());
 
     for (size_t i = 0; i < evictCount; ++i) {
-        world_.EvictChunk(entries[i].coord);
+        uint64_t key = MakeChunkKey(entries[i].coord);
+
+        // If already in eviction queue, skip (don't re-add). The TTL from the
+        // first push will eventually drain it.
+        if (evictionQueue_.find(key) != evictionQueue_.end())
+            continue;
+
+        // Soft eviction: add to TTL queue instead of immediate eviction.
+        // The chunk stays loaded until ProcessEvictionQueue decides to evict.
+        evictionQueue_[key] = EVICTION_TTL;
         netClient_.SendPlayerAction(0, Protocol::PlayerActionType_UNLOAD,
                                      entries[i].coord.x * 32, 0, entries[i].coord.z * 32);
+    }
+}
+
+void ChunkLoadManager::ProcessEvictionQueue(float dt) {
+    if (evictionQueue_.empty())
+        return;
+
+    for (auto it = evictionQueue_.begin(); it != evictionQueue_.end(); ) {
+        it->second -= dt;
+        if (it->second <= 0) {
+            // TTL expired — actually evict
+            ChunkCoord c;
+            c.x = static_cast<int32_t>((it->first >> 42) & 0x1FFFFF) - CHUNK_KEY_BIAS;
+            c.y = static_cast<int32_t>((it->first >> 21) & 0x1FFFFF) - CHUNK_KEY_BIAS;
+            c.z = static_cast<int32_t>(it->first & 0x1FFFFF) - CHUNK_KEY_BIAS;
+            world_.EvictChunk(c);
+            it = evictionQueue_.erase(it);
+        } else {
+            ++it;
+        }
     }
 }
 

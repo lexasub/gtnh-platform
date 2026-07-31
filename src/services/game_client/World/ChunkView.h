@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <vector>
 
@@ -35,6 +36,10 @@ private:
   mutable std::unique_ptr<uint16_t[]> flat_blocks_;
   mutable std::unique_ptr<uint8_t[]> flat_meta_;
   mutable std::unique_ptr<uint32_t[]> flat_mb_;
+
+  // Guards lazy-init fields (flat_, flat_blocks_*, wire_data_) — SetBlock
+  // resets flat export arrays while TBB mesh builder reads them concurrently.
+  mutable std::mutex mtx_;
 
   void ensureFlat() const;
   void ensureFlatArrays() const;

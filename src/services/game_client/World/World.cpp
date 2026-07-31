@@ -144,15 +144,24 @@ void World::EvictFarChunks(glm::vec3 cameraPos) {
         storage_.RemoveChunk(entries[i].coord);
 
         uint64_t key = MakeChunkKey(entries[i].coord);
-        pendingRequests_.unsafe_erase(key);
+        {
+            std::lock_guard lock(pendingRequestsMtx_);
+            pendingRequests_.unsafe_erase(key);
+        }
     }
 }
 
 void World::EvictChunk(const ChunkCoord& coord) {
     uint64_t key = MakeChunkKey(coord);
-    pendingChanges_.erase(key);
+    {
+        std::lock_guard lock(pendingChangesMtx_);
+        pendingChanges_.erase(key);
+    }
     storage_.RemoveChunk(coord);
-    pendingRequests_.unsafe_erase(key);
+    {
+        std::lock_guard lock(pendingRequestsMtx_);
+        pendingRequests_.unsafe_erase(key);
+    }
     std::lock_guard lock(pendingEvictedMtx_);
     pendingEvicted_.push_back(coord);
 }
@@ -160,6 +169,8 @@ void World::EvictChunk(const ChunkCoord& coord) {
 bool World::TryRequestChunk(const ChunkCoord& coord, NetClient& netClient) {
     uint64_t key = MakeChunkKey(coord);
     if (pendingRequests_.insert(key).second) {
+        int64_t now = std::chrono::steady_clock::now().time_since_epoch().count();
+        chunkRequestTimestamps_.insert({key, now});
         netClient.RequestChunk(coord);
         return true;
     }
@@ -203,25 +214,45 @@ std::shared_ptr<const ChunkView> World::OnChunkData(std::shared_ptr<ChunkView> c
     // Rebase pending changes over the fresh snapshot.
     // Server might return stale chunk data (ChunkStore race: readTransaction vs
     // CAS), so we re-apply any block updates that were committed locally.
-    auto it = pendingChanges_.find(key);
-    if (it != pendingChanges_.end()) {
-        for (const auto& [pk, pb] : it->second) {
-            int64_t bx = static_cast<int64_t>((pk >> 42) & 0x1FFFFF) - CHUNK_KEY_BIAS;
-            int64_t by = static_cast<int64_t>((pk >> 21) & 0x1FFFFF) - CHUNK_KEY_BIAS;
-            int64_t bz = static_cast<int64_t>(pk & 0x1FFFFF) - CHUNK_KEY_BIAS;
-            int lx = static_cast<int>(bx & (CHUNK_SIZE - 1));
-            int ly = static_cast<int>(by & (CHUNK_SIZE - 1));
-            int lz = static_cast<int>(bz & (CHUNK_SIZE - 1));
-            chunkPtr->SetBlock(lx, ly, lz, pb.block_id, pb.meta, pb.mb_id);
+    {
+        std::lock_guard lock(pendingChangesMtx_);
+        auto it = pendingChanges_.find(key);
+        if (it != pendingChanges_.end()) {
+            for (const auto& [pk, pb] : it->second) {
+                int64_t bx = static_cast<int64_t>((pk >> 42) & 0x1FFFFF) - CHUNK_KEY_BIAS;
+                int64_t by = static_cast<int64_t>((pk >> 21) & 0x1FFFFF) - CHUNK_KEY_BIAS;
+                int64_t bz = static_cast<int64_t>(pk & 0x1FFFFF) - CHUNK_KEY_BIAS;
+                int lx = static_cast<int>(bx & (CHUNK_SIZE - 1));
+                int ly = static_cast<int>(by & (CHUNK_SIZE - 1));
+                int lz = static_cast<int>(bz & (CHUNK_SIZE - 1));
+                chunkPtr->SetBlock(lx, ly, lz, pb.block_id, pb.meta, pb.mb_id);
+            }
+        }
+    }
+
+    // Log round-trip time: time between TryRequestChunk and OnChunkData
+    {
+        decltype(chunkRequestTimestamps_)::const_accessor acc;
+        if (chunkRequestTimestamps_.find(acc, key)) {
+            int64_t now = std::chrono::steady_clock::now().time_since_epoch().count();
+            int64_t rtt_ns = now - acc->second;
+            auto rtt_ms = static_cast<double>(rtt_ns) / 1000000.0;
+            if (rtt_ms > 100.0) {
+                spdlog::trace("chunk_rt ({},{},{}) {:.0f} ms",
+                              coord.x, coord.y, coord.z, rtt_ms);
+            } else {
+                spdlog::trace("chunk_rt ({},{},{}) {:.1f} ms",
+                              coord.x, coord.y, coord.z, rtt_ms);
+            }
+            chunkRequestTimestamps_.erase(acc);
         }
     }
 
     // Keep the entry in pendingRequests_ until evict.  We don't erase here
-    // because pendingRequests_ is a tbb::concurrent_unordered_set with only
-    // unsafe_erase — calling it from worldContext_ while chunkLoadContext_
-    // reads the set concurrently would corrupt the data structure and cause
-    // duplicate chunk requests.  HasChunk check in RunLoadPass prevents
-    // re-request while the chunk is still loaded.
+    // because erase() on concurrent_unordered_set is thread-safe but there is
+    // a window between the erase and the chunk being removed from storage_
+    // that could cause a duplicate request.  HasChunk check in RunLoadPass
+    // prevents re-request while the chunk is still loaded.
     return chunkPtr;
 }
 
@@ -232,6 +263,7 @@ void World::OnBlockUpdate(BlockPos pos, uint16_t block_id, uint8_t meta, uint32_
     // snapshots, even if the chunk is not yet loaded.  When the chunk arrives
     // later, OnChunkData replays any pending changes for that chunk.
     {
+        std::lock_guard lock(pendingChangesMtx_);
         uint64_t ck = MakeChunkKey(cc);
         uint64_t pk = MakeBlockPosKey(pos.x, pos.y, pos.z);
         pendingChanges_[ck][pk] = {block_id, meta, mb_id};

@@ -39,6 +39,7 @@ void ChunkView::ensureFlatArrays() const {
 }
 
 uint16_t ChunkView::GetBlock(int x, int y, int z) const {
+    std::lock_guard lock(mtx_);
     ensureFlat();
     if (!flat_) return 0;
     return flat_->getBlock(x, y, z);
@@ -46,6 +47,7 @@ uint16_t ChunkView::GetBlock(int x, int y, int z) const {
 
 void ChunkView::SetBlock(int x, int y, int z, uint16_t block_id, uint8_t meta,
                          uint32_t mb_id) const {
+    std::lock_guard lock(mtx_);
     ensureFlat();
     if (!flat_) return;
     flat_->setBlock(x, y, z, block_id);
@@ -60,16 +62,19 @@ void ChunkView::SetBlock(int x, int y, int z, uint16_t block_id, uint8_t meta,
 }
 
 const uint16_t* ChunkView::blocks_data() const {
+    std::lock_guard lock(mtx_);
     ensureFlatArrays();
     return flat_blocks_.get();
 }
 
 const uint8_t* ChunkView::meta_data() const {
+    std::lock_guard lock(mtx_);
     ensureFlatArrays();
     return flat_meta_.get();
 }
 
 const uint32_t* ChunkView::multiblock_data() const {
+    std::lock_guard lock(mtx_);
     ensureFlatArrays();
     return flat_mb_.get();
 }

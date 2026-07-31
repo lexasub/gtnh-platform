@@ -5,8 +5,10 @@
 #include "Render/ChunkMeshProvider.h"
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <tbb/global_control.h>
 #include <tbb/task_group.h>
+#include <unordered_map>
 
 class World;
 class ChunkView;
@@ -47,7 +49,7 @@ public:
   void DiscardHandles();
 
   size_t MeshCount() const { return meshCache_.Size(); }
-  void WaitForPending() { meshBuildGroup_.wait(); }
+  void WaitForPending() { loadGroup_.wait(); updateGroup_.wait(); }
   void RequestShutdown() { shuttingDown_ = true; }
 
 private:
@@ -55,8 +57,13 @@ private:
 
   ChunkMeshCache meshCache_;
   tbb::global_control tbbControl_{tbb::global_control::max_allowed_parallelism,
-                                  2};
-  tbb::task_group meshBuildGroup_;
+                                  6};
+  tbb::task_group loadGroup_;     // chunk data (high volume, initial world load)
+  tbb::task_group updateGroup_;   // block updates (low latency)
   std::unique_ptr<ChunkMeshProvider> meshProvider_;
   std::atomic<bool> shuttingDown_{false};
+
+  // Guards pendingRebuilds_ (used from worldContext_ + TBB tasks)
+  mutable std::mutex pendingRebuildMtx_;
+  std::unordered_map<uint64_t, bool> pendingRebuilds_;
 };
