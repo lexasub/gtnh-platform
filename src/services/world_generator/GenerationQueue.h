@@ -4,10 +4,10 @@
 #include <atomic>
 #include <common/coords/Coords.h>
 #include <condition_variable>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
-#include <queue>
 #include <thread>
 #include <vector>
 #include <unordered_set>
@@ -45,10 +45,11 @@ private:
 
   WorldGenerator *generator_; // not owned
   std::vector<std::thread> workers_;
-  std::queue<ChunkCoord> tasks_;
+  std::deque<ChunkCoord> tasks_;
   GenOutput output_;
   std::unordered_set<ChunkCoord, ChunkCoordHash> dedup_;
   std::mutex mutex_;
   std::condition_variable cv_;
   std::atomic<bool> stop_{false};
+  bool popFront_{false}; // alternating direction to give newer chunks a chance
 };

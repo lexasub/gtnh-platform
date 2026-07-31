@@ -23,7 +23,7 @@ void GenerationQueue::requestChunk(ChunkCoord coord) {
         if (dedup_.count(coord))
             return;
         dedup_.insert(coord);
-        tasks_.push(coord);
+        tasks_.push_back(coord);
     }
     cv_.notify_one();
 }
@@ -50,8 +50,16 @@ void GenerationQueue::workerLoop() {
             std::unique_lock<std::mutex> lock(mutex_);
             cv_.wait(lock, [this] { return !tasks_.empty() || stop_.load(); });
             if (stop_.load() && tasks_.empty()) break;
-            chunkCoord = std::move(tasks_.front());
-            tasks_.pop();
+            // Alternate between front and back to give newer chunks
+            // (high-priority, near player) a chance vs old backlog.
+            if (popFront_) {
+                chunkCoord = std::move(tasks_.front());
+                tasks_.pop_front();
+            } else {
+                chunkCoord = std::move(tasks_.back());
+                tasks_.pop_back();
+            }
+            popFront_ = !popFront_;
         }
 
         Chunk temp;
