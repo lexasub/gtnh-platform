@@ -44,12 +44,13 @@ void RouterEventPublisher::publishBlockAck(uint8_t status,
 
 void RouterEventPublisher::publishBlockChangedEvent(int32_t x, int32_t y, int32_t z,
                                                     uint16_t block_id, uint8_t meta,
-                                                    uint32_t request_id)
+                                                    uint32_t request_id,
+                                                    uint64_t source_player_id)
 {
     auto t0 = std::chrono::steady_clock::now();
     flatbuffers::FlatBufferBuilder builder(128);
     auto pos = Protocol::Vec3i(x, y, z);
-    auto event = Protocol::CreateBlockChangedEvent(builder, &pos, block_id, meta, 0, request_id);
+    auto event = Protocol::CreateBlockChangedEvent(builder, &pos, block_id, meta, 0, request_id, source_player_id);
     builder.Finish(event);
     std::vector<uint8_t> event_data(builder.GetBufferPointer(),
                                     builder.GetBufferPointer() + builder.GetSize());

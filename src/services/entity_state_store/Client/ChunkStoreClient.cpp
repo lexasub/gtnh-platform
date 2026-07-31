@@ -58,12 +58,14 @@ void ChunkStoreClient::SetBlock(int32_t x, int32_t y, int32_t z, uint16_t block_
         auto resp = reply->response_as_SetBlockResp();
         callback(resp->success());
     };
+    // libgtnh-net framing: [4B len][1B type][payload]
     std::vector<uint8_t> frame;
     uint32_t size = builder.GetSize();
-    frame.resize(4 + size);
-    uint32_t be_size = htobe32(size);
+    frame.resize(5 + size);
+    uint32_t be_size = htobe32(size + 1);
     std::memcpy(frame.data(), &be_size, 4);
-    std::memcpy(frame.data() + 4, builder.GetBufferPointer(), size);
+    frame[4] = 0; // msg_type
+    std::memcpy(frame.data() + 5, builder.GetBufferPointer(), size);
     writeFrame(frame);
 }
 
@@ -84,12 +86,14 @@ void ChunkStoreClient::GetBlock(int32_t x, int32_t y, int32_t z, GetBlockCallbac
         auto resp = reply->response_as_GetBlockResp();
         callback(BlockData{resp->block_id(), resp->meta(), resp->mb_id()});
     };
+    // libgtnh-net framing: [4B len][1B type][payload]
     std::vector<uint8_t> frame;
     uint32_t size = builder.GetSize();
-    frame.resize(4 + size);
-    uint32_t be_size = htobe32(size);
+    frame.resize(5 + size);
+    uint32_t be_size = htobe32(size + 1);
     std::memcpy(frame.data(), &be_size, 4);
-    std::memcpy(frame.data() + 4, builder.GetBufferPointer(), size);
+    frame[4] = 0; // msg_type
+    std::memcpy(frame.data() + 5, builder.GetBufferPointer(), size);
     writeFrame(frame);
 }
 
@@ -100,12 +104,15 @@ void ChunkStoreClient::writeFrame(const std::vector<uint8_t>& frame) {
 }
 
 void ChunkStoreClient::readFrame() {
-    auto header_buf = std::make_shared<std::vector<uint8_t>>(4);
+    // libgtnh-net framing: [4B raw_len][1B type][payload]
+    auto header_buf = std::make_shared<std::vector<uint8_t>>(5);
     asio::async_read(socket_, asio::buffer(*header_buf), [this, header_buf](asio::error_code ec, size_t) {
         if (ec) { spdlog::error("ChunkStoreClient read header error: {}", ec.message()); connected_ = false; return; }
-        uint32_t size;
-        std::memcpy(&size, header_buf->data(), 4);
-        size = be32toh(size);
+        uint32_t raw_len;
+        std::memcpy(&raw_len, header_buf->data(), 4);
+        raw_len = be32toh(raw_len);
+        if (raw_len == 0) { connected_ = false; return; }
+        uint32_t size = raw_len - 1; // strip 1-byte type
         auto payload_buf = std::make_shared<std::vector<uint8_t>>(size);
         asio::async_read(socket_, asio::buffer(*payload_buf), [this, payload_buf](asio::error_code ec, size_t) {
             if (ec) { spdlog::error("ChunkStoreClient read payload error: {}", ec.message()); connected_ = false; return; }

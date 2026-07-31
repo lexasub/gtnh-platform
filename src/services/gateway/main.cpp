@@ -71,7 +71,27 @@ int main(int argc, char* argv[]) {
     };
 
     gateway.on_client_message = [&](const uint8_t* data, size_t len) {
-        //spdlog::info("[GATEWAY] Publishing {} bytes to 'player.actions'", len);
+        // Filter PlayerActions on the gateway before they reach the router:
+        // the client floods MOVE/UNLOAD at ~15k/s while walking (chunk
+        // eviction).  Only CHUNK_REQUEST (chunkd) and ITEM_ACTION (simcore)
+        // are meaningful — forwarding MOVE/UNLOAD saturates the router and
+        // starves player.actions.setblock.
+        flatbuffers::Verifier v(data, len);
+        if (v.VerifyBuffer<Protocol::PlayerAction>(nullptr)) {
+            auto* pa = flatbuffers::GetRoot<Protocol::PlayerAction>(data);
+            if (pa) {
+                switch (pa->action()) {
+                case Protocol::PlayerActionType_CHUNK_REQUEST:
+                    gateway.publish("chunk.requests", data, len);
+                    return;
+                case Protocol::PlayerActionType_ITEM_ACTION:
+                    gateway.publish("player.actions", data, len);
+                    return;
+                default:
+                    return; // drop MOVE / UNLOAD / etc.
+                }
+            }
+        }
         gateway.publish("player.actions", data, len);
     };
 

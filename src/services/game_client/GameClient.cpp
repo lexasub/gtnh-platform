@@ -71,10 +71,11 @@ void GameClient::subscribeNetClient() {
             if (status != static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED)) {
                 spdlog::warn("BlockAck CONFLICT at ({},{},{}) actual_id={} rid={}", pos.x, pos.y, pos.z, block_id, request_id);
             }
-            asio::post(worldContext_, [this, pos, block_id, meta]() {
-                meshMgr_.OnBlockUpdate(pos, block_id, meta, 0, world_);
-                world_.ClearBlockActionPending(pos);
-            });
+            // Apply + rebuild mesh on main thread so the next raycaster frame
+            // sees the change immediately (BlockChangedEvent is skipped back
+            // to the source player, so BlockAck is the only signal).
+            meshMgr_.OnBlockUpdate(pos, block_id, meta, 0, world_);
+            world_.ClearBlockActionPending(pos);
         });
 
     netClient_->SetChunkCallback(
@@ -223,13 +224,13 @@ void GameClient::Update(float dt) {
                   chunkLoadManager_->Update(frustum, pos, fwd, vel, dt);
                });
 
-    // Safety net: clear pending block actions older than 3 seconds
+    // Safety net: clear pending block actions older than 100ms
     static double sweepTimer = 0;
     sweepTimer += dt;
-    if (sweepTimer >= 1.0) {
+    if (sweepTimer >= 0.1) {
         sweepTimer = 0;
         asio::post(worldContext_, [this]() {
-            world_.ClearExpiredBlockActions(std::chrono::seconds(3));
+            world_.ClearExpiredBlockActions(std::chrono::milliseconds(100));
         });
     }
 }

@@ -93,14 +93,8 @@ void IoUringChunkClient::SetBlock(int32_t x, int32_t y, int32_t z,
         };
     }
 
-    std::vector<uint8_t> frame;
-    uint32_t size = builder.GetSize();
-    frame.resize(4 + size);
-    uint32_t be_size = htobe32(size);
-    std::memcpy(frame.data(), &be_size, 4);
-    std::memcpy(frame.data() + 4, builder.GetBufferPointer(), size);
-    auto shared = std::make_shared<std::vector<uint8_t>>(std::move(frame));
-    conn_->send_raw(shared);
+    // libgtnh-net framing: [4B len][1B type][payload] — pack() adds header.
+    conn_->send(0, builder.GetBufferPointer(), builder.GetSize());
 }
 
 void IoUringChunkClient::SetBlockCAS(int32_t x, int32_t y, int32_t z,
@@ -139,14 +133,8 @@ void IoUringChunkClient::SetBlockCAS(int32_t x, int32_t y, int32_t z,
         };
     }
 
-    std::vector<uint8_t> frame;
-    uint32_t size = builder.GetSize();
-    frame.resize(4 + size);
-    uint32_t be_size = htobe32(size);
-    std::memcpy(frame.data(), &be_size, 4);
-    std::memcpy(frame.data() + 4, builder.GetBufferPointer(), size);
-    auto shared = std::make_shared<std::vector<uint8_t>>(std::move(frame));
-    conn_->send_raw(shared);
+    // libgtnh-net framing: [4B len][1B type][payload] — pack() adds header.
+    conn_->send(0, builder.GetBufferPointer(), builder.GetSize());
 }
 
 void IoUringChunkClient::GetBlock(int32_t x, int32_t y, int32_t z,
@@ -180,14 +168,8 @@ void IoUringChunkClient::GetBlock(int32_t x, int32_t y, int32_t z,
         };
     }
 
-    std::vector<uint8_t> frame;
-    uint32_t size = builder.GetSize();
-    frame.resize(4 + size);
-    uint32_t be_size = htobe32(size);
-    std::memcpy(frame.data(), &be_size, 4);
-    std::memcpy(frame.data() + 4, builder.GetBufferPointer(), size);
-    auto shared = std::make_shared<std::vector<uint8_t>>(std::move(frame));
-    conn_->send_raw(shared);
+    // libgtnh-net framing: [4B len][1B type][payload] — pack() adds header.
+    conn_->send(0, builder.GetBufferPointer(), builder.GetSize());
 }
 
 // =========================================================================

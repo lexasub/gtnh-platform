@@ -106,7 +106,7 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
                         }
                     }
 
-                    publisher_->publishBlockChangedEvent(x, y, z, final_block_id, final_meta, request_id);
+                    publisher_->publishBlockChangedEvent(x, y, z, final_block_id, final_meta, request_id, player_id);
                     if (engine_) {
                         engine_->onBlockChanged(static_cast<uint32_t>(x),
                                                 static_cast<uint32_t>(y),

@@ -127,6 +127,21 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                              topicDispatcher, routerClient, entityStateClient,
                              batteryBuffer, machineSystem]
                             (const std::string& topic, const std::vector<uint8_t>& data) {
+        // Filter player.actions on the io thread, BEFORE mainQueue: the client
+        // floods UNLOAD/MOVE/CHUNK_REQUEST at ~15k/s while walking (chunk
+        // eviction).  simcore only handles ITEM_ACTION on this topic — queueing
+        // the rest starves player.actions.setblock by seconds.
+        if (topic == "player.actions") {
+            flatbuffers::Verifier v(data.data(), data.size());
+            if (v.VerifyBuffer<Protocol::PlayerAction>(nullptr)) {
+                auto* pa = flatbuffers::GetRoot<Protocol::PlayerAction>(data.data());
+                if (!pa || pa->action() != Protocol::PlayerActionType_ITEM_ACTION) {
+                    return;
+                }
+            } else {
+                return;
+            }
+        }
         mainQueue.push([&, topic, data]() {
             if (topic == "player.actions.setblock") {
                 flatbuffers::Verifier v(data.data(), data.size());

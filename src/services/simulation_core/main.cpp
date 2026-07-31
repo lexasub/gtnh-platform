@@ -308,7 +308,7 @@ int main(int argc, char* argv[]) {
         if (now >= nextTick) {
             mainQueue.drain();
             simulationEngine->tickAll(1.0f);
-            nextTick += TICK_INTERVAL;
+            nextTick = now + TICK_INTERVAL;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }

@@ -21,7 +21,8 @@ public:
 
   virtual void publishBlockChangedEvent(int32_t x, int32_t y, int32_t z,
                                         uint16_t block_id, uint8_t meta,
-                                        uint32_t request_id = 0) = 0;
+                                        uint32_t request_id = 0,
+                                        uint64_t source_player_id = 0) = 0;
 
   // Machine progress/inventory update: published each tick for entities with
   // block entities (machines, workbenches, etc.). Clients use this to

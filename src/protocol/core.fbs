@@ -267,6 +267,7 @@ table BlockChangedEvent {
   meta:uint8;
   mb_id:uint32;
   request_id:uint32 = 0;  // echoes client's request_id from SetBlockAction
+  source_player_id:uint64 = 0;  // non-zero = skip sending to this player (already got Ack)
 }
 
 table MultiblockCreatedEvent {

@@ -123,7 +123,7 @@ bool IoUringGateway::listen(uint16_t ctrl_port, uint16_t bulk_port) {
                                                        Protocol::PlayerActionType_CHUNK_REQUEST, &pos);
             fbb.Finish(action);
             spdlog::info("Gateway: sending CHUNK_REQUEST at chunk ({},{},{})", cx, cy, cz);
-            publish("player.actions", fbb.GetBufferPointer(), fbb.GetSize());
+            publish("chunk.requests", fbb.GetBufferPointer(), fbb.GetSize());
         }
     };
 
@@ -334,10 +334,18 @@ void IoUringGateway::on_router_publish(
             spdlog::warn("Gateway: Router: invalid CompressedChunkData FlatBuffer");
     } else if (topic == "world.blocks.changed") {
         uint32_t tid = 0;
+        uint64_t src_player = 0;
         flatbuffers::Verifier v(payload, plen);
         if (v.VerifyBuffer<Protocol::BlockChangedEvent>(nullptr)) {
             auto ev = flatbuffers::GetRoot<Protocol::BlockChangedEvent>(payload);
             tid = ev->request_id();
+            src_player = ev->source_player_id();
+        }
+        // Don't relay block changes back to the player who made them
+        // (they already got an optimistic BlockAck).
+        if (src_player != 0 && src_player == client_player_id_) {
+            TRACE_LOG(tid, "gateway", "skip_relay_to_source", 0);
+            return;
         }
         auto t0 = std::chrono::steady_clock::now();
         send_to_client_bulk_raw(GatewayMsg::kBlockUpdate, payload, plen);
@@ -391,7 +399,7 @@ else if (topic == "player.chest.open.response")
             auto action = Protocol::CreatePlayerAction(fbb, 0,
                                                        Protocol::PlayerActionType_CHUNK_REQUEST, &cp);
             fbb.Finish(action);
-            publish("player.actions", fbb.GetBufferPointer(), fbb.GetSize());
+            publish("chunk.requests", fbb.GetBufferPointer(), fbb.GetSize());
             spdlog::info("Gateway: re-sent CHUNK_REQUEST at chunk ({},{},{})", cx, cy, cz);
         }
     }
