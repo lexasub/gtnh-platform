@@ -161,4 +161,30 @@ void RouterEventPublisher::publishMachineConfigUpdatedEvent(int32_t x, int32_t y
                   (int)side_config[3], (int)side_config[4], (int)side_config[5]);
 }
 
+void RouterEventPublisher::publishMultiblockCreated(uint64_t controller_id,
+                                                    int32_t x, int32_t y,
+                                                    int32_t z, uint16_t mb_type)
+{
+    flatbuffers::FlatBufferBuilder builder(128);
+    auto pos = Protocol::Vec3i(x, y, z);
+    auto event = Protocol::CreateMultiblockCreatedEvent(builder, controller_id, &pos, mb_type);
+    builder.Finish(event);
+    std::vector<uint8_t> event_data(builder.GetBufferPointer(),
+                                    builder.GetBufferPointer() + builder.GetSize());
+    router_->Publish("sim.multiblock.created", std::move(event_data));
+    spdlog::debug("Published MultiblockCreatedEvent: id={} type={} at ({},{},{})",
+                  controller_id, mb_type, x, y, z);
+}
+
+void RouterEventPublisher::publishMultiblockDestroyed(uint64_t controller_id)
+{
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto event = Protocol::CreateMultiblockDestroyedEvent(builder, controller_id);
+    builder.Finish(event);
+    std::vector<uint8_t> event_data(builder.GetBufferPointer(),
+                                    builder.GetBufferPointer() + builder.GetSize());
+    router_->Publish("sim.multiblock.destroyed", std::move(event_data));
+    spdlog::debug("Published MultiblockDestroyedEvent: id={}", controller_id);
+}
+
 } // namespace simcore

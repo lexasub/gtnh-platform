@@ -1,5 +1,6 @@
 #pragma once
 #include "MachineRegistry.h"
+#include "PatternLibrary.h"
 #include "Systems/ISystem.h"
 #include "components/Block.h"
 #include "components/EnergyStorage.h"
@@ -35,6 +36,13 @@ public:
   // Main.cpp wires this to publishBlockEntityUpdate for reciped.
   std::function<void(int32_t x, int32_t y, int32_t z, uint16_t machine_id)>
       onMachineCreated;
+  std::function<void(uint64_t controller_id)>
+      onMultiblockDestroyed;
+  std::function<void(uint64_t controller_id, int32_t x, int32_t y, int32_t z,
+                     uint16_t mb_type)>
+      onMultiblockCreated;
+  std::function<void(uint64_t controller_id, const std::vector<uint8_t> &state)>
+      onMultiblockSave;
 
   void onBlockChanged(uint32_t x, uint32_t y, uint32_t z, uint16_t block_id,
                       uint8_t meta, uint32_t mb_id);
@@ -46,11 +54,16 @@ public:
                              uint32_t anchor_z, uint64_t controller_id);
 
   void registerController(uint64_t id, uint32_t x, uint32_t y, uint32_t z,
+                          uint32_t pattern_id,
                           const std::vector<uint32_t> &blocks);
 
   bool isControllerActive(uint64_t id) const;
   const MultiblockController &getController(uint64_t id) const;
   void unregisterController(uint64_t id);
+
+  std::vector<uint8_t> serializeMultiblock(uint64_t controller_id) const;
+  void deserializeMultiblock(uint64_t controller_id, const uint8_t *data,
+                             size_t size);
 
   entt::registry &reg() { return reg_; }
 
@@ -59,6 +72,10 @@ public:
   void registerMachineInteractionHandler(uint16_t machine_id, MachineInteractionHandler handler);
   bool tryActivateRotareGenerator(int32_t x, int32_t y, int32_t z);
   const MachineRegistry *getMachineRegistry() const { return machine_registry_; }
+  PatternRegistry& getPatternRegistry() { return pattern_registry_; }
+  const PatternRegistry& getPatternRegistry() const { return pattern_registry_; }
+  std::unordered_map<uint64_t, MultiblockController>& getControllers() { return controllers_; }
+  const std::unordered_map<uint64_t, MultiblockController>& getControllers() const { return controllers_; }
 
 private:
   bool isMachineBlock(uint16_t block_id) const;
@@ -74,6 +91,7 @@ private:
   std::unordered_map<uint16_t, MachineInteractionHandler> interaction_handlers_;
   uint64_t next_machine_id_ = 1;
   const MachineRegistry *machine_registry_ = nullptr;
+  PatternRegistry pattern_registry_;
 };
 
 } // namespace simcore

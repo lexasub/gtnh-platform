@@ -33,6 +33,9 @@
 #include "ECS/Systems/ExplosionSystem.h"
 #include "ECS/Systems/GeneratorSystem.h"
 #include "ECS/Systems/BoilerSystem.h"
+#include "ECS/Systems/EBFSystem.h"
+#include "ECS/Systems/LargeBoilerSystem.h"
+#include "ECS/Systems/LCRSystem.h"
 #include "Actions/WrenchHandler.h"
 #include "World/WorldContainerInventory.h"
 #include "RecipeManager/RecipeManager.h"
@@ -42,6 +45,7 @@
 #include "core_generated.h"
 #include "meta_db_generated.h"
 #include "machine_state_generated.h"
+#include "multiblock_state_generated.h"
 #include <flatbuffers/flatbuffers.h>
 
 #include "../../libs/libgtnh-common/metrics_util.h"
@@ -208,6 +212,37 @@ int main(int argc, char* argv[]) {
                        x, y, z, machine_id);
     };
 
+    simulationEngine->onMultiblockCreated =
+        [eventPublisher, entityStateClient, &simulationEngine, &mainQueue](
+            uint64_t controller_id, int32_t x, int32_t y, int32_t z,
+            uint16_t mb_type) {
+            eventPublisher->publishMultiblockCreated(controller_id, x, y, z, mb_type);
+            entityStateClient->LoadEntityState(0, x, y, z, 4,
+                [&mainQueue, enginePtr = simulationEngine.get(), controller_id](
+                    const simcore::EntityStateStoreClient::EntityStateData& state) {
+                    mainQueue.push([enginePtr, controller_id, state]() {
+                        enginePtr->deserializeMultiblock(controller_id,
+                                                         state.state.data(),
+                                                         state.state.size());
+                    });
+                });
+        };
+
+    simulationEngine->onMultiblockDestroyed =
+        [eventPublisher](uint64_t controller_id) {
+            eventPublisher->publishMultiblockDestroyed(controller_id);
+        };
+
+    simulationEngine->onMultiblockSave =
+        [entityStateClient](uint64_t controller_id, const std::vector<uint8_t>& state) {
+            if (state.empty()) return;
+            auto fb = flatbuffers::GetRoot<Protocol::MultiblockState>(state.data());
+            entityStateClient->SaveEntityState(0, fb->anchor_x(), fb->anchor_y(),
+                                               fb->anchor_z(), 4, state,
+                                               [](bool) {});
+            spdlog::debug("Saved multiblock #{} state", controller_id);
+        };
+
     // ── ECS Systems ───────────────────────────────────────────────────────
     if (machineRegistry) {
         simulationEngine->registerSystem(
@@ -228,6 +263,19 @@ int main(int argc, char* argv[]) {
         simulationEngine->registerSystem(std::move(bbs));
     }
     spawnECSSystems(blockRepository, eventPublisher, pipeEnergyClient, simulationEngine);
+
+    simulationEngine->registerSystem(std::make_unique<simcore::EBFSystem>(
+        simulationEngine->reg(), simulationEngine->getControllers(),
+        simulationEngine->getPatternRegistry(),
+        recipeManager, eventPublisher, pipeEnergyClient));
+    simulationEngine->registerSystem(std::make_unique<simcore::LargeBoilerSystem>(
+        simulationEngine->reg(), simulationEngine->getControllers(),
+        simulationEngine->getPatternRegistry(),
+        eventPublisher, pipeEnergyClient, itemClient));
+    simulationEngine->registerSystem(std::make_unique<simcore::LCRSystem>(
+        simulationEngine->reg(), simulationEngine->getControllers(),
+        simulationEngine->getPatternRegistry(),
+        recipeManager, eventPublisher, pipeEnergyClient));
 
     // ── Generic machine interaction handlers ──
     simulationEngine->registerMachineInteractionHandler(

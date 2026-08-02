@@ -316,6 +316,17 @@ void NetClient::OnMessage(uint8_t msg_type,
             if (onBlockEntityUpdate_)
                 onBlockEntityUpdate_(data);
             break;
+        case GatewayMsg::kMultiblockEvent: {
+            flatbuffers::Verifier v(payload, plen);
+            if (v.VerifyBuffer<Protocol::MultiblockCreatedEvent>(nullptr)) {
+                auto ev = flatbuffers::GetRoot<Protocol::MultiblockCreatedEvent>(payload);
+                spdlog::debug("MultiblockCreated: id={} type={}", ev->controller_id(), ev->mb_type());
+            } else if (v.VerifyBuffer<Protocol::MultiblockDestroyedEvent>(nullptr)) {
+                auto ev = flatbuffers::GetRoot<Protocol::MultiblockDestroyedEvent>(payload);
+                spdlog::debug("MultiblockDestroyed: id={}", ev->controller_id());
+            }
+            break;
+        }
         case GatewayMsg::kCraftResponse: {
             flatbuffers::Verifier v(payload, plen);
             if (!v.VerifyBuffer<Protocol::CraftResponse>(nullptr)) {

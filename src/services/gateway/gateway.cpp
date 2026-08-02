@@ -358,16 +358,16 @@ void IoUringGateway::on_router_publish(
             send_to_client_bulk_raw(GatewayMsg::kEntitySnapshot, payload, plen);
         else
             spdlog::warn("Gateway: Router: invalid EntitySnapshot FlatBuffer");
-    } else if (topic == "simulation.multiblock.created") {
+    } else if (topic == "sim.multiblock.created") {
         flatbuffers::Verifier v(payload, plen);
         if (v.VerifyBuffer<Protocol::MultiblockCreatedEvent>(nullptr))
-            send_to_client_bulk_raw(GatewayMsg::kEntitySnapshot, payload, plen);
+            send_to_client_ctrl_raw(GatewayMsg::kMultiblockEvent, payload, plen);
         else
             spdlog::warn("Gateway: Router: invalid MultiblockCreatedEvent");
-    } else if (topic == "simulation.multiblock.destroyed") {
+    } else if (topic == "sim.multiblock.destroyed") {
         flatbuffers::Verifier v(payload, plen);
         if (v.VerifyBuffer<Protocol::MultiblockDestroyedEvent>(nullptr))
-            send_to_client_bulk_raw(GatewayMsg::kEntitySnapshot, payload, plen);
+            send_to_client_ctrl_raw(GatewayMsg::kMultiblockEvent, payload, plen);
         else
             spdlog::warn("Gateway: Router: invalid MultiblockDestroyedEvent");
     }
@@ -407,7 +407,7 @@ else if (topic == "player.chest.open.response")
         send_to_client_ctrl_raw(GatewayMsg::kQuestProgressUpdate, payload, plen);
     else if (topic == "quest.unlocked")
         send_to_client_ctrl_raw(GatewayMsg::kQuestUnlockNotification, payload, plen);
-    else if (topic == "quest.completed")
+    else if (topic == "quest.completed.notification")
         send_to_client_ctrl_raw(GatewayMsg::kQuestCompletedNotification, payload, plen);
     else if (on_router_message)
         on_router_message(topic, payload, plen);

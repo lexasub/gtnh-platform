@@ -43,6 +43,11 @@ public:
   // Machine side config update: published when wrench cycles a face role
   virtual void publishMachineConfigUpdatedEvent(int32_t x, int32_t y, int32_t z,
                                                 const std::array<uint8_t, 6> &side_config) = 0;
+
+  virtual void publishMultiblockCreated(uint64_t controller_id, int32_t x,
+                                        int32_t y, int32_t z,
+                                        uint16_t mb_type) = 0;
+  virtual void publishMultiblockDestroyed(uint64_t controller_id) = 0;
 };
 
 } // namespace simcore

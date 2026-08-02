@@ -1,0 +1,27 @@
+// protocol/multiblock_state.fbs
+// MultiblockState blob format — serialized by SimulationCore, stored as opaque blob
+// in EntityStateStore (LMDB). EntityStateStore does NOT parse this —
+// it's dumb storage. Only SimulationCore serializes/deserializes.
+//
+// Includes are relative to the flatc include path:
+include "core.fbs";
+
+namespace Protocol;
+
+// Multiblock state snapshot — persisted via EntityStateStore
+table MultiblockState {
+    version:uint16 = 1;          // schema version
+    controller_id:uint64;        // unique controller ID
+    dimension:int32;             // world dimension
+    anchor_x:uint32;             // controller world X
+    anchor_y:uint32;             // controller world Y
+    anchor_z:uint32;             // controller world Z
+    pattern_id:uint32;           // which pattern (EBF=1, BOILER=2, LCR=3)
+    packed_blocks:[uint32];      // packed xyz positions of all pattern blocks
+    heat_stored:int32 = 0;       // HeatIntakeComponent.heat_stored
+    recipe_progress:int32 = 0;   // current recipe progress ticks
+    recipe_ticks:int32 = 0;      // total ticks for current recipe
+    recipe_id:string;            // current recipe id
+}
+
+root_type MultiblockState;

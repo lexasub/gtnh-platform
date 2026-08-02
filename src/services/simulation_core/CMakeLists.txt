@@ -33,11 +33,12 @@ add_custom_command(
         ${FBS_GEN_DIR}/entity_state_store_generated.h
         ${FBS_GEN_DIR}/pipe_network_generated.h
         ${FBS_GEN_DIR}/quest_generated.h
+        ${FBS_GEN_DIR}/multiblock_state_generated.h
     COMMAND flatbuffers::flatc
         --gen-mutable
         -I ${FBS_DIR}
         -o ${FBS_GEN_DIR}
-        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/simcore.fbs ${FBS_DIR}/chunkstore.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/meta_db.fbs ${FBS_DIR}/machine_state.fbs ${FBS_DIR}/entity_state_store.fbs ${FBS_DIR}/pipe_network.fbs ${FBS_DIR}/quest.fbs
+        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/simcore.fbs ${FBS_DIR}/chunkstore.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/meta_db.fbs ${FBS_DIR}/machine_state.fbs ${FBS_DIR}/entity_state_store.fbs ${FBS_DIR}/pipe_network.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/multiblock_state.fbs
     DEPENDS flatbuffers::flatc
             ${FBS_DIR}/core.fbs
             ${FBS_DIR}/simcore.fbs
@@ -47,6 +48,7 @@ add_custom_command(
             ${FBS_DIR}/machine_state.fbs
             ${FBS_DIR}/pipe_network.fbs
             ${FBS_DIR}/quest.fbs
+            ${FBS_DIR}/multiblock_state.fbs
     COMMENT "Generating FlatBuffers headers for simulation_core"
 )
 
@@ -59,6 +61,7 @@ add_custom_target(simcored_fbs
         ${FBS_GEN_DIR}/machine_state_generated.h
         ${FBS_GEN_DIR}/pipe_network_generated.h
         ${FBS_GEN_DIR}/quest_generated.h
+        ${FBS_GEN_DIR}/multiblock_state_generated.h
 )
 
 # C++ library
@@ -98,10 +101,12 @@ add_library(simcored
         Crafting/CraftRequestHandler.cpp
         Crafting/RecipeCompletedHandler.cpp
         ECS/SimulationEngine.cpp
+        ECS/PatternLibrary.cpp
 
         ECS/Reactors/EnergyFlowHandler.cpp
         ECS/Reactors/FluidFlowHandler.cpp
         ECS/Reactors/ItemFlowHandler.cpp
+        ECS/Reactors/CableExplosionHandler.cpp
 
         ECS/Systems/HeatTransferSystem.cpp
         ECS/Systems/GeneratorSystem.cpp
@@ -113,6 +118,9 @@ add_library(simcored
         ECS/Systems/ExplosionSystem.cpp
         ECS/Systems/TransformerSystem.cpp
         ECS/Systems/RotareGeneratorSystem.cpp
+        ECS/Systems/EBFSystem.cpp
+        ECS/Systems/LargeBoilerSystem.cpp
+        ECS/Systems/LCRSystem.cpp
 
         RecipeManager/RecipeManager.cpp
 )

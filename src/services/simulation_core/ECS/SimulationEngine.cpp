@@ -2,6 +2,8 @@
 #include "ECS/Systems/RotareGeneratorSystem.h"
 #include "Common/xyz.h"
 #include <common/ItemId.h>
+#include "multiblock_state_generated.h"
+#include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
 #include <algorithm>
 
@@ -60,12 +62,25 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
     if (block_id == 0) {
         if (exists) {
             auto* blk = reg_.try_get<Block>(entity);
-            if (blk && blk->mb_id != 0) {
-                removeBlockFromController(blk->mb_id, x, y, z);
+            uint32_t old_mb_id = blk ? blk->mb_id : 0;
+
+            if (old_mb_id != 0) {
+                auto it = controllers_.find(old_mb_id);
+                if (it != controllers_.end()) {
+                    spdlog::info("[ECS] Multiblock controller #{} at ({},{},{}) destroyed", old_mb_id, x, y, z);
+                    if (onMultiblockSave) {
+                        auto blob = serializeMultiblock(old_mb_id);
+                        if (!blob.empty()) onMultiblockSave(old_mb_id, blob);
+                    }
+                    controllers_.erase(it);
+                    if (onMultiblockDestroyed) {
+                        onMultiblockDestroyed(old_mb_id);
+                    }
+                } else {
+                    removeBlockFromController(old_mb_id, x, y, z);
+                }
             }
-            // Keep Position so findEntityAt can find this entity when a
-            // new block is placed. Avoids entity ID recycling which can
-            // cause EnTT sparse_set stale-entry assertions.
+
             reg_.remove<Block>(entity);
             if (reg_.all_of<MachineComponent>(entity)) {
                 reg_.remove<MachineComponent>(entity);
@@ -153,6 +168,41 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
         spdlog::debug("[ECS] Created machine entity #{} type={} at ({},{},{})",
                       next_machine_id_ - 1, block_id, x, y, z);
 
+        if (mb_id == 0 && pattern_registry_.isControllerBlock(block_id)) {
+            auto lookup = [this](uint32_t lx, uint32_t ly, uint32_t lz) -> uint16_t {
+                auto view = reg_.view<const Position, const Block>();
+                for (auto e : view) {
+                    auto [pos, blk] = view.get(e);
+                    if (pos.x == lx && pos.y == ly && pos.z == lz) return blk.id;
+                }
+                return 0;
+            };
+            auto result = pattern_registry_.matchAll(x, y, z, lookup);
+            if (result.matched) {
+                uint64_t ctrl_id = next_machine_id_++;
+                registerController(ctrl_id, x, y, z, result.pattern_id, result.blocks);
+                mc.managed_externally = true;
+                mc.mb_id = static_cast<uint32_t>(ctrl_id);
+                block.mb_id = static_cast<uint32_t>(ctrl_id);
+                container.entity_type = 2;
+                if (onMachineCreated) {
+                    onMachineCreated(static_cast<int32_t>(x),
+                                     static_cast<int32_t>(y),
+                                     static_cast<int32_t>(z),
+                                     block_id);
+                }
+                const auto* pat = pattern_registry_.getPattern(result.pattern_id);
+                spdlog::info("[ECS] Matched multiblock '{}' #{} at ({},{},{})",
+                             pat ? pat->name : "?", ctrl_id, x, y, z);
+                if (onMultiblockCreated) {
+                    onMultiblockCreated(ctrl_id, static_cast<int32_t>(x),
+                                        static_cast<int32_t>(y),
+                                        static_cast<int32_t>(z),
+                                        static_cast<uint16_t>(result.pattern_id));
+                }
+            }
+        }
+
     } else if (is_machine) {
         auto& mc = reg_.get<MachineComponent>(entity);
         mc.machine_id = block_id;
@@ -212,16 +262,17 @@ uint64_t SimulationEngine::matchElectrolyser(uint32_t anchor_x, uint32_t anchor_
         ));
     }
 
-    registerController(controller_id, anchor_x, anchor_y, anchor_z, blocks);
+    registerController(controller_id, anchor_x, anchor_y, anchor_z, 0, blocks);
     spdlog::info("[ECS] Matched electrolyser controller #{} at anchor ({},{},{})",
                  controller_id, anchor_x, anchor_y, anchor_z);
     return controller_id;
 }
 
 void SimulationEngine::registerController(uint64_t id, uint32_t x, uint32_t y, uint32_t z,
+                                          uint32_t pattern_id,
                                           const std::vector<uint32_t>& blocks)
 {
-    controllers_.emplace(id, MultiblockController(id, x, y, z, blocks));
+    controllers_.emplace(id, MultiblockController(id, x, y, z, pattern_id, blocks));
     spdlog::info("[ECS] Registered controller #{} at ({},{},{}) with {} blocks",
                  id, x, y, z, blocks.size());
 }
@@ -310,6 +361,67 @@ bool SimulationEngine::tryActivateRotareGenerator(int32_t x, int32_t y, int32_t 
 
     spdlog::info("Rotare generator activated at ({},{},{})", x, y, z);
     return true;
+}
+
+std::vector<uint8_t> SimulationEngine::serializeMultiblock(uint64_t controller_id) const
+{
+    auto it = controllers_.find(controller_id);
+    if (it == controllers_.end()) return {};
+
+    const auto& ctrl = it->second;
+    int32_t heat_stored = 0;
+    int32_t recipe_progress = 0;
+    int32_t recipe_ticks = 0;
+    std::string recipe_id;
+
+    auto entity = findEntityAt(ctrl.x, ctrl.y, ctrl.z);
+    if (entity != entt::null) {
+        if (auto* heat = reg_.try_get<HeatIntakeComponent>(entity)) {
+            heat_stored = heat->heat_stored;
+        }
+        if (auto* prog = reg_.try_get<RecipeProgress>(entity)) {
+            recipe_progress = static_cast<int32_t>(prog->remaining_ticks);
+            recipe_ticks = static_cast<int32_t>(prog->remaining_ticks);
+            recipe_id = prog->recipe_id;
+        }
+    }
+
+    flatbuffers::FlatBufferBuilder builder(256);
+    auto recipe_off = builder.CreateString(recipe_id);
+    auto blocks_off = builder.CreateVector(ctrl.blocks);
+    auto state = Protocol::CreateMultiblockState(
+        builder, 1, ctrl.id, 0, ctrl.x, ctrl.y, ctrl.z, ctrl.pattern_id,
+        blocks_off, heat_stored, recipe_progress, recipe_ticks, recipe_off);
+    builder.Finish(state);
+
+    return {builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize()};
+}
+
+void SimulationEngine::deserializeMultiblock(uint64_t controller_id,
+                                             const uint8_t* data, size_t size)
+{
+    if (!data || size == 0) return;
+    flatbuffers::Verifier verifier(data, size);
+    if (!verifier.VerifyBuffer<Protocol::MultiblockState>(nullptr)) return;
+    auto fb = flatbuffers::GetRoot<Protocol::MultiblockState>(data);
+
+    auto it = controllers_.find(controller_id);
+    if (it == controllers_.end()) return;
+    auto& ctrl = it->second;
+
+    auto entity = findEntityAt(ctrl.x, ctrl.y, ctrl.z);
+    if (entity == entt::null) return;
+
+    if (auto* heat = reg_.try_get<HeatIntakeComponent>(entity)) {
+        heat->heat_stored = fb->heat_stored();
+    }
+    if (auto* prog = reg_.try_get<RecipeProgress>(entity)) {
+        prog->recipe_id = fb->recipe_id() ? fb->recipe_id()->str() : "";
+        prog->remaining_ticks = static_cast<uint32_t>(fb->recipe_ticks());
+        prog->is_processing = !prog->recipe_id.empty();
+    }
+    spdlog::info("[ECS] Restored multiblock #{} state at ({},{},{})",
+                 controller_id, ctrl.x, ctrl.y, ctrl.z);
 }
 
 } // namespace simcore

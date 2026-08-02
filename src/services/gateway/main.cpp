@@ -114,8 +114,8 @@ int main(int argc, char* argv[]) {
     gateway.subscribe("world.chunk.loaded.compressed");
     gateway.subscribe("world.blocks.changed");
     gateway.subscribe("entities.#");
-    gateway.subscribe("simulation.multiblock.created");
-    gateway.subscribe("simulation.multiblock.destroyed");
+    gateway.subscribe("sim.multiblock.created");
+    gateway.subscribe("sim.multiblock.destroyed");
     gateway.subscribe("player.actions.ack");
     gateway.subscribe("player.inventory.update");
     gateway.subscribe("sim.craft.response");
@@ -125,7 +125,7 @@ int main(int argc, char* argv[]) {
     gateway.subscribe("recipe.completed");
     gateway.subscribe("player.position.load");
     gateway.subscribe("player.chest.open.response");
-    gateway.subscribe("quest.completed");
+    gateway.subscribe("quest.completed.notification");
     gateway.subscribe("quest.unlocked");
     gateway.subscribe("quest.progress.updated");
 

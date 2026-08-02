@@ -97,6 +97,10 @@ struct MockEventPublisher : simcore::IEventPublisher {
 
     void publishMachineConfigUpdatedEvent(int32_t, int32_t, int32_t,
                                           const std::array<uint8_t, 6>&) override {}
+
+    void publishMultiblockCreated(uint64_t, int32_t, int32_t, int32_t,
+                                  uint16_t) override {}
+    void publishMultiblockDestroyed(uint64_t) override {}
 };
 
 static std::string g_consumersPath, g_producersPath;
