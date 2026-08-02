@@ -101,3 +101,4 @@ package-lock.json
 # ── Beads / Dolt files ──────────────────────────────────
 .dolt/
 .beads-credential-key
+.aider*
