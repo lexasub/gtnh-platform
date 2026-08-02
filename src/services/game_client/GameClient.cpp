@@ -99,6 +99,21 @@ void GameClient::subscribeNetClient() {
             uiMgr_.HandleNetwork(GatewayMsg::kRecipeCompleted, data->data());
         });
 
+    netClient_->SetToolActionRespCallback(
+        [this](bool success, uint8_t newRole, const std::vector<uint8_t>& allRoles) {
+            if (!success) {
+                spdlog::warn("[ToolAction] failed new_role={}", newRole);
+                return;
+            }
+            // Rebuild mesh at the last targeted position to reflect face texture changes
+            BlockPos pos = interaction_.GetHighlightedBlock();
+            if (pos.x == std::numeric_limits<int32_t>::max()) return;
+            uint16_t blockId = world_.GetBlockAt(pos);
+            asio::post(worldContext_, [this, pos, blockId]() {
+                meshMgr_.OnBlockUpdate(pos, blockId, 0, 0, world_);
+            });
+        });
+
     netClient_->SetReconnectCallback([this]() {
         world_.ClearPendingRequests();
         spdlog::info("Cleared pending chunk requests after bulk reconnect");

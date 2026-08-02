@@ -8,6 +8,7 @@
 #include <limits>
 #include <cstdint>
 #include "core_generated.h"
+#include <data/registry/ToolIds.h>
 
 InteractionSystem::InteractionSystem(const IBlockQuery* blockQuery,
                                      InventoryState* inventory)
@@ -75,24 +76,31 @@ void InteractionSystem::Update(const Camera& camera, const InputState& input,
 
     // Wrench cycle on highlighted block (key from held binding "wrench_cycle")
     if (binder_ && binder_->IsHeld("wrench_cycle", input) && hasHighlight_) {
-        // Detect which face the player is looking at via raycast
-        int faceX = 0, faceY = 0, faceZ = 0;
-        raycaster_.GetTargetedBlock(ray, renderlib::Raycaster::REACH_DIST,
-                                    &faceX, &faceY, &faceZ);
-        uint8_t hitFace = 0; // DOWN (default fallback)
-        if      (faceY == -1) hitFace = 0; // DOWN
-        else if (faceY ==  1) hitFace = 1; // UP
-        else if (faceZ == -1) hitFace = 2; // NORTH
-        else if (faceZ ==  1) hitFace = 3; // SOUTH
-        else if (faceX == -1) hitFace = 4; // WEST
-        else if (faceX ==  1) hitFace = 5; // EAST
+        uint16_t heldItem = getSelectedBlockId();
+        // Only send if player holds a wrench
+        if (heldItem != ITEM_WRENCH) {
+            spdlog::trace("G held but not a wrench (itemId={})", heldItem);
+        } else {
+            // Detect which face the player is looking at via raycast
+            int faceX = 0, faceY = 0, faceZ = 0;
+            raycaster_.GetTargetedBlock(ray, renderlib::Raycaster::REACH_DIST,
+                                        &faceX, &faceY, &faceZ);
+            uint8_t hitFace = 0; // DOWN (default fallback)
+            if      (faceY == -1) hitFace = 0; // DOWN
+            else if (faceY ==  1) hitFace = 1; // UP
+            else if (faceZ == -1) hitFace = 2; // NORTH
+            else if (faceZ ==  1) hitFace = 3; // SOUTH
+            else if (faceX == -1) hitFace = 4; // WEST
+            else if (faceX ==  1) hitFace = 5; // EAST
 
-        netClient.SendToolAction(
-            player_id,
-            Protocol::ToolActionType::ToolActionType_WRENCH_CYCLE,
-            highlightedBlock_.x, highlightedBlock_.y, highlightedBlock_.z,
-            hitFace
-        );
+            netClient.SendToolAction(
+                player_id,
+                Protocol::ToolActionType::ToolActionType_WRENCH_CYCLE,
+                highlightedBlock_.x, highlightedBlock_.y, highlightedBlock_.z,
+                hitFace,
+                heldItem
+            );
+        }
         // (InputState doesn't track key edges, so we send each frame the key is held;
         //  the server should deduplicate based on player action cooldown)
     }
