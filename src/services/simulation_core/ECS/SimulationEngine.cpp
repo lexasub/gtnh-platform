@@ -200,6 +200,45 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
                                         static_cast<int32_t>(z),
                                         static_cast<uint16_t>(result.pattern_id));
                 }
+                if (pat && !pat->hatches.empty()) {
+                    auto hatches = pattern_registry_.findHatches(x, y, z, *pat, lookup);
+                    auto& ctrl = controllers_[ctrl_id];
+                    ctrl.hatches.resize(hatches.size());
+                    uint16_t offset = 0;
+                    for (size_t i = 0; i < hatches.size(); ++i) {
+                        auto& hs = ctrl.hatches[i];
+                        hs.type = hatches[i].type;
+                        hs.world_x = static_cast<uint32_t>(hatches[i].world_x);
+                        hs.world_y = static_cast<uint32_t>(hatches[i].world_y);
+                        hs.world_z = static_cast<uint32_t>(hatches[i].world_z);
+                        uint16_t slot_count = HatchSlot::kSlotsPerHatch(hs.type);
+                        if (slot_count > 0) {
+                            hs.slot_start = offset;
+                            hs.slot_end = offset + slot_count;
+                            offset += slot_count;
+                        }
+                    }
+                    // Reorder: ITEM_IN first, then ITEM_OUT
+                    std::vector<HatchSlot> ordered;
+                    ordered.reserve(ctrl.hatches.size());
+                    for (auto& hs : ctrl.hatches) {
+                        if (hs.hasItemSlots()) ordered.push_back(hs);
+                    }
+                    for (auto& hs : ctrl.hatches) {
+                        if (!hs.hasItemSlots()) ordered.push_back(hs);
+                    }
+                    ctrl.hatches = std::move(ordered);
+                    // Re-assign offsets after reorder
+                    offset = 0;
+                    for (auto& hs : ctrl.hatches) {
+                        if (hs.hasItemSlots()) {
+                            hs.slot_start = offset;
+                            hs.slot_end = offset + HatchSlot::kSlotsPerHatch(hs.type);
+                            offset = hs.slot_end;
+                        }
+                    }
+                    assignHatchSlots(ctrl, entity);
+                }
             }
         }
 
@@ -323,6 +362,53 @@ uint32_t SimulationEngine::defaultMachineSlotCount(uint16_t block_id) const
         if (info) return static_cast<uint32_t>(info->slots_in + info->slots_out);
     }
     return 0;
+}
+
+void SimulationEngine::assignHatchSlots(MultiblockController& ctrl, entt::entity entity)
+{
+    if (entity == entt::null) return;
+    auto* inv = reg_.try_get<InventoryContainer>(entity);
+    if (!inv) return;
+
+    uint16_t total_hatch_slots = 0;
+    for (const auto& hs : ctrl.hatches) {
+        total_hatch_slots += HatchSlot::kSlotsPerHatch(hs.type);
+    }
+
+    uint32_t base_count = inv->slot_count;
+    // If controller was already assigned slots, don't double-count
+    // Reallocate to base + hatch slots
+    uint32_t new_count = base_count + total_hatch_slots;
+    if (new_count == inv->slot_count) return; // no change needed
+
+    inv->slot_count = new_count;
+    inv->slots.resize(new_count);
+}
+
+void SimulationEngine::getInputSlotRange(const MultiblockController& ctrl, int& slot_start, int& slot_end)
+{
+    slot_start = 0;
+    slot_end = 0;
+    for (const auto& hs : ctrl.hatches) {
+        if (hs.type == HatchType::ITEM_IN) {
+            slot_start = hs.slot_start;
+            slot_end = hs.slot_end;
+            break;
+        }
+    }
+}
+
+void SimulationEngine::getOutputSlotRange(const MultiblockController& ctrl, int& slot_start, int& slot_end)
+{
+    slot_start = 0;
+    slot_end = 0;
+    for (const auto& hs : ctrl.hatches) {
+        if (hs.type == HatchType::ITEM_OUT) {
+            slot_start = hs.slot_start;
+            slot_end = hs.slot_end;
+            break;
+        }
+    }
 }
 
 void SimulationEngine::registerMachineInteractionHandler(uint16_t machine_id, MachineInteractionHandler handler) {

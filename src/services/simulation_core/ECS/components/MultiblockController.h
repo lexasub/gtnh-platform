@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <vector>
+#include "HatchSlot.h"
 
 namespace simcore {
 
@@ -11,6 +12,7 @@ struct MultiblockController {
   uint32_t z = 0;
   uint32_t pattern_id = 0;
   std::vector<uint32_t> blocks; // packed positions (xyz)
+  std::vector<HatchSlot> hatches;
 
   MultiblockController() = default;
   MultiblockController(uint64_t id_, uint32_t x_, uint32_t y_, uint32_t z_,

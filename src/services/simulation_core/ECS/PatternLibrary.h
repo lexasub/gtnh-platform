@@ -51,6 +51,21 @@ struct MultiblockPattern {
 
 using BlockLookupFn = std::function<uint16_t(uint32_t x, uint32_t y, uint32_t z)>;
 
+constexpr uint16_t HATCH_BLOCK_ITEM_IN  = 1003;
+constexpr uint16_t HATCH_BLOCK_ITEM_OUT = 1004;
+constexpr uint16_t HATCH_BLOCK_FLUID_IN = 1005;
+constexpr uint16_t HATCH_BLOCK_FLUID_OUT = 1006;
+
+inline HatchType hatchBlockIdToType(uint16_t block_id) {
+    switch (block_id) {
+        case HATCH_BLOCK_ITEM_IN:  return HatchType::ITEM_IN;
+        case HATCH_BLOCK_ITEM_OUT: return HatchType::ITEM_OUT;
+        case HATCH_BLOCK_FLUID_IN: return HatchType::FLUID_IN;
+        case HATCH_BLOCK_FLUID_OUT: return HatchType::FLUID_OUT;
+        default: return HatchType::NONE;
+    }
+}
+
 class PatternRegistry {
 public:
     PatternRegistry();
@@ -62,8 +77,17 @@ public:
                                  BlockLookupFn lookup) const;
 
     PatternMatchResult matchById(uint32_t pattern_id,
-                                  uint32_t anchor_x, uint32_t anchor_y, uint32_t anchor_z,
-                                  BlockLookupFn lookup) const;
+                                   uint32_t anchor_x, uint32_t anchor_y, uint32_t anchor_z,
+                                   BlockLookupFn lookup) const;
+
+    struct HatchResult {
+      int32_t world_x, world_y, world_z;
+      HatchType type;
+    };
+
+    std::vector<HatchResult> findHatches(
+        uint32_t controller_world_x, uint32_t controller_world_y, uint32_t controller_world_z,
+        const MultiblockPattern& pattern, BlockLookupFn lookup) const;
 
     uint16_t getBlockAtOffset(const MultiblockPattern& pattern,
                                uint32_t anchor_x, uint32_t anchor_y, uint32_t anchor_z,

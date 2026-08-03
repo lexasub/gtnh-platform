@@ -1,20 +1,24 @@
-## 1. Parsing Refactor
+## 1. Wire Contract & Parsing (parsing landed in 158038a)
 
-- [ ] 1.1 Refactor `updateQuestStatus()` (`QuestBookWindow.cpp:200-215`) to use FlatBuffers deserialization instead of raw binary parsing
-- [ ] 1.2 Refactor `OnNetworkUpdate()` (`QuestBookWindow.cpp:217-224`) to use GatewayMsg enum constants instead of hardcoded `19`
+- [x] 1.1 `updateQuestStatus()` → FlatBuffers deserialization — **DONE** (`QuestBookWindow.cpp:202` `applyQuestStatus`, commit `158038a`)
+- [x] 1.2 `OnNetworkUpdate()` uses `GatewayMsg` enum constants, not hardcoded `19` — **DONE** (`QuestBookWindow.cpp:213`, commit `158038a`)
+- [ ] 1.3 Correct `gateway.fbs` GatewayPayload union + header comment: quest entries numbered 20/21/22 to match the live wire (`gateway.h`, `NetClient.h`). Note the `// TODO move to protocol` consolidation as the long-term fix.
 
-## 2. Features
+## 2. Notifications (client visuals)
 
-- [ ] 2.1 Manual completion button — render in detail view when quest status is AVAILABLE; send `QuestProgressUpdate` on click
-- [ ] 2.2 Unlock animation — when new quests become available, show brief visual effect (color pulse, icon change)
-- [ ] 2.3 Completion indicator — badges on era tabs showing completion ratio (e.g., "3/12")
-- [ ] 2.4 Era lock/unlock visual state — locked era tabs dimmed/gray until unlocked
+- [ ] 2.1 `QuestUnlockNotification` (20) — banner/toast + highlight newly unlocked quests in the quest list (dispatch already exists; visuals don't)
+- [ ] 2.2 `QuestCompletedNotification` (21) — banner/toast + reward info (reward item/count)
 
-## 3. Client→Server Routing
+## 3. Era Progression UI
 
-- [ ] 3.1 Add quest message routing from client to MetaDB — forward `quest.get` and `quest.set` from client to router topics (currently handled by generic message forwarding)
+- [ ] 3.1 Completion ratio badges on era tabs (e.g. "3/12")
+- [ ] 3.2 Era lock/unlock visual state — era locked until all quests in the preceding era COMPLETED; locked tabs dimmed, non-selectable; newly unlocked era gets a brief highlight
 
-## 4. Notifications
+## 4. Client→Server Routing
 
-- [ ] 4.1 Handle msgType 20 (`QuestUnlockNotification`) in `OnNetworkUpdate()` — visual notification + highlight newly unlocked quests
-- [ ] 4.2 Handle msgType 21 (`QuestCompletedNotification`) — visual notification + reward info
+- [ ] 4.1 `NetClient::SendQuestGet` — request player quest progress → gateway → `meta_db.quest.get`; response arrives as `QuestProgressUpdate` (20)
+- [ ] 4.2 `NetClient::SendQuestSet` + gateway forward to `meta_db.quest.set` — transport only; server-authoritative status validation belongs to `manual-completion`, this route SHALL NOT become the completion path
+
+## 5. Deferred
+
+- [ ] ~~2.1 manual completion button~~ → **DEFERRED** to `manual-completion` (server-authoritative: `QuestCompleteRequest` protocol + `QuestManager::completeQuest()` + reward→inventory; reward delivery blocked on `questbook-reward-inventory`)

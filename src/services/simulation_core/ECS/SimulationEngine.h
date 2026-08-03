@@ -54,8 +54,13 @@ public:
                              uint32_t anchor_z, uint64_t controller_id);
 
   void registerController(uint64_t id, uint32_t x, uint32_t y, uint32_t z,
-                          uint32_t pattern_id,
-                          const std::vector<uint32_t> &blocks);
+                           uint32_t pattern_id,
+                           const std::vector<uint32_t> &blocks);
+
+  void assignHatchSlots(MultiblockController& ctrl, entt::entity entity);
+
+  static void getInputSlotRange(const MultiblockController& ctrl, int& slot_start, int& slot_end);
+  static void getOutputSlotRange(const MultiblockController& ctrl, int& slot_start, int& slot_end);
 
   bool isControllerActive(uint64_t id) const;
   const MultiblockController &getController(uint64_t id) const;

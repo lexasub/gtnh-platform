@@ -8,6 +8,8 @@ static uint32_t xyz(uint32_t x, uint32_t y, uint32_t z) {
     return (x & 0x3FF) | ((y & 0x3FF) << 10) | ((z & 0x3FF) << 20);
 }
 
+
+
 static MultiblockPattern makeEBFPattern() {
     MultiblockPattern p;
     p.id = 1;
@@ -223,6 +225,46 @@ uint16_t PatternRegistry::getBlockAtOffset(const MultiblockPattern& pattern,
     return lookup(corner_x + static_cast<uint32_t>(dx),
                   corner_y + static_cast<uint32_t>(dy),
                   corner_z + static_cast<uint32_t>(dz));
+}
+
+std::vector<PatternRegistry::HatchResult> PatternRegistry::findHatches(
+    uint32_t controller_world_x, uint32_t controller_world_y, uint32_t controller_world_z,
+    const MultiblockPattern& pattern, BlockLookupFn lookup) const {
+
+    std::vector<HatchResult> results;
+    results.reserve(pattern.hatches.size());
+
+    for (const auto& hd : pattern.hatches) {
+        int32_t world_x = static_cast<int32_t>(controller_world_x) + hd.dx;
+        int32_t world_y = static_cast<int32_t>(controller_world_y) + hd.dy;
+        int32_t world_z = static_cast<int32_t>(controller_world_z) + hd.dz;
+
+        if (world_x < 0 || world_y < 0 || world_z < 0) continue;
+
+        uint32_t ux = static_cast<uint32_t>(world_x);
+        uint32_t uy = static_cast<uint32_t>(world_y);
+        uint32_t uz = static_cast<uint32_t>(world_z);
+
+        uint16_t block_id = lookup(ux, uy, uz);
+
+        HatchType detected = hatchBlockIdToType(block_id);
+
+        HatchResult r;
+        r.world_x = world_x;
+        r.world_y = world_y;
+        r.world_z = world_z;
+
+        if (detected != HatchType::NONE) {
+            r.type = detected;
+        } else {
+            // ENERGY and MUFFLER are structural — assume present even if block ID not recognized
+            r.type = hd.type;
+        }
+
+        results.push_back(r);
+    }
+
+    return results;
 }
 
 } // namespace simcore
