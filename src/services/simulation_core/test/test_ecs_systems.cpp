@@ -25,6 +25,7 @@
 #include "Network/PipeEnergyClient.h"
 #include "MachineRegistry.h"
 #include "RecipeManager/RecipeManager.h"
+#include <common/ItemId.h>
 
 extern int g_tests, g_passed, g_failed;
 void test_check(bool cond, const char* file, int line, const char* expr, const char* msg);
@@ -129,9 +130,9 @@ static void test_GeneratorSystem_burns_coal() {
     simcore::GeneratorSystem sys(reg, events, pipeClient);
 
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, 46, 0, 100, 64, 100, 1);
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:00:2"), 0, 100, 64, 100, 1);
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 0, 128, 128, 0, EnergyType::HEAT);
-    simcore::InventoryContainer container(0, 1, {{44, 1, 0}});
+    simcore::InventoryContainer container(0, 1, {{ItemId::pack("0:11110:2"), 1, 0}});
     reg.emplace<simcore::InventoryContainer>(ent, container);
 
     sys.tick(0.05f);
@@ -139,7 +140,7 @@ static void test_GeneratorSystem_burns_coal() {
 
     CHECK_GT(energy.current, 0, "generator should produce energy from coal");
     CHECK_GT(events->block_entity_update_count, 0, "should publish BlockEntityUpdate");
-    CHECK_EQ(events->last_machine_id, 46, "machine_id should be heat_generator");
+    CHECK_EQ(events->last_machine_id, ItemId::pack("1110:00:2"), "machine_id should be heat_generator");
 
     PASS();
 }
@@ -152,7 +153,7 @@ static void test_GeneratorSystem_no_fuel_no_energy() {
     simcore::GeneratorSystem sys(reg, events, pipeClient);
 
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, 46, 0, 101, 64, 101, 2);
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:00:2"), 0, 101, 64, 101, 2);
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 0, 128, 128, 0, EnergyType::HEAT);
     reg.emplace<simcore::InventoryContainer>(ent);
 
@@ -172,7 +173,7 @@ static void test_GeneratorSystem_full_storage_skips() {
     simcore::GeneratorSystem sys(reg, events, pipeClient);
 
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, 46, 0, 102, 64, 102, 3);
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:00:2"), 0, 102, 64, 102, 3);
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 10000, 128, 128, 0, EnergyType::HEAT);
     reg.emplace<simcore::InventoryContainer>(ent);
 
@@ -358,7 +359,7 @@ static void test_CreativeGeneratorSystem_fills_energy() {
     simcore::CreativeGeneratorSystem sys(reg, events, pipeClient);
 
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, 63, 0, 300, 50, 300, 40);
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:2"), 0, 300, 50, 300, 40);
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 0, 0, 0, 10, EnergyType::ELECTRICITY);
 
     sys.tick(0.05f);

@@ -31,11 +31,15 @@ static void test_load_items_csv() {
 
     auto* planks = ItemRegistry::GetItem(ItemId::pack("0:10:0"));
     CHECK(planks != nullptr, "oak_planks exists");
-    CHECK_EQ(planks->name, std::string("oak_planks"), "oak_planks name");
+    if (planks) {
+        CHECK_EQ(planks->name, std::string("oak_planks"), "oak_planks name");
+    }
 
-    auto* coal = ItemRegistry::GetItem(ItemId::pack("0:111:2"));
+    auto* coal = ItemRegistry::GetItem(ItemId::pack("0:11110:2"));
     CHECK(coal != nullptr, "coal exists");
-    CHECK_EQ(coal->name, std::string("coal"), "coal name");
+    if (coal) {
+        CHECK_EQ(coal->name, std::string("coal"), "coal name");
+    }
 
     auto* unknown = ItemRegistry::GetItem(9999);
     CHECK(unknown == nullptr, "unknown item returns nullptr");
@@ -51,13 +55,17 @@ static void test_item_properties() {
 
     auto* stone = ItemRegistry::GetItem(ItemId::pack("0:0:2"));
     CHECK(stone != nullptr, "cobblestone exists");
-    CHECK_EQ(stone->stackSize, uint8_t(64), "cobblestone stack size is 64");
-    CHECK_EQ(stone->name, std::string("cobblestone"), "cobblestone name");
+    if (stone) {
+        CHECK_EQ(stone->stackSize, uint8_t(64), "cobblestone stack size is 64");
+        CHECK_EQ(stone->name, std::string("cobblestone"), "cobblestone name");
+    }
     CHECK_EQ(ItemRegistry::GetStackSize(ItemId::pack("0:0:2")), uint8_t(64), "GetStackSize for cobblestone");
 
-    auto* chest = ItemRegistry::GetItem(ItemId::pack("0:10:3"));
+    auto* chest = ItemRegistry::GetItem(ItemId::pack("0:10:11:0"));
     CHECK(chest != nullptr, "chest exists");
-    CHECK_EQ(chest->name, std::string("chest"), "chest name");
+    if (chest) {
+        CHECK_EQ(chest->name, std::string("chest"), "chest name");
+    }
 
     PASS();
 }

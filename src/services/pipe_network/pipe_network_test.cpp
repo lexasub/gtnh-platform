@@ -436,7 +436,7 @@ static void test_fluid_registry_defaults() {
 
     // Re-init should not duplicate
     reg.initDefaults();
-    CHECK(reg.isFluid(84), "water still registered after re-init");
+    CHECK(reg.isFluid(waterId), "water still registered after re-init");
 
     PASS();
 }
