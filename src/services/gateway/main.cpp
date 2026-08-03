@@ -61,7 +61,8 @@ int main(int argc, char* argv[]) {
         // on_router_publish() handles: world.chunk.loaded.compressed, world.blocks.changed,
         // entities.#, player.actions.ack, player.inventory.update, world.block_entity.update,
         // sim.craft.response, player.machine.slot.response, player.tool.action.response,
-        // player.position.load, player.chest.open.response, multiblock events, quest topics.
+        // player.position.load, player.chest.open.response, multiblock events, quest topics,
+        // meta_db.quest.get.response.
         if (topic == "metadb.player.online") {
             gateway.publish_player_joined();
         } else if (topic == "recipe.completed")
@@ -128,6 +129,7 @@ int main(int argc, char* argv[]) {
     gateway.subscribe("quest.completed.notification");
     gateway.subscribe("quest.unlocked");
     gateway.subscribe("quest.progress.updated");
+    gateway.subscribe("meta_db.quest.get.response");
 
     spdlog::info("Gateway running — worker thread handles io_uring");
 

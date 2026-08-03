@@ -54,6 +54,7 @@ int,name,stack,meta
 0:11111:1,hydrogen_bucket,16,0
 0:11111:2,sulfuric_acid_bucket,16,0
 0:11111:3,empty_bucket,64,0
+0:11111:4,coolant_bucket,16,0
 
 # ORES (prefix 10)
 10:0,iron_ore,,0

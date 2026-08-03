@@ -1,7 +1,8 @@
 #include "BoilerSystem.h"
+#include "HeatConstants.h"
 #include <common/ItemId.h>
 #include <spdlog/spdlog.h>
- #include "../components/HeatIntakeComponent.h"
+#include "../components/HeatIntakeComponent.h"
 #include "../components/EnergyStorage.h"
 
 namespace simcore {
@@ -11,8 +12,6 @@ namespace {
         return block_id == ItemId::pack("1110:01:0")  // steam_solid_boiler
             || block_id == ItemId::pack("1110:01:1"); // steam_heat_boiler
     }
-
-    constexpr int32_t kConversionRate = 1;
 }
 
 BoilerSystem::BoilerSystem(entt::registry& reg,
@@ -41,7 +40,7 @@ void BoilerSystem::tick(float /*dt*/) {
         if (container.slots.empty() || container.slots[0].count == 0 || container.slots[0].item_id != ItemId::pack("0:11111:0")) continue;
 
         // Consume 1 from heat_stored
-        heatIntake.heat_stored -= std::min(1, heatIntake.heat_stored);
+        heatIntake.heat_stored -= std::min(HeatConstants::CONVERSION_RATE, heatIntake.heat_stored);
 
         // Consume water bucket: slot[0].count--
         container.slots[0].count--;
@@ -49,8 +48,8 @@ void BoilerSystem::tick(float /*dt*/) {
             container.slots[0].item_id = ItemId::pack("0:11111:3");  // empty_bucket
         }
 
-        // Produce STEAM: int32_t accepted = energy.addEnergy(min(energy.maxOutput, 1))
-        int32_t accepted = energy.addEnergy(std::min(energy.maxOutput, 1));
+        // Produce STEAM: int32_t accepted = energy.addEnergy(min(energy.maxOutput, conversionRate))
+        int32_t accepted = energy.addEnergy(std::min(energy.maxOutput, HeatConstants::CONVERSION_RATE));
 
         // If accepted > 0, publish node update to PipeNetwork
         if (accepted > 0) {

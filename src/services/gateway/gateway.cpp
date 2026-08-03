@@ -409,6 +409,8 @@ else if (topic == "player.chest.open.response")
         send_to_client_ctrl_raw(GatewayMsg::kQuestUnlockNotification, payload, plen);
     else if (topic == "quest.completed.notification")
         send_to_client_ctrl_raw(GatewayMsg::kQuestCompletedNotification, payload, plen);
+    else if (topic == "meta_db.quest.get.response")
+        send_to_client_ctrl_raw(GatewayMsg::kQuestProgressUpdate, payload, plen);
     else if (on_router_message)
         on_router_message(topic, payload, plen);
 }
