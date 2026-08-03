@@ -10,6 +10,9 @@
 #include <entt/entt.hpp>
 
 #include "Network/clients/IoUringRouterClient.h"
+#include "ECS/SimulationEngine.h"
+#include "ECS/PatternLibrary.h"
+#include "multiblock_state_generated.h"
 #include "ECS/components/MachineComponent.h"
 #include "ECS/components/RecipeProgress.h"
 #include "ECS/components/InventoryContainer.h"
@@ -83,7 +86,8 @@ struct MockEventPublisher : simcore::IEventPublisher {
                                    EnergyType,
                                    uint32_t,
                                    int,
-                                   float) override {
+                                   float,
+                                   const std::vector<HatchUpdateData>* = nullptr) override {
         block_entity_update_count++;
         last_x = x; last_y = y; last_z = z;
         last_machine_id = machine_type;
@@ -371,6 +375,115 @@ static void test_CreativeGeneratorSystem_fills_energy() {
     PASS();
 }
 
+static void test_MultiblockFormation_hatchIO() {
+    setupMachineRegistry();
+    auto* mreg = MachineRegistry::instance();
+
+    // Register the EBF controller as a machine so the formation path triggers
+    // (mirrors the runtime registration in simcored main.cpp).
+    MachineInfo ebf{};
+    ebf.id = 1003;
+    ebf.name = "electric_blast_furnace";
+    ebf.machine_class = "ebf";
+    ebf.role = MachineRole::CONSUMER;
+    ebf.energy_in = EnergyType::HEAT;
+    ebf.tier = 1;
+    ebf.slots_in = 0;
+    ebf.slots_out = 0;
+    ebf.capacity = 10000;
+    ebf.maxInput = 32;
+    ebf.maxOutput = 32;
+    mreg->Register(ebf);
+
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    engine->setMachineRegistry(mreg);
+    auto& reg = engine->reg();
+
+    constexpr uint16_t CASING = 1001;
+    constexpr uint16_t COIL = 1002;
+    constexpr uint16_t CTRL = 1003;
+
+    auto place = [&](int x, int y, int z, uint16_t id) {
+        engine->onBlockChanged(static_cast<uint32_t>(x), static_cast<uint32_t>(y),
+                               static_cast<uint32_t>(z), id, 0, 0);
+    };
+
+    // EBF footprint: controller at (0,3,0), corner at (-1,0,-1).
+    // Layer 0 (y=0): full casing floor.
+    for (int x = -1; x <= 1; ++x)
+        for (int z = -1; z <= 1; ++z) place(x, 0, z, CASING);
+
+    // Layer 1 (y=1): casing corners, coil center, ITEM_IN/OUT hatch side walls.
+    place(-1, 1, -1, CASING); place(1, 1, -1, CASING);
+    place(-1, 1, 1, CASING);  place(1, 1, 1, CASING);
+    place(-1, 1, 0, simcore::HATCH_BLOCK_ITEM_IN);   // corner-rel (0,1,1)
+    place(1, 1, 0, simcore::HATCH_BLOCK_ITEM_OUT);   // corner-rel (2,1,1)
+    place(0, 1, 0, COIL);
+
+    // Layer 2 (y=2): same shell.
+    place(-1, 2, -1, CASING); place(1, 2, -1, CASING);
+    place(-1, 2, 1, CASING);  place(1, 2, 1, CASING);
+    place(0, 2, 0, COIL);
+
+    // Layer 3 (y=3): full casing ring, then controller placed LAST so the
+    // whole pattern is present when the formation check runs.
+    for (int x = -1; x <= 1; ++x)
+        for (int z = -1; z <= 1; ++z)
+            if (!(x == 0 && z == 0)) place(x, 3, z, CASING);
+    place(0, 3, 0, CTRL);
+
+    auto& controllers = engine->getControllers();
+    CHECK_EQ(static_cast<int>(controllers.size()), 1, "EBF controller formed");
+    if (controllers.empty()) {
+        PASS();
+        return;
+    }
+
+    const auto& ctrl = controllers.begin()->second;
+    CHECK_EQ(ctrl.pattern_id, 1u, "EBF pattern id");
+    CHECK(ctrl.hatches.size() >= 4, "ITEM_IN/OUT + MUFFLER + ENERGY hatches detected");
+
+    // ITEM_IN/OUT hatches carry the first 8 slots (4+4) after reorder.
+    int in_start = -1, in_end = -1, out_start = -1, out_end = -1;
+    simcore::SimulationEngine::getInputSlotRange(ctrl, in_start, in_end);
+    simcore::SimulationEngine::getOutputSlotRange(ctrl, out_start, out_end);
+    CHECK_EQ(in_start, 0, "ITEM_IN slots start at 0");
+    CHECK_EQ(in_end, 4, "ITEM_IN hatch has 4 slots");
+    CHECK_EQ(out_start, 4, "ITEM_OUT slots follow ITEM_IN");
+    CHECK_EQ(out_end, 8, "ITEM_OUT hatch has 4 slots");
+
+    // Controller entity container resized to hatch slots.
+    entt::entity ctrl_entity = entt::null;
+    auto view = reg.view<const simcore::Position, simcore::MachineComponent>();
+    for (auto e : view) {
+        auto& pos = view.get<const simcore::Position>(e);
+        if (pos.x == 0 && pos.y == 3 && pos.z == 0) { ctrl_entity = e; break; }
+    }
+    CHECK(ctrl_entity != entt::null, "controller entity exists");
+    if (ctrl_entity != entt::null) {
+        auto& container = reg.get<simcore::InventoryContainer>(ctrl_entity);
+        CHECK_EQ(static_cast<int>(container.slots.size()), 8, "8 hatch slots allocated");
+        // Put an ore in the ITEM_IN hatch, verify the guard collects it.
+        container.slots[0] = {3, 1, 0};
+        std::vector<simcore::InventorySlot> contents;
+        engine->collectControllerContents(ctrl, contents);
+        CHECK_EQ(static_cast<int>(contents.size()), 1, "collectControllerContents gathers hatch items");
+        CHECK_EQ(contents[0].item_id, 3u, "gathered item is the placed ore");
+
+        // Persistence (task 2.2): serialized state carries the inventory.
+        auto blob = engine->serializeMultiblock(ctrl.id);
+        CHECK(!blob.empty(), "serializeMultiblock produces a blob");
+        auto fb = flatbuffers::GetRoot<Protocol::MultiblockState>(blob.data());
+        CHECK(fb->slots() != nullptr, "MultiblockState includes inventory slots");
+        if (fb->slots()) {
+            CHECK_EQ(static_cast<int>(fb->slots()->size()), 8, "8 slots persisted");
+            CHECK_EQ(fb->slots()->Get(0)->item_id(), 3u, "ore restored from slot 0");
+        }
+    }
+
+    PASS();
+}
+
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
 void test_ecs_systems() {
@@ -384,4 +497,5 @@ void test_ecs_systems() {
     TEST(BatteryBufferSystem_charges_tool);
     TEST(BatteryBufferSystem_empty_slot_noop);
     TEST(BatteryBufferSystem_full_tool_skips);
+    TEST(MultiblockFormation_hatchIO);
 }

@@ -61,6 +61,12 @@ public:
   /// Load all .yaml recipe files from a directory.
   bool loadRecipesFromYamlDirectory(const std::string &directoryPath);
 
+  /// Runtime registration of a block_id → machine class mapping (used for
+  /// multiblock controllers whose blocks are not yet in machines.yaml).
+  /// Energy_in: ENERGY_TYPE_ANY (255) = any.
+  void registerMachineClass(uint16_t block_id, const std::string &class_name,
+                            int16_t tier = 0, uint8_t energy_in = 255);
+
   // ── RPC handlers ────────────────────────────────────────────────
   std::string checkRecipe(const Protocol::Container *container,
                           uint16_t machine_id);

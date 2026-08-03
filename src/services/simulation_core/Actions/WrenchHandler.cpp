@@ -15,8 +15,10 @@ namespace simcore {
 
 WrenchHandler::WrenchHandler(entt::registry &registry,
                               std::shared_ptr<IEventPublisher> events,
-                              std::shared_ptr<EntityStateStoreClient> entityState)
-    : m_registry(registry), events_(std::move(events)), entityState_(std::move(entityState)) {}
+                              std::shared_ptr<EntityStateStoreClient> entityState,
+                              std::unordered_map<uint64_t, MultiblockController> *controllers)
+    : m_registry(registry), events_(std::move(events)), entityState_(std::move(entityState)),
+      controllers_(controllers) {}
 
 WrenchCycleResult WrenchHandler::cycleFace(uint64_t playerId, int32_t x, int32_t y, int32_t z, uint8_t face) {
     (void)playerId; // reserved for permission checks
@@ -33,9 +35,39 @@ WrenchCycleResult WrenchHandler::cycleFace(uint64_t playerId, int32_t x, int32_t
     }
     
     if (found == entt::null) {
+        // Multiblock hatch wrenching (task 1.4): hatches are not machines,
+        // but their side_config lives on the owning controller's HatchSlot.
+        if (controllers_) {
+            for (auto& [id, ctrl] : *controllers_) {
+                for (auto& hs : ctrl.hatches) {
+                    if (hs.world_x == static_cast<uint32_t>(x) &&
+                        hs.world_y == static_cast<uint32_t>(y) &&
+                        hs.world_z == static_cast<uint32_t>(z)) {
+                        if (face > 5) {
+                            result.error = "invalid_face";
+                            return result;
+                        }
+                        bool hasFluid = (hs.type == HatchType::FLUID_IN || hs.type == HatchType::FLUID_OUT);
+                        bool hasEnergy = (hs.type == HatchType::ENERGY);
+                        uint8_t currentRole = hs.side_config;
+                        uint8_t newRole = nextSideRole(currentRole, hasFluid, hasEnergy);
+                        // NOTE: HatchSlot.side_config is a single byte (default ANY).
+                        // Per-face granularity is a future refinement.
+                        hs.side_config = newRole;
+                        result.success = true;
+                        result.error = "";
+                        result.newRole = newRole;
+                        for (int i = 0; i < 6; i++) result.allRoles[i] = hs.side_config;
+                        spdlog::info("[Wrench] Hatch at ({},{},{}) face {} cycled side_config {}→{}",
+                                     x, y, z, face, currentRole, newRole);
+                        return result;
+                    }
+                }
+            }
+        }
         return result;
     }
-    
+
     auto& machine = m_registry.get<MachineComponent>(found);
     if (face > 5) {
         result.error = "invalid_face";

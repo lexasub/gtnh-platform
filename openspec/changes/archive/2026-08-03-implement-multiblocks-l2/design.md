@@ -43,7 +43,7 @@ struct PatternLayer {
 };
 
 struct HatchDef {
-    int32_t dx, dy, dz; // relative to anchor
+    int32_t dx, dy, dz; // relative to controller (controller_pos + offset)
     HatchType type;     // ITEM_IN, ITEM_OUT, FLUID_IN, FLUID_OUT, ENERGY, MUFFER
 };
 
@@ -132,7 +132,7 @@ table MultiblockDestroyed {
 ## Risks / Trade-offs
 
 - **R1: O(n) pattern matching without SpatialIndex** → For MVP scale (<1000 multiblocks) this is fine. If world size grows, L3 SpatialIndex becomes mandatory.
-- **R2: Hatch detection hardcodes positions** → Hatch positions are pattern-relative (defined in `MultiblockPattern.hatches`). Player must build hatches at exact positions. No dynamic hatch recognition. Accepted for L2.
+- **R2: Hatch detection hardcodes positions** → Hatch positions are controller-relative (defined in `MultiblockPattern.hatches`). Player must build hatches at exact positions. No dynamic hatch recognition. Accepted for L2.
 - **R3: EntityStateStore load on chunk load** → Each chunk might need 1+N lookups (1 for multiblocks, N for tile entities). Acceptable for L2; batch loading can be optimized in L3.
 - **R4: Three separate systems vs one generic system** → Code duplication between systems (energy hatch read, recipe dispatch). Mitigation: factor shared multiblock helpers into `MultiblockUtils.h`.
 

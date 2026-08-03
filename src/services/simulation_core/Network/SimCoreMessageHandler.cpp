@@ -85,6 +85,7 @@ void SimCoreMessageHandler::setup() {
 
     casHandler_ = std::make_shared<SetBlockCASHandler>(
         d.blockRepository, d.eventPublisher, d.engine,
+        d.inventoryStore,
         [inventoryStore = d.inventoryStore](uint64_t player_id, uint16_t item_id, uint8_t count, int32_t target_slot) {
             inventoryStore->giveItem(player_id, item_id, count, target_slot);
         },

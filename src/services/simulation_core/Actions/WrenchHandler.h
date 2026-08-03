@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <entt/entt.hpp>
 #include <string>
+#include <unordered_map>
+#include "ECS/components/MultiblockController.h"
 
 namespace simcore {
 
@@ -19,7 +21,8 @@ class WrenchHandler {
 public:
   WrenchHandler(entt::registry &registry,
                 std::shared_ptr<IEventPublisher> events,
-                std::shared_ptr<EntityStateStoreClient> entityState);
+                std::shared_ptr<EntityStateStoreClient> entityState,
+                std::unordered_map<uint64_t, MultiblockController> *controllers = nullptr);
   WrenchCycleResult cycleFace(uint64_t playerId, int32_t x, int32_t y,
                               int32_t z, uint8_t face);
 
@@ -29,6 +32,7 @@ private:
   entt::registry &m_registry;
   std::shared_ptr<IEventPublisher> events_;
   std::shared_ptr<EntityStateStoreClient> entityState_;
+  std::unordered_map<uint64_t, MultiblockController> *controllers_ = nullptr;
 };
 
 } // namespace simcore

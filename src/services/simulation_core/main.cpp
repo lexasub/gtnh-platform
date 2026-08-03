@@ -143,6 +143,56 @@ int main(int argc, char* argv[]) {
         spdlog::warn("Failed to load machine classes from {}", machines_yaml);
     }
 
+    // ── Multiblock controllers (runtime registration) ─────────────────────
+    // TODO(multiblocks): these blocks are not yet in machines.yaml/items.csv
+    // (the registry is being regenerated). Register them at runtime so the
+    // multiblock formation path and recipe lookup work end-to-end.
+    {
+        constexpr uint16_t EBF_CONTROLLER = 1003;
+        constexpr uint16_t BOILER_CONTROLLER = 1005;
+        constexpr uint16_t LCR_CONTROLLER = 1006;
+
+        if (machineRegistry) {
+            auto registerController = [&machineRegistry](uint16_t id, const char* name,
+                                                         const char* cls, MachineRole role,
+                                                         std::optional<EnergyType> energy_in,
+                                                         std::optional<EnergyType> energy_out,
+                                                         int slots_in = 0) {
+                MachineInfo info{};
+                info.id = id;
+                info.name = name;
+                info.machine_class = cls;
+                info.role = role;
+                info.energy_in = energy_in;
+                info.energy_out = energy_out;
+                info.tier = 1;
+                info.slots_in = static_cast<int>(slots_in); // items go through hatches / fuel container
+                info.slots_out = 0;
+                info.capacity = 10000;
+                info.maxInput = 32;
+                info.maxOutput = 32;
+                machineRegistry->Register(info);
+            };
+
+            // EBF — HEAT consumer; Large Boiler — STEAM producer (fuel via
+            // controller container, so give it 4 fuel slots); LCR — ELECTRICITY.
+            registerController(EBF_CONTROLLER, "electric_blast_furnace", "ebf",
+                               MachineRole::CONSUMER, EnergyType::HEAT, std::nullopt);
+            registerController(BOILER_CONTROLLER, "large_boiler", "large_boiler",
+                               MachineRole::PRODUCER, std::nullopt, EnergyType::STEAM,
+                               /*slots_in=*/4);
+            registerController(LCR_CONTROLLER, "large_chemical_reactor", "chemical_reactor",
+                               MachineRole::CONSUMER, EnergyType::ELECTRICITY, std::nullopt);
+        }
+
+        if (recipeManager) {
+            recipeManager->registerMachineClass(EBF_CONTROLLER, "ebf", 1,
+                                                static_cast<uint8_t>(EnergyType::HEAT));
+            recipeManager->registerMachineClass(LCR_CONTROLLER, "chemical_reactor", 0,
+                                                static_cast<uint8_t>(EnergyType::ELECTRICITY));
+        }
+    }
+
     // ── Signals ───────────────────────────────────────────────────────────
     std::signal(SIGPIPE, SIG_IGN);
     std::signal(SIGINT,  handleSignal);
@@ -303,7 +353,8 @@ int main(int argc, char* argv[]) {
         });
 
     auto wrenchHandler = std::make_shared<simcore::WrenchHandler>(
-        simulationEngine->reg(), eventPublisher, entityStateClient);
+        simulationEngine->reg(), eventPublisher, entityStateClient,
+        &simulationEngine->getControllers());
 
     simcore::WorldContainerInventory worldContainers(
         simulationEngine->reg(), entityStateClient);

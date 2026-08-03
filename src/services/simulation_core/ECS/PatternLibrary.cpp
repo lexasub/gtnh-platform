@@ -39,6 +39,9 @@ static MultiblockPattern makeEBFPattern() {
     p.controller_dy = 3;
     p.controller_dz = 1;
 
+    // ITEM_IN/OUT sit in layer-1 side wall (pattern ANY slots, controller-relative)
+    p.hatches.push_back({-1, -2, 0, HatchType::ITEM_IN});
+    p.hatches.push_back({1, -2, 0, HatchType::ITEM_OUT});
     p.hatches.push_back({1, 3, 2, HatchType::MUFFLER});
     p.hatches.push_back({1, 3, 3, HatchType::ENERGY});
 
@@ -105,6 +108,10 @@ static MultiblockPattern makeLCRPattern() {
     p.controller_dy = 2;
     p.controller_dz = 1;
 
+    // ITEM_IN/OUT sit in layer-1 side wall (pattern ANY slots, controller-relative);
+    // FLUID_IN/OUT and ENERGY keep the L2-declared offsets.
+    p.hatches.push_back({-1, -1, 0, HatchType::ITEM_IN});
+    p.hatches.push_back({1, -1, 0, HatchType::ITEM_OUT});
     p.hatches.push_back({0, 1, 1, HatchType::FLUID_IN});
     p.hatches.push_back({2, 1, 1, HatchType::FLUID_OUT});
     p.hatches.push_back({1, 2, 2, HatchType::ENERGY});
@@ -239,8 +246,9 @@ std::vector<PatternRegistry::HatchResult> PatternRegistry::findHatches(
         int32_t world_y = static_cast<int32_t>(controller_world_y) + hd.dy;
         int32_t world_z = static_cast<int32_t>(controller_world_z) + hd.dz;
 
-        if (world_x < 0 || world_y < 0 || world_z < 0) continue;
-
+        // Negative world coords are valid (a controller near x=0 with a
+        // negative hatch offset). uint32 wrap matches how onBlockChanged
+        // stores negative positions.
         uint32_t ux = static_cast<uint32_t>(world_x);
         uint32_t uy = static_cast<uint32_t>(world_y);
         uint32_t uz = static_cast<uint32_t>(world_z);
@@ -256,9 +264,13 @@ std::vector<PatternRegistry::HatchResult> PatternRegistry::findHatches(
 
         if (detected != HatchType::NONE) {
             r.type = detected;
-        } else {
+        } else if (hd.type == HatchType::ENERGY || hd.type == HatchType::MUFFLER) {
             // ENERGY and MUFFLER are structural — assume present even if block ID not recognized
             r.type = hd.type;
+        } else {
+            // ITEM/FLUID hatches must be physically built — no block, no hatch.
+            // Keep the result so slot layout stays positional; type NONE = unused.
+            r.type = HatchType::NONE;
         }
 
         results.push_back(r);

@@ -1,11 +1,26 @@
 #include "Network/RouterEventPublisher.h"
 #include "Network/clients/IoUringRouterClient.h"
 #include "core_generated.h"
+#include "ECS/PatternLibrary.h"
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
 #include <chrono>
 
 namespace simcore {
+
+// Map simcore::HatchType (NONE=0, ITEM_IN=1, …) to the Protocol enum
+// (ITEM_INPUT=0, ITEM_OUTPUT=1, …) — the raw static_cast is off by one.
+static Protocol::HatchType toProtocolHatchType(HatchType t) {
+    switch (t) {
+        case HatchType::ITEM_IN:   return Protocol::HatchType_ITEM_INPUT;
+        case HatchType::ITEM_OUT:  return Protocol::HatchType_ITEM_OUTPUT;
+        case HatchType::FLUID_IN:  return Protocol::HatchType_FLUID_INPUT;
+        case HatchType::FLUID_OUT: return Protocol::HatchType_FLUID_OUTPUT;
+        case HatchType::ENERGY:    return Protocol::HatchType_ENERGY;
+        case HatchType::MUFFLER:   return Protocol::HatchType_MUFFLER;
+        default:                   return Protocol::HatchType_DYNAMIC;
+    }
+}
 
 RouterEventPublisher::RouterEventPublisher(std::shared_ptr<IoUringRouterClient> router)
     : router_(std::move(router))
@@ -96,6 +111,39 @@ void RouterEventPublisher::publishBlockEntityUpdate(int32_t x, int32_t y, int32_
         }
     }
 
+    // Build hatches data (if provided)
+    std::vector<flatbuffers::Offset<Protocol::HatchInfo>> hatch_offsets;
+    if (hatches != nullptr && !hatches->empty()) {
+        hatch_offsets.reserve(hatches->size());
+        for (const auto& hd : *hatches) {
+            auto hatch_pos = Protocol::Vec3i(hd.world_x, hd.world_y, hd.world_z);
+
+            // Parse packed slot data (5 bytes per slot: item_id[2]+count[1]+meta[2])
+            std::vector<flatbuffers::Offset<Protocol::MachineSlotInfo>> slot_offsets;
+            constexpr size_t kSlotSize = sizeof(uint16_t) + sizeof(uint8_t) + sizeof(uint16_t);
+            if (!hd.slot_data.empty()) {
+                slot_offsets.reserve(hd.slot_data.size() / kSlotSize);
+                for (size_t j = 0; j + kSlotSize <= hd.slot_data.size(); j += kSlotSize) {
+                    uint16_t item_id = *reinterpret_cast<const uint16_t*>(&hd.slot_data[j]);
+                    uint8_t  count   = hd.slot_data[j + 2];
+                    uint16_t meta    = *reinterpret_cast<const uint16_t*>(&hd.slot_data[j + 3]);
+                    auto item = Protocol::ItemStack(item_id, count, meta);
+                    auto ms = Protocol::CreateMachineSlotInfo(builder,
+                        static_cast<uint16_t>(j / kSlotSize), &item, 64,
+                        Protocol::MachineSlotType_INPUT);
+                    slot_offsets.push_back(ms);
+                }
+            }
+
+            auto slots_vec = slot_offsets.empty()
+                ? 0
+                : builder.CreateVector(slot_offsets);
+            auto hi = Protocol::CreateHatchInfo(builder, &hatch_pos,
+                toProtocolHatchType(static_cast<HatchType>(hd.hatch_type)), hd.tier, slots_vec);
+            hatch_offsets.push_back(hi);
+        }
+    }
+
     auto update = Protocol::CreateBlockEntityUpdateDirect(
         builder,
         &pos,
@@ -112,7 +160,7 @@ void RouterEventPublisher::publishBlockEntityUpdate(int32_t x, int32_t y, int32_
         0,                                             // flags
         0,                                             // mb_id
         false,                                         // structure_valid
-        nullptr,                                       // hatches
+        hatch_offsets.empty() ? nullptr : &hatch_offsets,  // hatches
         nullptr                                        // covers
     );
 

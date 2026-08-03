@@ -98,6 +98,10 @@ void GameClient::subscribeNetClient() {
         [this](std::shared_ptr<std::vector<uint8_t>> data) {
             uiMgr_.HandleNetwork(GatewayMsg::kRecipeCompleted, data->data());
         });
+    netClient_->SetMultiblockEventCallback(
+        [this](std::shared_ptr<std::vector<uint8_t>> data) {
+            uiMgr_.HandleNetwork(GatewayMsg::kMultiblockEvent, data->data());
+        });
     netClient_->SetQuestUpdateCallback(
         [this](uint8_t msgType, std::shared_ptr<std::vector<uint8_t>> data) {
             uiMgr_.HandleNetwork(msgType, data->data());
@@ -148,10 +152,41 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
         if (reg && reg->All().size() > 0) {
             MachineRegistry::setInstance(reg.release());
             spdlog::info("Loaded machine registry from {}", yaml_path);
-            BlockUIFactory::LoadFromRegistry(*MachineRegistry::instance());
         } else {
             spdlog::warn("Machine registry empty or failed to load from {}", yaml_path);
         }
+
+        // Multiblock controllers are runtime-registered (not yet in
+        // machines.yaml — TODO: replace legacy 1001-1006 with hierarchical ids
+        // when the registry is regenerated). Must happen before
+        // LoadFromRegistry so right-click opens a MachineWindow for them.
+        if (auto* mreg = MachineRegistry::instance()) {
+            auto registerController = [mreg](uint16_t id, const char* name,
+                                             const char* cls, MachineRole role,
+                                             int slots_in, int slots_out) {
+                MachineInfo info{};
+                info.id = id;
+                info.name = name;
+                info.machine_class = cls;
+                info.role = role;
+                info.tier = 1;
+                // EBF/LCR: the 4+4 slot grids map 1:1 onto the ITEM_IN/ITEM_OUT
+                // hatch slot ranges by index. Boiler: 4 fuel slots in controller.
+                info.slots_in = slots_in;
+                info.slots_out = slots_out;
+                info.capacity = 10000;
+                info.maxInput = 32;
+                info.maxOutput = 32;
+                mreg->Register(info);
+            };
+            registerController(1003, "electric_blast_furnace", "ebf",
+                               MachineRole::CONSUMER, 4, 4);
+            registerController(1005, "large_boiler", "large_boiler",
+                               MachineRole::PRODUCER, 4, 0);
+            registerController(1006, "large_chemical_reactor", "chemical_reactor",
+                               MachineRole::CONSUMER, 4, 4);
+        }
+        BlockUIFactory::LoadFromRegistry(*MachineRegistry::instance());
     }
 
     // ── Network ──────────────────────────────────────────────────────────

@@ -1,0 +1,27 @@
+# GTNH Platform — Electric Blast Furnace recipes
+# EBF is a HEAT consumer: recipes only match a machine whose energy_in is HEAT
+# (the EBF controller block registered at runtime in simcored main.cpp).
+class: ebf
+recipes:
+
+  - name: gtnh:ebf_iron_smelting
+    inputs:
+      - { item: 3, count: 1 }
+    outputs:
+      - { item: 4, count: 2 }
+    duration: 400
+    eu: 2.0
+    energy_in: HEAT
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:ebf_gold_smelting
+    inputs:
+      - { item: 5, count: 1 }
+    outputs:
+      - { item: 6, count: 2 }
+    duration: 400
+    eu: 2.0
+    energy_in: HEAT
+    min_tier: 0
+    max_tier: 32767

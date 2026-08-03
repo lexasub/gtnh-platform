@@ -268,6 +268,10 @@ bool MachineRegistry::LoadProducers(const char* path) {
     return true;
 }
 
+void MachineRegistry::Register(const MachineInfo& info) {
+    machines_[info.id] = info;
+}
+
 const MachineInfo* MachineRegistry::Get(uint16_t block_id) const {
     auto it = machines_.find(block_id);
     return it != machines_.end() ? &it->second : nullptr;

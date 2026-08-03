@@ -48,6 +48,10 @@ public:
   static MachineRegistry *instance() { return instance_; }
   static void setInstance(MachineRegistry *reg) { instance_ = reg; }
 
+  /// Register a machine definition at runtime (used for multiblock
+  /// controllers/structural blocks whose ids are not yet in machines.yaml).
+  void Register(const MachineInfo &info);
+
   const MachineInfo *Get(uint16_t block_id) const;
   bool IsMachine(uint16_t block_id) const;
   bool IsConsumer(uint16_t block_id) const;

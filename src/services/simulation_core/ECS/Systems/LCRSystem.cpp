@@ -7,6 +7,8 @@
 #include "../components/MultiblockController.h"
 #include "../Network/IEventPublisher.h"
 #include "../Network/PipeEnergyClient.h"
+#include "../SimulationEngine.h"
+#include "../MultiblockUtils.h"
 #include "../RecipeManager/RecipeManager.h"
 #include <recipe_manager_lib/RecipeTypes.h>
 #include <spdlog/spdlog.h>
@@ -55,6 +57,27 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
     auto& container = reg_.get<InventoryContainer>(entity);
     auto& progress = reg_.get<RecipeProgress>(entity);
 
+    // Item IO flows through ITEM_IN/ITEM_OUT hatch slot ranges (task 1.3).
+    // Fallback to MachineRegistry layout when no item hatches are built.
+    int input_start = 0, input_end = 0;
+    SimulationEngine::getInputSlotRange(ctrl, input_start, input_end);
+    int output_start = 0, output_end = 0;
+    SimulationEngine::getOutputSlotRange(ctrl, output_start, output_end);
+    if (input_end == 0) {
+        if (auto* minfo = MachineRegistry::instance()->Get(machine.machine_id)) {
+            input_end = std::min(minfo->slots_in, static_cast<int>(container.slots.size()));
+        }
+    }
+    if (output_end == 0) {
+        if (auto* minfo = MachineRegistry::instance()->Get(machine.machine_id)) {
+            output_start = minfo->slots_in;
+            output_end = std::min(minfo->slots_in + minfo->slots_out,
+                                  static_cast<int>(container.slots.size()));
+        }
+    }
+    const int input_end_capped = std::min(input_end, static_cast<int>(container.slots.size()));
+    const int output_end_capped = std::min(output_end, static_cast<int>(container.slots.size()));
+
     if (!progress.recipe_id.empty()) {
         auto* recipe = recipes_->getRecipeById(progress.recipe_id);
         if (!recipe) {
@@ -98,8 +121,8 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
         if (progress.remaining_ticks == 0) {
             for (const auto& out : recipe->outputs) {
                 uint8_t remaining = out.count;
-                for (auto& slot : container.slots) {
-                    if (remaining == 0) break;
+                for (int i = output_start; i < output_end_capped && remaining > 0; ++i) {
+                    auto& slot = container.slots[i];
                     if (slot.item_id == out.item_id && slot.meta == out.metadata && slot.count < 64) {
                         uint8_t space = 64 - slot.count;
                         uint8_t add = std::min(remaining, space);
@@ -107,8 +130,8 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
                         remaining -= add;
                     }
                 }
-                for (auto& slot : container.slots) {
-                    if (remaining == 0) break;
+                for (int i = output_start; i < output_end_capped && remaining > 0; ++i) {
+                    auto& slot = container.slots[i];
                     if (slot.item_id == 0) {
                         slot = {out.item_id, remaining, out.metadata};
                         remaining = 0;
@@ -122,12 +145,7 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
         }
     } else {
         std::vector<RecipeManager::ItemStack> inputItems;
-        int slots_in = 0;
-        if (auto* minfo = MachineRegistry::instance()->Get(machine.machine_id)) {
-            slots_in = minfo->slots_in;
-        }
-        int input_end = std::min(slots_in, static_cast<int>(container.slots.size()));
-        for (int i = 0; i < input_end; ++i) {
+        for (int i = input_start; i < input_end_capped; ++i) {
             auto& slot = container.slots[i];
             if (slot.item_id != 0) {
                 inputItems.push_back({slot.item_id, slot.count, slot.meta});
@@ -143,7 +161,7 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
             for (const auto& req : recipe->inputs) {
                 if (req.item_id == 0) continue;
                 int64_t remaining = static_cast<int64_t>(req.count);
-                for (int i = 0; i < input_end && remaining > 0; ++i) {
+                for (int i = input_start; i < input_end_capped && remaining > 0; ++i) {
                     auto& slot = container.slots[i];
                     if (slot.item_id == req.item_id && slot.meta == req.metadata) {
                         uint8_t take = std::min(slot.count, static_cast<uint8_t>(remaining));
@@ -166,14 +184,8 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
             pct = 1.0f - static_cast<float>(progress.remaining_ticks) / static_cast<float>(recipe->duration);
         }
     }
-    std::vector<uint8_t> inv_data;
-    for (const auto& slot : container.slots) {
-        inv_data.push_back(static_cast<uint8_t>(slot.item_id & 0xFF));
-        inv_data.push_back(static_cast<uint8_t>((slot.item_id >> 8) & 0xFF));
-        inv_data.push_back(slot.count);
-        inv_data.push_back(static_cast<uint8_t>(slot.meta & 0xFF));
-        inv_data.push_back(static_cast<uint8_t>((slot.meta >> 8) & 0xFF));
-    }
+    auto inv_data = packInventorySlots(container);
+    auto hatches = buildHatchUpdateData(ctrl, container);
     events_->publishBlockEntityUpdate(
         static_cast<int32_t>(machine.x),
         static_cast<int32_t>(machine.y),
@@ -184,7 +196,9 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
         static_cast<uint32_t>(energy.current),
         energy.type,
         static_cast<uint32_t>(energy.capacity),
-        0);
+        input_end, // split inventory into input/output grids at the ITEM_IN range
+        0.0f,
+        &hatches);
 }
 
 } // namespace simcore

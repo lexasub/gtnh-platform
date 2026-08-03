@@ -1,5 +1,6 @@
 #include "Actions/SetBlockCASHandler.h"
 #include "Storage/IBlockRepository.h"
+#include "Storage/PlayerInventoryStore.h"
 #include "Network/IEventPublisher.h"
 #include "ECS/SimulationEngine.h"
 #include "World/BlockTransforms.h"
@@ -7,15 +8,52 @@
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
 #include <chrono>
+#include <array>
 
 namespace simcore {
 
 #define TRACE_LOG(tid, svc, op, dur_us) \
     spdlog::info("[TRACE tid={}] {} {} {}us", (tid), (svc), (op), (dur_us))
 
+// Dry-run: add every multiblock content stack into `inv` (a copy of the
+// player's inventory). Mirrors PlayerInventoryStore::giveItem stacking
+// (by item_id, max 64). Returns false and leaves `inv` in a partial state if
+// anything does not fit — the caller must then NOT apply the change.
+static bool canFitAll(std::array<PersistSlot, kInventorySlots>& inv,
+                      const std::vector<InventorySlot>& items) {
+    constexpr uint8_t kMaxStack = 64;
+    for (const auto& item : items) {
+        if (item.item_id == 0) continue;
+        int remaining = static_cast<int>(item.count);
+
+        // Stack onto existing matching stacks first
+        for (auto& s : inv) {
+            if (remaining <= 0) break;
+            if (s.item_id == item.item_id && s.count < kMaxStack) {
+                uint8_t room = kMaxStack - s.count;
+                uint8_t add = std::min(static_cast<uint8_t>(remaining), room);
+                s.count = static_cast<uint8_t>(s.count + add);
+                remaining -= add;
+            }
+        }
+        // Then fill empty slots
+        for (auto& s : inv) {
+            if (remaining <= 0) break;
+            if (s.item_id == 0) {
+                uint8_t add = std::min(static_cast<uint8_t>(remaining), kMaxStack);
+                s = {item.item_id, add, item.meta};
+                remaining -= add;
+            }
+        }
+        if (remaining > 0) return false;
+    }
+    return true;
+}
+
 SetBlockCASHandler::SetBlockCASHandler(std::shared_ptr<IBlockRepository> repo,
                                        std::shared_ptr<IEventPublisher> publisher,
                                        std::shared_ptr<SimulationEngine> engine,
+                                       std::shared_ptr<PlayerInventoryStore> inventoryStore,
                                        ItemGiveCallback onGiveItem,
                                        DrillUseCallback onDrillUse,
                                        BlockPlacedCallback onBlockPlaced,
@@ -23,6 +61,7 @@ SetBlockCASHandler::SetBlockCASHandler(std::shared_ptr<IBlockRepository> repo,
     : repo_(std::move(repo))
     , publisher_(std::move(publisher))
     , engine_(std::move(engine))
+    , inventoryStore_(std::move(inventoryStore))
     , onGiveItem_(std::move(onGiveItem))
     , onDrillUse_(std::move(onDrillUse))
     , onBlockPlaced_(std::move(onBlockPlaced))
@@ -67,6 +106,35 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
 
     uint16_t final_block_id = (action_type == Protocol::PlayerActionType_LEFT_MOUSE_CLICK) ? 0 : new_block_id;
     uint8_t final_meta = 0;
+
+    // ── Multiblock block-break guard (task 2.1) ─────────────────────────────
+    // Breaking ANY block of a multiblock returns ALL hatch+controller contents
+    // to the breaking player. If they do not fit, refuse the break — the block
+    // SHALL NOT break and no items are dropped.
+    if (action_type == Protocol::PlayerActionType_LEFT_MOUSE_CLICK && engine_ && inventoryStore_) {
+        auto owner = engine_->findControllerAt(static_cast<uint32_t>(x),
+                                               static_cast<uint32_t>(y),
+                                               static_cast<uint32_t>(z));
+        if (owner != engine_->getControllers().end()) {
+            std::vector<simcore::InventorySlot> contents;
+            engine_->collectControllerContents(owner->second, contents);
+            auto inv = inventoryStore_->getSlots(player_id);
+            if (!contents.empty() && !canFitAll(inv, contents)) {
+                spdlog::warn("Refusing to break multiblock at ({},{},{}): contents do not fit player {} inventory",
+                             x, y, z, player_id);
+                publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_REJECTED),
+                                            x, y, z, expected_block_id, 0,
+                                            "Multiblock contents do not fit in inventory",
+                                            request_id);
+                return;
+            }
+            if (!contents.empty()) {
+                inventoryStore_->setSlots(player_id, inv);
+                spdlog::info("Multiblock contents returned to player {} on break at ({},{},{})",
+                             player_id, x, y, z);
+            }
+        }
+    }
 
     auto transform = applyBlockTransform(expected_block_id, final_block_id, final_meta);
     if (transform.has_value()) {

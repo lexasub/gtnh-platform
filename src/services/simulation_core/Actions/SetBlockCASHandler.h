@@ -11,6 +11,7 @@ namespace simcore {
 class IBlockRepository;
 class IEventPublisher;
 class SimulationEngine;
+class PlayerInventoryStore;
 
 using ItemGiveCallback = std::function<void(
     uint64_t player_id, uint16_t item_id, uint8_t count, int32_t target_slot)>;
@@ -25,6 +26,7 @@ public:
   SetBlockCASHandler(std::shared_ptr<IBlockRepository> repo,
                      std::shared_ptr<IEventPublisher> publisher,
                      std::shared_ptr<SimulationEngine> engine,
+                     std::shared_ptr<PlayerInventoryStore> inventoryStore = nullptr,
                      ItemGiveCallback onGiveItem = nullptr,
                      DrillUseCallback onDrillUse = nullptr,
                      BlockPlacedCallback onBlockPlaced = nullptr,
@@ -37,6 +39,7 @@ private:
   std::shared_ptr<IBlockRepository> repo_;
   std::shared_ptr<IEventPublisher> publisher_;
   std::shared_ptr<SimulationEngine> engine_;
+  std::shared_ptr<PlayerInventoryStore> inventoryStore_;
   ItemGiveCallback onGiveItem_;
   DrillUseCallback onDrillUse_;
   BlockPlacedCallback onBlockPlaced_;

@@ -34,6 +34,14 @@ struct BlockEntityUpdateData {
   uint64_t mbId = 0;           // Multiblock ID (0 = not a multiblock)
 };
 
+// One multiblock hatch shown in the window (task 3.1). `type` matches
+// Protocol::HatchType values.
+struct HatchRenderData {
+  int32_t x = 0, y = 0, z = 0;
+  uint8_t type = 0;
+  std::vector<ItemStack> items;
+};
+
 class MachineWindow : public BlockAttachedWindow {
 public:
   MachineWindow(BlockPos pos, uint16_t machineType = 0);
@@ -75,6 +83,7 @@ private:
   // ── Network state ────────────────────────────────────────────────────
   BlockEntityUpdateData pendingUpdate_;
   bool hasPendingUpdate_ = false;
+  std::vector<HatchRenderData> pendingHatches_; // multiblock hatches (task 3.1)
   class NetClient *netClient_ = nullptr;
   SetMachineSlotRespCallback onSetMachineSlotResp_;
 

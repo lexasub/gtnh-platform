@@ -11,6 +11,7 @@
 #include "../Network/IEventPublisher.h"
 #include "../Network/PipeEnergyClient.h"
 #include "../Network/ItemClient.h"
+#include "../MultiblockUtils.h"
 #include <spdlog/spdlog.h>
 
 namespace simcore {
@@ -108,18 +109,21 @@ void LargeBoilerSystem::tickBoiler(uint64_t ctrl_id, MultiblockController& ctrl)
         }
     }
 
+    auto inv_data = packInventorySlots(container);
+    auto hatches = buildHatchUpdateData(ctrl, container);
     events_->publishBlockEntityUpdate(
         static_cast<int32_t>(machine.x),
         static_cast<int32_t>(machine.y),
         static_cast<int32_t>(machine.z),
         machine.machine_id,
-        {},
+        inv_data,
         0.0f,
         0,
         EnergyType::STEAM,
         0,
         -1,
-        heatIntake.ratio());
+        heatIntake.ratio(),
+        &hatches);
 }
 
 } // namespace simcore

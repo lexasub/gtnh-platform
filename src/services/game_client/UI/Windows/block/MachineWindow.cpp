@@ -106,6 +106,19 @@ ImU32 EnergyBarColor(EnergyType et, float ratio) {
     return IM_COL32(180, 180, 180, 255);
 }
 
+// Multiblock hatch type → display label (Protocol::HatchType values).
+const char* HatchTypeName(uint8_t type) {
+    switch (static_cast<Protocol::HatchType>(type)) {
+        case Protocol::HatchType_ITEM_INPUT:   return "Item In";
+        case Protocol::HatchType_ITEM_OUTPUT:  return "Item Out";
+        case Protocol::HatchType_FLUID_INPUT:  return "Fluid In";
+        case Protocol::HatchType_FLUID_OUTPUT: return "Fluid Out";
+        case Protocol::HatchType_ENERGY:       return "Energy";
+        case Protocol::HatchType_MUFFLER:      return "Muffler";
+        default:                               return "Hatch";
+    }
+}
+
 } // anonymous namespace
 
 MachineWindow::MachineWindow(BlockPos pos, uint16_t machineType)
@@ -411,6 +424,27 @@ void MachineWindow::Render(InventoryState* playerInv) {
         RenderEnergyBarImpl(energyType, energyVal, energyMax,
                             hasPendingUpdate_ ? pendingUpdate_.heatRatio : 0.0f,
                             hasPendingUpdate_ ? pendingUpdate_.mbId : 0);
+
+        // ── Multiblock hatches (task 3.1) ─────────────────────────────────
+        if (!pendingHatches_.empty()) {
+            ImGui::Separator();
+            ImGui::Text("Hatches");
+            for (const auto& hd : pendingHatches_) {
+                ImGui::BulletText("%s @ (%d,%d,%d)", HatchTypeName(hd.type),
+                                  hd.x, hd.y, hd.z);
+                ImGui::Indent(12.0f);
+                bool hasItem = false;
+                for (const auto& item : hd.items) {
+                    if (item.item_id == 0) continue;
+                    hasItem = true;
+                    ImGui::Text("item %u x%d", item.item_id, item.count);
+                }
+                if (!hasItem) {
+                    ImGui::TextDisabled("(empty)");
+                }
+                ImGui::Unindent(12.0f);
+            }
+        }
     }
 
     ImGui::Separator();
@@ -565,6 +599,35 @@ void MachineWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
                 static_cast<uint16_t>(s ? s->item_id() : 0),
                 static_cast<uint8_t>(s ? s->count() : 0),
                 static_cast<uint16_t>(s ? s->meta() : 0)});
+        }
+    }
+
+    // Multiblock hatches (task 3.1).
+    pendingHatches_.clear();
+    if (auto* hs = update->hatches()) {
+        pendingHatches_.reserve(hs->size());
+        for (flatbuffers::uoffset_t i = 0; i < hs->size(); ++i) {
+            auto* h = hs->Get(i);
+            if (!h) continue;
+            HatchRenderData hd;
+            if (h->pos()) {
+                hd.x = h->pos()->x();
+                hd.y = h->pos()->y();
+                hd.z = h->pos()->z();
+            }
+            hd.type = static_cast<uint8_t>(h->hatch_type());
+            if (auto* slots = h->slots()) {
+                hd.items.reserve(slots->size());
+                for (flatbuffers::uoffset_t j = 0; j < slots->size(); ++j) {
+                    auto* ms = slots->Get(j);
+                    if (!ms || !ms->item()) continue;
+                    hd.items.push_back({
+                        static_cast<uint16_t>(ms->item()->item_id()),
+                        static_cast<uint8_t>(ms->item()->count()),
+                        static_cast<uint16_t>(ms->item()->meta())});
+                }
+            }
+            pendingHatches_.push_back(std::move(hd));
         }
     }
 

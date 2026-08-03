@@ -4,6 +4,7 @@
 #include <vector>
 #include <functional>
 #include <unordered_map>
+#include <common/ItemId.h>
 
 namespace simcore {
 
@@ -51,10 +52,16 @@ struct MultiblockPattern {
 
 using BlockLookupFn = std::function<uint16_t(uint32_t x, uint32_t y, uint32_t z)>;
 
-constexpr uint16_t HATCH_BLOCK_ITEM_IN  = 1003;
-constexpr uint16_t HATCH_BLOCK_ITEM_OUT = 1004;
-constexpr uint16_t HATCH_BLOCK_FLUID_IN = 1005;
-constexpr uint16_t HATCH_BLOCK_FLUID_OUT = 1006;
+// Hatch block IDs use the hierarchical items.csv format ("X:XX:X").
+// TODO(hatch-ids): these are PLACEHOLDERS in the machines range (1110 prefix,
+// binary sub-prefix 10, payload 0..3) until data/registry/items.csv and
+// machines.yaml are regenerated. They are deliberately distinct from the
+// legacy multiblock structural/controller block ids (1001-1006) so a hatch
+// block never collides with a controller or firebox.
+constexpr uint16_t HATCH_BLOCK_ITEM_IN   = ItemId::pack("1110:10:0");
+constexpr uint16_t HATCH_BLOCK_ITEM_OUT  = ItemId::pack("1110:10:1");
+constexpr uint16_t HATCH_BLOCK_FLUID_IN  = ItemId::pack("1110:10:2");
+constexpr uint16_t HATCH_BLOCK_FLUID_OUT = ItemId::pack("1110:10:3");
 
 inline HatchType hatchBlockIdToType(uint16_t block_id) {
     switch (block_id) {

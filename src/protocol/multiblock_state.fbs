@@ -22,6 +22,7 @@ table MultiblockState {
     recipe_progress:int32 = 0;   // current recipe progress ticks
     recipe_ticks:int32 = 0;      // total ticks for current recipe
     recipe_id:string;            // current recipe id
+    slots:[ItemStack];           // all inventory slots (hatch + controller base)
 }
 
 root_type MultiblockState;

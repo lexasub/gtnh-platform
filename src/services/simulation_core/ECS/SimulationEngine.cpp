@@ -30,6 +30,13 @@ const std::vector<std::tuple<int32_t, int32_t, int32_t>> ELECTROLYSER_PATTERN = 
     { 0,-1, 2}, { 0, 0, 2}, { 0, 1, 2}
 };
 
+// Multiblock block lists are packed with x in the low 10 bits
+// (PatternLibrary::collectBlocks). Common/xyz.h uses a DIFFERENT (x-high)
+// layout — never use it for controller block lookups.
+static uint32_t mbPack(uint32_t x, uint32_t y, uint32_t z) {
+    return (x & 0x3FF) | ((y & 0x3FF) << 10) | ((z & 0x3FF) << 20);
+}
+
 entt::entity SimulationEngine::findEntityAt(uint32_t x, uint32_t y, uint32_t z) const
 {
     auto view = reg_.view<const Position>();
@@ -46,10 +53,74 @@ void SimulationEngine::removeBlockFromController(uint32_t mb_id, uint32_t x, uin
 {
     auto it = controllers_.find(mb_id);
     if (it != controllers_.end()) {
-        uint32_t packed = xyz(x, y, z);
+        uint32_t packed = mbPack(x, y, z);
         auto& blocks = it->second.blocks;
         blocks.erase(std::ranges::remove(blocks, packed).begin(), blocks.end());
         spdlog::debug("[ECS] Block ({},{},{}) removed from controller #{}", x, y, z, mb_id);
+    }
+}
+
+void SimulationEngine::destroyController(uint64_t id)
+{
+    auto it = controllers_.find(id);
+    if (it == controllers_.end()) return;
+
+    spdlog::info("[ECS] Multiblock controller #{} at ({},{},{}) destroyed",
+                 id, it->second.x, it->second.y, it->second.z);
+
+    // Persist final state. Player-initiated breaks already moved contents to
+    // the player via the block-break guard (SetBlockCASHandler); world-initiated
+    // clears keep contents inside the saved MultiblockState (task 2.2).
+    if (onMultiblockSave) {
+        auto blob = serializeMultiblock(id);
+        if (!blob.empty()) onMultiblockSave(id, blob);
+    }
+
+    // Remove the controller entity's machine components (otherwise a stale
+    // machine entity lingers when a structural block breaks the multiblock).
+    auto ctrl_entity = findEntityAt(it->second.x, it->second.y, it->second.z);
+    if (ctrl_entity != entt::null) {
+        if (reg_.all_of<MachineComponent>(ctrl_entity)) reg_.remove<MachineComponent>(ctrl_entity);
+        if (reg_.all_of<RecipeProgress>(ctrl_entity)) reg_.remove<RecipeProgress>(ctrl_entity);
+        if (reg_.all_of<InventoryContainer>(ctrl_entity)) reg_.remove<InventoryContainer>(ctrl_entity);
+        if (reg_.all_of<EnergyStorage>(ctrl_entity)) reg_.remove<EnergyStorage>(ctrl_entity);
+        if (reg_.all_of<HeatIntakeComponent>(ctrl_entity)) reg_.remove<HeatIntakeComponent>(ctrl_entity);
+    }
+
+    controllers_.erase(it);
+    if (onMultiblockDestroyed) onMultiblockDestroyed(id);
+}
+
+std::unordered_map<uint64_t, MultiblockController>::iterator
+SimulationEngine::findControllerAt(uint32_t x, uint32_t y, uint32_t z)
+{
+    uint32_t packed = mbPack(x, y, z);
+    for (auto it = controllers_.begin(); it != controllers_.end(); ++it) {
+        if (std::ranges::find(it->second.blocks, packed) != it->second.blocks.end()) {
+            return it;
+        }
+    }
+    return controllers_.end();
+}
+
+bool SimulationEngine::isMultiblockBlockAt(uint32_t x, uint32_t y, uint32_t z) const
+{
+    uint32_t packed = mbPack(x, y, z);
+    for (const auto& [id, ctrl] : controllers_) {
+        if (std::ranges::find(ctrl.blocks, packed) != ctrl.blocks.end()) return true;
+    }
+    return false;
+}
+
+void SimulationEngine::collectControllerContents(const MultiblockController& ctrl,
+                                                 std::vector<InventorySlot>& out) const
+{
+    auto entity = findEntityAt(ctrl.x, ctrl.y, ctrl.z);
+    if (entity == entt::null) return;
+    auto* inv = reg_.try_get<InventoryContainer>(entity);
+    if (!inv) return;
+    for (const auto& slot : inv->slots) {
+        if (slot.item_id != 0) out.push_back(slot);
     }
 }
 
@@ -64,18 +135,18 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
             auto* blk = reg_.try_get<Block>(entity);
             uint32_t old_mb_id = blk ? blk->mb_id : 0;
 
+            if (old_mb_id == 0) {
+                // Pattern/structural blocks don't carry mb_id — find the owning
+                // controller by position.
+                auto owner = findControllerAt(x, y, z);
+                if (owner != controllers_.end()) {
+                    old_mb_id = static_cast<uint32_t>(owner->first);
+                }
+            }
+
             if (old_mb_id != 0) {
-                auto it = controllers_.find(old_mb_id);
-                if (it != controllers_.end()) {
-                    spdlog::info("[ECS] Multiblock controller #{} at ({},{},{}) destroyed", old_mb_id, x, y, z);
-                    if (onMultiblockSave) {
-                        auto blob = serializeMultiblock(old_mb_id);
-                        if (!blob.empty()) onMultiblockSave(old_mb_id, blob);
-                    }
-                    controllers_.erase(it);
-                    if (onMultiblockDestroyed) {
-                        onMultiblockDestroyed(old_mb_id);
-                    }
+                if (controllers_.count(old_mb_id) != 0) {
+                    destroyController(old_mb_id);
                 } else {
                     removeBlockFromController(old_mb_id, x, y, z);
                 }
@@ -472,12 +543,26 @@ std::vector<uint8_t> SimulationEngine::serializeMultiblock(uint64_t controller_i
         }
     }
 
+    // Persist hatch/controller inventory contents (task 2.2) so nothing is
+    // lost on chunk unload or world-initiated dissociation.
+    std::vector<Protocol::ItemStack> slots;
+    if (entity != entt::null) {
+        if (auto* container = reg_.try_get<InventoryContainer>(entity)) {
+            slots.reserve(container->slots.size());
+            for (const auto& s : container->slots) {
+                slots.emplace_back(s.item_id, s.count, s.meta);
+            }
+        }
+    }
+
     flatbuffers::FlatBufferBuilder builder(256);
     auto recipe_off = builder.CreateString(recipe_id);
     auto blocks_off = builder.CreateVector(ctrl.blocks);
+    auto slots_off = slots.empty() ? 0 : builder.CreateVectorOfStructs(slots);
     auto state = Protocol::CreateMultiblockState(
         builder, 1, ctrl.id, 0, ctrl.x, ctrl.y, ctrl.z, ctrl.pattern_id,
-        blocks_off, heat_stored, recipe_progress, recipe_ticks, recipe_off);
+        blocks_off, heat_stored, recipe_progress, recipe_ticks, recipe_off,
+        slots_off);
     builder.Finish(state);
 
     return {builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize()};
@@ -505,6 +590,19 @@ void SimulationEngine::deserializeMultiblock(uint64_t controller_id,
         prog->recipe_id = fb->recipe_id() ? fb->recipe_id()->str() : "";
         prog->remaining_ticks = static_cast<uint32_t>(fb->recipe_ticks());
         prog->is_processing = !prog->recipe_id.empty();
+    }
+    if (auto* inv = reg_.try_get<InventoryContainer>(entity)) {
+        if (fb->slots()) {
+            inv->slots.clear();
+            inv->slots.reserve(fb->slots()->size());
+            for (flatbuffers::uoffset_t i = 0; i < fb->slots()->size(); ++i) {
+                auto* s = fb->slots()->Get(i);
+                inv->slots.emplace_back(static_cast<uint16_t>(s->item_id()),
+                                        static_cast<uint8_t>(s->count()),
+                                        static_cast<uint16_t>(s->meta()));
+            }
+            inv->slot_count = static_cast<uint16_t>(inv->slots.size());
+        }
     }
     spdlog::info("[ECS] Restored multiblock #{} state at ({},{},{})",
                  controller_id, ctrl.x, ctrl.y, ctrl.z);

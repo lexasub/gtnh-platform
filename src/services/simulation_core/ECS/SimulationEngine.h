@@ -66,6 +66,16 @@ public:
   const MultiblockController &getController(uint64_t id) const;
   void unregisterController(uint64_t id);
 
+  // ── Block-break guard / dissociation (task 2.1) ─────────────────────────
+  /// Iterator into getControllers() whose block list contains (x,y,z), or end().
+  std::unordered_map<uint64_t, MultiblockController>::iterator
+  findControllerAt(uint32_t x, uint32_t y, uint32_t z);
+  bool isMultiblockBlockAt(uint32_t x, uint32_t y, uint32_t z) const;
+  /// Gather every non-empty inventory slot (hatch + controller base) so a
+  /// breaking player can receive the multiblock contents.
+  void collectControllerContents(const MultiblockController &ctrl,
+                                 std::vector<InventorySlot> &out) const;
+
   std::vector<uint8_t> serializeMultiblock(uint64_t controller_id) const;
   void deserializeMultiblock(uint64_t controller_id, const uint8_t *data,
                              size_t size);
@@ -89,6 +99,7 @@ private:
   entt::entity findEntityAt(uint32_t x, uint32_t y, uint32_t z) const;
   void removeBlockFromController(uint32_t mb_id, uint32_t x, uint32_t y,
                                  uint32_t z);
+  void destroyController(uint64_t id);
 
   entt::registry reg_;
   std::unordered_map<uint64_t, MultiblockController> controllers_;

@@ -293,6 +293,14 @@ bool RecipeManager::loadRecipesFromYamlFile(const std::string& filePath) {
     return parseYamlRecipes(root["recipes"], defaultClass);
 }
 
+void RecipeManager::registerMachineClass(uint16_t block_id,
+                                         const std::string& class_name,
+                                         int16_t tier, uint8_t energy_in) {
+    classByBlockId_[block_id] = class_name;
+    tierByBlockId_[block_id] = tier;
+    energyInByBlockId_[block_id] = energy_in;
+}
+
 bool RecipeManager::loadRecipesFromYamlDirectory(const std::string& directoryPath) {
     spdlog::info("Loading YAML recipes from directory: {}", directoryPath);
 
