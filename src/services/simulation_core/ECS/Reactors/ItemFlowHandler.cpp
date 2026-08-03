@@ -1,18 +1,21 @@
 #include "ItemFlowHandler.h"
-#include "Network/ItemClient.h"
 #include "ECS/components/Position.h"
 #include "ECS/components/MachineComponent.h"
 #include "ECS/components/InventoryContainer.h"
 #include "pipe_network_generated.h"
-#include <spdlog/spdlog.h>
-
+#include "machine_state_generated.h"
 #include "MachineRegistry.h"
+#include <spdlog/spdlog.h>
+#include <cstring>
 
 namespace simcore {
 
 ItemFlowHandler::ItemFlowHandler(entt::registry& reg,
-                                  std::shared_ptr<ItemClient> itemClient)
-    : reg_(reg), itemClient_(std::move(itemClient))
+                                  std::shared_ptr<ItemClient> itemClient,
+                                  std::shared_ptr<IoUringRouterClient> router,
+                                  std::shared_ptr<EntityStateStoreClient> entityState)
+    : reg_(reg), itemClient_(std::move(itemClient)),
+      router_(std::move(router)), entityState_(std::move(entityState))
 {}
 
 void ItemFlowHandler::handle(const std::vector<uint8_t>& data) {
@@ -32,72 +35,115 @@ void ItemFlowHandler::handle(const std::vector<uint8_t>& data) {
         auto& pos = view.get<const Position>(entity);
         auto& machine = view.get<const MachineComponent>(entity);
         auto& container = view.get<InventoryContainer>(entity);
-        
-        if (static_cast<int32_t>(pos.x) == x &&
-            static_cast<int32_t>(pos.y) == y &&
-            static_cast<int32_t>(pos.z) == z) {
-            // Check if this is a machine and if the face allows input
-            // Determine which face the pipe approaches from
-            // For now, assume the machine is at the same position as the sink node
-            // We need to determine the face from the pipe's perspective
-            
-            // Get input slot count from MachineRegistry
-            int slots_in = static_cast<int>(container.slots.size());
-            if (auto* minfo = MachineRegistry::instance()->Get(machine.machine_id)) {
-                slots_in = minfo->slots_in;
-            }
-            
-            // Check if there are input slots available
-            if (slots_in <= 0) {
-                spdlog::debug("ItemFlowHandler: machine at ({},{},{}) has no input slots, item lost", x, y, z);
+
+        if (static_cast<int32_t>(pos.x) != x ||
+            static_cast<int32_t>(pos.y) != y ||
+            static_cast<int32_t>(pos.z) != z)
+            continue;
+
+        // Check side_config: at least one face must allow INPUT or be unset (NONE)
+        bool faceAllowsInput = false;
+        for (int f = 0; f < 6; ++f) {
+            uint8_t role = machine.getFaceRole(f);
+            if (role == static_cast<uint8_t>(MachineFaceRole::INPUT) ||
+                role == static_cast<uint8_t>(MachineFaceRole::NONE)) {
+                faceAllowsInput = true;
                 break;
             }
-            
-            // For now, deliver to first available input slot
-            // TODO: Determine which face the pipe approaches from and check side_config
-            // For a complete implementation, we would need:
-            // 1. The pipe's position to determine which face we're approaching from
-            // 2. Check machine.side_config[face] for INPUT or ANY
-            // 3. Only deliver if the face allows input
-            
-            // Simple implementation: deliver to first available input slot
-            bool delivered = false;
+        }
+        if (!faceAllowsInput) {
+            spdlog::debug("ItemFlowHandler: machine at ({},{},{}) has no INPUT face, item blocked", x, y, z);
+            break;
+        }
+
+        // Get input slot count from MachineRegistry
+        int slots_in = static_cast<int>(container.slots.size());
+        if (auto* minfo = MachineRegistry::instance()->Get(machine.machine_id)) {
+            slots_in = minfo->slots_in;
+        }
+
+        if (slots_in <= 0) {
+            spdlog::debug("ItemFlowHandler: machine at ({},{},{}) has no input slots", x, y, z);
+            break;
+        }
+
+        // Deliver to first available input slot
+        bool delivered = false;
+        int slot_idx = -1;
+        for (int i = 0; i < slots_in && !delivered; ++i) {
+            if (container.slots[i].item_id == 0) {
+                container.slots[i] = {item_id, static_cast<uint8_t>(count), 0};
+                slot_idx = i;
+                delivered = true;
+                break;
+            }
+        }
+
+        if (!delivered) {
             for (int i = 0; i < slots_in && !delivered; ++i) {
-                if (container.slots[i].item_id == 0) {
-                    container.slots[i] = {item_id, static_cast<uint8_t>(count), 0};
+                if (container.slots[i].item_id == item_id && container.slots[i].count < 64) {
+                    uint8_t space = 64 - container.slots[i].count;
+                    uint8_t add = (count < space) ? static_cast<uint8_t>(count) : space;
+                    container.slots[i].count += add;
+                    slot_idx = i;
                     delivered = true;
-                    spdlog::debug("ItemFlowHandler: item {} x{} delivered to machine input slot {} at ({},{},{})",
-                                  item_id, count, i, x, y, z);
                     break;
                 }
             }
-            
-            if (!delivered) {
-                // Try to stack with existing item
-                for (int i = 0; i < slots_in && !delivered; ++i) {
-                    if (container.slots[i].item_id == item_id && container.slots[i].count < 64) {
-                        uint8_t space = 64 - container.slots[i].count;
-                        uint8_t add = std::min(static_cast<uint8_t>(count), space);
-                        container.slots[i].count += add;
-                        spdlog::debug("ItemFlowHandler: item {} x{} stacked into machine input slot {} at ({},{},{})",
-                                      item_id, add, i, x, y, z);
-                        delivered = true;
-                        break;
-                    }
-                }
-            }
-            
-            if (!delivered) {
-                spdlog::debug("ItemFlowHandler: machine input slots full at ({},{},{}), item lost", x, y, z);
-            }
+        }
 
-            if (itemClient_) {
-                itemClient_->publishNodeUpdate(
-                    from_node, x, y, z,
-                    {}, {}, 0, false, false);
-            }
+        if (!delivered) {
+            spdlog::debug("ItemFlowHandler: machine input slots full at ({},{},{})", x, y, z);
             break;
         }
+
+        // Send SetMachineSlotReq to persist the inventory change
+        if (router_) {
+            flatbuffers::FlatBufferBuilder fbb(128);
+            auto pos_fb = Protocol::Vec3i(static_cast<int32_t>(x), static_cast<int32_t>(y), static_cast<int32_t>(z));
+            auto req = Protocol::CreateSetMachineSlotReq(
+                fbb, 0, &pos_fb,
+                static_cast<uint8_t>(slot_idx), item_id,
+                static_cast<uint8_t>(count), 255);
+            fbb.Finish(req);
+            std::vector<uint8_t> rd(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+            router_->Publish("player.machine.slot", std::move(rd));
+        }
+
+        // Save machine inventory to EntityStateStore
+        if (entityState_) {
+            flatbuffers::FlatBufferBuilder fbb(256);
+            std::vector<flatbuffers::Offset<Protocol::MachineInventorySlot>> offs;
+            for (auto& s : container.slots) {
+                offs.push_back(Protocol::CreateMachineInventorySlot(fbb, s.item_id, s.count, s.meta));
+            }
+            auto inv = Protocol::CreateMachineInventory(fbb, container.slot_count, fbb.CreateVector(offs));
+            auto st = Protocol::CreateMachineState(fbb, 1, nullptr, 0, inv, 0);
+            fbb.Finish(st);
+            std::vector<uint8_t> blob(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+            entityState_->SaveEntityState(0, machine.x, machine.y, machine.z, machine.machine_id, blob, [](bool){});
+
+            std::vector<uint8_t> rawInv(container.slots.size() * 5);
+            {
+                uint8_t* ptr = rawInv.data();
+                for (auto& s : container.slots) {
+                    std::memcpy(ptr, &s.item_id, sizeof(uint16_t)); ptr += sizeof(uint16_t);
+                    *ptr++ = s.count;
+                    std::memcpy(ptr, &s.meta, sizeof(uint16_t)); ptr += sizeof(uint16_t);
+                }
+            }
+        }
+
+        spdlog::debug("ItemFlowHandler: item {} x{} delivered to machine slot {} at ({},{},{})",
+                      item_id, count, slot_idx, x, y, z);
+
+        if (itemClient_) {
+            itemClient_->publishNodeUpdate(
+                from_node, x, y, z,
+                {}, {}, 0, false, false);
+        }
+
+        break;
     }
 }
 

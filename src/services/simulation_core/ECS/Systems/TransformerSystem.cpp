@@ -42,13 +42,12 @@ void TransformerSystem::tick(float /*dt*/) {
         int32_t outputVoltage = tierVoltage(tf.outputTier);
 
         if (tf.stepUp) {
-            // Low→High: drain input buffer, accumulate then output high-voltage packets
+            // Low→High: drain energy buffer, accumulate then output high-voltage packets
             int32_t toConsume = std::min(energy.current, tf.maxInput);
             int32_t packets = toConsume / inputVoltage;
 
             if (packets > 0 && tf.buffer < tf.maxOutput * 4) {
                 int32_t consume = packets * inputVoltage;
-                // Output: combine N low-voltage packets into fewer high-voltage packets
                 int32_t ratio = outputVoltage / inputVoltage;
                 int32_t outPackets = packets / ratio;
                 int32_t outEnergy = outPackets * outputVoltage;
@@ -61,14 +60,27 @@ void TransformerSystem::tick(float /*dt*/) {
                     int32_t sendEnergy = sendPackets * outputVoltage;
                     tf.buffer -= sendEnergy;
 
+                    // Register as sink on input tier (receive low-voltage)
                     if (pipeClient_) {
                         pipeClient_->publishNodeUpdate(
                             static_cast<uint64_t>(ent), pos.x, pos.y, pos.z,
                             energy.current, energy.capacity,
                             energy.maxInput, energy.maxOutput,
-                            tf.outputTier,
+                            tf.inputTier,
                             static_cast<int32_t>(energy.type),
                             false, true  // is_source=false, is_sink=true
+                        );
+                    }
+
+                    // Register as source on output tier (emit high-voltage)
+                    if (pipeClient_) {
+                        pipeClient_->publishNodeUpdate(
+                            static_cast<uint64_t>(ent) | 0x100000000ULL, pos.x, pos.y, pos.z,
+                            sendEnergy, tf.maxOutput * 4,
+                            0, tf.maxOutput,
+                            tf.outputTier,
+                            static_cast<int32_t>(energy.type),
+                            true, false  // is_source=true, is_sink=false
                         );
                     }
 
@@ -77,19 +89,40 @@ void TransformerSystem::tick(float /*dt*/) {
                 }
             }
         } else {
-            // High→Low: drain input high-voltage packets, distribute as low-voltage
+            // High→Low: receive high-voltage, distribute as low-voltage
             int32_t toConsume = std::min(energy.current, tf.maxInput);
             int32_t packets = toConsume / inputVoltage;
 
             if (packets > 0) {
                 int32_t outEnergy = packets * inputVoltage;
-                int32_t energyToAdd = outEnergy;
-
                 int32_t space = energy.capacity - energy.current;
-                int32_t actualAdd = std::min(energyToAdd, space);
+                int32_t actualAdd = std::min(outEnergy, space);
                 energy.current += actualAdd;
 
-                // The energy is distributed as low-voltage packets
+                // Register as sink on input tier (receive high-voltage)
+                if (pipeClient_) {
+                    pipeClient_->publishNodeUpdate(
+                        static_cast<uint64_t>(ent), pos.x, pos.y, pos.z,
+                        energy.current, energy.capacity,
+                        energy.maxInput, energy.maxOutput,
+                        tf.inputTier,
+                        static_cast<int32_t>(energy.type),
+                        false, true  // is_source=false, is_sink=true
+                    );
+                }
+
+                // Register as source on output tier (emit low-voltage)
+                if (pipeClient_) {
+                    pipeClient_->publishNodeUpdate(
+                        static_cast<uint64_t>(ent) | 0x100000000ULL, pos.x, pos.y, pos.z,
+                        actualAdd, tf.maxOutput * 4,
+                        0, tf.maxOutput,
+                        tf.outputTier,
+                        static_cast<int32_t>(energy.type),
+                        true, false  // is_source=true, is_sink=false
+                    );
+                }
+
                 spdlog::trace("Transformer step-down (tier {}→{}): distributed {} EU at {} V",
                               tf.inputTier, tf.outputTier, actualAdd, outputVoltage);
             }

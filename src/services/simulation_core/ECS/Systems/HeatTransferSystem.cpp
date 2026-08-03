@@ -122,10 +122,20 @@ void HeatTransferSystem::tick(float /*dt*/) {
             float r = hic.ratio();
 
             if (r >= HeatConstants::OVERHEAT_CRITICAL_THRESHOLD) {
-                auto& oh = reg_.emplace_or_replace<OverheatComponent>(ent, OverheatState::CRITICAL, 0);
-                (void)oh;
+                // Emplace only if absent; otherwise update .state in place so
+                // ticks_at_critical accumulates across consecutive CRITICAL ticks
+                // (ExplosionSystem counts down from EXPLOSION_DELAY_TICKS).
+                if (auto* oh = reg_.try_get<OverheatComponent>(ent)) {
+                    oh->state = OverheatState::CRITICAL;
+                } else {
+                    reg_.emplace<OverheatComponent>(ent, OverheatState::CRITICAL, 0);
+                }
             } else if (r >= HeatConstants::OVERHEAT_WARNING_THRESHOLD) {
-                reg_.emplace_or_replace<OverheatComponent>(ent, OverheatState::WARNING, 0);
+                if (auto* oh = reg_.try_get<OverheatComponent>(ent)) {
+                    oh->state = OverheatState::WARNING;
+                } else {
+                    reg_.emplace<OverheatComponent>(ent, OverheatState::WARNING, 0);
+                }
             } else {
                 if (reg_.all_of<OverheatComponent>(ent)) {
                     reg_.remove<OverheatComponent>(ent);
