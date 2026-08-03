@@ -22,6 +22,8 @@ class SetBlockCASHandler;
 class ChunkEventHandler;
 class WrenchHandler;
 class WorldContainerInventory;
+class IoUringChunkClient;
+class QuestManager;
 class MachineSystem;
 class BatteryBufferSystem;
 
@@ -46,6 +48,8 @@ public:
     std::shared_ptr<RecipeManager::RecipeManager> recipeManager;
     std::shared_ptr<ChunkStoreRepository> blockRepository;
     std::shared_ptr<WrenchHandler> wrenchHandler;
+    std::shared_ptr<IoUringChunkClient> chunkClient;
+    std::shared_ptr<QuestManager> questManager;
     MachineSystem* machineSystem = nullptr;
     BatteryBufferSystem* batteryBuffer = nullptr;
   };

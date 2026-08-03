@@ -11,7 +11,7 @@ id,title,description,era,section,prereqs,detect_type,detect_target,reward_item,r
 10,Steam Compressor,Craft a steam compressor. Compress materials into plates and more compact forms.,apprentice,steam_power,8,craft,52,54,2
 11,Steam Extractor,Craft a steam extractor. Extract valuable fluids and components from materials.,apprentice,steam_power,8,craft,59,55,4
 12,Alloy Smelting,Craft a bronze alloy smelter. Produce advanced alloys for better machines.,apprentice,steam_power,7,craft,58,53,6
-13,Plumbing,Craft fluid pipes. Transport steam, water, and other fluids between your machines.,apprentice,infrastructure,8,craft,61,12,4
+13,Plumbing,Craft fluid pipes. Transport steam water and other fluids between your machines.,apprentice,infrastructure,8,craft,61,12,4
 14,Logistics,Craft item pipes. Automate item transport between inventories and machines.,apprentice,infrastructure,8,craft,62,4,4
 15,Steam Mixer,Craft a steam mixer. Combine materials in new ways.,apprentice,steam_power,8,craft,60,54,2
 16,Getting Wired,Craft tin cable and connect a creative generator. Electricity powers the next tier of technology.,apprentice,infrastructure,8,craft,66,66,8
@@ -34,4 +34,6 @@ id,title,description,era,section,prereqs,detect_type,detect_target,reward_item,r
 33,Tungsten Cabling,Craft tungsten cable. The ultimate conductor for your end-game power grid.,administrator,advanced_tech,32,craft,70,70,8
 34,HV Transformer,Craft an HV-EV transformer. Push into extreme voltage territory.,administrator,advanced_tech,30,craft,73,73,1
 35,Chainsaw Massacre,Craft an LV chainsaw. Clear forests and organic matter with ease.,expert,electric_tools,18,craft,78,78,1
-36,Steam Boiler Heat,Craft a steam heat boiler. Advanced steam-to-heat conversion for high-temperature processing.,expert,automation,22,craft,50,50,1
+37,Place a Furnace,Place the furnace in the world. Smelting happens here - right-click the ground while holding it.,vagrant,basic_crafting,5,block_placed,36,36,1
+38,Place a Workbench,Place a crafting table. A 3x3 grid needs a solid surface.,vagrant,basic_crafting,4,block_placed,14,14,1
+39,Place a Chest,Place a chest to start storing materials.,vagrant,basic_crafting,6,block_placed,37,37,1

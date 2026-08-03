@@ -104,6 +104,7 @@ func (rc *RouterClient) connectAndServe() error {
 		"meta_db.inventory.snapshot",
 		"meta_db.quest.get",
 		"meta_db.quest.set",
+		"quest.completed",
 		"player.joined",
 		"player.left",
 	}
@@ -204,6 +205,9 @@ func (rc *RouterClient) handlePublish(payload []byte) {
 		return
 	case "meta_db.quest.set":
 		handleQuestSet(fbData, rc.m)
+		return
+	case "quest.completed":
+		HandleQuestCompleted("quest.completed", fbData, rc.m)
 		return
 	}
 
@@ -474,13 +478,6 @@ func handleQuestSet(data []byte, m *MetaDB) {
 	}
 
 	for _, qp := range progresses {
-		if qp.Status == uint8(3) {
-			event := make([]byte, 12)
-			binary.LittleEndian.PutUint64(event[:8], playerID)
-			binary.LittleEndian.PutUint32(event[8:12], qp.QuestID)
-			m.rc.PublishRaw("quest.completed", event)
-			log.Printf("[router] quest.completed: player=%d quest=%d", playerID, qp.QuestID)
-		}
 		event := make([]byte, 14)
 		binary.LittleEndian.PutUint64(event[:8], playerID)
 		binary.LittleEndian.PutUint32(event[8:12], qp.QuestID)

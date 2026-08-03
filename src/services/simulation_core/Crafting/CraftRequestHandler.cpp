@@ -1,6 +1,7 @@
 #include "CraftRequestHandler.h"
 #include "../Network/clients/IoUringRouterClient.h"
 #include "../Storage/PlayerInventoryStore.h"
+#include "../Quest/QuestManager.h"
 #include "../RecipeManager/RecipeManager.h"
 #include "core_generated.h"
 #include "recipe_generated.h"
@@ -10,9 +11,10 @@ namespace simcore {
 
 CraftRequestHandler::CraftRequestHandler(std::shared_ptr<IoUringRouterClient> router,
                                          std::shared_ptr<RecipeManager::RecipeManager> recipeManager,
-                                         std::shared_ptr<PlayerInventoryStore> inventoryStore)
+                                         std::shared_ptr<PlayerInventoryStore> inventoryStore,
+                                         std::shared_ptr<QuestManager> questManager)
     : router_(std::move(router)), recipeManager_(std::move(recipeManager)),
-      inventoryStore_(std::move(inventoryStore))
+      inventoryStore_(std::move(inventoryStore)), questManager_(std::move(questManager))
 {}
 
 void CraftRequestHandler::handle(const std::vector<uint8_t>& data) {
@@ -99,8 +101,12 @@ void CraftRequestHandler::handle(const std::vector<uint8_t>& data) {
             {fb.GetBufferPointer(), fb.GetBufferPointer() + fb.GetSize()});
     }
 
-    if (result.item_id != 0)
+    if (result.item_id != 0) {
         inventoryStore_->giveItem(playerId, result.item_id, result.count, -1);
+        if (questManager_) {
+            questManager_->checkCraftCompletion(playerId, result.item_id, result.count);
+        }
+    }
 
     spdlog::info("CraftRequest: {} -> item {} x{}", recipe->id, result.item_id, result.count);
 }

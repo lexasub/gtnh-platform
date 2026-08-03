@@ -18,12 +18,14 @@ SetBlockCASHandler::SetBlockCASHandler(std::shared_ptr<IBlockRepository> repo,
                                        std::shared_ptr<SimulationEngine> engine,
                                        ItemGiveCallback onGiveItem,
                                        DrillUseCallback onDrillUse,
+                                       BlockPlacedCallback onBlockPlaced,
                                        PostCallback postToMain)
     : repo_(std::move(repo))
     , publisher_(std::move(publisher))
     , engine_(std::move(engine))
     , onGiveItem_(std::move(onGiveItem))
     , onDrillUse_(std::move(onDrillUse))
+    , onBlockPlaced_(std::move(onBlockPlaced))
     , postToMain_(std::move(postToMain))
 {}
 
@@ -112,6 +114,9 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
                                                 static_cast<uint32_t>(y),
                                                 static_cast<uint32_t>(z),
                                                 final_block_id, final_meta, 0);
+                    }
+                    if (action_type == Protocol::PlayerActionType_RIGHT_MOUSE_CLICK && onBlockPlaced_) {
+                        onBlockPlaced_(player_id, x, y, z, final_block_id);
                     }
                 } else { // CONFLICT
                     spdlog::warn("Block CAS CONFLICT at ({},{},{}) actual_id={}, from_id={}, to_id={}", x, y, z, result.block_id, expected_block_id, final_block_id);

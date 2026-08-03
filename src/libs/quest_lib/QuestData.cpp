@@ -1,7 +1,9 @@
 #include "QuestData.h"
 #include <fstream>
 #include <sstream>
+#include <algorithm>
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 namespace quest {
 
@@ -72,7 +74,73 @@ bool QuestData::LoadCSV(const std::string& csvPath) {
     return true;
 }
 
-bool QuestData::LoadGraph(const std::string& /*jsonPath*/) {
+bool QuestData::LoadGraph(const std::string& jsonPath) {
+    std::ifstream file(jsonPath);
+    if (!file.is_open()) {
+        spdlog::error("[QuestData] LoadGraph: cannot open {}", jsonPath);
+        return false;
+    }
+
+    nlohmann::json root;
+    try {
+        file >> root;
+    } catch (const std::exception& e) {
+        spdlog::error("[QuestData] LoadGraph: JSON parse error in {}: {}", jsonPath, e.what());
+        return false;
+    }
+
+    auto questsIt = root.find("quests");
+    if (questsIt == root.end() || !questsIt->is_array()) {
+        spdlog::error("[QuestData] LoadGraph: missing or invalid 'quests' array in {}", jsonPath);
+        return false;
+    }
+
+    auto joinPrereqs = [](const std::vector<uint32_t>& v) {
+        std::string s;
+        for (size_t i = 0; i < v.size(); ++i) {
+            if (i > 0) s += ",";
+            s += std::to_string(v[i]);
+        }
+        return s;
+    };
+
+    std::unordered_map<uint32_t, std::vector<uint32_t>> newGraph;
+    size_t nodeCount = 0;
+    for (const auto& entry : *questsIt) {
+        if (!entry.is_object()) continue;
+        uint32_t id = entry.value("id", uint32_t{0});
+        if (idIndex_.find(id) == idIndex_.end()) {
+            spdlog::warn("[QuestData] LoadGraph: quest {} in JSON not found in CSV, skipping", id);
+            continue;
+        }
+
+        std::vector<uint32_t> jsonPrereqs;
+        auto prereqsIt = entry.find("prereqs");
+        if (prereqsIt != entry.end() && prereqsIt->is_array()) {
+            for (const auto& p : *prereqsIt) {
+                if (p.is_number_unsigned())
+                    jsonPrereqs.push_back(p.get<uint32_t>());
+            }
+        }
+
+        auto csvPrereqs = GetPrerequisites(id);
+        auto sortedJson = jsonPrereqs;
+        auto sortedCsv = csvPrereqs;
+        std::sort(sortedJson.begin(), sortedJson.end());
+        std::sort(sortedCsv.begin(), sortedCsv.end());
+        if (sortedJson != sortedCsv) {
+            spdlog::warn("[QuestData] LoadGraph: quest {} prereqs differ: JSON=[{}], CSV=[{}]",
+                         id, joinPrereqs(jsonPrereqs), joinPrereqs(csvPrereqs));
+        }
+
+        for (uint32_t prereq : jsonPrereqs) {
+            newGraph[prereq].push_back(id);
+        }
+        ++nodeCount;
+    }
+
+    graph_ = std::move(newGraph);
+    spdlog::info("[QuestData] LoadGraph: loaded {} quest nodes from {}", nodeCount, jsonPath);
     return true;
 }
 

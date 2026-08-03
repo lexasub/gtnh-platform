@@ -7,6 +7,7 @@
 #include <chrono>
 #include <vector>
 #include <array>
+#include <unordered_map>
 #include <iostream>
 #include <string>
 #include <cstdint>
@@ -38,6 +39,7 @@
 #include "ECS/Systems/LCRSystem.h"
 #include "Actions/WrenchHandler.h"
 #include "World/WorldContainerInventory.h"
+#include "Quest/QuestManager.h"
 #include "RecipeManager/RecipeManager.h"
 #include "Crafting/WorkbenchStateManager.h"
 #include "MachineRegistry.h"
@@ -293,6 +295,27 @@ int main(int argc, char* argv[]) {
     auto wbStateManager = std::make_shared<simulation_core::WorkbenchStateManager>(
         entityStateClient, 0);
 
+    // ── Questbook ─────────────────────────────────────────────────────────
+    auto questData = std::make_shared<quest::QuestData>();
+    if (!questData->LoadCSV("data/quests/quests.csv")) {
+        spdlog::warn("Failed to load quests.csv");
+    }
+    if (!questData->LoadGraph("data/quests/quest_graph.json")) {
+        spdlog::warn("Failed to load quest_graph.json");
+    }
+    auto questGraph = std::make_shared<quest::QuestGraph>();
+    std::unordered_map<uint32_t, std::vector<uint32_t>> prereqsMap;
+    for (const auto& qd : questData->AllQuests()) {
+        prereqsMap[qd.id] = qd.prerequisites;
+    }
+    questGraph->Init(questData->Graph(), prereqsMap);
+    auto questManager = std::make_shared<simcore::QuestManager>(
+        questData.get(), questGraph.get(),
+        [routerClient](const std::string& topic, const uint8_t* data, size_t len) {
+            routerClient->PublishRaw(topic, data, len);
+        });
+    spdlog::info("Questbook initialized: {} quests loaded", questData->Count());
+
     simcore::SimCoreMessageHandler::Deps msgDeps;
     msgDeps.mainQueue = &mainQueue;
     msgDeps.engine = simulationEngine;
@@ -306,6 +329,7 @@ int main(int argc, char* argv[]) {
     msgDeps.recipeManager = recipeManager;
     msgDeps.blockRepository = blockRepository;
     msgDeps.wrenchHandler = wrenchHandler;
+    msgDeps.questManager = questManager;
     msgDeps.machineSystem = machineSystemRaw;
     msgDeps.batteryBuffer = batteryBufferRaw;
     simcore::SimCoreMessageHandler messageHandler(std::move(msgDeps));
@@ -325,6 +349,7 @@ int main(int argc, char* argv[]) {
     routerClient->Subscribe("item.transfer.response");
     routerClient->Subscribe("player.chest.open");
     routerClient->Subscribe("player.inventory.load");
+    routerClient->Subscribe("meta_db.quest.get.response");
 
     // Subscribe to ALL topic-handler topics registered in messageHandler.setup()
     // (covers: player.inventory.actions, player.machine.slot, player.tool.action,

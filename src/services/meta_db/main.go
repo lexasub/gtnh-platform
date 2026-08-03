@@ -30,6 +30,13 @@ func main() {
 	}
 	defer m.db.Close()
 
+	if err := loadQuestDefinitions("data/quests/quests.csv"); err != nil {
+		log.Printf("[QUEST] failed to load quest definitions from data/quests/quests.csv: %v", err)
+		if err := loadQuestDefinitions("/home/su/src/local/gtnh-platform/data/quests/quests.csv"); err != nil {
+			log.Printf("[QUEST] failed to load quest definitions from absolute path: %v", err)
+		}
+	}
+
 	go startFlatBufferListener(m)
 
 	routerClient := NewRouterClient(m)

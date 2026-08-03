@@ -7,6 +7,7 @@
 #include "Network/TopicDispatcher.h"
 #include "Network/clients/EntityStateStoreClient.h"
 #include "Network/clients/IoUringRouterClient.h"
+#include "Network/clients/IoUringChunkClient.h"
 #include "ECS/SimulationEngine.h"
 #include "ECS/Systems/MachineSystem.h"
 #include "ECS/Systems/BatteryBufferSystem.h"
@@ -21,6 +22,7 @@
 #include "Storage/PlayerInventoryStore.h"
 #include "Crafting/CraftRequestHandler.h"
 #include "Crafting/RecipeCompletedHandler.h"
+#include "Quest/QuestManager.h"
 #include "Actions/MachineSlotHandler.h"
 #include "Actions/ToolActionHandler.h"
 #include "Storage/InventoryLoadHandler.h"
@@ -29,12 +31,14 @@
 #include "ECS/Reactors/EnergyFlowHandler.h"
 #include "ECS/Reactors/FluidFlowHandler.h"
 #include "ECS/Reactors/ItemFlowHandler.h"
+#include "ECS/Reactors/CableExplosionHandler.h"
 #include "../../data/registry/ToolIds.h"
 #include "core_generated.h"
 #include "machine_state_generated.h"
 #include "pipe_network_generated.h"
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
+#include <cstring>
 
 namespace simcore {
 
@@ -52,10 +56,13 @@ void SimCoreMessageHandler::setup() {
     topicDispatcher_->on("fluid.flow", std::make_unique<FluidFlowHandler>(
         d.engine->reg(), d.fluidClient));
     topicDispatcher_->on("item.flow", std::make_unique<ItemFlowHandler>(
-        d.engine->reg(), d.itemClient));
+        d.engine->reg(), d.itemClient, d.routerClient, d.entityStateClient));
+
+    topicDispatcher_->on("energy.cable.exploded", std::make_unique<CableExplosionHandler>(
+        d.chunkClient));
 
     topicDispatcher_->on("sim.craft.request", std::make_unique<CraftRequestHandler>(
-        d.routerClient, d.recipeManager, d.inventoryStore));
+        d.routerClient, d.recipeManager, d.inventoryStore, d.questManager));
     topicDispatcher_->on("recipe.completed", std::make_unique<RecipeCompletedHandler>(
         d.engine));
 
@@ -69,7 +76,7 @@ void SimCoreMessageHandler::setup() {
     topicDispatcher_->on("player.inventory.actions", std::make_unique<InventoryActionHandler>(
         d.inventoryStore, d.routerClient));
     topicDispatcher_->on("player.joined", std::make_unique<PlayerJoinedHandler>(
-        d.inventoryStore));
+        d.inventoryStore, d.routerClient, d.questManager));
 
     auto postToMainThread = [&d](std::function<void()> fn) {
         d.mainQueue->push(std::move(fn));
@@ -97,6 +104,11 @@ void SimCoreMessageHandler::setup() {
                 break;
             }
         },
+        [questManager = d.questManager](uint64_t player_id, int32_t x, int32_t y, int32_t z, uint16_t block_id) {
+            if (questManager) {
+                questManager->checkBlockAction(player_id, x, y, z, block_id);
+            }
+        },
         postToMainThread);
 
     dispatcher_ = std::make_shared<ActionDispatcher>(
@@ -122,10 +134,11 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
     auto entityStateClient = d.entityStateClient;
     auto routerClient = d.routerClient;
     auto topicDispatcher = topicDispatcher_;
+    auto questManager = d.questManager;
 
     routerClient->OnMessage([&mainQueue, &dispatcher, &casHandler, &chunkHandler, &worldContainers,
                              topicDispatcher, routerClient, entityStateClient,
-                             batteryBuffer, machineSystem]
+                             batteryBuffer, machineSystem, questManager]
                             (const std::string& topic, const std::vector<uint8_t>& data) {
         // Filter player.actions on the io thread, BEFORE mainQueue: the client
         // floods UNLOAD/MOVE/CHUNK_REQUEST at ~15k/s while walking (chunk
@@ -218,6 +231,13 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                     fbb.Finish(resp);
                     std::vector<uint8_t> rd(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
                     routerClient->Publish("player.chest.open.response", std::move(rd));
+                }
+
+            } else if (topic == "meta_db.quest.get.response") {
+                if (questManager && data.size() >= 10) {
+                    uint64_t playerId = 0;
+                    std::memcpy(&playerId, data.data(), 8);
+                    questManager->loadProgress(playerId, data);
                 }
 
             } else if (topicDispatcher->dispatch(topic, data)) {

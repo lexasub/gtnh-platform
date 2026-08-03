@@ -101,25 +101,6 @@ func HandleQuestSet(topic string, payload []byte, m *MetaDB) {
 		return
 	}
 
-	// Build QuestCompleted event if any quest was completed
-	for _, qp := range quests {
-		if qp.Status == uint8(Protocol.QuestStatusCOMPLETED) {
-			builder := flatbuffers.NewBuilder(64)
-			Protocol.QuestCompletedStart(builder)
-			Protocol.QuestCompletedAddPlayerId(builder, playerID)
-			Protocol.QuestCompletedAddQuestId(builder, qp.QuestID)
-			Protocol.QuestCompletedAddTimestamp(builder, uint64(time.Now().UnixNano()))
-			completedOffset := Protocol.QuestCompletedEnd(builder)
-			builder.Finish(completedOffset)
-			completedBytes := builder.FinishedBytes()
-
-			log.Printf("[QUEST] HandleQuestSet: publishing quest.completed for player %d quest %d", playerID, qp.QuestID)
-			if m.rc != nil {
-				m.rc.PublishRaw("quest.completed", completedBytes)
-			}
-		}
-	}
-
 	// Publish updated progress to quest.progress.updated topic
 	builder := flatbuffers.NewBuilder(1024)
 	questsOffsets := make([]flatbuffers.UOffsetT, len(quests))
@@ -185,7 +166,10 @@ func HandleQuestCompleted(topic string, payload []byte, m *MetaDB) {
 	rewardType := "item"
 	rewardValue := float64(0)
 	timestamp := time.Now().Unix()
-	metadata := fmt.Sprintf("quest_id=%d,era=%d,section=%s", questID, questDef.Era, questDef.Section)
+	metadata := fmt.Sprintf("quest_id=%d", questID)
+	if questDef != nil {
+		metadata = fmt.Sprintf("quest_id=%d,era=%d,section=%s", questID, questDef.Era, questDef.Section)
+	}
 
 	err := StorePlayerQuestReward(m.db, playerID, questID, rewardType, rewardItemID, rewardCount, rewardValue, 0, timestamp, metadata)
 	if err != nil {
@@ -205,8 +189,8 @@ func HandleQuestCompleted(topic string, payload []byte, m *MetaDB) {
 	builder.Finish(notificationOffset)
 
 	notificationBytes := builder.FinishedBytes()
-	log.Printf("[QUEST] HandleQuestCompleted: publishing QuestCompletedNotification to quest.completed (%d bytes)", len(notificationBytes))
+	log.Printf("[QUEST] HandleQuestCompleted: publishing QuestCompletedNotification to quest.completed.notification (%d bytes)", len(notificationBytes))
 	if m.rc != nil {
-		m.rc.PublishRaw("quest.completed", notificationBytes)
+		m.rc.PublishRaw("quest.completed.notification", notificationBytes)
 	}
 }

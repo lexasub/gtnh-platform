@@ -1,11 +1,45 @@
 #include "QuestManager.h"
+#include "quest_generated.h"
 #include <spdlog/spdlog.h>
 #include <algorithm>
+#include <chrono>
+#include <cstring>
 #include <stdexcept>
 #include <mutex>
 #include <cstdint>
 
 namespace simcore {
+
+void QuestManager::publishQuestCompleted(uint64_t playerId, uint32_t questId) {
+    if (!publishCallback_) {
+        spdlog::warn("[QuestManager] publishQuestCompleted: no publish callback for player {}", playerId);
+        return;
+    }
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto timestamp = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count());
+    auto offset = Protocol::CreateQuestCompleted(builder, playerId, questId, timestamp);
+    builder.Finish(offset);
+    publishCallback_("quest.completed", builder.GetBufferPointer(), builder.GetSize());
+    spdlog::info("[QuestManager] Published quest.completed: player={}, quest={}", playerId, questId);
+}
+
+void QuestManager::publishQuestProgressUpdated(uint64_t playerId, uint32_t questId,
+                                               quest::QuestStatus status, uint8_t progress) {
+    if (!publishCallback_) {
+        spdlog::warn("[QuestManager] publishQuestProgressUpdated: no publish callback for player {}", playerId);
+        return;
+    }
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto entry = Protocol::CreateQuestEntry(builder, questId,
+                                            static_cast<Protocol::QuestStatus>(status), progress);
+    auto questsVec = builder.CreateVector(&entry, 1);
+    auto offset = Protocol::CreateQuestProgressUpdate(builder, playerId, questsVec);
+    builder.Finish(offset);
+    publishCallback_("quest.progress.updated", builder.GetBufferPointer(), builder.GetSize());
+    spdlog::debug("[QuestManager] Published quest.progress.updated: player={}, quest={}, status={}, progress={}",
+                  playerId, questId, static_cast<uint8_t>(status), progress);
+}
 
 void QuestManager::onPlayerJoined(uint64_t playerId) {
     if (!questData_) {
@@ -18,14 +52,21 @@ void QuestManager::onPlayerJoined(uint64_t playerId) {
     try {
         // Initialize player quest state with thread safety
         std::lock_guard<std::mutex> lock(mutex_);
-        progress_[playerId] = std::unordered_map<uint32_t, quest::QuestStatus>();
-        
+        auto& playerProgress = progress_[playerId];
+
+        // Seed all known quests as LOCKED so the graph invariant holds:
+        // NewlyAvailable()/GetUnlocked() only consider quests present in the map.
+        for (const auto& questDef : questData_->AllQuests()) {
+            playerProgress.emplace(questDef.id, quest::QuestStatus::LOCKED);
+        }
+
         // Validate that playerId is valid (non-zero for most implementations)
         if (playerId == 0) {
             spdlog::warn("[QuestManager] Player ID is zero - this may indicate a client issue");
         }
-        
-        spdlog::info("[QuestManager] Quest state initialized for player {}", playerId);
+
+        spdlog::info("[QuestManager] Quest state initialized for player {}, {} quests seeded",
+                     playerId, questData_->AllQuests().size());
     } catch (const std::exception& e) {
         spdlog::error("[QuestManager] Exception in onPlayerJoined for player {}: {}", 
                      playerId, e.what());
@@ -187,62 +228,66 @@ void QuestManager::loadProgress(uint64_t playerId, const std::vector<uint8_t>& f
         spdlog::error("[QuestManager] loadProgress: questData_ is null for player {}", playerId);
         return;
     }
-    
-    if (fbData.size() < 12) {
-        spdlog::warn("[QuestManager] Invalid quest progress data size for player {}", playerId);
+
+    if (fbData.size() < 10) {
+        spdlog::warn("[QuestManager] Invalid quest progress data size {} for player {}", fbData.size(), playerId);
         return;
     }
-    
-    spdlog::debug("[QuestManager] Loading quest progress for player {} from {} bytes", 
-                 playerId, fbData.size());
-    
+
     try {
         std::lock_guard<std::mutex> lock(mutex_);
-        
-        size_t offset = 0;
-        uint32_t loadedCount = 0;
 
-        //TODO - use const offsets
-        while (offset + 12 <= fbData.size()) {
-            uint64_t pId = *reinterpret_cast<const uint64_t*>(&fbData[offset]);
-            offset += 8;
-            
-            uint32_t questId = *reinterpret_cast<const uint32_t*>(&fbData[offset]);
-            offset += 4;
-            
-            uint8_t status = fbData[offset];
-            offset += 1;
-            
-            uint8_t progress = fbData[offset];
-            offset += 1;
-            
-            if (pId == playerId) {
-                // Validate status value
-                if (status >= 4) {  // MAX_STATUS = 3 (COMPLETED), so anything >= 4 is invalid
-                    spdlog::warn("[QuestManager] Invalid quest status {} for quest {} (player {}), clamping", 
-                                status, questId, playerId);
-                    status = static_cast<uint8_t>(quest::QuestStatus::LOCKED);
-                }
-                
-                progress_[playerId][questId] = static_cast<quest::QuestStatus>(status);
-                loadedCount++;
-                
-                const quest::QuestDef* questDef = questData_->GetQuest(questId);
-                if (questDef) {
-                    spdlog::info("[QuestManager] Loaded quest {} for player {}: status={}, progress={}%)", 
-                               questId, playerId, static_cast<uint8_t>(status), progress);
-                } else {
-                    spdlog::debug("[QuestManager] Quest {} not found in quest data for player {}", 
-                                 questId, playerId);
-                }
+        const uint8_t* data = fbData.data();
+        uint64_t respPlayerId = 0;
+        std::memcpy(&respPlayerId, data, 8);
+        uint16_t nEntries = 0;
+        std::memcpy(&nEntries, data + 8, 2);
+
+        size_t expectedSize = 10 + static_cast<size_t>(nEntries) * 6;
+        if (fbData.size() != expectedSize) {
+            spdlog::warn("[QuestManager] loadProgress: size mismatch for player {}: got {}, expected {}",
+                         playerId, fbData.size(), expectedSize);
+            return;
+        }
+
+        if (respPlayerId != playerId) {
+            spdlog::warn("[QuestManager] loadProgress: response for player {} but requested player {}",
+                         respPlayerId, playerId);
+        }
+
+        auto& playerProgress = progress_[playerId];
+        uint32_t loadedCount = 0;
+        for (uint16_t i = 0; i < nEntries; ++i) {
+            size_t off = 10 + i * 6;
+            uint32_t questId = 0;
+            std::memcpy(&questId, data + off, 4);
+            uint8_t status = data[off + 4];
+            uint8_t progress = data[off + 5];
+
+            if (status >= 4) {
+                spdlog::warn("[QuestManager] Invalid quest status {} for quest {} (player {}), clamping",
+                             status, questId, playerId);
+                status = static_cast<uint8_t>(quest::QuestStatus::LOCKED);
+            }
+
+            playerProgress[questId] = static_cast<quest::QuestStatus>(status);
+            ++loadedCount;
+
+            const quest::QuestDef* questDef = questData_->GetQuest(questId);
+            if (questDef) {
+                spdlog::info("[QuestManager] Loaded quest {} for player {}: status={}, progress={}%",
+                             questId, playerId, static_cast<uint8_t>(status), progress);
+            } else {
+                spdlog::debug("[QuestManager] Quest {} not found in quest data for player {}",
+                              questId, playerId);
             }
         }
-        
-        spdlog::info("[QuestManager] Loaded {} quest entries for player {} from MetaDB", 
-                   loadedCount, playerId);
+
+        spdlog::info("[QuestManager] Loaded {} quest entries for player {} from MetaDB",
+                     loadedCount, playerId);
     } catch (const std::exception& e) {
-        spdlog::error("[QuestManager] Exception in loadProgress for player {}: {}", 
-                     playerId, e.what());
+        spdlog::error("[QuestManager] Exception in loadProgress for player {}: {}",
+                      playerId, e.what());
     }
 }
 
@@ -262,34 +307,11 @@ void QuestManager::distributeRewards(uint64_t playerId, const quest::QuestDef& q
                questDef.id, playerId, questDef.rewardItemId, questDef.rewardCount);
     
     try {
-        // TODO: Integrate with inventory system to add reward items
-        // This would typically involve:
-        // 1. Publishing to inventory service via gateway
-        // 2. Or calling inventory manager directly
-        // 3. Publishing quest reward events
-        
-        // For now, log the reward that would be distributed
-        spdlog::info("[QuestManager] Would distribute reward: itemId={}, count={} to player {}", 
-                   questDef.rewardItemId, questDef.rewardCount, playerId);
-        
-        // Publish quest reward event for gateway
-        std::vector<uint8_t> rewardData;
-        rewardData.reserve(20);
-        
-        rewardData.insert(rewardData.end(),
-                          reinterpret_cast<const uint8_t*>(&playerId),
-                          reinterpret_cast<const uint8_t*>(&playerId) + 8);
-        
-        rewardData.insert(rewardData.end(),
-                          reinterpret_cast<const uint8_t*>(&questDef.rewardItemId),
-                          reinterpret_cast<const uint8_t*>(&questDef.rewardItemId) + 2);
-        
-        rewardData.push_back(questDef.rewardCount);
-        
-        publishCallback_("quest.reward.distributed", rewardData.data(), rewardData.size());
-        
-        spdlog::info("[QuestManager] Reward distribution event published for quest {} (player {})", 
-                   questDef.id, playerId);
+        // Reward item/count travel inside QuestCompleted (quest.completed topic);
+        // MetaDB stores player_quest_rewards and forwards a notification to the
+        // client on quest.completed.notification. No separate inventory plumbing.
+        spdlog::info("[QuestManager] reward item={} x{} for quest {} forwarded to MetaDB via quest.completed (player {})", 
+                     questDef.rewardItemId, questDef.rewardCount, questDef.id, playerId);
     } catch (const std::exception& e) {
         spdlog::error("[QuestManager] Exception in distributeRewards for quest {} (player {}): {}", 
                      questDef.id, playerId, e.what());

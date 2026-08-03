@@ -242,19 +242,11 @@ func BatchRedeemPlayerQuestRewards(db *sql.DB, rewardIDs []int64) error {
 
 // GetQuestDefinition retrieves quest definition data to determine rewards
 func GetQuestDefinition(questID uint32) *QuestDef {
-	// TODO: This is a stub. In a real implementation, this would load quest definitions from a CSV or database file.
-	// For now, return a simple definition for quest ID 1 (First Steps)
-	if questID == 1 {
-		return &QuestDef{
-			ID:          1,
-			Title:       "First Steps",
-			RewardItemID: 33,
-			RewardCount: 8,
-			Era:         0,
-			Section:     "getting_started",
-		}
+	def, ok := questDefs[questID]
+	if !ok {
+		return nil
 	}
-	return nil
+	return &def
 }
 
 // PlayerQuestReward represents a quest reward record

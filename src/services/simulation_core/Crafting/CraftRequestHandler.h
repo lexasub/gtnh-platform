@@ -5,6 +5,7 @@
 namespace simcore {
 class IoUringRouterClient;
 class PlayerInventoryStore;
+class QuestManager;
 } // namespace simcore
 
 namespace RecipeManager {
@@ -18,12 +19,14 @@ public:
   CraftRequestHandler(
       std::shared_ptr<IoUringRouterClient> router,
       std::shared_ptr<RecipeManager::RecipeManager> recipeManager,
-      std::shared_ptr<PlayerInventoryStore> inventoryStore);
+      std::shared_ptr<PlayerInventoryStore> inventoryStore,
+      std::shared_ptr<QuestManager> questManager);
   void handle(const std::vector<uint8_t> &data) override;
 
 private:
   std::shared_ptr<IoUringRouterClient> router_;
   std::shared_ptr<RecipeManager::RecipeManager> recipeManager_;
   std::shared_ptr<PlayerInventoryStore> inventoryStore_;
+  std::shared_ptr<QuestManager> questManager_;
 };
 } // namespace simcore
