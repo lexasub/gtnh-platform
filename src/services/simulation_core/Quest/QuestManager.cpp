@@ -42,6 +42,77 @@ void QuestManager::publishQuestProgressUpdated(uint64_t playerId, uint32_t quest
                   playerId, questId, static_cast<uint8_t>(status), progress);
 }
 
+void QuestManager::publishQuestUnlocked(uint64_t playerId,
+                                       const std::vector<uint32_t>& questIds) {
+    if (!publishCallback_) {
+        spdlog::warn("[QuestManager] publishQuestUnlocked: no publish callback for player {}", playerId);
+        return;
+    }
+    if (questIds.empty()) return;
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto idsVec = builder.CreateVector(questIds);
+    auto offset = Protocol::CreateQuestUnlocked(builder, playerId, idsVec);
+    builder.Finish(offset);
+    publishCallback_("quest.unlocked", builder.GetBufferPointer(), builder.GetSize());
+    spdlog::info("[QuestManager] Published quest.unlocked: player={}, {} quests newly available",
+                 playerId, questIds.size());
+}
+
+bool QuestManager::completeQuest(uint64_t playerId, uint32_t questId) {
+    if (!questData_ || !questGraph_) {
+        spdlog::error("[QuestManager] completeQuest: questData_/questGraph_ null for player {}", playerId);
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    auto& playerProgress = progress_[playerId];
+    auto it = playerProgress.find(questId);
+    if (it == playerProgress.end()) {
+        spdlog::warn("[QuestManager] completeQuest: unknown quest {} for player {}", questId, playerId);
+        return false;
+    }
+    if (it->second != quest::QuestStatus::AVAILABLE) {
+        spdlog::warn("[QuestManager] completeQuest: quest {} is not AVAILABLE for player {} (status={})",
+                     questId, playerId, static_cast<uint8_t>(it->second));
+        return false;
+    }
+    if (!questGraph_->CanComplete(questId, playerProgress)) {
+        spdlog::warn("[QuestManager] completeQuest: quest {} prerequisites not met for player {}",
+                     questId, playerId);
+        return false;
+    }
+
+    // Accept: transition AVAILABLE → COMPLETED.
+    it->second = quest::QuestStatus::COMPLETED;
+    publishQuestCompleted(playerId, questId);
+    publishQuestProgressUpdated(playerId, questId, quest::QuestStatus::COMPLETED, 100);
+
+    // Reward delivery: the quest.completed event is consumed by MetaDB, which
+    // stores the reward row and grants it to the player's inventory
+    // (questbook-reward-inventory). distributeRewards() stays for audit logging.
+    const quest::QuestDef* questDef = questData_->GetQuest(questId);
+    if (questDef) {
+        distributeRewards(playerId, *questDef);
+    }
+
+    // Unlock newly available dependents (their prerequisites are now met).
+    auto newlyAvailable = questGraph_->NewlyAvailable(playerProgress);
+    if (!newlyAvailable.empty()) {
+        std::vector<uint32_t> ids;
+        ids.reserve(newlyAvailable.size());
+        for (uint32_t nq : newlyAvailable) {
+            playerProgress[nq] = quest::QuestStatus::AVAILABLE;
+            publishQuestProgressUpdated(playerId, nq, quest::QuestStatus::AVAILABLE, 0);
+            ids.push_back(nq);
+        }
+        publishQuestUnlocked(playerId, ids);
+    }
+
+    spdlog::info("[QuestManager] Quest {} COMPLETED for player {} (manual)", questId, playerId);
+    return true;
+}
+
 void QuestManager::onPlayerJoined(uint64_t playerId) {
     if (!questData_) {
         spdlog::error("[QuestManager] onPlayerJoined: questData_ is null for player {}", playerId);

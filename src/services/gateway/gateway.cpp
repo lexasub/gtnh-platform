@@ -499,6 +499,12 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
         publish("player.tool.action", data, len);
         break;
     }
+    case GatewayMsg::kQuestCompleteRequest: {
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::QuestCompleteRequest>(nullptr)) { spdlog::error("Gateway: invalid QuestCompleteRequest on ctrl"); return; }
+        publish("quest.complete.request", data, len);
+        break;
+    }
     default: spdlog::warn("Gateway: unknown ctrl client msg type {}", msg_type); break;
     }
 }

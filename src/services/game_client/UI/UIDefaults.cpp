@@ -17,7 +17,7 @@ void RegisterPlayerUI(UIManager& mgr, InventoryState& invState) {
     invWin.SetDragManager(mgr.GetDragManager());
     mgr.Register<CreativeMenu>(&mgr);
     mgr.Register<RecipeInspectWindow>();
-    mgr.Register<QuestBookWindow>();
+    mgr.Register<QuestBookWindow>(&mgr);
     mgr.RegisterPanel<NeiPanel>(&mgr);
 
     mgr.GetBinder().LoadConfig("data/bindings.json");

@@ -248,6 +248,22 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                     questManager->loadProgress(playerId, data);
                 }
 
+            } else if (topic == "quest.complete.request") {
+                // Client "Complete" button → server-authoritative completion.
+                // QuestManager validates status + prerequisites; on acceptance
+                // it publishes quest.completed / quest.progress.updated /
+                // quest.unlocked so MetaDB grants the reward and the client is
+                // notified.
+                flatbuffers::Verifier v(data.data(), data.size());
+                if (!v.VerifyBuffer<Protocol::QuestCompleteRequest>(nullptr)) {
+                    spdlog::warn("[Quest] invalid QuestCompleteRequest");
+                    return;
+                }
+                auto* req = flatbuffers::GetRoot<Protocol::QuestCompleteRequest>(data.data());
+                if (req && questManager) {
+                    questManager->completeQuest(req->player_id(), req->quest_id());
+                }
+
             } else if (topicDispatcher->dispatch(topic, data)) {
             } else {
                 spdlog::debug("Unhandled topic: {}", topic);

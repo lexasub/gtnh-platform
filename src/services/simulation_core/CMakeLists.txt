@@ -183,6 +183,7 @@ add_executable(simcored_test
     test/test_main.cpp
     test/test_ecs_systems.cpp
     test/test_recipe_manager.cpp
+    test/test_quest_manager.cpp
 )
 target_compile_definitions(simcored_test PRIVATE
     DATA_DIR="${CMAKE_SOURCE_DIR}/data"

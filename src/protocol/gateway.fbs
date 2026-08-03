@@ -45,6 +45,7 @@ union GatewayPayload {
   QuestProgressUpdate,       // 19 — gateway→client (quest status update)
   QuestUnlockNotification,   // 20 — gateway→client (new quests available)
   QuestCompletedNotification,// 21 — gateway→client (quest completed)
+  QuestCompleteRequest,      // 22 — client→gateway (manual quest completion)
 }
 
 table GatewayMessage {

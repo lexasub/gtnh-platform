@@ -48,6 +48,7 @@ inline constexpr uint8_t kQuestProgressUpdate = 20;
 inline constexpr uint8_t kQuestUnlockNotification = 21;
 inline constexpr uint8_t kQuestCompletedNotification = 22;
 inline constexpr uint8_t kMultiblockEvent = 23;
+inline constexpr uint8_t kQuestCompleteRequest = 24;
 } // namespace GatewayMsg
 
 class NetClient : public std::enable_shared_from_this<NetClient> {
@@ -74,6 +75,8 @@ public:
       std::function<void(BlockPos, bool, const std::vector<ItemStack> &)>;
   using ToolActionRespCallback =
       std::function<void(bool, uint8_t, const std::vector<uint8_t> &)>;
+  using MultiblockEventCallback =
+      std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
   using QuestUpdateCallback =
       std::function<void(uint8_t, std::shared_ptr<std::vector<uint8_t>>)>;
   using ReconnectCallback = std::function<void()>;
@@ -123,6 +126,9 @@ public:
   void SetToolActionRespCallback(ToolActionRespCallback cb) {
     onToolActionResp_ = std::move(cb);
   }
+  void SetMultiblockEventCallback(MultiblockEventCallback cb) {
+    onMultiblockEvent_ = std::move(cb);
+  }
   void SetQuestUpdateCallback(QuestUpdateCallback cb) {
     onQuestUpdate_ = std::move(cb);
   }
@@ -152,6 +158,9 @@ public:
   void SendToolAction(uint64_t player_id, Protocol::ToolActionType action,
                       int32_t x, int32_t y, int32_t z, uint8_t face,
                       uint16_t item_id = 0);
+  // Manual quest completion (server-authoritative): sends QuestCompleteRequest
+  // to the gateway, which forwards to SimulationCore for validation.
+  void SendQuestComplete(uint64_t player_id, uint32_t quest_id);
 
 private:
   // ---- Thread-safe message queue -----------------------------------------
@@ -221,6 +230,7 @@ private:
   SetMachineSlotRespCallback onSetMachineSlotResp_;
   ChestOpenRespCallback onChestOpenResp_;
   ToolActionRespCallback onToolActionResp_;
+  MultiblockEventCallback onMultiblockEvent_;
   QuestUpdateCallback onQuestUpdate_;
   ReconnectCallback onReconnect_;
 };

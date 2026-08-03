@@ -30,10 +30,20 @@ public:
                         uint16_t blockId);
   void loadProgress(uint64_t playerId, const std::vector<uint8_t> &fbData);
 
+  // Server-authoritative manual completion (client "Complete" button).
+  // Validates the quest exists, is AVAILABLE, and its prerequisites are met
+  // (QuestGraph::CanComplete). On acceptance transitions AVAILABLE→COMPLETED,
+  // publishes quest.completed + quest.progress.updated, and unlocks any newly
+  // available dependents (quest.unlocked). Returns false (no state change, no
+  // reward) on rejection. Idempotent: already-COMPLETED quests are rejected.
+  bool completeQuest(uint64_t playerId, uint32_t questId);
+
 private:
   void publishQuestCompleted(uint64_t playerId, uint32_t questId);
   void publishQuestProgressUpdated(uint64_t playerId, uint32_t questId,
                                    quest::QuestStatus status, uint8_t progress);
+  void publishQuestUnlocked(uint64_t playerId,
+                            const std::vector<uint32_t> &questIds);
   void distributeRewards(uint64_t playerId, const quest::QuestDef &questDef);
 
 private:

@@ -2,6 +2,7 @@
 #include "../World/ChunkView.h"
 #include "gateway_generated.h"
 #include "core_generated.h"
+#include "quest_generated.h"
 
 #include <gtnh/net/io_uring_connection.h>
 #include <gtnh/net/tcp_connector.h>
@@ -325,6 +326,9 @@ void NetClient::OnMessage(uint8_t msg_type,
                 auto ev = flatbuffers::GetRoot<Protocol::MultiblockDestroyedEvent>(payload);
                 spdlog::debug("MultiblockDestroyed: id={}", ev->controller_id());
             }
+            if (onMultiblockEvent_) {
+                onMultiblockEvent_(data);
+            }
             break;
         }
         case GatewayMsg::kCraftResponse: {
@@ -646,6 +650,16 @@ void NetClient::SendCraftRequest(uint64_t player_id, const BlockPos& pos,
     auto req = Protocol::CreateCraftRequest(builder, player_id, &posVec, slotsOffset);
     builder.Finish(req);
     EnqueueWrite(GatewayMsg::kCraftRequest, builder.GetBufferPointer(), builder.GetSize());
+}
+
+void NetClient::SendQuestComplete(uint64_t player_id, uint32_t quest_id) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(32);
+    auto req = Protocol::CreateQuestCompleteRequest(builder, player_id, quest_id);
+    builder.Finish(req);
+    EnqueueWrite(GatewayMsg::kQuestCompleteRequest, builder.GetBufferPointer(),
+                 builder.GetSize());
+    spdlog::debug("[Quest] SendQuestComplete: player={} quest={}", player_id, quest_id);
 }
 
 void NetClient::SendSetMachineSlot(uint64_t player_id, const BlockPos& pos,

@@ -8,13 +8,15 @@
 #include <unordered_map>
 #include <vector>
 
+class UIManager;
+
 // QuestBookWindow — the player's quest progression guide.
 // Opened with Q key. Shows era tabs, sections, quests, and detail view.
 // Data is loaded locally from quests.csv + quest_graph.json.
 // Progress is synced with MetaDB via network messages.
 class QuestBookWindow : public IUIWindow {
 public:
-  QuestBookWindow();
+  explicit QuestBookWindow(UIManager *mgr);
 
   std::string_view Name() const override { return "QuestBook"; }
   void Render(InventoryState *playerInv) override;
@@ -61,10 +63,13 @@ private:
   void renderEraTabs();
   void renderSectionPanel();
   void renderQuestList();
-  void renderQuestDetail();
+  void renderQuestDetail(uint64_t playerId);
   void renderCompletionBadge(uint8_t status);
+  void onCompleteClicked(uint64_t playerId);
 
   // Color helpers
   ImU32 statusColor(uint8_t status) const;
   const char *statusLabel(uint8_t status) const;
+
+  UIManager *uiMgr_ = nullptr;
 };

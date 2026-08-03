@@ -417,6 +417,7 @@ int main(int argc, char* argv[]) {
     routerClient->Subscribe("player.chest.open");
     routerClient->Subscribe("player.inventory.load");
     routerClient->Subscribe("meta_db.quest.get.response");
+    routerClient->Subscribe("quest.complete.request");
 
     // Subscribe to ALL topic-handler topics registered in messageHandler.setup()
     // (covers: player.inventory.actions, player.machine.slot, player.tool.action,

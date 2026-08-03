@@ -1,5 +1,6 @@
 #include "QuestBookWindow.h"
 #include "Network/NetClient.h"
+#include "UI/UIManager.h"
 #include "quest_lib/QuestData.h"
 #include "quest_lib/QuestGraph.h"
 #include "quest_generated.h"
@@ -7,7 +8,7 @@
 #include <spdlog/spdlog.h>
 #include <string>
 
-QuestBookWindow::QuestBookWindow() {
+QuestBookWindow::QuestBookWindow(UIManager *mgr) : uiMgr_(mgr) {
     loadQuestData();
 }
 
@@ -44,7 +45,7 @@ void QuestBookWindow::loadQuestData() {
     spdlog::info("[Quest] Loaded {} quests across {} eras", quests_.size(), eraData_.size());
 }
 
-void QuestBookWindow::Render(InventoryState*) {
+void QuestBookWindow::Render(InventoryState* playerInv) {
     if (!open_) return;
     if (!dataLoaded_) {
         loadQuestData();
@@ -76,7 +77,7 @@ void QuestBookWindow::Render(InventoryState*) {
     ImGui::SameLine();
 
     if (ImGui::BeginChild("rightPanel", ImVec2(0, 0), ImGuiChildFlags_Borders)) {
-        renderQuestDetail();
+        renderQuestDetail(playerInv ? playerInv->player_id : 0);
     }
     ImGui::EndChild();
 
@@ -133,7 +134,7 @@ void QuestBookWindow::renderQuestList() {
     }
 }
 
-void QuestBookWindow::renderQuestDetail() {
+void QuestBookWindow::renderQuestDetail(uint64_t playerId) {
     if (selectedQuestId_ == 0) {
         ImGui::TextWrapped("Select a quest to view details.");
         return;
@@ -161,7 +162,32 @@ void QuestBookWindow::renderQuestDetail() {
         ImGui::Text("Reward: item %u x %u", it->rewardItemId, it->rewardCount);
     }
 
+    // Manual completion (server-authoritative): shown only for AVAILABLE quests.
+    // Local status is updated only on server confirmation (QuestCompletedNotification).
+    if (it->status == 1) {
+        ImGui::Dummy(ImVec2(0, 8));
+        ImGui::PushID(static_cast<int>(it->id));
+        if (ImGui::Button("Complete", ImVec2(120, 0))) {
+            onCompleteClicked(playerId);
+        }
+        ImGui::PopID();
+    }
+
     renderCompletionBadge(it->status);
+}
+
+void QuestBookWindow::onCompleteClicked(uint64_t playerId) {
+    if (!uiMgr_) {
+        spdlog::warn("[Quest] onCompleteClicked: no UIManager");
+        return;
+    }
+    NetClient *net = uiMgr_->GetNetClient();
+    if (!net) {
+        spdlog::warn("[Quest] onCompleteClicked: no NetClient");
+        return;
+    }
+    net->SendQuestComplete(playerId, selectedQuestId_);
+    spdlog::debug("[Quest] Complete requested: player={} quest={}", playerId, selectedQuestId_);
 }
 
 void QuestBookWindow::renderCompletionBadge(uint8_t status) {

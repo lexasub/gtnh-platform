@@ -39,6 +39,14 @@ table QuestEntry {
   progress:uint8 = 0;         // 0-100 percent for sub-task tracking
 }
 
+// Client → server: request manual completion of an AVAILABLE quest.
+// The server validates status + prerequisites and transitions AVAILABLE→COMPLETED
+// before any reward is granted. Never send status updates directly (quest.set).
+table QuestCompleteRequest {
+  player_id:uint64;
+  quest_id:uint32;
+}
+
 // Server → client: notify when new quests become available
 table QuestUnlockNotification {
   player_id:uint64;
