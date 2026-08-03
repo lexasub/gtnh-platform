@@ -5,124 +5,124 @@ recipes:
 
   - name: crafting_table
     inputs:
-      - { item: 13, count: 1 }
+      - { item: oak_planks, count: 1 }
     outputs:
-      - { item: 14, count: 1 }
+      - { item: crafting_table, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: crafting_table_cobblestone
     inputs:
-      - { item: 7, count: 1 }
+      - { item: cobblestone, count: 1 }
     outputs:
-      - { item: 14, count: 1 }
+      - { item: crafting_table, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: crafting_table_iron
     inputs:
-      - { item: 4, count: 1 }
+      - { item: iron_ingot, count: 1 }
     outputs:
-      - { item: 14, count: 1 }
+      - { item: crafting_table, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: stick
     inputs:
-      - { item: 13, count: 2 }
+      - { item: oak_planks, count: 2 }
     outputs:
-      - { item: 32, count: 4 }
+      - { item: stick, count: 4 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: wooden_pickaxe
     inputs:
-      - { item: 13, count: 3 }
-      - { item: 32, count: 2 }
+      - { item: oak_planks, count: 3 }
+      - { item: stick, count: 2 }
     outputs:
-      - { item: 33, count: 1 }
+      - { item: wooden_pickaxe, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: stone_pickaxe
     inputs:
-      - { item: 7, count: 3 }
-      - { item: 32, count: 2 }
+      - { item: cobblestone, count: 3 }
+      - { item: stick, count: 2 }
     outputs:
-      - { item: 34, count: 1 }
+      - { item: stone_pickaxe, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: iron_pickaxe
     inputs:
-      - { item: 4, count: 3 }
-      - { item: 32, count: 2 }
+      - { item: iron_ingot, count: 3 }
+      - { item: stick, count: 2 }
     outputs:
-      - { item: 35, count: 1 }
+      - { item: iron_pickaxe, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: furnace
     inputs:
-      - { item: 7, count: 8 }
+      - { item: cobblestone, count: 8 }
     outputs:
-      - { item: 36, count: 1 }
+      - { item: heat_furnace, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: chest
     inputs:
-      - { item: 13, count: 8 }
+      - { item: oak_planks, count: 8 }
     outputs:
-      - { item: 37, count: 1 }
+      - { item: chest, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: torch
     inputs:
-      - { item: 44, count: 1 }
-      - { item: 32, count: 1 }
+      - { item: coal, count: 1 }
+      - { item: stick, count: 1 }
     outputs:
-      - { item: 40, count: 4 }
+      - { item: torch, count: 4 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: wooden_axe
     inputs:
-      - { item: 13, count: 3 }
-      - { item: 32, count: 2 }
+      - { item: oak_planks, count: 3 }
+      - { item: stick, count: 2 }
     outputs:
-      - { item: 41, count: 1 }
+      - { item: workbench_axe, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: wooden_shovel
     inputs:
-      - { item: 13, count: 1 }
-      - { item: 32, count: 2 }
+      - { item: oak_planks, count: 1 }
+      - { item: stick, count: 2 }
     outputs:
-      - { item: 42, count: 1 }
+      - { item: workbench_shovel, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: wooden_sword
     inputs:
-      - { item: 13, count: 1 }
-      - { item: 32, count: 2 }
+      - { item: oak_planks, count: 1 }
+      - { item: stick, count: 2 }
     outputs:
-      - { item: 43, count: 1 }
+      - { item: workbench_sword, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767

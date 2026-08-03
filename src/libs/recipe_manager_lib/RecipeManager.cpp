@@ -1,6 +1,7 @@
 #include "RecipeManager.h"
 #include "ItemRegistry.h"
 #include "ConditionEvaluator.h"
+#include <common/ItemId.h>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
@@ -220,7 +221,8 @@ bool RecipeManager::parseYamlMachineClass(const YAML::Node& node) {
     for (size_t i = 0; i < variants.size(); ++i) {
         const auto& v = variants[i];
         MachineVariant mv;
-        mv.block_id       = v["block_id"].as<uint16_t>(0);
+        // block_id is a hierarchical string ("1110:00:0") → pack to uint16.
+        mv.block_id       = ItemId::pack(v["block_id"].as<std::string>(""));
         mv.name           = v["name"].as<std::string>("");
         mv.energy_in      = parseEnergyType(v["energy_in"].as<std::string>(""));
         mv.energy_out     = parseEnergyType(v["energy_out"].as<std::string>(""));

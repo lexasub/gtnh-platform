@@ -3,6 +3,7 @@
 #include <sstream>
 #include <spdlog/spdlog.h>
 #include <yaml-cpp/yaml.h>
+#include <common/ItemId.h>
 
 namespace {
 
@@ -92,7 +93,8 @@ std::unique_ptr<MachineRegistry> MachineRegistry::LoadFromYaml(const char* yaml_
 bool MachineRegistry::ParseYamlMachineVariant(const YAML::Node& v, const std::string& className) {
     try {
         MachineInfo info;
-        info.id = v["block_id"].as<uint16_t>(0);
+        // block_id is a hierarchical string ("1110:00:0") → pack to uint16.
+        info.id = ItemId::pack(v["block_id"].as<std::string>(""));
         if (info.id == 0) return false; // skip placeholders
 
         info.name = v["name"].as<std::string>("");

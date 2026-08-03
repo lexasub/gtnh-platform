@@ -41,6 +41,7 @@
 #include "World/WorldContainerInventory.h"
 #include "Quest/QuestManager.h"
 #include "RecipeManager/RecipeManager.h"
+#include "ItemRegistry.h"
 #include "Crafting/WorkbenchStateManager.h"
 #include "MachineRegistry.h"
 #include "Common/MainThreadQueue.h"
@@ -119,12 +120,27 @@ int main(int argc, char* argv[]) {
         spdlog::info("Loaded {} machine types from registry", machineRegistry->All().size());
     }
 
+    // ── Item registry (from items.csv → packed ids) ──────────────────────
+    {
+        auto& reg = RecipeManager::ItemRegistry::instance();
+        if (reg.loadFromCSV("data/registry/items.csv")) {
+            spdlog::info("Loaded {} items from items.csv", reg.count());
+        } else {
+            spdlog::warn("Failed to load items.csv");
+        }
+    }
+
     // ── Recipe manager ────────────────────────────────────────────────────
     auto recipeManager = std::make_shared<RecipeManager::RecipeManager>();
     if (recipeManager->loadRecipesFromYamlDirectory(recipes_dir)) {
         spdlog::info("Loaded {} YAML recipes from {}", recipeManager->recipeCount(), recipes_dir);
     } else {
         spdlog::warn("Failed to load YAML recipes from {}", recipes_dir);
+    }
+    if (recipeManager->loadMachinesFromYaml(machines_yaml)) {
+        spdlog::info("Loaded machine classes from {}", machines_yaml);
+    } else {
+        spdlog::warn("Failed to load machine classes from {}", machines_yaml);
     }
 
     // ── Signals ───────────────────────────────────────────────────────────

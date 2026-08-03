@@ -1,39 +1,39 @@
 id,title,description,era,section,prereqs,detect_type,detect_target,reward_item,reward_count
-1,First Steps,Craft a wooden pickaxe and mine some stone. Your journey begins here.,vagrant,getting_started,,craft,33,7,8
-2,Gathering Resources,Mine iron ore and smelt it into iron ingots. Iron is the backbone of all technology.,vagrant,getting_started,1,craft,4,4,4
-3,Better Tools,Craft an iron pickaxe. With iron tools you can mine faster and reach new depths.,vagrant,getting_started,2,craft,35,4,2
-4,Workbench,Craft a crafting table. The workbench unlocks 3x3 grid crafting for complex recipes.,vagrant,basic_crafting,,craft,14,13,4
-5,Furnace Mastery,Craft a furnace. Smelting is essential for processing ores and creating advanced materials.,vagrant,basic_crafting,4,craft,36,53,2
-6,Getting Organized,Craft a chest. Keep your materials organized as your collection grows.,vagrant,basic_crafting,1,craft,37,37,1
-7,Bronze Age,Process tin and copper into bronze. Bronze is the gateway to steam power.,apprentice,steam_power,5,craft,53,53,8
-8,Steam Boiler,Craft a steam solid boiler. Boilers burn solid fuel to produce steam for your machines.,apprentice,steam_power,7,craft,49,54,4
-9,Steam Macerator,Craft a steam macerator. Doubles your ore output — essential for resource progression.,apprentice,steam_power,8,craft,51,53,4
-10,Steam Compressor,Craft a steam compressor. Compress materials into plates and more compact forms.,apprentice,steam_power,8,craft,52,54,2
-11,Steam Extractor,Craft a steam extractor. Extract valuable fluids and components from materials.,apprentice,steam_power,8,craft,59,55,4
-12,Alloy Smelting,Craft a bronze alloy smelter. Produce advanced alloys for better machines.,apprentice,steam_power,7,craft,58,53,6
-13,Plumbing,Craft fluid pipes. Transport steam water and other fluids between your machines.,apprentice,infrastructure,8,craft,61,12,4
-14,Logistics,Craft item pipes. Automate item transport between inventories and machines.,apprentice,infrastructure,8,craft,62,4,4
-15,Steam Mixer,Craft a steam mixer. Combine materials in new ways.,apprentice,steam_power,8,craft,60,54,2
-16,Getting Wired,Craft tin cable and connect a creative generator. Electricity powers the next tier of technology.,apprentice,infrastructure,8,craft,66,66,8
-17,Heat Generation,Craft a heat generator. Burns fuel to produce heat energy for machines.,apprentice,steam_power,7,craft,46,44,8
-18,ULV Drilling,Craft an ULV drill. Manual mining is obsolete — let the drill do the work.,expert,electric_tools,16,craft,74,74,1
-19,LV Drilling,Craft an LV drill. Faster mining with higher energy capacity.,expert,electric_tools,18,craft,75,75,1
-20,Battery Buffer,Craft an LV battery buffer. Store energy and charge your tools automatically.,expert,electric_tools,18,craft,80,80,1
-21,Charging Station,Craft a charger. Keep your tools powered and ready for work.,expert,electric_tools,18,craft,83,80,1
-22,Wrench Mastery,Craft a wrench. Configure machine sides to automate input/output/energy flow.,expert,automation,18,craft,79,79,1
-23,Copper Cabling,Craft copper cable. Higher ampacity than tin for demanding power networks.,expert,automation,20,craft,67,67,8
-24,Gold Cabling,Craft gold cable. Low-loss cabling for efficient power transmission.,expert,automation,23,craft,68,68,8
-25,Steam Heat Boiler,Craft a steam heat boiler. Converts steam into heat for advanced processing.,expert,automation,16,craft,50,50,1
-26,Transformer Technology,Craft an MV-HV transformer. Step up voltage for long-distance power transfer.,expert,automation,23,craft,72,72,1
-27,Heavy Duty Transport,Craft dense item and fluid pipes. Higher throughput for demanding automation.,expert,automation,23,craft,64,64,4
-28,MV Drilling,Craft an MV drill. Substantial power storage for extended mining operations.,expert,electric_tools,19,craft,76,76,1
-29,MV Battery Buffer,Craft an MV battery buffer. Greater energy storage capacity.,expert,electric_tools,28,craft,81,81,1
-30,HV Drilling,Craft an HV drill. Maximum power for the most demanding excavation.,administrator,advanced_tech,28,craft,77,77,1
-31,HV Battery Buffer,Craft an HV battery buffer. Massive energy reserves for end-game operations.,administrator,advanced_tech,30,craft,82,82,1
-32,Platinum Cabling,Craft platinum cable. Near-lossless power transmission at extreme voltages.,administrator,advanced_tech,30,craft,71,71,8
-33,Tungsten Cabling,Craft tungsten cable. The ultimate conductor for your end-game power grid.,administrator,advanced_tech,32,craft,70,70,8
-34,HV Transformer,Craft an HV-EV transformer. Push into extreme voltage territory.,administrator,advanced_tech,30,craft,73,73,1
-35,Chainsaw Massacre,Craft an LV chainsaw. Clear forests and organic matter with ease.,expert,electric_tools,18,craft,78,78,1
-37,Place a Furnace,Place the furnace in the world. Smelting happens here - right-click the ground while holding it.,vagrant,basic_crafting,5,block_placed,36,36,1
-38,Place a Workbench,Place a crafting table. A 3x3 grid needs a solid surface.,vagrant,basic_crafting,4,block_placed,14,14,1
-39,Place a Chest,Place a chest to start storing materials.,vagrant,basic_crafting,6,block_placed,37,37,1
+1,First Steps,Craft a wooden pickaxe and mine some stone. Your journey begins here.,vagrant,getting_started,,craft,0:11110:3,7,8
+2,Gathering Resources,Mine iron ore and smelt it into iron ingots. Iron is the backbone of all technology.,vagrant,getting_started,1,craft,0:110:1,4,4
+3,Better Tools,Craft an iron pickaxe. With iron tools you can mine faster and reach new depths.,vagrant,getting_started,2,craft,0:11110:5,4,2
+4,Workbench,Craft a crafting table. The workbench unlocks 3x3 grid crafting for complex recipes.,vagrant,basic_crafting,,craft,0:10:11:1,13,4
+5,Furnace Mastery,Craft a furnace. Smelting is essential for processing ores and creating advanced materials.,vagrant,basic_crafting,4,craft,1110:00:0,53,2
+6,Getting Organized,Craft a chest. Keep your materials organized as your collection grows.,vagrant,basic_crafting,1,craft,0:10:11:0,37,1
+7,Bronze Age,Process tin and copper into bronze. Bronze is the gateway to steam power.,apprentice,steam_power,5,craft,0:110:6,53,8
+8,Steam Boiler,Craft a steam solid boiler. Boilers burn solid fuel to produce steam for your machines.,apprentice,steam_power,7,craft,1110:01:0,54,4
+9,Steam Macerator,Craft a steam macerator. Doubles your ore output — essential for resource progression.,apprentice,steam_power,8,craft,1110:00:3,53,4
+10,Steam Compressor,Craft a steam compressor. Compress materials into plates and more compact forms.,apprentice,steam_power,8,craft,1110:00:4,54,2
+11,Steam Extractor,Craft a steam extractor. Extract valuable fluids and components from materials.,apprentice,steam_power,8,craft,1110:00:5,55,4
+12,Alloy Smelting,Craft a bronze alloy smelter. Produce advanced alloys for better machines.,apprentice,steam_power,7,craft,1110:00:7,53,6
+13,Plumbing,Craft fluid pipes. Transport steam water and other fluids between your machines.,apprentice,infrastructure,8,craft,1111:10:0,12,4
+14,Logistics,Craft item pipes. Automate item transport between inventories and machines.,apprentice,infrastructure,8,craft,1111:10:1,4,4
+15,Steam Mixer,Craft a steam mixer. Combine materials in new ways.,apprentice,steam_power,8,craft,1110:00:6,54,2
+16,Getting Wired,Craft tin cable and connect a creative generator. Electricity powers the next tier of technology.,apprentice,infrastructure,8,craft,1111:01:0,66,8
+17,Heat Generation,Craft a heat generator. Burns fuel to produce heat energy for machines.,apprentice,steam_power,7,craft,1110:00:2,44,8
+18,ULV Drilling,Craft an ULV drill. Manual mining is obsolete — let the drill do the work.,expert,electric_tools,16,craft,1111:00:0,74,1
+19,LV Drilling,Craft an LV drill. Faster mining with higher energy capacity.,expert,electric_tools,18,craft,1111:00:1,75,1
+20,Battery Buffer,Craft an LV battery buffer. Store energy and charge your tools automatically.,expert,electric_tools,18,craft,1110:10:0,80,1
+21,Charging Station,Craft a charger. Keep your tools powered and ready for work.,expert,electric_tools,18,craft,1110:10:3,80,1
+22,Wrench Mastery,Craft a wrench. Configure machine sides to automate input/output/energy flow.,expert,automation,18,craft,1111:00:5,79,1
+23,Copper Cabling,Craft copper cable. Higher ampacity than tin for demanding power networks.,expert,automation,20,craft,1111:01:1,67,8
+24,Gold Cabling,Craft gold cable. Low-loss cabling for efficient power transmission.,expert,automation,23,craft,1111:01:2,68,8
+25,Steam Heat Boiler,Craft a steam heat boiler. Converts steam into heat for advanced processing.,expert,automation,16,craft,1110:01:1,50,1
+26,Transformer Technology,Craft an MV-HV transformer. Step up voltage for long-distance power transfer.,expert,automation,23,craft,1110:11:0,72,1
+27,Heavy Duty Transport,Craft dense item and fluid pipes. Higher throughput for demanding automation.,expert,automation,23,craft,1111:10:2,64,4
+28,MV Drilling,Craft an MV drill. Substantial power storage for extended mining operations.,expert,electric_tools,19,craft,1111:00:2,76,1
+29,MV Battery Buffer,Craft an MV battery buffer. Greater energy storage capacity.,expert,electric_tools,28,craft,1110:10:1,81,1
+30,HV Drilling,Craft an HV drill. Maximum power for the most demanding excavation.,administrator,advanced_tech,28,craft,1111:00:3,77,1
+31,HV Battery Buffer,Craft an HV battery buffer. Massive energy reserves for end-game operations.,administrator,advanced_tech,30,craft,1110:10:2,82,1
+32,Platinum Cabling,Craft platinum cable. Near-lossless power transmission at extreme voltages.,administrator,advanced_tech,30,craft,1111:01:5,71,8
+33,Tungsten Cabling,Craft tungsten cable. The ultimate conductor for your end-game power grid.,administrator,advanced_tech,32,craft,1111:01:4,70,8
+34,HV Transformer,Craft an HV-EV transformer. Push into extreme voltage territory.,administrator,advanced_tech,30,craft,1110:11:1,73,1
+35,Chainsaw Massacre,Craft an LV chainsaw. Clear forests and organic matter with ease.,expert,electric_tools,18,craft,1111:00:4,78,1
+37,Place a Furnace,Place the furnace in the world. Smelting happens here - right-click the ground while holding it.,vagrant,basic_crafting,5,block_placed,1110:00:0,36,1
+38,Place a Workbench,Place a crafting table. A 3x3 grid needs a solid surface.,vagrant,basic_crafting,4,block_placed,0:10:11:1,14,1
+39,Place a Chest,Place a chest to start storing materials.,vagrant,basic_crafting,6,block_placed,0:10:11:0,37,1

@@ -3,6 +3,7 @@
 #include <array>
 #include <string>
 
+#include <common/ItemId.h>
 #include "Common/Inventory.h"
 
 // ── ClientRecipeDB
@@ -17,72 +18,96 @@ struct Recipe {
   ItemStack output;
 };
 
-// 13 base crafting_table recipes
+// 13 base crafting_table recipes — item ids are packed hierarchical (from items.csv).
 constexpr Recipe kRecipes[] = {
-    // base:crafting_table (planks)
-    // slot mapping: 13=top-left, 32=stick
-    {{{{13, 1}, {13, 1}, {}, {13, 1}, {13, 1}, {}, {}, {}, {}}}, {14, 1}},
+    // base:crafting_table (oak_planks)
+    {{{{ItemId::pack("0:10:00:0"), 1}, {ItemId::pack("0:10:00:0"), 1}, {},
+       {ItemId::pack("0:10:00:0"), 1}, {ItemId::pack("0:10:00:0"), 1}, {},
+       {}, {}, {}}},
+     {ItemId::pack("0:10:11:1"), 1}},
 
     // base:crafting_table_cobblestone
-    {{{{7, 1}, {7, 1}, {}, {7, 1}, {7, 1}, {}, {}, {}, {}}}, {14, 1}},
+    {{{{ItemId::pack("0:0:2"), 1}, {ItemId::pack("0:0:2"), 1}, {},
+       {ItemId::pack("0:0:2"), 1}, {ItemId::pack("0:0:2"), 1}, {},
+       {}, {}, {}}},
+     {ItemId::pack("0:10:11:1"), 1}},
 
     // base:crafting_table_iron
-    {{{{4, 1}, {4, 1}, {}, {4, 1}, {4, 1}, {}, {}, {}, {}}}, {14, 1}},
+    {{{{ItemId::pack("0:110:1"), 1}, {ItemId::pack("0:110:1"), 1}, {},
+       {ItemId::pack("0:110:1"), 1}, {ItemId::pack("0:110:1"), 1}, {},
+       {}, {}, {}}},
+     {ItemId::pack("0:10:11:1"), 1}},
 
-    // base:stick
-    // pattern: two planks vertical on left column
-    {{{{13, 1}, {}, {}, {13, 1}, {}, {}, {}, {}, {}}}, {32, 4}},
+    // base:stick — two oak_planks vertical
+    {{{{ItemId::pack("0:10:00:0"), 1}, {}, {},
+       {ItemId::pack("0:10:00:0"), 1}, {}, {},
+       {}, {}, {}}},
+     {ItemId::pack("0:11110:0"), 4}},
 
-    // base:wooden_pickaxe
-    // planks: top row (3), middle (2), right-middle (1)
-    // sticks: left-middle (1), right-middle (1)
-    {{{{13, 1}, {13, 1}, {13, 1}, {}, {32, 1}, {}, {}, {32, 1}, {}}}, {33, 1}},
+    // base:wooden_pickaxe — 3 planks top, 2 sticks below
+    {{{{ItemId::pack("0:10:00:0"), 1}, {ItemId::pack("0:10:00:0"), 1},
+       {ItemId::pack("0:10:00:0"), 1},
+       {}, {ItemId::pack("0:11110:0"), 1}, {},
+       {}, {ItemId::pack("0:11110:0"), 1}, {}}},
+     {ItemId::pack("0:11110:3"), 1}},
 
-    // base:stone_pickaxe
-    {{{{7, 1}, {7, 1}, {7, 1}, {}, {32, 1}, {}, {}, {32, 1}, {}}}, {34, 1}},
+    // base:stone_pickaxe — 3 cobblestone top, 2 sticks below
+    {{{{ItemId::pack("0:0:2"), 1}, {ItemId::pack("0:0:2"), 1},
+       {ItemId::pack("0:0:2"), 1},
+       {}, {ItemId::pack("0:11110:0"), 1}, {},
+       {}, {ItemId::pack("0:11110:0"), 1}, {}}},
+     {ItemId::pack("0:11110:4"), 1}},
 
-    // base:iron_pickaxe
-    {{{{4, 1}, {4, 1}, {4, 1}, {}, {32, 1}, {}, {}, {32, 1}, {}}}, {35, 1}},
+    // base:iron_pickaxe — 3 iron ingots top, 2 sticks below
+    {{{{ItemId::pack("0:110:1"), 1}, {ItemId::pack("0:110:1"), 1},
+       {ItemId::pack("0:110:1"), 1},
+       {}, {ItemId::pack("0:11110:0"), 1}, {},
+       {}, {ItemId::pack("0:11110:0"), 1}, {}}},
+     {ItemId::pack("0:11110:5"), 1}},
 
-    // base:furnace
-    // planks: top row (3), bottom row (3), left-middle (1)
-    // cobblestone: middle (1), right-middle (1)
-    {{{{7, 1}, {7, 1}, {7, 1}, {7, 1}, {}, {7, 1}, {7, 1}, {7, 1}, {7, 1}}},
-     {36, 1}},
+    // base:furnace — 8 cobblestone ring (empty center)
+    {{{{ItemId::pack("0:0:2"), 1}, {ItemId::pack("0:0:2"), 1},
+       {ItemId::pack("0:0:2"), 1},
+       {ItemId::pack("0:0:2"), 1}, {}, {ItemId::pack("0:0:2"), 1},
+       {ItemId::pack("0:0:2"), 1}, {ItemId::pack("0:0:2"), 1},
+       {ItemId::pack("0:0:2"), 1}}},
+     {ItemId::pack("1110:00:0"), 1}},
 
-    // base:chest
-    // planks: top row (4), middle (3), right-bottom (1)
-    {{{{13, 1},
-       {13, 1},
-       {13, 1},
-       {13, 1},
+    // base:chest — 8 oak_planks ring (empty center)
+    {{{{ItemId::pack("0:10:00:0"), 1},
+       {ItemId::pack("0:10:00:0"), 1},
+       {ItemId::pack("0:10:00:0"), 1},
+       {ItemId::pack("0:10:00:0"), 1},
        {},
-       {13, 1},
-       {13, 1},
-       {13, 1},
-       {13, 1}}},
-     {37, 1}},
+       {ItemId::pack("0:10:00:0"), 1},
+       {ItemId::pack("0:10:00:0"), 1},
+       {ItemId::pack("0:10:00:0"), 1},
+       {ItemId::pack("0:10:00:0"), 1}}},
+     {ItemId::pack("0:10:11:0"), 1}},
 
-    // base:torch
-    // coal/charcoal: top-left (1)
-    // stick: middle (1)
-    {{{{44, 1}, {}, {}, {32, 1}, {}, {}, {}, {}, {}}}, {40, 4}},
+    // base:torch — coal on top, stick below
+    {{{{ItemId::pack("0:11110:2"), 1}, {}, {},
+       {ItemId::pack("0:11110:0"), 1}, {}, {},
+       {}, {}, {}}},
+     {ItemId::pack("0:11110:1"), 4}},
 
-    // base:wooden_axe
-    // planks: top-left, top-middle, middle-left, middle-right
-    // sticks: left-middle, right-bottom
-    {{{{13, 1}, {13, 1}, {}, {13, 1}, {32, 1}, {}, {}, {32, 1}, {}}}, {41, 1}},
+    // base:wooden_axe — 3 planks (top-left, top-middle, middle-left), 2 sticks
+    {{{{ItemId::pack("0:10:00:0"), 1}, {ItemId::pack("0:10:00:0"), 1}, {},
+       {ItemId::pack("0:10:00:0"), 1}, {ItemId::pack("0:11110:0"), 1}, {},
+       {}, {ItemId::pack("0:11110:0"), 1}, {}}},
+     {ItemId::pack("0:11110:6"), 1}},
 
-    // base:wooden_shovel
-    // plank: top-left
-    // stick: middle (1)
-    // wood: right-bottom (1)
-    {{{{13, 1}, {}, {}, {32, 1}, {}, {}, {32, 1}, {}, {}}}, {42, 1}},
+    // base:wooden_shovel — 1 plank top-left, 2 sticks mid+right-bottom
+    {{{{ItemId::pack("0:10:00:0"), 1}, {}, {},
+       {ItemId::pack("0:11110:0"), 1}, {}, {},
+       {ItemId::pack("0:11110:0"), 1}, {}, {}}},
+     {ItemId::pack("0:11110:7"), 1}},
 
-    // base:wooden_sword
-    // plank: top-middle
-    // sticks: middle-left, middle-right
-    {{{{}, {13, 1}, {}, {}, {32, 1}, {}, {}, {32, 1}, {}}}, {43, 1}},
+    // base:wooden_sword — 1 plank top-middle, 2 sticks mid
+    {{{{}, {ItemId::pack("0:10:00:0"), 1}, {},
+       {}, {ItemId::pack("0:11110:0"), 1}, {},
+       {}, {ItemId::pack("0:11110:0"), 1}, {}}},
+     {ItemId::pack("0:11110:8"), 1}},
 };
 
 // Returns true if grid matches any recipe, and sets result to the output item

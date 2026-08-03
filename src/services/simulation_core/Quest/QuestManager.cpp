@@ -1,5 +1,6 @@
 #include "QuestManager.h"
 #include "quest_generated.h"
+#include <recipe_manager_lib/ItemRegistry.h>
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <chrono>
@@ -80,10 +81,12 @@ void QuestManager::checkCraftCompletion(uint64_t playerId, uint16_t itemId, uint
         return;
     }
     
-    std::string itemIdStr = std::to_string(itemId);
-    
-    spdlog::debug("[QuestManager] Checking craft completion: player={}, item={}, count={}", 
-                 playerId, itemId, count);
+    // detect_target is a hierarchical item id from items.csv; resolve packed id → hierarchical.
+    std::string itemIdStr =
+        RecipeManager::ItemRegistry::instance().idToHierarchical(itemId);
+
+    spdlog::debug("[QuestManager] Checking craft completion: player={}, item={} (hier={}), count={}", 
+                 playerId, itemId, itemIdStr, count);
     
     try { //TODO refactor if HELL
         std::lock_guard<std::mutex> lock(mutex_);
@@ -158,10 +161,12 @@ void QuestManager::checkBlockAction(uint64_t playerId, int32_t x, int32_t y, int
         return;
     }
     
-    std::string blockIdStr = std::to_string(blockId);
-    
-    spdlog::debug("[QuestManager] Checking block action: player={}, block={}, pos=({},{},{})", 
-                 playerId, blockId, x, y, z);
+    // detect_target is a hierarchical item id from items.csv; resolve packed block id → hierarchical.
+    std::string blockIdStr =
+        RecipeManager::ItemRegistry::instance().idToHierarchical(blockId);
+
+    spdlog::debug("[QuestManager] Checking block action: player={}, block={} (hier={}), pos=({},{},{})", 
+                 playerId, blockId, blockIdStr, x, y, z);
     
     try {//TODO refactor if HELL
         std::lock_guard<std::mutex> lock(mutex_);

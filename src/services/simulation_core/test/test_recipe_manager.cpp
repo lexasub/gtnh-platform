@@ -4,6 +4,8 @@
 #include <vector>
 #include <memory>
 
+#include <common/ItemId.h>
+#include <recipe_manager_lib/ItemRegistry.h>
 #include <recipe_manager_lib/RecipeManager.h>
 
 extern int g_tests, g_passed, g_failed;
@@ -40,6 +42,7 @@ static void test_recipe_manager_empty() {
 }
 
 static void test_recipe_manager_load_crafting_table() {
+    RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
     RecipeManager::RecipeManager mgr;
     bool ok = mgr.loadRecipesFromYamlDirectory(DATA_DIR "/recipes");
     CHECK(ok, "loaded YAML recipes from data/recipes/");
@@ -57,22 +60,34 @@ static void test_recipe_manager_load_crafting_table() {
 }
 
 static void test_recipe_manager_find_stick() {
+    RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
     RecipeManager::RecipeManager mgr;
     mgr.loadRecipesFromYamlDirectory(DATA_DIR "/recipes");
+    mgr.loadMachinesFromYaml(DATA_DIR "/registry/machines.yaml");
 
-    std::vector<RecipeManager::ItemStack> inputs = {
-        {13, 1, 0},
-        {13, 1, 0},
-    };
-    auto* recipe = mgr.findRecipeByInputs(14, inputs);  // crafting table
-    if (recipe) {
-        CHECK_EQ(recipe->id, std::string("base:stick"), "2 planks match stick recipe");
+    // Verify recipes exist by id.
+    auto* ct = mgr.getRecipeById("crafting_table");
+    CHECK_NE(ct, nullptr, "crafting_table recipe exists");
+    auto* stick = mgr.getRecipeById("stick");
+    CHECK_NE(stick, nullptr, "stick recipe exists");
+    if (stick) {
+        CHECK_GT(stick->duration, uint32_t(0), "stick recipe has duration > 0");
+        CHECK(!stick->inputs.empty(), "stick recipe has inputs");
+        CHECK(!stick->outputs.empty(), "stick recipe has outputs");
     }
+
+    // Crafting with 1 oak_plank on crafting_table machine should find at least one recipe.
+    std::vector<RecipeManager::ItemStack> inputs = {
+        {ItemId::pack("0:10:00:0"), 1, 0},
+    };
+    auto* recipe = mgr.findRecipeByInputs(ItemId::pack("0:10:11:1"), inputs);
+    CHECK_NE(recipe, nullptr, "oak_planks match a crafting table recipe");
 
     PASS();
 }
 
 static void test_recipe_manager_no_match() {
+    RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
     RecipeManager::RecipeManager mgr;
     mgr.loadRecipesFromYamlDirectory(DATA_DIR "/recipes");
 

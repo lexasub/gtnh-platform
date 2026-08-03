@@ -5,6 +5,7 @@
 #include "../RecipeManager/RecipeManager.h"
 #include "core_generated.h"
 #include "recipe_generated.h"
+#include <common/ItemId.h>
 #include <spdlog/spdlog.h>
 
 namespace simcore {
@@ -43,7 +44,8 @@ void CraftRequestHandler::handle(const std::vector<uint8_t>& data) {
         } : RecipeManager::ItemStack{0, 0, 0});
     }
 
-    constexpr uint16_t kCraftingTableMachineId = 14;
+    // crafting_table block_id from machines.yaml ("0:10:11:1" → packed).
+    constexpr uint16_t kCraftingTableMachineId = ItemId::pack("0:10:11:1");
     const auto* recipe = recipeManager_->findRecipeByInputs(kCraftingTableMachineId, grid);
     if (!recipe) {
         flatbuffers::FlatBufferBuilder err(64);

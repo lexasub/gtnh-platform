@@ -11,6 +11,7 @@ add_library(machine_registry STATIC
 
 target_include_directories(machine_registry PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/src
 )
 
 target_link_libraries(machine_registry PUBLIC
