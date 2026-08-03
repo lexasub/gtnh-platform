@@ -21,7 +21,7 @@ Beam: **already ~80% implemented**. This doc tracks what's built, what's pending
 | System registration in main.cpp | ✅ Done | `simulation_core/main.cpp:81-88,213-215` |
 | **Pipe heat transport WIRING** (simcore publishes HEAT to pipe network) | ⚠️ Half: simcore publishes HEAT (`GeneratorSystem.cpp:67`), pipe_network ignores it | `handleNodeUpdate` doesn't call `setNodeHeat()` |
 | **Pipe heat tick** (pipe_network calls distributeHeat in loop) | ❌ Not wired | `distributeHeat()` uncalled; no distribution loop exists |
-| **HeatLoss module** (loss + per-node temperature) | ❌ Not implemented | mirrors `CableLoss.h`/`CableOverheat.h` |
+| **HeatLoss module** (loss + per-node temperature) | ✅ Done | `HeatLoss.h`; `distributeHeat()` applies resistance × distance loss and tracks `PipeNode::temperature` |
 | **Coolant item ID** — placeholder 0x99999 (cannot fit uint16) | ❌ Placeholder | `HeatConstants.h:11` |
 | **Boiler conversion rate** — hardcoded 1 | ⚠️ Hardcoded | `BoilerSystem.cpp:15` |
 

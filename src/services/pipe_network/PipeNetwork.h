@@ -46,6 +46,7 @@ struct PipeNode {
   // Heat handling
   int32_t heatStored;    // current heat stored in this node
   int32_t heatCapacity;  // max heat this node can hold
+  float temperature = 0.0f; // per-node temperature, tracked by HeatLoss module
 
   // Side config for machine sink routing
   std::array<uint8_t, 6> side_config;
@@ -165,6 +166,10 @@ private:
   // Distribute flow evenly across nodes
   void distributeFlow(std::vector<uint64_t> &nodeIds, int32_t totalAmount,
                       std::unordered_map<uint64_t, int32_t> &deltas);
+
+  // Total traversed-edge heat loss for a network: sum of resistance x distance
+  // over every edge in the network (consulted by distributeHeat via HeatLoss).
+  float computeNetworkHeatLoss(uint64_t networkId) const;
 };
 
 } // namespace pipenet

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <common/ItemId.h>
 #include "PipeNetwork.h"
+#include "HeatLoss.h"
 #include "CableGraph.h"
 #include "CableTypes.h"
 #include "FluidRegistry.h"
@@ -630,6 +631,145 @@ static void test_cable_graph_ampacity_overheat() {
 }
 
 // =========================================================================
+//  HeatLoss module + pipe heat transport
+// =========================================================================
+
+static void test_heat_loss_basic() {
+    // Mirrors cableEnergyLoss: loss = traversed distance x per-block resistance
+    CHECK_EQ(pipenet::heatTransferLoss(5.0f, 0.5f), 2.5f, "loss = distance x resistance");
+    CHECK_EQ(pipenet::effectiveHeatTransfer(5.0f, 0.5f, 10.0f), 7.5f, "heat minus edge loss");
+    CHECK_EQ(pipenet::effectiveHeatTransfer(5.0f, 0.5f, 2.0f), 0.0f, "loss clamps heat at zero");
+
+    auto res = pipenet::applyHeatLoss(100.0f, 30.0f);
+    CHECK_EQ(res.effectiveHeat, 70.0f, "effective heat after traversal loss");
+    CHECK_EQ(res.lostHeat, 30.0f, "lost heat recorded");
+
+    auto resFull = pipenet::applyHeatLoss(100.0f, 500.0f);
+    CHECK_EQ(resFull.effectiveHeat, 0.0f, "loss beyond heat clamps effective to zero");
+    CHECK_EQ(resFull.lostHeat, 100.0f, "lost heat never exceeds available heat");
+    PASS();
+}
+
+static void test_heat_loss_node_temperature() {
+    auto r = pipenet::calculateNodeTemperature(0.0f, 50.0f);
+    CHECK_EQ(r.temperature, 48.0f, "temp = throughput - cooldown");
+    CHECK(!r.overheated, "not overheated");
+
+    auto hot = pipenet::calculateNodeTemperature(95.0f, 10.0f);
+    CHECK(hot.overheated, "crosses max temperature threshold");
+    CHECK_GT(hot.temperature, 100.0f, "temp above threshold");
+
+    auto cooled = pipenet::calculateNodeTemperature(10.0f, 0.0f);
+    CHECK_EQ(cooled.temperature, 8.0f, "cooldown each tick with no throughput");
+
+    auto clamped = pipenet::calculateNodeTemperature(1.0f, 0.0f);
+    CHECK_EQ(clamped.temperature, 0.0f, "temperature clamped at zero");
+    PASS();
+}
+
+static uint64_t heatNetworkWithSink(pipenet::PipeNetworkManager& mgr,
+                                    uint64_t sinkId) {
+    mgr.rebuildNetworks();
+    auto nets = mgr.getAllNetworks();
+    for (const auto* n : nets)
+        for (uint64_t nid : n->nodeIds)
+            if (nid == sinkId) return n->id;
+    return 0;
+}
+
+static void test_heat_distribution_loss_reduction() {
+    pipenet::PipeNetworkManager mgr;
+    // source -> mid -> sink, 10 blocks between each hop, resistance 0.5/block
+    uint64_t src = mgr.addNode(0, 0, 0, 1);
+    uint64_t mid = mgr.addNode(10, 0, 0, 1);
+    uint64_t sink = mgr.addNode(20, 0, 0, 1);
+    mgr.addEdge(src, mid, 0.5f);
+    mgr.addEdge(mid, sink, 0.5f);
+
+    mgr.setNodeHeat(src, 5000, 5000, true, false);
+    mgr.setNodeHeat(mid, 0, 5000, false, false);
+    mgr.setNodeHeat(sink, 0, 5000, false, true);
+
+    uint64_t netId = heatNetworkWithSink(mgr, sink);
+    CHECK_GT(netId, uint64_t(0), "found heat network");
+
+    auto deltas = mgr.distributeHeat(netId, pipenet::HeatConstants::MAX_HEAT_PER_TICK);
+
+    // Excess above 90% = 500. Traversed-edge loss = (0.5*10)+(0.5*10) = 10.
+    // Effective transfer = 500 - 10 = 490.
+    const auto* srcNode = mgr.getNode(src);
+    const auto* sinkNode = mgr.getNode(sink);
+    CHECK(!deltas.empty(), "heat distribution produced deltas");
+    CHECK_EQ(sinkNode->heatStored, 490, "heat reduced by traversed-edge loss");
+    CHECK_EQ(srcNode->heatStored, 5000 - 490, "source drained by delivered heat only");
+    PASS();
+}
+
+static void test_heat_distribution_no_loss_with_zero_resistance() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t src = mgr.addNode(0, 0, 0, 1);
+    uint64_t sink = mgr.addNode(1, 0, 0, 1);
+    mgr.addEdge(src, sink, 0.0f);
+
+    mgr.setNodeHeat(src, 2000, 2000, true, false);
+    mgr.setNodeHeat(sink, 0, 2000, false, true);
+
+    uint64_t netId = heatNetworkWithSink(mgr, sink);
+    mgr.distributeHeat(netId, pipenet::HeatConstants::MAX_HEAT_PER_TICK);
+
+    // Excess above 90% = 200, no edge loss -> full 200 delivered.
+    CHECK_EQ(mgr.getNode(sink)->heatStored, 200, "zero-resistance edges lose nothing");
+    PASS();
+}
+
+static void test_heat_distribution_capped_at_max() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t src = mgr.addNode(0, 0, 0, 1);
+    uint64_t sink = mgr.addNode(1, 0, 0, 1);
+    mgr.addEdge(src, sink, 0.0f);
+
+    mgr.setNodeHeat(src, 100000, 100000, true, false);
+    mgr.setNodeHeat(sink, 0, 100000, false, true);
+
+    uint64_t netId = heatNetworkWithSink(mgr, sink);
+    auto deltas = mgr.distributeHeat(netId, pipenet::HeatConstants::MAX_HEAT_PER_TICK);
+
+    // Excess is huge but flow is capped at MAX_HEAT_PER_TICK (1000).
+    int32_t delivered = 0;
+    for (const auto& [nid, d] : deltas) if (d > 0) delivered += d;
+    CHECK_GE(delivered, 1, "heat flowed");
+    CHECK_GE(pipenet::HeatConstants::MAX_HEAT_PER_TICK, delivered, "flow capped at 1000/tick");
+    CHECK_EQ(mgr.getNode(sink)->heatStored, pipenet::HeatConstants::MAX_HEAT_PER_TICK,
+             "sink received exactly the cap with no loss");
+    PASS();
+}
+
+static void test_heat_node_temperature_tracked() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t src = mgr.addNode(0, 0, 0, 1);
+    uint64_t sink = mgr.addNode(1, 0, 0, 1);
+    mgr.addEdge(src, sink, 0.0f);
+
+    mgr.setNodeHeat(src, 2000, 2000, true, false);
+    mgr.setNodeHeat(sink, 0, 2000, false, true);
+
+    uint64_t netId = heatNetworkWithSink(mgr, sink);
+    mgr.distributeHeat(netId, pipenet::HeatConstants::MAX_HEAT_PER_TICK);
+
+    // 200 heat moved: temp rises by throughput (cooldown clamped at zero first).
+    CHECK_GT(mgr.getNode(src)->temperature, 0.0f, "source temperature rises");
+    CHECK_GT(mgr.getNode(sink)->temperature, 0.0f, "sink temperature rises");
+
+    // Second tick: source drained to 90% (no excess), cooldown still applies.
+    mgr.distributeHeat(netId, pipenet::HeatConstants::MAX_HEAT_PER_TICK);
+    float cooled = mgr.getNode(sink)->temperature;
+    CHECK_LT(cooled, 200.0f, "temperature cools over ticks");
+    mgr.distributeHeat(netId, pipenet::HeatConstants::MAX_HEAT_PER_TICK);
+    CHECK_LT(mgr.getNode(sink)->temperature, cooled, "temperature keeps cooling while idle");
+    PASS();
+}
+
+// =========================================================================
 //  Edge cases and stress
 // =========================================================================
 
@@ -1033,6 +1173,14 @@ int main(int, char**) {
     TEST(cable_graph_heavy_loss);
     TEST(cable_graph_overheat_explosion);
     TEST(cable_graph_ampacity_overheat);
+
+    // HeatLoss module + pipe heat transport
+    TEST(heat_loss_basic);
+    TEST(heat_loss_node_temperature);
+    TEST(heat_distribution_loss_reduction);
+    TEST(heat_distribution_no_loss_with_zero_resistance);
+    TEST(heat_distribution_capped_at_max);
+    TEST(heat_node_temperature_tracked);
 
     // Edge cases
     TEST(remove_edge_and_rebuild);

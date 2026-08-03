@@ -1,7 +1,9 @@
 #include "PipeNetwork.h"
+#include "HeatLoss.h"
 #include "PipeBlockIds.h"
 #include <queue>
 #include <algorithm>
+#include <cstdlib>
 #include <cassert>
 #include <spdlog/spdlog.h>
 
@@ -694,6 +696,22 @@ void PipeNetworkManager::setNodeSideConfig(uint64_t nodeId,
     it->second.side_config = sideConfig;
 }
 
+float PipeNetworkManager::computeNetworkHeatLoss(uint64_t networkId) const {
+    float totalLoss = 0.0f;
+    for (const auto& [eid, edge] : edges_) {
+        auto fromIt = nodeToNetwork_.find(edge.fromNode);
+        if (fromIt == nodeToNetwork_.end() || fromIt->second != networkId) continue;
+        auto fn = nodes_.find(edge.fromNode);
+        auto tn = nodes_.find(edge.toNode);
+        if (fn == nodes_.end() || tn == nodes_.end()) continue;
+        int32_t distance = std::abs(fn->second.x - tn->second.x) +
+                           std::abs(fn->second.y - tn->second.y) +
+                           std::abs(fn->second.z - tn->second.z);
+        totalLoss += edge.resistance * static_cast<float>(distance);
+    }
+    return totalLoss;
+}
+
 std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeHeat(uint64_t networkId,
                                                                           int32_t tickHeat) {
     std::unordered_map<uint64_t, int32_t> deltas;
@@ -701,25 +719,33 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeHeat(uint64_
     if (ni == networks_.end() || tickHeat == 0) return deltas;
 
     PipeNetwork& net = ni->second;
-    
-    std::vector<uint64_t> heatSources;
-    std::vector<uint64_t> heatSinks;
-    
+
+    // Per-node temperature cools every tick regardless of flow (HeatLoss).
     for (uint64_t nid : net.nodeIds) {
         auto nodeIt = nodes_.find(nid);
         if (nodeIt == nodes_.end()) continue;
-        
+        nodeIt->second.temperature =
+            calculateNodeTemperature(nodeIt->second.temperature, 0.0f).temperature;
+    }
+
+    std::vector<uint64_t> heatSources;
+    std::vector<uint64_t> heatSinks;
+
+    for (uint64_t nid : net.nodeIds) {
+        auto nodeIt = nodes_.find(nid);
+        if (nodeIt == nodes_.end()) continue;
+
         const auto& node = nodeIt->second;
-        
+
         if (node.heatStored > node.heatCapacity * 0.9) {
             heatSources.push_back(nid);
         }
-        
+
         if (node.heatStored < node.heatCapacity) {
             heatSinks.push_back(nid);
         }
     }
-    
+
     if (heatSources.empty() || heatSinks.empty()) return deltas;
     
     int32_t totalExcessHeat = 0;
@@ -735,9 +761,16 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeHeat(uint64_
     
     int32_t heatToFlow = std::min(tickHeat, totalExcessHeat);
     heatToFlow = std::min(heatToFlow, HeatConstants::MAX_HEAT_PER_TICK);
-    
+
     if (heatToFlow <= 0) return deltas;
-    
+
+    // Effective transfer reduced by traversed-edge resistance x distance.
+    // Heat dissipated along the path never reaches the sinks (HeatLoss).
+    HeatLossResult loss = applyHeatLoss(static_cast<float>(heatToFlow),
+                                        computeNetworkHeatLoss(networkId));
+    heatToFlow = static_cast<int32_t>(loss.effectiveHeat);
+    if (heatToFlow <= 0) return deltas;
+
     std::vector<std::pair<uint64_t, int32_t>> sortedSinks;
     for (uint64_t sinkId : heatSinks) {
         auto nodeIt = nodes_.find(sinkId);
@@ -788,7 +821,18 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeHeat(uint64_
                           sourceId, sinkId, node.x, node.y, node.z, take);
         }
     }
-    
+
+    // Temperature rises with heat moved through the node (|delta|). Cooldown
+    // was already applied above so cooldown is not double-counted.
+    for (uint64_t nid : net.nodeIds) {
+        auto nodeIt = nodes_.find(nid);
+        if (nodeIt == nodes_.end()) continue;
+        auto dit = deltas.find(nid);
+        if (dit == deltas.end()) continue;
+        nodeIt->second.temperature +=
+            static_cast<float>(std::abs(dit->second)) * TEMPERATURE_PER_HEAT;
+    }
+
     net.totalEnergy = 0;
     bool anySink = false;
     for (uint64_t nid : net.nodeIds) {

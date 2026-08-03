@@ -13,8 +13,8 @@
 - [x] 1.1 Publish HEAT node updates from simcore heat producers via `PipeEnergyClient::publishNodeUpdate(energy_type = HEAT)` — **DONE** (`GeneratorSystem.cpp:67-82` for `heat_generator`; `BoilerSystem.cpp:61-76` publishes STEAM)
 - [x] 1.2 In `PipeNetworkService::handleNodeUpdate`, call `setNodeHeat()` for `EnergyType_HEAT` and `EnergyType_STEAM` nodes (previously only `ELECTRICITY` wired; STEAM had no routing at all)
 - [x] 1.3 Add a per-network distribution tick to the pipe_network main loop calling `distributeHeat()` (the loop currently has no distribution tick at all)
-- [ ] 1.4 Implement `pipe_network/HeatLoss` (mirroring `CableLoss.h`/`CableOverheat.h`) for per-edge resistance × distance loss and per-node temperature
-- [ ] 1.5 Test: heat flows through pipes from producer to distant consumer, reduced by `HeatLoss`, capped at 1000/tick
+- [x] 1.4 Implement `pipe_network/HeatLoss` (mirroring `CableLoss.h`/`CableOverheat.h`) for per-edge resistance × distance loss and per-node temperature — **DONE** (`HeatLoss.h`; `distributeHeat()` consults it for effective transfer and tracks `PipeNode::temperature`)
+- [x] 1.5 Test: heat flows through pipes from producer to distant consumer, reduced by `HeatLoss`, capped at 1000/tick — **DONE** (`pipe_network_test.cpp`: `heat_distribution_loss_reduction`, `heat_distribution_capped_at_max`, `heat_node_temperature_tracked`)
 
 ## 2. Cleanup / Hardcoded Values
 - [x] 2.1 Resolve `HeatConstants::COOLANT_ITEM_ID` (currently `0x99999`, unrepresentable in `uint16_t`) to a real registered coolant item; add the item to the registry if missing
