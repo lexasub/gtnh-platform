@@ -11,8 +11,8 @@
 
 ## 1. Pipe Heat Transport Wiring (Remaining)
 - [x] 1.1 Publish HEAT node updates from simcore heat producers via `PipeEnergyClient::publishNodeUpdate(energy_type = HEAT)` — **DONE** (`GeneratorSystem.cpp:67-82` for `heat_generator`; `BoilerSystem.cpp:61-76` publishes STEAM)
-- [ ] 1.2 In `PipeNetworkService::handleNodeUpdate`, call `setNodeHeat()` for `EnergyType_HEAT` nodes (currently only `ELECTRICITY` is wired to CableGraph; `setNodeHeat` has no callers)
-- [ ] 1.3 Add a per-network distribution tick to the pipe_network main loop calling `distributeHeat()` (the loop currently has no distribution tick at all)
+- [x] 1.2 In `PipeNetworkService::handleNodeUpdate`, call `setNodeHeat()` for `EnergyType_HEAT` and `EnergyType_STEAM` nodes (previously only `ELECTRICITY` wired; STEAM had no routing at all)
+- [x] 1.3 Add a per-network distribution tick to the pipe_network main loop calling `distributeHeat()` (the loop currently has no distribution tick at all)
 - [ ] 1.4 Implement `pipe_network/HeatLoss` (mirroring `CableLoss.h`/`CableOverheat.h`) for per-edge resistance × distance loss and per-node temperature
 - [ ] 1.5 Test: heat flows through pipes from producer to distant consumer, reduced by `HeatLoss`, capped at 1000/tick
 
@@ -22,13 +22,13 @@
 - [x] 2.3 Implement `steam_heat_boiler` as a STEAM→HEAT converter per `data/registry/machines.yaml` (currently mis-tagged as water+heat→STEAM)
 
 ## 3. Edge Cases
-- [ ] 3.1 Multiple boilers feeding one steam network — aggregate capacity
+- [x] 3.1 Multiple boilers feeding one steam network — aggregate capacity (resolved by routing STEAM→setNodeHeat; distributeHeat() aggregates multiple sources per network)
 - [ ] 3.2 Coolant on non-overheated machine — no-op (already implemented: CoolantSystem checks OverheatComponent)
 - [ ] 3.3 Coolant depletion: coolant stack → 0 → slot cleared (already implemented)
 - [ ] 3.4 Coolant only on multiblocks — verify scenario wording matches `CoolantSystem` view (requires `MultiblockController`)
-- [ ] 3.5 steam_heat_boiler converter: verify `HeatIntakeComponent` is attached when producing HEAT (SimulationEngine attaches it only for `EnergyType::HEAT` machines)
+- [x] 3.5 steam_heat_boiler converter: `HeatIntakeComponent` attached via `get_or_emplace` in BoilerSystem tick (SimulationEngine attaches only for `EnergyType::HEAT`)
 
 ## 4. Verification
-- [ ] 4.1 Build: `cd cmake-build-debug && ninja -j5` — no new compilation errors
-- [ ] 4.2 Tests: `ctest --output-on-failure -j$(nproc)` — all pass
-- [ ] 4.3 LSP diagnostics clean on changed files
+- [x] 4.1 Build: `cd cmake-build-debug && ninja -j5` — no new compilation errors
+- [x] 4.2 Tests: `ctest --output-on-failure -j$(nproc)` — 8/8 pass
+- [x] 4.3 LSP diagnostics clean on changed files
