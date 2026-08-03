@@ -1,6 +1,8 @@
 #include "QuestBookWindow.h"
+#include "Network/NetClient.h"
 #include "quest_lib/QuestData.h"
 #include "quest_lib/QuestGraph.h"
+#include "quest_generated.h"
 #include <imgui.h>
 #include <spdlog/spdlog.h>
 #include <string>
@@ -197,29 +199,62 @@ const char* QuestBookWindow::statusLabel(uint8_t status) const {
     }
 }
 
-void QuestBookWindow::updateQuestStatus(const std::vector<uint8_t>& fbData) {
-    if (fbData.size() < 8) return;
-    const uint8_t* ptr = fbData.data();
-    uint32_t questId = ptr[0] | (static_cast<uint32_t>(ptr[1]) << 8)
-                     | (static_cast<uint32_t>(ptr[2]) << 16) | (static_cast<uint32_t>(ptr[3]) << 24);
-    uint8_t status = ptr[4];
-    uint8_t progress = ptr[5];
-
+void QuestBookWindow::applyQuestStatus(uint32_t questId, uint8_t status, uint8_t progress) {
     for (auto& qe : quests_) {
         if (qe.id == questId) {
             qe.status = status;
             qe.progress = progress;
-            break;
+            return;
         }
     }
+    spdlog::debug("[Quest] Ignoring status for unknown quest {}", questId);
 }
 
 void QuestBookWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
     if (!data) return;
-    if (msgType == 19) {//TODO use enum val
-        auto* bytes = static_cast<const uint8_t*>(data);
-        std::vector<uint8_t> fb(bytes, bytes + 1024);
-        updateQuestStatus(fb);
+    switch (msgType) {
+        case GatewayMsg::kQuestProgressUpdate: {
+            flatbuffers::Verifier v(static_cast<const uint8_t*>(data), 8192);
+            if (!v.VerifyBuffer<Protocol::QuestProgressUpdate>(nullptr)) {
+                spdlog::warn("QuestBook: invalid QuestProgressUpdate");
+                return;
+            }
+            auto* update = flatbuffers::GetRoot<Protocol::QuestProgressUpdate>(data);
+            auto* quests = update->quests();
+            if (!quests) return;
+            for (size_t i = 0; i < quests->size(); ++i) {
+                auto* qe = quests->Get(i);
+                if (!qe) continue;
+                applyQuestStatus(qe->quest_id(), static_cast<uint8_t>(qe->status()), qe->progress());
+            }
+            return;
+        }
+        case GatewayMsg::kQuestUnlockNotification: {
+            flatbuffers::Verifier v(static_cast<const uint8_t*>(data), 8192);
+            if (!v.VerifyBuffer<Protocol::QuestUnlockNotification>(nullptr)) {
+                spdlog::warn("QuestBook: invalid QuestUnlockNotification");
+                return;
+            }
+            auto* unlock = flatbuffers::GetRoot<Protocol::QuestUnlockNotification>(data);
+            auto* ids = unlock->unlocked_ids();
+            if (!ids) return;
+            for (size_t i = 0; i < ids->size(); ++i) {
+                applyQuestStatus(ids->Get(i), Protocol::QuestStatus_AVAILABLE, 0);
+            }
+            return;
+        }
+        case GatewayMsg::kQuestCompletedNotification: {
+            flatbuffers::Verifier v(static_cast<const uint8_t*>(data), 8192);
+            if (!v.VerifyBuffer<Protocol::QuestCompletedNotification>(nullptr)) {
+                spdlog::warn("QuestBook: invalid QuestCompletedNotification");
+                return;
+            }
+            auto* comp = flatbuffers::GetRoot<Protocol::QuestCompletedNotification>(data);
+            applyQuestStatus(comp->quest_id(), Protocol::QuestStatus_COMPLETED, 100);
+            return;
+        }
+        default:
+            return;
     }
 }
 

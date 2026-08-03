@@ -98,6 +98,10 @@ void GameClient::subscribeNetClient() {
         [this](std::shared_ptr<std::vector<uint8_t>> data) {
             uiMgr_.HandleNetwork(GatewayMsg::kRecipeCompleted, data->data());
         });
+    netClient_->SetQuestUpdateCallback(
+        [this](uint8_t msgType, std::shared_ptr<std::vector<uint8_t>> data) {
+            uiMgr_.HandleNetwork(msgType, data->data());
+        });
 
     netClient_->SetToolActionRespCallback(
         [this](bool success, uint8_t newRole, const std::vector<uint8_t>& allRoles) {

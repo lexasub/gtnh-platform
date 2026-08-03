@@ -55,7 +55,7 @@ private:
   std::vector<quest::EraInfo> eraData_;
 
   void loadQuestData();
-  void updateQuestStatus(const std::vector<uint8_t> &fbData);
+  void applyQuestStatus(uint32_t questId, uint8_t status, uint8_t progress);
 
   // Layout helpers
   void renderEraTabs();
