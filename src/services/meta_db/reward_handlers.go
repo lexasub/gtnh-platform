@@ -2,9 +2,9 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
-	"errors"
 )
 
 // RewardType represents the type of quest reward
@@ -131,17 +131,132 @@ func GetPlayerQuestRewardsByQuest(db *sql.DB, playerID uint64, questID uint32) (
 	return rewards, nil
 }
 
-// RedeemPlayerQuestReward marks a quest reward as redeemed with validation
-func RedeemPlayerQuestReward(db *sql.DB, rewardID int64) error {
-	// First, verify the reward exists and is not already redeemed
-	var currentRedeemed int
+const (
+	// inventorySlotCount matches the positional inventory published by MetaDB
+	// (see PublishInventoryTo: all 40 slots serialized positionally).
+	inventorySlotCount = 40
+	// maxStackSize is the per-slot stack limit for item rewards.
+	maxStackSize = 64
+)
+
+// inventoryQueryer is satisfied by both *sql.DB and *sql.Tx so reward
+// granting can run inside the redemption transaction, keeping grant +
+// mark-redeemed atomic.
+type inventoryQueryer interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
+const upsertInventorySlotSQL = `
+	INSERT INTO inventory (player_id, slot, block_id, count)
+	VALUES (?, ?, ?, ?)
+	ON CONFLICT(player_id, slot) DO UPDATE SET
+		block_id = excluded.block_id,
+		count = excluded.count
+`
+
+// grantItemToInventory adds `count` of `itemID` to the player's inventory,
+// merging into existing partial stacks of the same block_id (up to 64 per
+// slot) first, then filling the first empty slot (no row, or a row with
+// block_id=0). Slots are limited to 0..39. If the inventory is full the call
+// returns an error and nothing is granted for that item.
+func grantItemToInventory(q inventoryQueryer, playerID uint64, itemID uint16, count uint8) error {
+	if itemID == 0 || count == 0 {
+		return nil
+	}
+
+	rows, err := q.Query("SELECT slot, block_id, count FROM inventory WHERE player_id = ? ORDER BY slot", playerID)
+	if err != nil {
+		return fmt.Errorf("failed to read inventory: %w", err)
+	}
+
+	type invSlot struct {
+		blockID int
+		count   int
+	}
+	slots := make(map[int]invSlot)
+	for rows.Next() {
+		var slot int
+		var blockID, cnt int
+		if err := rows.Scan(&slot, &blockID, &cnt); err != nil {
+			rows.Close()
+			return fmt.Errorf("failed to scan inventory row: %w", err)
+		}
+		slots[slot] = invSlot{blockID: blockID, count: cnt}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating inventory rows: %w", err)
+	}
+
+	remaining := int(count)
+	target := int(itemID)
+
+	// 1. Merge into existing partial stacks of the same item.
+	for slot, inv := range slots {
+		if remaining == 0 {
+			break
+		}
+		if inv.blockID == target && inv.count > 0 && inv.count < maxStackSize {
+			add := maxStackSize - inv.count
+			if add > remaining {
+				add = remaining
+			}
+			inv.count += add
+			remaining -= add
+			slots[slot] = inv
+			if _, err := q.Exec(upsertInventorySlotSQL, playerID, slot, inv.blockID, inv.count); err != nil {
+				return fmt.Errorf("failed to update inventory slot %d: %w", slot, err)
+			}
+		}
+	}
+
+	// 2. Place any remainder into the first empty slot.
+	if remaining > 0 {
+		for slot := 0; slot < inventorySlotCount && remaining > 0; slot++ {
+			inv, exists := slots[slot]
+			if exists && inv.blockID != 0 {
+				continue // occupied by a real item
+			}
+			add := remaining
+			if add > maxStackSize {
+				add = maxStackSize
+			}
+			if _, err := q.Exec(upsertInventorySlotSQL, playerID, slot, target, add); err != nil {
+				return fmt.Errorf("failed to insert inventory slot %d: %w", slot, err)
+			}
+			remaining -= add
+			slots[slot] = invSlot{blockID: target, count: add}
+		}
+	}
+
+	if remaining > 0 {
+		return fmt.Errorf("inventory full: cannot grant %d of item %d to player %d", count, itemID, playerID)
+	}
+	return nil
+}
+
+// RedeemPlayerQuestReward grants the reward to the player's inventory and
+// marks it redeemed in a single transaction. Redeeming an already-redeemed
+// row returns an error, so a reward can never be granted twice.
+func (m *MetaDB) RedeemPlayerQuestReward(rewardID int64) error {
+	tx, err := m.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
 	var playerID uint64
 	var questID uint32
-	
-	err := db.QueryRow(
-		"SELECT player_id, quest_id, redeemed FROM player_quest_rewards WHERE id = ?",
+	var rewardType string
+	var rewardIDItem uint16
+	var rewardCount uint8
+	var currentRedeemed int
+
+	err = tx.QueryRow(
+		"SELECT player_id, quest_id, reward_type, reward_id, reward_count, redeemed FROM player_quest_rewards WHERE id = ?",
 		rewardID,
-	).Scan(&playerID, &questID, &currentRedeemed)
+	).Scan(&playerID, &questID, &rewardType, &rewardIDItem, &rewardCount, &currentRedeemed)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("quest reward not found: %d", rewardID)
@@ -153,11 +268,16 @@ func RedeemPlayerQuestReward(db *sql.DB, rewardID int64) error {
 		return fmt.Errorf("quest reward already redeemed: %d", rewardID)
 	}
 
-	// Perform the redemption update
-	result, err := db.Exec(
-		"UPDATE player_quest_rewards SET redeemed = 1 WHERE id = ?",
-		rewardID,
-	)
+	// Grant item rewards into the player's inventory inside the same
+	// transaction so a failed grant (e.g. inventory full) leaves the row
+	// unredeemed and retryable.
+	if rewardType == RewardTypeItem && rewardIDItem != 0 && rewardCount > 0 {
+		if err := grantItemToInventory(tx, playerID, rewardIDItem, rewardCount); err != nil {
+			return fmt.Errorf("failed to grant quest reward %d to player %d: %w", rewardID, playerID, err)
+		}
+	}
+
+	result, err := tx.Exec("UPDATE player_quest_rewards SET redeemed = 1 WHERE id = ?", rewardID)
 	if err != nil {
 		return fmt.Errorf("failed to redeem quest reward: %w", err)
 	}
@@ -166,9 +286,12 @@ func RedeemPlayerQuestReward(db *sql.DB, rewardID int64) error {
 	if err != nil {
 		return fmt.Errorf("failed to check rows affected: %w", err)
 	}
-
 	if rowsAffected == 0 {
 		return fmt.Errorf("no rows updated - reward may have been redeemed concurrently: %d", rewardID)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit redemption transaction: %w", err)
 	}
 
 	// Log the redemption for audit purposes
@@ -177,28 +300,34 @@ func RedeemPlayerQuestReward(db *sql.DB, rewardID int64) error {
 	return nil
 }
 
-// BatchRedeemPlayerQuestRewards redemptions multiple quest rewards in a transaction
-func BatchRedeemPlayerQuestRewards(db *sql.DB, rewardIDs []int64) error {
+// BatchRedeemPlayerQuestRewards grants and marks multiple quest rewards
+// redeemed in a single transaction. All reward rows are validated (and items
+// granted) before any row is marked redeemed; if any row fails, the whole
+// transaction rolls back so no partial state can persist.
+func (m *MetaDB) BatchRedeemPlayerQuestRewards(rewardIDs []int64) error {
 	if len(rewardIDs) == 0 {
 		return errors.New("no reward IDs provided")
 	}
 
-	tx, err := db.Begin()
+	tx, err := m.db.Begin()
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Validate all rewards can be redeemed
+	// Validate all rewards can be redeemed and grant their items.
 	for _, rewardID := range rewardIDs {
-		var currentRedeemed int
 		var playerID uint64
 		var questID uint32
+		var rewardType string
+		var rewardIDItem uint16
+		var rewardCount uint8
+		var currentRedeemed int
 
 		err := tx.QueryRow(
-			"SELECT player_id, quest_id, redeemed FROM player_quest_rewards WHERE id = ?",
+			"SELECT player_id, quest_id, reward_type, reward_id, reward_count, redeemed FROM player_quest_rewards WHERE id = ?",
 			rewardID,
-		).Scan(&playerID, &questID, &currentRedeemed)
+		).Scan(&playerID, &questID, &rewardType, &rewardIDItem, &rewardCount, &currentRedeemed)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				return fmt.Errorf("quest reward not found: %d", rewardID)
@@ -208,6 +337,12 @@ func BatchRedeemPlayerQuestRewards(db *sql.DB, rewardIDs []int64) error {
 
 		if currentRedeemed == 1 {
 			return fmt.Errorf("quest reward already redeemed: %d", rewardID)
+		}
+
+		if rewardType == RewardTypeItem && rewardIDItem != 0 && rewardCount > 0 {
+			if err := grantItemToInventory(tx, playerID, rewardIDItem, rewardCount); err != nil {
+				return fmt.Errorf("failed to grant quest reward %d to player %d: %w", rewardID, playerID, err)
+			}
 		}
 	}
 
@@ -238,6 +373,25 @@ func BatchRedeemPlayerQuestRewards(db *sql.DB, rewardIDs []int64) error {
 
 	log.Printf("[REWARD] Batch redeemed %d quest rewards", len(rewardIDs))
 	return nil
+}
+
+// grantStoredQuestReward finds the most recent pending (redeemed=0) reward
+// row for a completed quest and redeems it, granting the item to the player's
+// inventory. It is called right after the reward row is stored so quest
+// completion delivers items immediately.
+func (m *MetaDB) grantStoredQuestReward(playerID uint64, questID uint32) error {
+	var rewardID int64
+	err := m.db.QueryRow(
+		"SELECT id FROM player_quest_rewards WHERE player_id = ? AND quest_id = ? AND redeemed = 0 ORDER BY id DESC LIMIT 1",
+		playerID, questID,
+	).Scan(&rewardID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("no pending reward row for player=%d quest=%d", playerID, questID)
+		}
+		return fmt.Errorf("failed to find pending reward for player=%d quest=%d: %w", playerID, questID, err)
+	}
+	return m.RedeemPlayerQuestReward(rewardID)
 }
 
 // GetQuestDefinition retrieves quest definition data to determine rewards

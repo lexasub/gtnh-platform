@@ -1,4 +1,5 @@
 #include "DrillSystem.h"
+#include "../components/ItemEnergyStorage.h"
 #include <spdlog/spdlog.h>
 #include <cmath>
 #include <algorithm>
@@ -83,11 +84,15 @@ void DrillSystem::getSpiralOffset(int32_t n, int32_t& dx, int32_t& dz) {
 // =========================================================================
 
 void DrillSystem::tick(float /*dt*/) {
-    auto view = reg_.view<DrillComponent, EnergyStorage>();
+    // Drills draw energy from the drill tool item held in their inventory
+    // (see phaseEnergyCheck); the machine-level EnergyStorage is optional and
+    // only used as a fallback when no tool/container is present.
+    auto view = reg_.view<DrillComponent>();
 
     for (auto ent : view) {
         auto& drill = view.get<DrillComponent>(ent);
-        auto& energy = view.get<EnergyStorage>(ent);
+        auto* container = reg_.try_get<InventoryContainer>(ent);
+        auto* energy = reg_.try_get<EnergyStorage>(ent);
 
         switch (drill.state) {
         case DrillState::IDLE:
@@ -101,8 +106,11 @@ void DrillSystem::tick(float /*dt*/) {
             break;
 
         case DrillState::MINING:
-            phaseEnergyCheck(ent, drill, energy);
-            if (drill.state == DrillState::MINING) {
+            // phaseEnergyCheck drains the drill tool's item energy; when the
+            // tool is empty or no energy source is available it returns false
+            // and transitions the drill out of MINING, so we skip phaseMine.
+            if (phaseEnergyCheck(ent, drill) &&
+                drill.state == DrillState::MINING) {
                 phaseMine(ent, drill);
             }
             break;
@@ -120,10 +128,30 @@ void DrillSystem::tick(float /*dt*/) {
                        / static_cast<float>(drill.miningTicksTotal);
         }
 
+        // Report energy: item-tool energy when a tool is equipped, otherwise
+        // the machine EnergyStorage (or 0 when neither exists).
+        uint32_t reportEnergy = 0, reportCapacity = 0;
+        if (container) {
+            int32_t slotIdx = findToolSlot(*container);
+            if (slotIdx >= 0) {
+                const auto& slot = container->slots[slotIdx];
+                simulation_core::ItemStack toolStack{slot.item_id, slot.count,
+                                                     slot.meta};
+                reportEnergy =
+                    static_cast<uint32_t>(std::max(getToolEnergy(toolStack), 0));
+                auto it = TOOL_ENERGY_DEFS.find(slot.item_id);
+                if (it != TOOL_ENERGY_DEFS.end())
+                    reportCapacity = static_cast<uint32_t>(it->second.capacity);
+            }
+        }
+        if (reportCapacity == 0 && energy) {
+            reportEnergy = static_cast<uint32_t>(energy->current);
+            reportCapacity = static_cast<uint32_t>(energy->capacity);
+        }
+
         events_->publishBlockEntityUpdate(
-            drill.x, drill.y, drill.z, 0, {}, progress,
-            static_cast<uint32_t>(energy.current), energy.type,
-            static_cast<uint32_t>(energy.capacity));
+            drill.x, drill.y, drill.z, 0, {}, progress, reportEnergy,
+            energy ? energy->type : EnergyType::ELECTRICITY, reportCapacity);
     }
 }
 
@@ -131,16 +159,56 @@ void DrillSystem::tick(float /*dt*/) {
 // Phase 1: Energy check
 // =========================================================================
 
-void DrillSystem::phaseEnergyCheck(entt::entity ent, DrillComponent& drill,
-                                    EnergyStorage& energy) {
-    int32_t consumed = energy.consumeEnergy(drill.energyPerTick);
-    if (consumed < drill.energyPerTick && pipeClient_) {
-        pipeClient_->sendConsumeRequest(
-            static_cast<uint64_t>(ent),
-            drill.x, drill.y, drill.z,
-            static_cast<int32_t>(EnergyType::ELECTRICITY),
-            drill.energyPerTick);
+bool DrillSystem::phaseEnergyCheck(entt::entity ent, DrillComponent& drill) {
+    // Primary path: draw energy from the drill tool item (item ids 90-94) held
+    // in the drill machine's inventory. Tool energy lives in the item's meta,
+    // so a successful drain is written back into the container slot to persist.
+    if (auto* container = reg_.try_get<InventoryContainer>(ent)) {
+        int32_t slotIdx = findToolSlot(*container);
+        if (slotIdx >= 0) {
+            auto& slot = container->slots[slotIdx];
+            simulation_core::ItemStack toolStack{slot.item_id, slot.count,
+                                                 slot.meta};
+            if (consumeToolEnergy(toolStack, drill.energyPerTick)) {
+                slot.meta = toolStack.meta; // persist drained tool energy
+                return true;
+            }
+            // Tool lacks the required EU: abort mining, resume ore search.
+            spdlog::debug(
+                "[Drill] entity {} tool item {} has insufficient energy; "
+                "aborting mining",
+                static_cast<uint32_t>(ent), slot.item_id);
+            drill.state = DrillState::SEARCHING;
+            return false;
+        }
     }
+
+    // Fallback: machine-level EnergyStorage. Preserves the legacy behavior so
+    // drills wired without an item inventory still operate as before.
+    if (auto* energy = reg_.try_get<EnergyStorage>(ent)) {
+        int32_t consumed = energy->consumeEnergy(drill.energyPerTick);
+        if (consumed < drill.energyPerTick && pipeClient_) {
+            pipeClient_->sendConsumeRequest(
+                static_cast<uint64_t>(ent), drill.x, drill.y, drill.z,
+                static_cast<int32_t>(EnergyType::ELECTRICITY),
+                drill.energyPerTick);
+        }
+        return true;
+    }
+
+    // No energy source at all: cannot mine.
+    drill.state = DrillState::SEARCHING;
+    return false;
+}
+
+int32_t DrillSystem::findToolSlot(const InventoryContainer& container) {
+    for (size_t i = 0; i < container.slots.size(); ++i) {
+        if (TOOL_ENERGY_DEFS.find(container.slots[i].item_id) !=
+            TOOL_ENERGY_DEFS.end()) {
+            return static_cast<int32_t>(i);
+        }
+    }
+    return -1;
 }
 
 // =========================================================================

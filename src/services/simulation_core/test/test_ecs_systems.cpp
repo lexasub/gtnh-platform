@@ -24,6 +24,8 @@
 #include "ECS/Systems/CreativeGeneratorSystem.h"
 #include "ECS/Systems/BoilerSystem.h"
 #include "ECS/Systems/BatteryBufferSystem.h"
+#include "ECS/Systems/DrillSystem.h"
+#include "ECS/components/DrillComponent.h"
 #include "Network/IEventPublisher.h"
 #include "Network/PipeEnergyClient.h"
 #include "MachineRegistry.h"
@@ -106,6 +108,18 @@ struct MockEventPublisher : simcore::IEventPublisher {
     void publishMultiblockCreated(uint64_t, int32_t, int32_t, int32_t,
                                   uint16_t) override {}
     void publishMultiblockDestroyed(uint64_t) override {}
+};
+
+struct MockBlockRepository : simcore::IBlockRepository {
+    int set_cas_calls = 0;
+    void setBlockCAS(int32_t, int32_t, int32_t, uint16_t, uint16_t, uint8_t,
+                     simcore::IBlockRepository::SetBlockCASCallback) override {
+        set_cas_calls++;
+    }
+    void getBlock(int32_t, int32_t, int32_t,
+                  simcore::IBlockRepository::GetBlockCallback cb) override {
+        cb({0, 0, 0}); // not an ore block -> drill stays SEARCHING
+    }
 };
 
 static std::string g_consumersPath, g_producersPath;
@@ -484,6 +498,90 @@ static void test_MultiblockFormation_hatchIO() {
     PASS();
 }
 
+// ---------------------------------------------------------------------------
+// DrillSystem — item-energy drill (issue: Wire DrillSystem item energy check)
+// ---------------------------------------------------------------------------
+
+static void test_DrillSystem_drains_tool_energy() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    auto blockRepo = std::make_shared<MockBlockRepository>();
+    simcore::DrillSystem sys(reg, blockRepo, events, nullptr);
+
+    auto ent = reg.create();
+    simcore::DrillComponent drill(0, 0, 0, 0); // tier 0 -> energyPerTick = 10
+    drill.state = simcore::DrillState::MINING;
+    drill.targetX = 1; drill.targetY = 0; drill.targetZ = 0;
+    drill.miningTicksTotal = 1;
+    drill.miningProgress = 1;
+    reg.emplace<simcore::DrillComponent>(ent, drill);
+    // Full drill_ulv (item 90, capacity 1000 EU) in the machine inventory.
+    reg.emplace<simcore::InventoryContainer>(ent, 0, 1,
+        std::vector<simcore::InventorySlot>{{90, 1, 1000}});
+
+    sys.tick(0.05f);
+
+    const auto& inv = reg.get<simcore::InventoryContainer>(ent);
+    const auto& d = reg.get<simcore::DrillComponent>(ent);
+    CHECK_EQ(inv.slots[0].meta, uint16_t(990), "drill tool drained 10 EU per tick while MINING");
+    CHECK_EQ(d.state, simcore::DrillState::MINING, "drill keeps mining while tool has energy");
+    CHECK_EQ(blockRepo->set_cas_calls, 1, "mining progressed to block removal");
+    PASS();
+}
+
+static void test_DrillSystem_insufficient_tool_energy_aborts() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    auto blockRepo = std::make_shared<MockBlockRepository>();
+    simcore::DrillSystem sys(reg, blockRepo, events, nullptr);
+
+    auto ent = reg.create();
+    simcore::DrillComponent drill(0, 0, 0, 0); // energyPerTick = 10
+    drill.state = simcore::DrillState::MINING;
+    drill.targetX = 1; drill.targetY = 0; drill.targetZ = 0;
+    drill.miningTicksTotal = 1;
+    drill.miningProgress = 1;
+    reg.emplace<simcore::DrillComponent>(ent, drill);
+    // Only 5 EU left in the tool — less than the 10 EU/tick required.
+    reg.emplace<simcore::InventoryContainer>(ent, 0, 1,
+        std::vector<simcore::InventorySlot>{{90, 1, 5}});
+
+    sys.tick(0.05f);
+
+    const auto& inv = reg.get<simcore::InventoryContainer>(ent);
+    const auto& d = reg.get<simcore::DrillComponent>(ent);
+    CHECK_NE(d.state, simcore::DrillState::MINING, "insufficient tool energy aborts mining");
+    CHECK_EQ(blockRepo->set_cas_calls, 0, "no block removal when energy insufficient");
+    CHECK_EQ(inv.slots[0].meta, uint16_t(5), "tool energy unchanged when drain fails");
+    PASS();
+}
+
+static void test_DrillSystem_falls_back_to_machine_energy() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    auto blockRepo = std::make_shared<MockBlockRepository>();
+    simcore::DrillSystem sys(reg, blockRepo, events, nullptr);
+
+    auto ent = reg.create();
+    simcore::DrillComponent drill(0, 0, 0, 1); // tier 1 -> energyPerTick = 40
+    drill.state = simcore::DrillState::MINING;
+    drill.targetX = 1; drill.targetY = 0; drill.targetZ = 0;
+    drill.miningTicksTotal = 1;
+    drill.miningProgress = 1;
+    reg.emplace<simcore::DrillComponent>(ent, drill);
+    // No InventoryContainer -> legacy machine EnergyStorage path.
+    reg.emplace<simcore::EnergyStorage>(ent, 10000, 1000, 128, 128, 1,
+                                        EnergyType::ELECTRICITY);
+
+    sys.tick(0.05f);
+
+    const auto& energy = reg.get<simcore::EnergyStorage>(ent);
+    const auto& d = reg.get<simcore::DrillComponent>(ent);
+    CHECK_EQ(energy.current, 960, "machine energy drained as fallback (tier 1: 40/tick)");
+    CHECK_EQ(d.state, simcore::DrillState::MINING, "mining continues with machine energy");
+    PASS();
+}
+
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
 void test_ecs_systems() {
@@ -498,4 +596,7 @@ void test_ecs_systems() {
     TEST(BatteryBufferSystem_empty_slot_noop);
     TEST(BatteryBufferSystem_full_tool_skips);
     TEST(MultiblockFormation_hatchIO);
+    TEST(DrillSystem_drains_tool_energy);
+    TEST(DrillSystem_insufficient_tool_energy_aborts);
+    TEST(DrillSystem_falls_back_to_machine_energy);
 }

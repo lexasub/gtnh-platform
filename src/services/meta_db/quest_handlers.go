@@ -176,6 +176,12 @@ func HandleQuestCompleted(topic string, payload []byte, m *MetaDB) {
 		log.Printf("[QUEST] HandleQuestCompleted: failed to store reward for player=%d quest=%d: %v", playerID, questID, err)
 	} else {
 		log.Printf("[QUEST] HandleQuestCompleted: reward stored successfully for player=%d quest=%d", playerID, questID)
+		// Immediately grant the stored reward so a completed quest actually
+		// delivers its item to the player's inventory. A failure here (e.g.
+		// inventory full) leaves the row redeemed=0 so it can be retried.
+		if err := m.grantStoredQuestReward(playerID, questID); err != nil {
+			log.Printf("[QUEST] HandleQuestCompleted: WARNING reward grant failed for player=%d quest=%d (row kept pending, retryable): %v", playerID, questID, err)
+		}
 	}
 
 	// Publish to quest.completed topic for Gateway with reward data
