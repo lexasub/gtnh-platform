@@ -131,6 +131,10 @@ private:
   /// Resolve item name to ID via ItemRegistry. Returns 0 if unknown.
   uint16_t resolveItemName(const std::string &name) const;
 
+  /// Format-detect an `item:` scalar: hierarchical (contains ':'),
+  /// flat numeric (all digits), else string name. Returns packed uint16_t.
+  uint16_t resolveItemId(const std::string &itemStr) const;
+
   // ── Helpers ──────────────────────────────────────────────────────
   std::vector<ItemStack>
   convertContainerItems(const Protocol::Container *container) const;

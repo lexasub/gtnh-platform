@@ -3,6 +3,9 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <fstream>
+#include <filesystem>
+#include <unistd.h>
 
 #include <common/ItemId.h>
 #include <recipe_manager_lib/ItemRegistry.h>
@@ -86,6 +89,67 @@ static void test_recipe_manager_find_stick() {
     PASS();
 }
 
+// All three item formats (hierarchical, flat numeric, string name) must resolve
+// to the same packed uint16_t through the YAML parser, and hierarchical ids must
+// not silently parse as 0 (the old std::stoi("0:0:4") -> 0 bug).
+static void test_recipe_manager_item_id_formats() {
+    RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
+
+    const char* kYaml = R"(
+class: furnace
+recipes:
+  - name: fmt_hierarchical
+    inputs:
+      - { item: 0:0:4, count: 1 }
+    outputs:
+      - { item: 4, count: 1 }
+    duration: 100
+  - name: fmt_flat
+    inputs:
+      - { item: 4, count: 1 }
+    outputs:
+      - { item: 4, count: 1 }
+    duration: 100
+  - name: fmt_name
+    inputs:
+      - { item: glass, count: 1 }
+    outputs:
+      - { item: 4, count: 1 }
+    duration: 100
+)";
+
+    auto tmp = std::filesystem::temp_directory_path() /
+               ("gtnh_recipe_id_format_" + std::to_string(::getpid()) + ".yaml");
+    {
+        std::ofstream out(tmp);
+        out << kYaml;
+    }
+
+    RecipeManager::RecipeManager mgr;
+    bool ok = mgr.loadRecipesFromYamlFile(tmp.string());
+    std::filesystem::remove(tmp);
+
+    CHECK(ok, "temp YAML with all three item formats loads");
+    if (!ok) { PASS(); return; }
+
+    const uint16_t kExpected = ItemId::pack("0:0:4"); // glass
+    CHECK_EQ(kExpected, uint16_t(4), "pack('0:0:4') == 4");
+
+    for (const char* name : {"fmt_hierarchical", "fmt_flat", "fmt_name"}) {
+        auto* r = mgr.getRecipeById(name);
+        CHECK_NE(r, nullptr, name);
+        if (r) {
+            CHECK_EQ(r->inputs.size(), size_t(1), name);
+            if (r->inputs.size() == 1) {
+                CHECK_EQ(r->inputs[0].item_id, kExpected, name);
+                CHECK_NE(r->inputs[0].item_id, uint16_t(0), name);
+            }
+        }
+    }
+
+    PASS();
+}
+
 static void test_recipe_manager_no_match() {
     RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
     RecipeManager::RecipeManager mgr;
@@ -106,4 +170,5 @@ void test_recipe_manager() {
     TEST(recipe_manager_load_crafting_table);
     TEST(recipe_manager_find_stick);
     TEST(recipe_manager_no_match);
+    TEST(recipe_manager_item_id_formats);
 }

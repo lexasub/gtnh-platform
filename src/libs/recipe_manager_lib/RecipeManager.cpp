@@ -360,6 +360,27 @@ uint16_t RecipeManager::resolveItemName(const std::string& name) const {
     return ItemRegistry::instance().nameToId(name);
 }
 
+// Format-detect an `item:` scalar by pattern — never try/catch:
+//   1. Hierarchical prefix:  contains ':'  -> ItemId::pack("0:0:13")
+//   2. Flat numeric:         all digits    -> ItemId::pack("13")   (backward compat)
+//   3. String name:          anything else -> ItemRegistry::nameToId
+uint16_t RecipeManager::resolveItemId(const std::string& itemStr) const {
+    if (itemStr.find(':') != std::string::npos)
+        return ItemId::pack(itemStr);
+
+    bool allDigits = !itemStr.empty();
+    for (char c : itemStr) {
+        if (c < '0' || c > '9') {
+            allDigits = false;
+            break;
+        }
+    }
+    if (allDigits)
+        return ItemId::pack(itemStr);
+
+    return resolveItemName(itemStr);
+}
+
 bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& defaultClass) {
     try {
         Recipe recipe;
@@ -467,17 +488,10 @@ InputItem RecipeManager::parseYamlInputItem(const YAML::Node& node) {
 
     if (!node.IsMap()) return item;
 
-    // Resolve item name or numeric ID
+    // Resolve item name or numeric ID (format detected by pattern, not try/catch)
     if (node["item"]) {
         if (node["item"].IsScalar()) {
-            std::string itemStr = node["item"].as<std::string>();
-            // Try numeric first
-            try {
-                item.item_id = static_cast<uint16_t>(std::stoi(itemStr));
-            } catch (...) {
-                // String name — resolve via registry
-                item.item_id = resolveItemName(itemStr);
-            }
+            item.item_id = resolveItemId(node["item"].as<std::string>());
         } else {
             item.item_id = node["item"].as<uint16_t>(0);
         }
@@ -510,15 +524,10 @@ OutputItem RecipeManager::parseYamlOutputItem(const YAML::Node& node) {
 
     if (!node.IsMap()) return out;
 
-    // Resolve item name or numeric ID
+    // Resolve item name or numeric ID (format detected by pattern, not try/catch)
     if (node["item"]) {
         if (node["item"].IsScalar()) {
-            std::string itemStr = node["item"].as<std::string>();
-            try {
-                out.item_id = static_cast<uint16_t>(std::stoi(itemStr));
-            } catch (...) {
-                out.item_id = resolveItemName(itemStr);
-            }
+            out.item_id = resolveItemId(node["item"].as<std::string>());
         } else {
             out.item_id = node["item"].as<uint16_t>(0);
         }
