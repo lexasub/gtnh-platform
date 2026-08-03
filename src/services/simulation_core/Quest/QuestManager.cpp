@@ -229,7 +229,7 @@ void QuestManager::loadProgress(uint64_t playerId, const std::vector<uint8_t>& f
         return;
     }
 
-    if (fbData.size() < 10) {
+    if (fbData.size() < 4) {
         spdlog::warn("[QuestManager] Invalid quest progress data size {} for player {}", fbData.size(), playerId);
         return;
     }
@@ -237,19 +237,18 @@ void QuestManager::loadProgress(uint64_t playerId, const std::vector<uint8_t>& f
     try {
         std::lock_guard<std::mutex> lock(mutex_);
 
-        const uint8_t* data = fbData.data();
-        uint64_t respPlayerId = 0;
-        std::memcpy(&respPlayerId, data, 8);
-        uint16_t nEntries = 0;
-        std::memcpy(&nEntries, data + 8, 2);
-
-        size_t expectedSize = 10 + static_cast<size_t>(nEntries) * 6;
-        if (fbData.size() != expectedSize) {
-            spdlog::warn("[QuestManager] loadProgress: size mismatch for player {}: got {}, expected {}",
-                         playerId, fbData.size(), expectedSize);
+        flatbuffers::Verifier verifier(fbData.data(), fbData.size());
+        if (!verifier.VerifyBuffer<Protocol::QuestProgressUpdate>(nullptr)) {
+            spdlog::warn("[QuestManager] loadProgress: invalid QuestProgressUpdate buffer for player {}", playerId);
+            return;
+        }
+        auto resp = flatbuffers::GetRoot<Protocol::QuestProgressUpdate>(fbData.data());
+        if (!resp) {
+            spdlog::warn("[QuestManager] loadProgress: null QuestProgressUpdate for player {}", playerId);
             return;
         }
 
+        uint64_t respPlayerId = resp->player_id();
         if (respPlayerId != playerId) {
             spdlog::warn("[QuestManager] loadProgress: response for player {} but requested player {}",
                          respPlayerId, playerId);
@@ -257,29 +256,33 @@ void QuestManager::loadProgress(uint64_t playerId, const std::vector<uint8_t>& f
 
         auto& playerProgress = progress_[playerId];
         uint32_t loadedCount = 0;
-        for (uint16_t i = 0; i < nEntries; ++i) {
-            size_t off = 10 + i * 6;
-            uint32_t questId = 0;
-            std::memcpy(&questId, data + off, 4);
-            uint8_t status = data[off + 4];
-            uint8_t progress = data[off + 5];
+        if (auto* quests = resp->quests()) {
+            for (flatbuffers::uoffset_t i = 0; i < quests->size(); ++i) {
+                auto* entry = quests->Get(i);
+                if (!entry) {
+                    continue;
+                }
+                uint32_t questId = entry->quest_id();
+                uint8_t status = static_cast<uint8_t>(entry->status());
+                uint8_t progress = entry->progress();
 
-            if (status >= 4) {
-                spdlog::warn("[QuestManager] Invalid quest status {} for quest {} (player {}), clamping",
-                             status, questId, playerId);
-                status = static_cast<uint8_t>(quest::QuestStatus::LOCKED);
-            }
+                if (status >= 4) {
+                    spdlog::warn("[QuestManager] Invalid quest status {} for quest {} (player {}), clamping",
+                                 status, questId, playerId);
+                    status = static_cast<uint8_t>(quest::QuestStatus::LOCKED);
+                }
 
-            playerProgress[questId] = static_cast<quest::QuestStatus>(status);
-            ++loadedCount;
+                playerProgress[questId] = static_cast<quest::QuestStatus>(status);
+                ++loadedCount;
 
-            const quest::QuestDef* questDef = questData_->GetQuest(questId);
-            if (questDef) {
-                spdlog::info("[QuestManager] Loaded quest {} for player {}: status={}, progress={}%",
-                             questId, playerId, static_cast<uint8_t>(status), progress);
-            } else {
-                spdlog::debug("[QuestManager] Quest {} not found in quest data for player {}",
-                              questId, playerId);
+                const quest::QuestDef* questDef = questData_->GetQuest(questId);
+                if (questDef) {
+                    spdlog::info("[QuestManager] Loaded quest {} for player {}: status={}, progress={}%",
+                                 questId, playerId, static_cast<uint8_t>(status), progress);
+                } else {
+                    spdlog::debug("[QuestManager] Quest {} not found in quest data for player {}",
+                                  questId, playerId);
+                }
             }
         }
 

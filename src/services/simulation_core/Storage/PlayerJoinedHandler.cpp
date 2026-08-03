@@ -3,7 +3,7 @@
 #include "Quest/QuestManager.h"
 #include "Network/clients/IoUringRouterClient.h"
 #include "core_generated.h"
-#include <cstring>
+#include "quest_generated.h"
 #include <spdlog/spdlog.h>
 namespace simcore {
 PlayerJoinedHandler::PlayerJoinedHandler(std::shared_ptr<PlayerInventoryStore> inv,
@@ -20,9 +20,12 @@ void PlayerJoinedHandler::handle(const std::vector<uint8_t>& data) {
         questManager_->onPlayerJoined(pid);
     }
     if (router_) {
-        uint8_t buf[8];
-        std::memcpy(buf, &pid, sizeof(pid));
-        router_->PublishRaw("meta_db.quest.get", buf, sizeof(buf));
+        // Request quest progress restore via FlatBuffers QuestProgressUpdate
+        // (empty quests vector = query). Matches MetaDB HandleQuestGet.
+        flatbuffers::FlatBufferBuilder builder(32);
+        auto req = Protocol::CreateQuestProgressUpdate(builder, pid);
+        builder.Finish(req);
+        router_->PublishRaw("meta_db.quest.get", builder.GetBufferPointer(), builder.GetSize());
         spdlog::info("[SimCore] Requested quest progress restore for player {}", pid);
     }
 }

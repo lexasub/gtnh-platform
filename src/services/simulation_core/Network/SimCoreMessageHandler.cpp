@@ -34,6 +34,7 @@
 #include "ECS/Reactors/CableExplosionHandler.h"
 #include "../../data/registry/ToolIds.h"
 #include "core_generated.h"
+#include "quest_generated.h"
 #include "machine_state_generated.h"
 #include "pipe_network_generated.h"
 #include <flatbuffers/flatbuffers.h>
@@ -234,9 +235,15 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                 }
 
             } else if (topic == "meta_db.quest.get.response") {
-                if (questManager && data.size() >= 10) {
+                if (questManager && data.size() >= 4) {
                     uint64_t playerId = 0;
-                    std::memcpy(&playerId, data.data(), 8);
+                    flatbuffers::Verifier v(data.data(), data.size());
+                    if (v.VerifyBuffer<Protocol::QuestProgressUpdate>(nullptr)) {
+                        auto resp = flatbuffers::GetRoot<Protocol::QuestProgressUpdate>(data.data());
+                        if (resp) {
+                            playerId = resp->player_id();
+                        }
+                    }
                     questManager->loadProgress(playerId, data);
                 }
 
