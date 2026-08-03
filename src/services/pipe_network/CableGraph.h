@@ -46,12 +46,12 @@ public:
   std::vector<EnergyPacket> collectPackets(uint64_t machineNodeId);
   void tick();
   void setCableParams(uint64_t nodeId, const CableDef &def);
-  void registerGenerator(uint64_t genEntityId, int32_t x, int32_t y, int32_t z);
+  void registerGenerator(uint64_t genEntityId, int32_t x, int32_t y, int32_t z, uint8_t tier = 0);
   void registerMachine(uint64_t machineEntityId, int32_t x, int32_t y,
-                       int32_t z);
+                       int32_t z, uint8_t tier = 0);
   void unregisterGenerator(uint64_t genEntityId);
   void unregisterMachine(uint64_t machineEntityId);
-  uint64_t findAdjacentCable(int32_t x, int32_t y, int32_t z);
+  uint64_t findAdjacentCable(int32_t x, int32_t y, int32_t z, uint8_t tier = 0);
   bool isRegisteredGenerator(uint64_t genEntityId) const;
 
   // Get nodes that exploded during the last tick()

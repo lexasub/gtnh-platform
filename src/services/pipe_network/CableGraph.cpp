@@ -283,15 +283,15 @@ void CableGraph::setCableParams(uint64_t nodeId, const CableDef& def) {
     it->second.tier = def.tier;
 }
 
-void CableGraph::registerGenerator(uint64_t genEntityId, int32_t x, int32_t y, int32_t z) {
-    uint64_t cableNode = findAdjacentCable(x, y, z);
+void CableGraph::registerGenerator(uint64_t genEntityId, int32_t x, int32_t y, int32_t z, uint8_t tier) {
+    uint64_t cableNode = findAdjacentCable(x, y, z, tier);
     if (cableNode) {
         m_generatorToCable[genEntityId] = cableNode;
     }
 }
 
-void CableGraph::registerMachine(uint64_t machineEntityId, int32_t x, int32_t y, int32_t z) {
-    uint64_t cableNode = findAdjacentCable(x, y, z);
+void CableGraph::registerMachine(uint64_t machineEntityId, int32_t x, int32_t y, int32_t z, uint8_t tier) {
+    uint64_t cableNode = findAdjacentCable(x, y, z, tier);
     if (cableNode) {
         m_machineToCable[machineEntityId] = cableNode;
     }
@@ -305,7 +305,7 @@ void CableGraph::unregisterMachine(uint64_t machineEntityId) {
     m_machineToCable.erase(machineEntityId);
 }
 
-uint64_t CableGraph::findAdjacentCable(int32_t x, int32_t y, int32_t z) {
+uint64_t CableGraph::findAdjacentCable(int32_t x, int32_t y, int32_t z, uint8_t tier) {
     constexpr int32_t offsets[6][3] = {
         {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}
     };
@@ -317,7 +317,8 @@ uint64_t CableGraph::findAdjacentCable(int32_t x, int32_t y, int32_t z) {
 
         auto posIt = m_posToNode.find(packPos(nx, ny, nz));
         if (posIt != m_posToNode.end()) {
-            return posIt->second;
+            if (tier == 0 || m_nodes.at(posIt->second).tier == tier)
+                return posIt->second;
         }
     }
     

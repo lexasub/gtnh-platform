@@ -44,6 +44,9 @@ private:
   std::atomic<bool> running_{false};
 
   static constexpr int TICK_INTERVAL_MS = 100;
+  static constexpr const char* PERSIST_DIR = ".pipe_network_persist/";
+  static constexpr int PERSIST_INTERVAL_TICKS = 50;
+  int tick_counter_ = 0;
 
   pipenet::PipeNetworkManager network_manager_;
   std::unordered_map<uint64_t, NodeState> node_states_;
@@ -80,6 +83,8 @@ private:
 
   // Machine config handler (side_config sync from wrench)
   void handleMachineConfigUpdated(const std::vector<uint8_t> &data);
+
+  void loadPersistentState();
 };
 
 } // namespace pipe_network

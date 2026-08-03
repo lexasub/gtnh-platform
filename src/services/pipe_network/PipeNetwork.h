@@ -41,6 +41,7 @@ struct PipeNode {
   std::vector<ItemSlot> itemBuffer;
   uint8_t itemCapacity = 0;
   bool isItemSource = false;
+  bool isItemSink = false;
 
   // Heat handling
   int32_t heatStored;    // current heat stored in this node
@@ -118,13 +119,16 @@ public:
   void setNodeFluid(uint64_t nodeId, int32_t fluid, int32_t capacity,
                     uint32_t fluidId, bool isSource, bool isSink);
   void setNodeItemProps(uint64_t nodeId, uint8_t itemCapacity,
-                        bool isItemSource);
+                         bool isItemSource, bool isItemSink);
   void addNodeItem(uint64_t nodeId, uint16_t itemId, uint8_t count);
   void setNodeHeat(uint64_t nodeId, int32_t heat, int32_t capacity,
                    bool isSource, bool isSink);
   void setNodeSideConfig(uint64_t nodeId, const std::array<uint8_t, 6>& sideConfig);
 
   std::unordered_map<uint64_t, int32_t> distributeHeat(uint64_t networkId, int32_t tickHeat);
+
+  std::unordered_map<uint64_t, std::vector<ItemSlot>> exportItemBuffers() const;
+  void importItemBuffers(const std::unordered_map<uint64_t, std::vector<ItemSlot>>& buffers);
 
   // Query
   const PipeNode *getNode(uint64_t nodeId) const;

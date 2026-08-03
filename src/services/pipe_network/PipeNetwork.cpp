@@ -1,4 +1,5 @@
 #include "PipeNetwork.h"
+#include "PipeBlockIds.h"
 #include <queue>
 #include <algorithm>
 #include <cassert>
@@ -29,6 +30,29 @@ uint64_t PipeNetworkManager::addNode(int32_t x, int32_t y, int32_t z, uint16_t b
     node.heatCapacity = 0;
     node.isSource = false;
     node.isSink = false;
+    node.isItemSink = false;
+
+    switch (blockId) {
+        case BLOCK_ID_ITEM_PIPE:
+            node.itemCapacity = 4;
+            node.fluidCapacity = 0;
+            break;
+        case BLOCK_ID_DENSE_ITEM_PIPE:
+            node.itemCapacity = 16;
+            node.fluidCapacity = 0;
+            break;
+        case BLOCK_ID_FLUID_PIPE:
+            node.itemCapacity = 0;
+            node.fluidCapacity = 1000;
+            break;
+        case BLOCK_ID_DENSE_FLUID_PIPE:
+            node.itemCapacity = 0;
+            node.fluidCapacity = 4000;
+            break;
+        default:
+            break;
+    }
+
     nodes_[id] = node;
     rebuildNetworks();
     return id;
@@ -54,6 +78,29 @@ bool PipeNetworkManager::addNodeWithId(uint64_t id, int32_t x, int32_t y, int32_
     node.heatCapacity = 0;
     node.isSource = false;
     node.isSink = false;
+    node.isItemSink = false;
+
+    switch (blockId) {
+        case BLOCK_ID_ITEM_PIPE:
+            node.itemCapacity = 4;
+            node.fluidCapacity = 0;
+            break;
+        case BLOCK_ID_DENSE_ITEM_PIPE:
+            node.itemCapacity = 16;
+            node.fluidCapacity = 0;
+            break;
+        case BLOCK_ID_FLUID_PIPE:
+            node.itemCapacity = 0;
+            node.fluidCapacity = 1000;
+            break;
+        case BLOCK_ID_DENSE_FLUID_PIPE:
+            node.itemCapacity = 0;
+            node.fluidCapacity = 4000;
+            break;
+        default:
+            break;
+    }
+
     nodes_[id] = node;
     rebuildNetworks();
     return true;
@@ -488,14 +535,14 @@ std::vector<ConsumedItemEvent> PipeNetworkManager::moveItemsInNetwork(uint64_t n
         }
 
         // Sink: marked as sink and has room in inventory
-        if (ni->second.isSink) {
-            // Check if this sink has inventory room (using ItemSlot as capacity indicator)
-            // For raw pipes acting as sinks, check itemBuffer vs itemCapacity
-            if (ni->second.itemBuffer.size() < static_cast<size_t>(ni->second.itemCapacity) ||
-                ni->second.itemCapacity == 0) {
-                sinks.push_back(nid);
-            }
-        }
+                if (ni->second.isSink || ni->second.isItemSink) {
+                    // Check if this sink has inventory room (using ItemSlot as capacity indicator)
+                    // For raw pipes acting as sinks, check itemBuffer vs itemCapacity
+                    if (ni->second.itemBuffer.size() < static_cast<size_t>(ni->second.itemCapacity) ||
+                        ni->second.itemCapacity == 0) {
+                        sinks.push_back(nid);
+                    }
+                }
     }
 
     if (sources.empty() || sinks.empty()) return consumed;
@@ -532,7 +579,7 @@ std::vector<ConsumedItemEvent> PipeNetworkManager::moveItemsInNetwork(uint64_t n
                 auto ni = nodes_.find(neighbor);
                 if (ni == nodes_.end()) continue;
 
-                if (ni->second.isSink) {
+                if (ni->second.isSink || ni->second.isItemSink) {
                     // Verify the sink has room
                     bool hasRoom = ni->second.itemBuffer.size() <
                                    static_cast<size_t>(ni->second.itemCapacity) ||
@@ -615,11 +662,13 @@ void PipeNetworkManager::setNodeFluid(uint64_t nodeId, int32_t fluid, int32_t ca
     it->second.isSink = isSink;
 }
 
-void PipeNetworkManager::setNodeItemProps(uint64_t nodeId, uint8_t itemCapacity, bool isItemSource) {
+void PipeNetworkManager::setNodeItemProps(uint64_t nodeId, uint8_t itemCapacity, bool isItemSource, bool isItemSink) {
     auto it = nodes_.find(nodeId);
     if (it == nodes_.end()) return;
     it->second.itemCapacity = itemCapacity;
     it->second.isItemSource = isItemSource;
+    it->second.isItemSink = isItemSink;
+    it->second.isSink = isItemSink;
 }
 
 void PipeNetworkManager::addNodeItem(uint64_t nodeId, uint16_t itemId, uint8_t count) {
@@ -751,6 +800,24 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeHeat(uint64_
     net.isActive = anySink && tickHeat != 0;
 
     return deltas;
+}
+
+std::unordered_map<uint64_t, std::vector<ItemSlot>> PipeNetworkManager::exportItemBuffers() const {
+    std::unordered_map<uint64_t, std::vector<ItemSlot>> result;
+    for (const auto& [nid, node] : nodes_) {
+        if (!node.itemBuffer.empty()) {
+            result[nid] = node.itemBuffer;
+        }
+    }
+    return result;
+}
+
+void PipeNetworkManager::importItemBuffers(const std::unordered_map<uint64_t, std::vector<ItemSlot>>& buffers) {
+    for (const auto& [nid, items] : buffers) {
+        auto it = nodes_.find(nid);
+        if (it == nodes_.end()) continue;
+        it->second.itemBuffer = items;
+    }
 }
 
 } // namespace pipenet

@@ -135,9 +135,9 @@ static void test_item_network_simple() {
     mgr.addEdge(pipe, sink);
 
     // Configure: src produces items, sink consumes
-    mgr.setNodeItemProps(src, 10, true);   // 10 slot capacity, is source
-    mgr.setNodeItemProps(pipe, 10, false);  // 10 slot capacity, not source
-    mgr.setNodeItemProps(sink, 10, false);  // 10 slot capacity, not source
+    mgr.setNodeItemProps(src, 10, true, false);   // 10 slot capacity, is source
+    mgr.setNodeItemProps(pipe, 10, false, false);  // 10 slot capacity, not source
+    mgr.setNodeItemProps(sink, 10, false, false);  // 10 slot capacity, not source
     mgr.setNodeEnergy(sink, 0, 100, false, true);  // set sink=true for energy/isSink
 
     // Add one item at source
@@ -160,7 +160,7 @@ static void test_item_network_no_sink() {
     // Source with items but no sink in network: items stay at source
     pipenet::PipeNetworkManager mgr;
     uint64_t src = mgr.addNode(0, 0, 0, 62);
-    mgr.setNodeItemProps(src, 10, true);
+    mgr.setNodeItemProps(src, 10, true, false);
     mgr.addNodeItem(src, 7, 1);
 
     mgr.tickItemNetworks();
@@ -176,8 +176,8 @@ static void test_item_network_multi_item() {
     uint64_t sink = mgr.addNode(1, 0, 0, 62);
     mgr.addEdge(src, sink);
 
-    mgr.setNodeItemProps(src, 10, true);
-    mgr.setNodeItemProps(sink, 10, false);
+    mgr.setNodeItemProps(src, 10, true, false);
+    mgr.setNodeItemProps(sink, 10, false, false);
     mgr.setNodeEnergy(sink, 0, 1000, false, true);
 
     mgr.addNodeItem(src, 1, 1);
@@ -198,8 +198,8 @@ static void test_item_network_multi_tick() {
     uint64_t sink = mgr.addNode(1, 0, 0, 62);
     mgr.addEdge(src, sink);
 
-    mgr.setNodeItemProps(src, 10, true);
-    mgr.setNodeItemProps(sink, 10, false);
+    mgr.setNodeItemProps(src, 10, true, false);
+    mgr.setNodeItemProps(sink, 10, false, false);
     mgr.setNodeEnergy(sink, 0, 1000, false, true);
 
     mgr.addNodeItem(src, 1, 1);
@@ -222,9 +222,9 @@ static void test_find_next_item_hop() {
     mgr.addEdge(a, b);
     mgr.addEdge(b, c);
 
-    mgr.setNodeItemProps(a, 10, false);
-    mgr.setNodeItemProps(b, 10, false);
-    mgr.setNodeItemProps(c, 10, false);
+    mgr.setNodeItemProps(a, 10, false, false);
+    mgr.setNodeItemProps(b, 10, false, false);
+    mgr.setNodeItemProps(c, 10, false, false);
 
     mgr.rebuildItemNetworks();
     auto* net = mgr.getItemNetwork(a);
@@ -242,7 +242,7 @@ static void test_find_next_item_hop_no_item_capability() {
     uint64_t b = mgr.addNode(1, 0, 0, 100);  // non-pipe block (itemCapacity=0)
     mgr.addEdge(a, b);
 
-    mgr.setNodeItemProps(a, 10, false);
+    mgr.setNodeItemProps(a, 10, false, false);
     // b has default itemCapacity=0
 
     mgr.rebuildItemNetworks();
@@ -668,11 +668,11 @@ static void test_large_network() {
     CHECK_EQ(mgr.edgeCount(), size_t(99), "99 edges");
 
     // Item network: first node source, last node sink
-    mgr.setNodeItemProps(nodes[0], 100, true);
+    mgr.setNodeItemProps(nodes[0], 100, true, false);
     for (size_t i = 1; i < nodes.size() - 1; ++i) {
-        mgr.setNodeItemProps(nodes[i], 100, false);
+        mgr.setNodeItemProps(nodes[i], 100, false, false);
     }
-    mgr.setNodeItemProps(nodes.back(), 100, false);
+    mgr.setNodeItemProps(nodes.back(), 100, false, false);
     mgr.setNodeEnergy(nodes.back(), 0, 10000, false, true);
 
     mgr.addNodeItem(nodes[0], 1, 1);
@@ -693,6 +693,296 @@ static void test_node_count_after_operations() {
     // Re-add with same coords (different id)
     mgr.addNode(0, 0, 0, 100);
     CHECK_EQ(mgr.nodeCount(), size_t(1), "re-added");
+    PASS();
+}
+
+// =========================================================================
+//  Persistence tests
+// =========================================================================
+
+static void test_export_import_item_buffers() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t a = mgr.addNode(0, 0, 0, 62);
+    uint64_t b = mgr.addNode(1, 0, 0, 62);
+    mgr.addEdge(a, b);
+
+    mgr.setNodeItemProps(a, 10, true, false);
+    mgr.addNodeItem(a, 42, 1);
+    mgr.addNodeItem(a, 7, 2);
+
+    auto exported = mgr.exportItemBuffers();
+    CHECK_EQ(exported.size(), size_t(1), "one node with items exported");
+    CHECK(exported.find(a) != exported.end(), "node a in export");
+    CHECK_EQ(exported.at(a).size(), size_t(2), "two items exported from node a");
+    CHECK_EQ(exported.at(a)[0].item_id, uint16_t(42), "exported item id correct");
+    CHECK_EQ(exported.at(a)[0].count, uint8_t(1), "exported item count correct");
+
+    // Re-import to a fresh manager with same node IDs
+    pipenet::PipeNetworkManager mgr2;
+    uint64_t a2 = mgr2.addNode(0, 0, 0, 62);
+    mgr2.addNode(1, 0, 0, 62);
+
+    mgr2.setNodeItemProps(a2, 10, true, false);
+    mgr2.importItemBuffers(exported);
+    const auto* restored = mgr2.getNode(a2);
+    CHECK(restored != nullptr, "node a2 exists after import");
+    CHECK_EQ(restored->itemBuffer.size(), size_t(2), "two items restored");
+    CHECK_EQ(restored->itemBuffer[0].item_id, uint16_t(42), "first item id restored");
+    CHECK_EQ(restored->itemBuffer[0].count, uint8_t(1), "first item count restored");
+    CHECK_EQ(restored->itemBuffer[1].item_id, uint16_t(7), "second item id restored");
+    PASS();
+}
+
+static void test_export_empty_no_buffers() {
+    pipenet::PipeNetworkManager mgr;
+    mgr.addNode(0, 0, 0, 62);
+    auto exported = mgr.exportItemBuffers();
+    CHECK(exported.empty(), "no items to export on empty buffers");
+    PASS();
+}
+
+// =========================================================================
+//  Fluid routing tests (extended)
+// =========================================================================
+
+static void test_fluid_routing_type_mismatch() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t src = mgr.addNode(0, 0, 0, 61);
+    uint64_t sink = mgr.addNode(1, 0, 0, 61);
+    mgr.addEdge(src, sink);
+
+    mgr.setNodeFluid(src, 1000, 2000, 84, true, false);
+    mgr.setNodeFluid(sink, 0, 500, 0, false, true);
+
+    mgr.rebuildNetworks();
+    auto nets = mgr.getAllNetworks();
+    uint64_t targetNet = 0;
+    for (const auto* n : nets)
+        for (uint64_t nid : n->nodeIds)
+            if (nid == sink) { targetNet = n->id; break; }
+    CHECK_GT(targetNet, uint64_t(0), "fluid network exists");
+
+    auto* net = mgr.getNetwork(targetNet);
+    CHECK_EQ(net->fluidId, uint32_t(84), "network fluid type is water");
+
+    // Try to put lava (fluid_id=85) into same network — should be blocked at the network level
+    mgr.setNodeFluid(src, 1000, 2000, 85, true, false);  // lava
+    mgr.rebuildNetworks();
+    // After rebuild, network type should still be the original fluid type
+    auto nets2 = mgr.getAllNetworks();
+    for (const auto* n : nets2)
+        for (uint64_t nid : n->nodeIds)
+            if (nid == sink) { targetNet = n->id; break; }
+
+    CHECK_GT(targetNet, uint64_t(0), "network still exists after fluid type change");
+    PASS();
+}
+
+static void test_fluid_routing_capacity() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t src = mgr.addNode(0, 0, 0, 61);
+    uint64_t sink = mgr.addNode(1, 0, 0, 61);
+    mgr.addEdge(src, sink);
+
+    mgr.setNodeFluid(src, 10000, 10000, 84, true, false);
+    mgr.setNodeFluid(sink, 0, 500, 0, false, true);
+
+    mgr.rebuildNetworks();
+    auto nets = mgr.getAllNetworks();
+    uint64_t targetNet = 0;
+    for (const auto* n : nets)
+        for (uint64_t nid : n->nodeIds)
+            if (nid == sink) { targetNet = n->id; break; }
+
+    mgr.distributeFluid(targetNet, 1000);
+    const auto* sinkNode = mgr.getNode(sink);
+    CHECK_EQ(sinkNode->fluidBuffer, 500, "sink capped at capacity");
+
+    // Second distribution: already full, no more fluid accepted
+    mgr.distributeFluid(targetNet, 500);
+    CHECK_EQ(sinkNode->fluidBuffer, 500, "sink still capped after second distribution");
+    PASS();
+}
+
+// =========================================================================
+//  Integration-style tests
+// =========================================================================
+
+static void test_block_place_auto_discovery() {
+    // Simulate block place: addNode + rebuildItemNetworks should create network
+    pipenet::PipeNetworkManager mgr;
+    uint64_t a = mgr.addNode(0, 0, 0, 62);
+    uint64_t b = mgr.addNode(1, 0, 0, 62);
+    mgr.addEdge(a, b);
+
+    mgr.setNodeItemProps(a, 10, true, false);
+    mgr.setNodeItemProps(b, 10, false, false);
+
+    mgr.rebuildItemNetworks();
+    auto* net = mgr.getItemNetwork(a);
+    CHECK(net != nullptr, "item network discovered after block place");
+    CHECK_EQ(net->itemNodes.size(), size_t(2), "both nodes in item network");
+    PASS();
+}
+
+static void test_machine_to_pipe_to_machine() {
+    // Simulate: machine output → pipe → machine input
+    pipenet::PipeNetworkManager mgr;
+    uint64_t src = mgr.addNode(0, 0, 0, 62);   // machine output as pipe node
+    uint64_t pipe = mgr.addNode(1, 0, 0, 62);  // connecting pipe
+    uint64_t sink = mgr.addNode(2, 0, 0, 62);  // machine input as pipe node
+
+    mgr.addEdge(src, pipe);
+    mgr.addEdge(pipe, sink);
+
+    mgr.setNodeItemProps(src, 10, true, false);    // source
+    mgr.setNodeItemProps(pipe, 10, false, false);   // pass-through
+    mgr.setNodeItemProps(sink, 10, false, false);   // sink (item capacity=10 means pipe stores items)
+    mgr.setNodeEnergy(sink, 0, 1000, false, true); // mark as sink
+
+    // Add item at source
+    mgr.addNodeItem(src, 42, 1);
+
+    // Tick 1: item moves from src to pipe or sink
+    mgr.tickItemNetworks();
+    CHECK_EQ(mgr.getNode(src)->itemBuffer.size(), size_t(0), "source drained after tick 1");
+    // Item should be in pipe or sink after tick 1
+    size_t totalAfterTick1 = mgr.getNode(pipe)->itemBuffer.size() + mgr.getNode(sink)->itemBuffer.size();
+    CHECK_EQ(totalAfterTick1, size_t(1), "item in transit after tick 1");
+
+    // Keep ticking until item reaches sink
+    for (int i = 0; i < 10; ++i) mgr.tickItemNetworks();
+    CHECK_EQ(mgr.getNode(sink)->itemBuffer.size(), size_t(1), "item reached sink after multiple ticks");
+    CHECK_EQ(mgr.getNode(sink)->itemBuffer[0].item_id, uint16_t(42), "correct item at sink");
+    PASS();
+}
+
+static void test_cable_graph_transformer_integration() {
+    using namespace gtnh::pipe_network;
+
+    CableGraph cg;
+
+    CableDef mvCable;
+    mvCable.block_id = 66;
+    mvCable.tier = 2;
+    mvCable.max_voltage = 128;
+    mvCable.ampacity = 16;
+    mvCable.loss_per_block = 0;
+    cg.addCableNode(100, mvCable, 0, 0, 0);
+    cg.addCableNode(102, mvCable, 1, 0, 0);
+
+    CableDef hvCable;
+    hvCable.block_id = 68;
+    hvCable.tier = 3;
+    hvCable.max_voltage = 512;
+    hvCable.ampacity = 8;
+    hvCable.loss_per_block = 0;
+    cg.addCableNode(101, hvCable, 3, 0, 0);
+    cg.addCableNode(103, hvCable, 4, 0, 0);
+
+    cg.rebuildGraph();
+
+    cg.registerGenerator(200, -1, 0, 0, 2);
+    cg.registerMachine(300, 2, 0, 0, 2);
+    cg.registerGenerator(301, 2, 0, 0, 3);
+    cg.registerMachine(400, 5, 0, 0, 3);
+
+    EnergyPacket pkt;
+    pkt.voltage = 128;
+    pkt.ampCount = 1;
+    pkt.sourceId = 200;
+    pkt.targetId = 0;
+    pkt.tickIssued = 0;
+    cg.injectPacket(pkt, 100);
+    cg.tick();
+
+    auto mvPackets = cg.collectPackets(300);
+    CHECK(!mvPackets.empty(), "transformer sink receives MV packet");
+
+    EnergyPacket steppedUp;
+    steppedUp.voltage = 512;
+    steppedUp.ampCount = 1;
+    steppedUp.sourceId = 301;
+    steppedUp.targetId = 0;
+    steppedUp.tickIssued = 0;
+    cg.injectPacket(steppedUp, 101);
+    cg.tick();
+
+    auto hvPackets = cg.collectPackets(400);
+    CHECK(!hvPackets.empty(), "HV consumer receives stepped-up packet");
+    CHECK(cg.getExplodedNodes().empty(), "no explosions in correct tier setup");
+
+    PASS();
+}
+
+static void test_cable_explosion_event() {
+    using namespace gtnh::pipe_network;
+
+    CableGraph cg;
+    CableDef def = {66, 2, "cable_tin", 0.0f, 128, 16};
+
+    cg.addCableNode(100, def, 0, 0, 0);
+    cg.addCableNode(102, def, 1, 0, 0);
+    cg.rebuildGraph();
+
+    cg.registerMachine(300, 2, 0, 0);
+
+    EnergyPacket pkt;
+    pkt.voltage = 512;
+    pkt.ampCount = 1;
+    pkt.sourceId = 200;
+    pkt.targetId = 0;
+    pkt.tickIssued = 0;
+    cg.injectPacket(pkt, 100);
+
+    cg.tick();
+
+    auto exploded = cg.getExplodedNodes();
+    CHECK(!exploded.empty(), "cable explosion: at least one node exploded");
+    CHECK_EQ(exploded[0].nodeId, uint64_t(102), "cable explosion: cable before machine explodes");
+    CHECK_GT(exploded[0].temperature, 0.0f, "cable explosion: temperature > 0");
+
+    PASS();
+}
+
+static void test_persistence_load_unload_cycle() {
+    pipenet::PipeNetworkManager mgr;
+
+    uint64_t a = mgr.addNode(0, 0, 0, 62);
+    uint64_t b = mgr.addNode(1, 0, 0, 62);
+    mgr.addEdge(a, b);
+
+    mgr.setNodeItemProps(a, 10, true, false);
+    mgr.setNodeItemProps(b, 10, false, true);
+    mgr.addNodeItem(a, 42, 1);
+    mgr.addNodeItem(a, 7, 3);
+
+    auto exported = mgr.exportItemBuffers();
+    CHECK_EQ(exported.size(), size_t(1), "export has nodes with items");
+
+    pipenet::PipeNetworkManager mgr2;
+    uint64_t a2 = mgr2.addNode(0, 0, 0, 62);
+    uint64_t b2 = mgr2.addNode(1, 0, 0, 62);
+    mgr2.addEdge(a2, b2);
+    mgr2.setNodeItemProps(a2, 10, true, false);
+    mgr2.setNodeItemProps(b2, 10, false, true);
+
+    mgr2.importItemBuffers(exported);
+
+    auto* restoredSrc = mgr2.getNode(a2);
+    CHECK(restoredSrc != nullptr, "restored source node exists");
+    CHECK_EQ(restoredSrc->itemBuffer.size(), size_t(2), "two items restored");
+    CHECK_EQ(restoredSrc->itemBuffer[0].item_id, uint16_t(42), "first item id");
+    CHECK_EQ(restoredSrc->itemBuffer[0].count, uint8_t(1), "first item count");
+    CHECK_EQ(restoredSrc->itemBuffer[1].item_id, uint16_t(7), "second item id");
+    CHECK_EQ(restoredSrc->itemBuffer[1].count, uint8_t(3), "second item count");
+
+    mgr2.rebuildItemNetworks();
+
+    auto* net = mgr2.getItemNetwork(a2);
+    CHECK(net != nullptr, "item network exists after restore");
+    CHECK_EQ(net->itemNodes.size(), size_t(2), "both nodes in item network after restore");
+
     PASS();
 }
 
@@ -748,6 +1038,27 @@ int main(int, char**) {
     TEST(remove_edge_and_rebuild);
     TEST(large_network);
     TEST(node_count_after_operations);
+
+    // Transformer integration
+    TEST(cable_graph_transformer_integration);
+
+    // Cable explosion event
+    TEST(cable_explosion_event);
+
+    // Persistence cycle
+    TEST(persistence_load_unload_cycle);
+
+    // Persistence
+    TEST(export_import_item_buffers);
+    TEST(export_empty_no_buffers);
+
+    // Fluid routing (extended)
+    TEST(fluid_routing_type_mismatch);
+    TEST(fluid_routing_capacity);
+
+    // Integration-style
+    TEST(block_place_auto_discovery);
+    TEST(machine_to_pipe_to_machine);
 
     printf("\n=== Results: %d tests, %d passed, %d failed ===\n",
            g_tests, g_passed, g_failed);

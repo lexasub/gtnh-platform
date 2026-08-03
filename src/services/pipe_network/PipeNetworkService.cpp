@@ -4,6 +4,8 @@
 #include <pipe_network_generated.h>
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
+#include <fstream>
+#include <sstream>
 
 namespace {
 
@@ -127,6 +129,7 @@ void PipeNetworkService::Start() {
     router_.Subscribe("world.blocks.changed");
     router_.Subscribe("world.machine.config.updated");
 
+    loadPersistentState();
     running_ = true;
     scheduleTick();
     spdlog::info("PipeNetworkService ready");
@@ -163,8 +166,41 @@ void PipeNetworkService::tick() {
             spdlog::trace("PipeNetwork #{}: {} nodes, {} sources, {} sinks",
                           net->id, net->nodeIds.size(), sourceCount, sinkCount);
         }
+
+        network_manager_.distributeHeat(net->id, pipenet::HeatConstants::MAX_HEAT_PER_TICK);
     }
     
+    // Interval save of item buffers (TODO research: proper chunk unload hook)
+    ++tick_counter_;
+    if (tick_counter_ >= PERSIST_INTERVAL_TICKS) {
+        tick_counter_ = 0;
+        auto buffers = network_manager_.exportItemBuffers();
+        if (!buffers.empty()) {
+            // Simple file-based persistence: serialize each node's items
+            // Format: nodeId:itemId,count;itemId,count|nodeId:...
+            std::ostringstream oss;
+            for (const auto& [nid, items] : buffers) {
+                oss << nid << ":";
+                for (size_t i = 0; i < items.size(); ++i) {
+                    if (i > 0) oss << ",";
+                    oss << items[i].item_id << "," << (int)items[i].count;
+                }
+                oss << "|";
+            }
+            std::string data = oss.str();
+            std::string path = std::string(PERSIST_DIR) + "item_buffers.txt";
+            std::ofstream ofs(path, std::ios::trunc);
+            if (ofs) {
+                ofs << data;
+                ofs.close();
+                spdlog::trace("[PipeNet] saved {} pipe nodes with items in transit ({} bytes)",
+                              buffers.size(), data.size());
+            } else {
+                spdlog::warn("[PipeNet] failed to save item buffers to {}", path);
+            }
+        }
+    }
+
     // Tick item networks — move items through pipes
     network_manager_.tickItemNetworks();
 
@@ -331,8 +367,10 @@ void PipeNetworkService::handleNodeUpdate(const std::vector<uint8_t>& data) {
 
     // Wire up CableGraph for ELECTRICITY nodes
     if (st.type == Protocol::EnergyType_ELECTRICITY) {
-        if (st.is_source) cable_graph_.registerGenerator(mgr_id, x, y, z);
-        if (st.is_sink)   cable_graph_.registerMachine(mgr_id, x, y, z);
+        if (st.is_source) cable_graph_.registerGenerator(mgr_id, x, y, z, st.tier);
+        if (st.is_sink)   cable_graph_.registerMachine(mgr_id, x, y, z, st.tier);
+    } else if (st.type == Protocol::EnergyType_HEAT) {
+        network_manager_.setNodeHeat(mgr_id, st.energy, st.capacity, st.is_source, st.is_sink);
     }
 
     if (update->connected_nodes() && update->connected_nodes()->size() > 0) {
@@ -539,7 +577,7 @@ void PipeNetworkService::handleItemNodeUpdate(const std::vector<uint8_t>& data) 
     int32_t cap = update->capacity();
     bool is_source = update->is_source();
     bool is_sink = update->is_sink();
-    network_manager_.setNodeItemProps(mgr_id, static_cast<uint8_t>(cap > 0 ? cap : 0), is_source);
+    network_manager_.setNodeItemProps(mgr_id, static_cast<uint8_t>(cap > 0 ? cap : 0), is_source, is_sink);
 
     // Item nodes use isItemSource / isItemSink (set via setNodeItemProps), NOT
     // PipeNode::isSource/isSink which are energy-grid flags consumed by
@@ -596,7 +634,7 @@ void PipeNetworkService::handleItemTransferRequest(const std::vector<uint8_t>& d
     }
 
     uint64_t mgr_id = pit->second;
-    network_manager_.setNodeItemProps(mgr_id, 0, true);
+    network_manager_.setNodeItemProps(mgr_id, 0, true, false);
     network_manager_.addNodeItem(mgr_id, req->item_id(), static_cast<uint8_t>(req->count()));
 
     flatbuffers::FlatBufferBuilder fbb;
@@ -635,6 +673,52 @@ void PipeNetworkService::handleMachineConfigUpdated(const std::vector<uint8_t>& 
                   pos->x(), pos->y(), pos->z(),
                   (int)side_config[0], (int)side_config[1], (int)side_config[2],
                   (int)side_config[3], (int)side_config[4], (int)side_config[5]);
+}
+
+void PipeNetworkService::loadPersistentState() {
+    std::string path = std::string(PERSIST_DIR) + "item_buffers.txt";
+    std::ifstream ifs(path);
+    if (!ifs) return;
+
+    std::string data((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+    ifs.close();
+
+    if (data.empty()) return;
+
+    std::unordered_map<uint64_t, std::vector<pipenet::ItemSlot>> buffers;
+    std::istringstream iss(data);
+    std::string segment;
+    while (std::getline(iss, segment, '|')) {
+        if (segment.empty()) continue;
+        auto colonPos = segment.find(':');
+        if (colonPos == std::string::npos) continue;
+
+        uint64_t nid = std::stoull(segment.substr(0, colonPos));
+        std::string itemsStr = segment.substr(colonPos + 1);
+        if (itemsStr.empty()) continue;
+
+        std::vector<pipenet::ItemSlot> items;
+        std::istringstream itemIss(itemsStr);
+        std::string itemSeg;
+        while (std::getline(itemIss, itemSeg, ',')) {
+            auto commaPos = itemSeg.find(',');
+            if (commaPos == std::string::npos || commaPos == 0) continue;
+            uint16_t itemId = static_cast<uint16_t>(std::stoul(itemSeg.substr(0, commaPos)));
+            uint8_t count = static_cast<uint8_t>(std::stoul(itemSeg.substr(commaPos + 1)));
+            items.push_back({itemId, count});
+        }
+
+        if (!items.empty()) {
+            buffers[nid] = items;
+        }
+    }
+
+    if (!buffers.empty()) {
+        network_manager_.importItemBuffers(buffers);
+        spdlog::info("[PipeNet] restored {} pipe nodes with items in transit from persistent state",
+                     buffers.size());
+        std::remove(path.c_str());
+    }
 }
 
 } // namespace pipe_network
