@@ -369,7 +369,7 @@ void PipeNetworkService::handleNodeUpdate(const std::vector<uint8_t>& data) {
     if (st.type == Protocol::EnergyType_ELECTRICITY) {
         if (st.is_source) cable_graph_.registerGenerator(mgr_id, x, y, z, st.tier);
         if (st.is_sink)   cable_graph_.registerMachine(mgr_id, x, y, z, st.tier);
-    } else if (st.type == Protocol::EnergyType_HEAT) {
+    } else if (st.type == Protocol::EnergyType_HEAT || st.type == Protocol::EnergyType_STEAM) {
         network_manager_.setNodeHeat(mgr_id, st.energy, st.capacity, st.is_source, st.is_sink);
     }
 
