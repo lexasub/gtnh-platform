@@ -11,13 +11,16 @@ namespace RecipeManager {
 struct ItemDefinition {
   uint16_t id;
   std::string name;
+  std::string hierarchicalId; // original CSV id string, e.g. "0:10:11:1"
   uint8_t max_stack_size;
   uint16_t default_meta;
 
   ItemDefinition() : id(0), max_stack_size(64), default_meta(0) {}
-  ItemDefinition(uint16_t id_, const std::string &name_, uint8_t max_stack,
-                 uint16_t meta)
-      : id(id_), name(name_), max_stack_size(max_stack), default_meta(meta) {}
+  ItemDefinition(uint16_t id_, const std::string &name_,
+                 const std::string &hierarchicalId_,
+                 uint8_t max_stack, uint16_t meta)
+      : id(id_), name(name_), hierarchicalId(hierarchicalId_),
+        max_stack_size(max_stack), default_meta(meta) {}
 };
 
 class ItemRegistry {
@@ -33,6 +36,7 @@ public:
 
   uint16_t nameToId(const std::string &name) const;
   std::string idToName(uint16_t id) const;
+  std::string idToHierarchical(uint16_t id) const;
   uint8_t getMaxStackSize(uint16_t id) const;
   bool isValid(uint16_t id) const;
   size_t count() const;

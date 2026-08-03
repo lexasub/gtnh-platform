@@ -79,7 +79,7 @@ bool ItemRegistry::loadFromCSV(const std::string& csvPath) {
             }
         }
 
-        ItemDefinition def(id, nameStr, stackSize, meta);
+        ItemDefinition def(id, nameStr, idStr, stackSize, meta);
 
         // If same ID appears twice, log warning and use last one
         if (itemsById_.count(id) > 0) {
@@ -152,7 +152,7 @@ bool ItemRegistry::loadFromSQLite(const std::string& dbPath) {
         uint8_t stackSize = static_cast<uint8_t>(sqlite3_column_int(stmt, 2));
         uint16_t meta = static_cast<uint16_t>(sqlite3_column_int(stmt, 3));
 
-        ItemDefinition def(id, std::string(name), stackSize, meta);
+        ItemDefinition def(id, std::string(name), "", stackSize, meta);
 
         // If same ID appears twice, log warning and use last one
         if (itemsById_.count(id) > 0) {
@@ -197,6 +197,11 @@ uint16_t ItemRegistry::nameToId(const std::string& name) const {
 std::string ItemRegistry::idToName(uint16_t id) const {
     auto it = itemsById_.find(id);
     return (it != itemsById_.end()) ? it->second.name : "";
+}
+
+std::string ItemRegistry::idToHierarchical(uint16_t id) const {
+    auto it = itemsById_.find(id);
+    return (it != itemsById_.end()) ? it->second.hierarchicalId : "";
 }
 
 uint8_t ItemRegistry::getMaxStackSize(uint16_t id) const {
