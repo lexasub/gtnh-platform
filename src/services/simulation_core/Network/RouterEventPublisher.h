@@ -25,7 +25,8 @@ public:
       const std::vector<uint8_t> &inventory_data, float progress,
       uint32_t energy, EnergyType energy_type = EnergyType::ELECTRICITY,
       uint32_t energy_capacity = 0, int slots_in = -1,
-      float heat_ratio = 0.0f) override;
+      float heat_ratio = 0.0f,
+      const std::vector<HatchUpdateData>* hatches = nullptr) override;
 
   void publishMachineSlotResponse(int32_t x, int32_t y, int32_t z,
                                    uint16_t slot_idx, bool success,

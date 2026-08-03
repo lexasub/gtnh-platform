@@ -62,14 +62,15 @@ void RouterEventPublisher::publishBlockChangedEvent(int32_t x, int32_t y, int32_
 }
 
 void RouterEventPublisher::publishBlockEntityUpdate(int32_t x, int32_t y, int32_t z,
-                                                       uint16_t machine_id,
-                                                       const std::vector<uint8_t>& inventory_data,
-                                                       float progress,
-                                                       uint32_t energy,
-                                                       EnergyType energy_type,
-                                                       uint32_t energy_capacity,
-                                                       int slots_in,
-                                                       float heat_ratio)
+                                                    uint16_t machine_id,
+                                                    const std::vector<uint8_t> &inventory_data,
+                                                    float progress,
+                                                    uint32_t energy,
+                                                    EnergyType energy_type,
+                                                    uint32_t energy_capacity,
+                                                    int slots_in,
+                                                    float heat_ratio,
+                                                    const std::vector<HatchUpdateData>* hatches)
 {
     flatbuffers::FlatBufferBuilder builder(128);
 

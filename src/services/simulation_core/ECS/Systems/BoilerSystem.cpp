@@ -7,13 +7,6 @@
 
 namespace simcore {
 
-namespace {
-    inline bool isBoiler(uint16_t block_id) {
-        return block_id == ItemId::pack("1110:01:0")  // steam_solid_boiler
-            || block_id == ItemId::pack("1110:01:1"); // steam_heat_boiler
-    }
-}
-
 BoilerSystem::BoilerSystem(entt::registry& reg,
                            std::shared_ptr<IEventPublisher> events,
                            std::shared_ptr<PipeEnergyClient> pipeClient)
@@ -22,70 +15,79 @@ BoilerSystem::BoilerSystem(entt::registry& reg,
 }
 
 void BoilerSystem::tick(float /*dt*/) {
-    auto view = reg_.view<MachineComponent, InventoryContainer, EnergyStorage, HeatIntakeComponent>();
+    // ── Steam solid boiler: water + heat → STEAM ──────────────────────
+    auto solidView = reg_.view<MachineComponent, InventoryContainer, EnergyStorage, HeatIntakeComponent>();
+    for (auto ent : solidView) {
+        auto& machine = solidView.get<MachineComponent>(ent);
+        if (machine.machine_id != ItemId::pack("1110:01:0")) continue;
+        auto& container = solidView.get<InventoryContainer>(ent);
+        auto& energy = solidView.get<EnergyStorage>(ent);
+        auto& heatIntake = solidView.get<HeatIntakeComponent>(ent);
 
-    for (auto ent : view) {
-        auto& machine = view.get<MachineComponent>(ent);
-        auto& container = view.get<InventoryContainer>(ent);
-        auto& energy = view.get<EnergyStorage>(ent);
-        auto& heatIntake = view.get<HeatIntakeComponent>(ent);
-
-        if (!isBoiler(machine.machine_id)) continue;
         if (energy.isFull()) continue;
-
-        // Check HeatIntakeComponent.heat_stored > 0
         if (heatIntake.heat_stored <= 0) continue;
-
-        // Check inventory slot 0 has water bucket
         if (container.slots.empty() || container.slots[0].count == 0 || container.slots[0].item_id != ItemId::pack("0:11111:0")) continue;
 
-        // Consume 1 from heat_stored
         heatIntake.heat_stored -= std::min(HeatConstants::CONVERSION_RATE, heatIntake.heat_stored);
 
-        // Consume water bucket: slot[0].count--
         container.slots[0].count--;
-        if (container.slots[0].count == 0) {
-            container.slots[0].item_id = ItemId::pack("0:11111:3");  // empty_bucket
-        }
+        if (container.slots[0].count == 0)
+            container.slots[0].item_id = ItemId::pack("0:11111:3");
 
-        // Produce STEAM: int32_t accepted = energy.addEnergy(min(energy.maxOutput, conversionRate))
         int32_t accepted = energy.addEnergy(std::min(energy.maxOutput, HeatConstants::CONVERSION_RATE));
-
-        // If accepted > 0, publish node update to PipeNetwork
         if (accepted > 0) {
             spdlog::debug("Boiler {} at entity {} produced {} STEAM",
                           machine.machine_id, static_cast<uint32_t>(ent), accepted);
-
-            // Notify PipeNetwork of energy state change
             if (pipeClient_) {
                 pipeClient_->publishNodeUpdate(
-                    static_cast<uint64_t>(ent),          // node_id = ECS entity id
-                    static_cast<int32_t>(machine.x),
-                    static_cast<int32_t>(machine.y),
-                    static_cast<int32_t>(machine.z),
-                    energy.current,
-                    energy.capacity,
-                    energy.maxInput,
-                    energy.maxOutput,
-                    energy.tier,
-                    static_cast<int32_t>(energy.type),
-                    true,   // is_source (boiler produces steam)
-                    false   // is_sink
-                );
+                    static_cast<uint64_t>(ent),
+                    static_cast<int32_t>(machine.x), static_cast<int32_t>(machine.y), static_cast<int32_t>(machine.z),
+                    energy.current, energy.capacity, energy.maxInput, energy.maxOutput,
+                    energy.tier, static_cast<int32_t>(energy.type),
+                    true, false);
             }
         }
+        events_->publishBlockEntityUpdate(machine.x, machine.y, machine.z, machine.machine_id,
+                                          {}, 0.0f, static_cast<uint32_t>(energy.current),
+                                          energy.type, 0, -1, heatIntake.ratio());
+    }
 
-        // Publish block entity update
-        events_->publishBlockEntityUpdate(
-            machine.x, machine.y, machine.z,
-            machine.machine_id,
-            {},
-            0.0f,
-            static_cast<uint32_t>(energy.current),
-            energy.type,
-            0,  // energy_capacity
-            -1, // slots_in
-            heatIntake.ratio());
+    // ── Steam heat boiler: STEAM → HEAT converter ─────────────────────
+    auto heatView = reg_.view<MachineComponent, EnergyStorage>();
+    for (auto ent : heatView) {
+        auto& machine = heatView.get<MachineComponent>(ent);
+        if (machine.machine_id != ItemId::pack("1110:01:1")) continue;
+        auto& energy = heatView.get<EnergyStorage>(ent);
+
+        if (energy.type != EnergyType::STEAM) continue;
+        if (energy.isEmpty()) continue;
+
+        int32_t toConsume = std::min(energy.maxOutput, HeatConstants::CONVERSION_RATE);
+        int32_t consumed = energy.consumeEnergy(toConsume);
+        if (consumed <= 0) continue;
+
+        // Attach HeatIntakeComponent if missing (SimulationEngine only attaches for HEAT-type machines)
+        auto& heatIntake = reg_.get_or_emplace<HeatIntakeComponent>(ent);
+        int32_t space = heatIntake.heat_capacity - heatIntake.heat_stored;
+        if (space <= 0) continue;
+        int32_t added = std::min(consumed, space);
+        heatIntake.heat_stored += added;
+
+        spdlog::debug("Heat boiler {} at entity {} produced {} HEAT from {} STEAM",
+                      machine.machine_id, static_cast<uint32_t>(ent), added, consumed);
+
+        if (pipeClient_) {
+            pipeClient_->publishNodeUpdate(
+                static_cast<uint64_t>(ent),
+                static_cast<int32_t>(machine.x), static_cast<int32_t>(machine.y), static_cast<int32_t>(machine.z),
+                heatIntake.heat_stored, heatIntake.heat_capacity,
+                0, static_cast<int32_t>(added),
+                energy.tier, static_cast<int32_t>(EnergyType::HEAT),
+                true, false);
+        }
+        events_->publishBlockEntityUpdate(machine.x, machine.y, machine.z, machine.machine_id,
+                                          {}, 0.0f, static_cast<uint32_t>(heatIntake.heat_stored),
+                                          EnergyType::HEAT, 0, -1, heatIntake.ratio());
     }
 }
 

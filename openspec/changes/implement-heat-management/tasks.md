@@ -19,7 +19,7 @@
 ## 2. Cleanup / Hardcoded Values
 - [x] 2.1 Resolve `HeatConstants::COOLANT_ITEM_ID` (currently `0x99999`, unrepresentable in `uint16_t`) to a real registered coolant item; add the item to the registry if missing
 - [x] 2.2 Extract `BoilerSystem::kConversionRate = 1` to config/constant
-- [ ] 2.3 Implement `steam_heat_boiler` as a STEAM→HEAT converter per `data/registry/machines.yaml` (currently mis-tagged as water+heat→STEAM)
+- [x] 2.3 Implement `steam_heat_boiler` as a STEAM→HEAT converter per `data/registry/machines.yaml` (currently mis-tagged as water+heat→STEAM)
 
 ## 3. Edge Cases
 - [ ] 3.1 Multiple boilers feeding one steam network — aggregate capacity
