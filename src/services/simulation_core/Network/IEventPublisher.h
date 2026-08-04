@@ -4,6 +4,14 @@
 #include <array>
 #include <vector>
 
+struct HatchUpdateData {
+  int32_t world_x, world_y, world_z;
+  uint8_t hatch_type;  // matches Protocol::HatchType values
+  uint8_t tier = 1;
+  // Item slots in this hatch (packed bytes item_id(2)+count(1)+meta(2) per slot)
+  std::vector<uint8_t> slot_data;
+};
+
 // Forward declare Protocol types if needed, but we can keep status as integer.
 // For simplicity, we include the generated header in cpp only.
 namespace simcore {
@@ -32,7 +40,8 @@ public:
       const std::vector<uint8_t> &inventory_data, float progress,
       uint32_t energy, EnergyType energy_type = EnergyType::ELECTRICITY,
       uint32_t energy_capacity = 0, int slots_in = -1,
-      float heat_ratio = 0.0f) = 0;
+      float heat_ratio = 0.0f,
+      const std::vector<HatchUpdateData>* hatches = nullptr) = 0;
 
   virtual void publishMachineSlotResponse(int32_t x, int32_t y, int32_t z,
                                           uint16_t slot_idx, bool success,
