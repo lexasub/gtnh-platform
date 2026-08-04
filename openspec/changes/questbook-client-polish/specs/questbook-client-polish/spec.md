@@ -40,25 +40,19 @@ Each era tab SHALL display its completion ratio and SHALL refresh as quest statu
 - **AND** the badge SHALL update as quest statuses arrive
 
 ### Requirement: Era lock state
-Locked eras SHALL be visually distinct and SHALL NOT be selectable.
+Locked eras SHALL be visually distinct and SHALL NOT be selectable. The lock is released only when the server signals the era unlocked.
 
-#### Scenario: Locked era dimmed
+#### Scenario: Era locked until server confirms unlock
 - **GIVEN** the quest book is open
-- **WHEN** an era's preceding era is not fully COMPLETED
-- **THEN** the era tab SHALL be dimmed/gray and SHALL NOT be selectable
-- **AND** when an era becomes unlocked it SHALL show a brief visual effect
+- **WHEN** the server has not yet signaled an era as unlocked
+- **THEN** the era tab SHALL be dimmed/gray and SHALL NOT be selectable (safe default: locked until told otherwise)
+- **AND** the completion-ratio badge SHALL still be derived client-side from received quest statuses and SHALL render while locked
+- **AND** when the server signals an era unlock (era-transition notification, per `questbook-era-transition`) the tab SHALL become selectable and SHALL show a brief visual effect
 
-### Requirement: Client quest progress routing
-The client SHALL be able to request and submit quest progress through the gateway.
+### Requirement: No client write-path for quest status
+The client SHALL NOT send quest progress writes over `meta_db.quest.set`.
 
-#### Scenario: quest.get round-trip
-- **GIVEN** the client requests quest progress
-- **WHEN** `NetClient::SendQuestGet` is called
-- **THEN** the gateway SHALL forward the payload to `meta_db.quest.get`
-- **AND** the response SHALL reach the client as `QuestProgressUpdate` (msgType 20)
-
-#### Scenario: quest.set forwarding
-- **GIVEN** the client submits quest progress updates
-- **WHEN** `NetClient::SendQuestSet` is called
-- **THEN** the gateway SHALL forward the payload to `meta_db.quest.set`
-- **AND** this transport SHALL NOT be used to authorize status transitions — manual completion is server-authoritative in `manual-completion`
+#### Scenario: no client quest.set route
+- **GIVEN** the client quest book
+- **THEN** the client SHALL NOT send quest progress writes via `meta_db.quest.set`
+- **AND** the only client→server status-mutation path SHALL be `QuestCompleteRequest`, which is server-authoritative and specified in `manual-completion`

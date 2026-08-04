@@ -23,9 +23,9 @@
 
 ## 3. Edge Cases
 - [x] 3.1 Multiple boilers feeding one steam network — aggregate capacity (resolved by routing STEAM→setNodeHeat; distributeHeat() aggregates multiple sources per network)
-- [ ] 3.2 Coolant on non-overheated machine — no-op (already implemented: CoolantSystem checks OverheatComponent)
-- [ ] 3.3 Coolant depletion: coolant stack → 0 → slot cleared (already implemented)
-- [ ] 3.4 Coolant only on multiblocks — verify scenario wording matches `CoolantSystem` view (requires `MultiblockController`)
+- [x] 3.2 Coolant on non-overheated machine — no-op (verified: `CoolantSystem.h:30` skips when `oh.state` is not WARNING/CRITICAL; spec scenario `Coolant not consumed when not overheated` matches)
+- [x] 3.3 Coolant depletion: coolant stack → 0 → slot cleared (verified: `CoolantSystem.h:44-47` decrements count, zeroes `item_id` at 0)
+- [x] 3.4 Coolant only on multiblocks — verified: `CoolantSystem.h:21-22` view requires `MultiblockController`; spec scenario wording ("multiblock machine...") matches
 - [x] 3.5 steam_heat_boiler converter: `HeatIntakeComponent` attached via `get_or_emplace` in BoilerSystem tick (SimulationEngine attaches only for `EnergyType::HEAT`)
 
 ## 4. Verification

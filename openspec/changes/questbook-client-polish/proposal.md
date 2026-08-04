@@ -9,7 +9,7 @@ The Quest Book window renders (3-panel layout, status badges, network sync) but 
 - **Completion notification** visuals + reward info on `QuestCompletedNotification` (21).
 - **Era completion badges** on era tabs (e.g. "3/12").
 - **Era lock/unlock visual state** — locked eras dimmed/disabled until the preceding era is complete. (The era-transition mechanics are tracked in `questbook-era-transition`.)
-- **Client→server routing**: `NetClient` quest get/set senders + gateway forward to `meta_db.quest.get` / `meta_db.quest.set`.
+- **Client quest progress read**: no client routing in scope — initial progress is already server-pushed on join (`PlayerJoinedHandler` → `meta_db.quest.get` → MetaDB → gateway → client). No `quest.set` route: no client write-path consumer (manual completion uses `QuestCompleteRequest` in `manual-completion`), and a `quest.set` route would be an unvalidated status-mutation hole.
 
 ## Impact
 - Affected specs: questbook-client-polish (new)

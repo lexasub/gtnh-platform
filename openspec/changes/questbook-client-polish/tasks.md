@@ -12,12 +12,12 @@
 ## 3. Era Progression UI
 
 - [ ] 3.1 Completion ratio badges on era tabs (e.g. "3/12")
-- [ ] 3.2 Era lock/unlock visual state — era locked until all quests in the preceding era COMPLETED; locked tabs dimmed, non-selectable; newly unlocked era gets a brief highlight
+- [ ] 3.2 Era lock/unlock visual state — locked by default (dimmed, non-selectable); released only when the server signals the era unlocked (era-transition notification per `questbook-era-transition`). Completion-ratio badge on the tab is client-derived from received statuses and SHALL still render while locked (safe default: locked until told otherwise)
 
-## 4. Client→Server Routing
+## 4. Deferred / Removed
 
-- [ ] 4.1 `NetClient::SendQuestGet` — request player quest progress → gateway → `meta_db.quest.get`; response arrives as `QuestProgressUpdate` (20)
-- [ ] 4.2 `NetClient::SendQuestSet` + gateway forward to `meta_db.quest.set` — transport only; server-authoritative status validation belongs to `manual-completion`, this route SHALL NOT become the completion path
+- [x] ~~4.1 client `quest.get` resync~~ — **REMOVED** — initial progress is already server-pushed on join (`PlayerJoinedHandler` → `meta_db.quest.get` → `HandleQuestGet` → gateway → client). A client-initiated resync for reconnect/refresh is a separate feature, out of scope.
+- [x] ~~quest.set client route~~ — **REMOVED** — no client write-path consumer (manual completion uses `QuestCompleteRequest` in `manual-completion`, see 5); a `quest.set` route would be an unvalidated status-mutation hole.
 
 ## 5. Deferred
 
