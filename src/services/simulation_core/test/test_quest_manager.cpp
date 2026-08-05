@@ -6,6 +6,8 @@
 #include "quest_lib/QuestData.h"
 #include "quest_lib/QuestGraph.h"
 #include "quest_generated.h"
+#include <recipe_manager_lib/ItemRegistry.h>
+#include <common/ItemId.h>
 #include <flatbuffers/flatbuffers.h>
 #include <cstdint>
 #include <string>
@@ -107,6 +109,30 @@ struct QuestFixture {
   }
 };
 
+// Loads real quest data, initializes the QuestGraph, and makes the item
+// registry available so idToHierarchical() resolves packed → hierarchical
+// (required for detection-path matching). Idempotent via ItemRegistry's
+// loaded_ guard.
+void buildManager(quest::QuestData& qd, quest::QuestGraph& graph) {
+  qd.LoadCSV(DATA_DIR "/quests/quests.csv");
+  qd.LoadGraph(DATA_DIR "/quests/quest_graph.json");
+  std::unordered_map<uint32_t, std::vector<uint32_t>> prereqs;
+  for (const auto& q : qd.AllQuests()) prereqs[q.id] = q.prerequisites;
+  graph.Init(qd.Graph(), prereqs);
+  RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
+}
+
+// Seeds `entries` as the player's quest progress (via loadProgress).
+void seedProgress(simcore::QuestManager& mgr, uint64_t player,
+                  const std::vector<ProgressEntry>& entries) {
+  mgr.onPlayerJoined(player); // seeds all quests LOCKED
+  flatbuffers::FlatBufferBuilder b(128);
+  auto off = buildProgress(b, player, entries);
+  b.Finish(off);
+  mgr.loadProgress(player, std::vector<uint8_t>(b.GetBufferPointer(),
+                                                b.GetBufferPointer() + b.GetSize()));
+}
+
 } // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,6 +183,44 @@ static void test_QuestManager_completeQuest_rejects_invalid() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 4.1: EXCHANGE quests (repeatable market) must never complete via
+// completeQuest — the flow is MetaDB-owned (quest.exchange.request), and a
+// manual/accidental completion would break the repeatable market contract.
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestManager_completeQuest_rejects_exchange() {
+  const uint64_t player = 71;
+  QuestFixture fx(player);
+
+  // Quest 4 is EXCHANGE; make it AVAILABLE so a naive guard placement
+  // (status check first) would accept it.
+  flatbuffers::FlatBufferBuilder b(128);
+  auto off = buildProgress(b, player,
+      {{4, static_cast<uint8_t>(quest::QuestStatus::AVAILABLE), 0}});
+  b.Finish(off);
+  fx.mgr.loadProgress(player, std::vector<uint8_t>(b.GetBufferPointer(),
+                                                   b.GetBufferPointer() + b.GetSize()));
+
+  CHECK(!fx.mgr.completeQuest(player, 4), "EXCHANGE quest rejected by completeQuest");
+  CHECK_EQ(countTopic(fx.pub, "quest.completed"), 0,
+           "no quest.completed for EXCHANGE quest (no reward)");
+  PASS();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.5: BuildQuestEraMap() excludes EXCHANGE quests — an exchange quest can
+// never reach COMPLETED, so counting it toward era completion would deadlock
+// the era forever. Quest 4 is the exchange quest in VAGRANT.
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestData_eraMap_excludes_exchange() {
+  quest::QuestData qd;
+  CHECK(qd.LoadCSV(DATA_DIR "/quests/quests.csv"), "LoadCSV ok");
+  auto eraMap = qd.BuildQuestEraMap();
+  CHECK(eraMap.find(4) == eraMap.end(), "exchange quest 4 excluded from era map");
+  CHECK(eraMap.find(1) != eraMap.end(), "non-exchange quest 1 still in era map");
+  PASS();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Unlock propagation: completing quest 2 unlocks quest 3 (prereq met), which
 // is advertised AVAILABLE and published on quest.unlocked.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -172,10 +236,159 @@ static void test_QuestManager_completeQuest_unlocks_dependents() {
   PASS();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Era transition: VAGRANT quests are 1,2,3,4,5,6,37,38,39. Seed all but quest
+// 3 COMPLETED; completing quest 3 closes the era → quest.era.transition is
+// published exactly once with completed_era=VAGRANT(0), next_era=APPRENTICE(1).
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestManager_eraTransition_published_once() {
+  const uint64_t player = 55;
+  quest::QuestData qd;
+  quest::QuestGraph graph;
+  RecordingPublisher pub;
+  simcore::QuestManager mgr(&qd, &graph, pub.callback());
+  qd.LoadCSV(DATA_DIR "/quests/quests.csv");
+  qd.LoadGraph(DATA_DIR "/quests/quest_graph.json");
+  std::unordered_map<uint32_t, std::vector<uint32_t>> prereqs;
+  for (const auto& q : qd.AllQuests()) prereqs[q.id] = q.prerequisites;
+  graph.Init(qd.Graph(), prereqs);
+
+  mgr.onPlayerJoined(player);
+  flatbuffers::FlatBufferBuilder b(256);
+  auto off = buildProgress(b, player,
+      {{1, 3, 100}, {2, 3, 100}, {4, 3, 100}, {5, 3, 100},
+       {6, 3, 100}, {37, 3, 100}, {38, 3, 100}, {39, 3, 100},
+       {3, 1, 0}});
+  b.Finish(off);
+  mgr.loadProgress(player, std::vector<uint8_t>(b.GetBufferPointer(),
+                                                b.GetBufferPointer() + b.GetSize()));
+
+  CHECK_EQ(countTopic(pub, "quest.era.transition"), 0,
+           "no era transition before last VAGRANT quest completes");
+  CHECK(mgr.completeQuest(player, 3), "completeQuest(3) accepted");
+  CHECK_EQ(countTopic(pub, "quest.era.transition"), 1,
+           "era transition published exactly once");
+
+  const PublishedMsg* eraMsg = nullptr;
+  for (auto it = pub.msgs.rbegin(); it != pub.msgs.rend(); ++it) {
+    if (it->topic == "quest.era.transition") { eraMsg = &*it; break; }
+  }
+  CHECK(eraMsg != nullptr, "era transition message present");
+  if (eraMsg) {
+    flatbuffers::Verifier v(eraMsg->data.data(), eraMsg->data.size());
+    if (v.VerifyBuffer<Protocol::EraTransitionNotification>(nullptr)) {
+      auto* era = flatbuffers::GetRoot<Protocol::EraTransitionNotification>(eraMsg->data.data());
+      CHECK_EQ(era->completed_era(), static_cast<uint8_t>(quest::Era::VAGRANT),
+               "completed era is VAGRANT");
+      CHECK_EQ(era->next_era(), static_cast<uint8_t>(quest::Era::APPRENTICE),
+               "next era is APPRENTICE");
+    }
+  }
+  PASS();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// One-step detection (task 1.1/1.2): a LOCKED quest whose prerequisites are
+// met completes directly via the detection path. Regression for the
+// dead-detection bug — onPlayerJoined seeds every quest LOCKED, so the old
+// "make AVAILABLE" branch was unreachable and craft/block quests never
+// completed for joined players. Also verifies the unlock cascade publishes
+// quest.unlocked (task 3.1).
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestManager_detection_one_step_craft() {
+  const uint64_t player = 21;
+  quest::QuestData qd;
+  quest::QuestGraph graph;
+  RecordingPublisher pub;
+  simcore::QuestManager mgr(&qd, &graph, pub.callback());
+  buildManager(qd, graph);
+
+  // Quest 1 COMPLETED; quest 2 (craft iron_ingot, prereq 1) stays LOCKED.
+  seedProgress(mgr, player,
+      {{1, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+
+  mgr.checkCraftCompletion(player, ItemId::pack("0:110:1"), 1);
+  CHECK_EQ(lastAdvertisedStatus(pub, 2),
+           static_cast<int>(quest::QuestStatus::COMPLETED),
+           "LOCKED craft quest completes in one step via detection");
+  CHECK_EQ(countTopic(pub, "quest.completed"), 1,
+           "quest.completed published once");
+
+  // Completing quest 2 cascades unlocks: quest 3 (prereq 2) → AVAILABLE.
+  CHECK_EQ(countTopic(pub, "quest.unlocked"), 1,
+           "quest.unlocked published after detection completion");
+  CHECK_EQ(lastAdvertisedStatus(pub, 3),
+           static_cast<int>(quest::QuestStatus::AVAILABLE),
+           "dependent quest 3 advertised AVAILABLE after detection");
+  PASS();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TOOL_CHARGED detection (task 2.1): checkToolCharged completes quest 40
+// (ULV drill, prereq 18) when the packed drill id matches detectTarget.
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestManager_detection_tool_charged() {
+  const uint64_t player = 31;
+  quest::QuestData qd;
+  quest::QuestGraph graph;
+  RecordingPublisher pub;
+  simcore::QuestManager mgr(&qd, &graph, pub.callback());
+  buildManager(qd, graph);
+
+  // Quest 18 (ULV Drilling, prereq of 40) COMPLETED; quest 40 stays LOCKED.
+  seedProgress(mgr, player,
+      {{18, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+
+  mgr.checkToolCharged(player, ItemId::pack("1111:00:0"));
+  CHECK_EQ(lastAdvertisedStatus(pub, 40),
+           static_cast<int>(quest::QuestStatus::COMPLETED),
+           "TOOL_CHARGED quest 40 completes via checkToolCharged");
+  CHECK_EQ(countTopic(pub, "quest.completed"), 1,
+           "quest.completed published once");
+  PASS();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIDE_CONFIGURED detection (task 2.2): checkSideConfigured completes quest
+// 41 (heat furnace, prereq 22) when the packed machine id matches. A
+// machine_id of 0 (multiblock hatch path) is not a side-config target.
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestManager_detection_side_configured() {
+  const uint64_t player = 41;
+  quest::QuestData qd;
+  quest::QuestGraph graph;
+  RecordingPublisher pub;
+  simcore::QuestManager mgr(&qd, &graph, pub.callback());
+  buildManager(qd, graph);
+
+  // Quest 22 (Wrench Mastery, prereq of 41) COMPLETED; quest 41 stays LOCKED.
+  seedProgress(mgr, player,
+      {{22, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+
+  // Hatch wrenching (machine_id == 0) must not complete side-config quests.
+  mgr.checkSideConfigured(player, 0);
+  CHECK_EQ(countTopic(pub, "quest.completed"), 0,
+           "machine_id 0 (hatch) does not complete side-config quest");
+
+  mgr.checkSideConfigured(player, ItemId::pack("1110:00:0"));
+  CHECK_EQ(lastAdvertisedStatus(pub, 41),
+           static_cast<int>(quest::QuestStatus::COMPLETED),
+           "SIDE_CONFIGURED quest 41 completes via checkSideConfigured");
+  CHECK_EQ(countTopic(pub, "quest.completed"), 1,
+           "quest.completed published once");
+  PASS();
+}
+
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
 void test_quest_manager() {
   TEST(QuestManager_completeQuest_valid_and_idempotent);
   TEST(QuestManager_completeQuest_rejects_invalid);
+  TEST(QuestManager_completeQuest_rejects_exchange);
+  TEST(QuestData_eraMap_excludes_exchange);
   TEST(QuestManager_completeQuest_unlocks_dependents);
+  TEST(QuestManager_eraTransition_published_once);
+  TEST(QuestManager_detection_one_step_craft);
+  TEST(QuestManager_detection_tool_charged);
+  TEST(QuestManager_detection_side_configured);
 }

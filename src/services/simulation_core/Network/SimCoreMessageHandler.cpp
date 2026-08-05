@@ -70,7 +70,7 @@ void SimCoreMessageHandler::setup() {
     topicDispatcher_->on("player.machine.slot", std::make_unique<MachineSlotHandler>(
         d.engine, d.inventoryStore, d.entityStateClient, d.eventPublisher, d.routerClient));
     topicDispatcher_->on("player.tool.action", std::make_unique<ToolActionHandler>(
-        d.engine, d.inventoryStore, d.routerClient));
+        d.engine, d.inventoryStore, d.routerClient, d.questManager));
 
     topicDispatcher_->on("player.inventory.load", std::make_unique<InventoryLoadHandler>(
         d.inventoryStore, d.routerClient));
@@ -120,7 +120,7 @@ void SimCoreMessageHandler::setup() {
 
     chunkHandler_ = std::make_shared<ChunkEventHandler>(d.engine);
 
-    auto wrenchActionHandler = std::make_unique<WrenchActionHandler>(d.wrenchHandler);
+    auto wrenchActionHandler = std::make_unique<WrenchActionHandler>(d.wrenchHandler, d.questManager);
     wrenchActionHandler->setRouter(d.routerClient);
     topicDispatcher_->on("player.wrench.action", std::move(wrenchActionHandler));
 }

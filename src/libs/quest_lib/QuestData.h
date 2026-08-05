@@ -28,6 +28,10 @@ public:
   std::vector<EraInfo> BuildEraStructure() const;
   std::vector<std::string> SectionsForEra(Era era) const;
 
+  // Builds quest_id → Era lookup map. Used by QuestGraph::IsEraComplete() to
+  // determine which era a quest belongs to when checking era completion.
+  std::unordered_map<uint32_t, Era> BuildQuestEraMap() const;
+
   size_t Count() const { return quests_.size(); }
 
 private:

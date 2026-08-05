@@ -54,6 +54,11 @@ inline constexpr uint8_t kQuestUnlockNotification = 21;
 inline constexpr uint8_t kQuestCompletedNotification = 22;
 inline constexpr uint8_t kMultiblockEvent = 23;
 inline constexpr uint8_t kQuestCompleteRequest = 24;
+inline constexpr uint8_t kQuestEraTransition = 25;
+inline constexpr uint8_t kQuestExchangeRequest = 26;
+inline constexpr uint8_t kQuestExchangeResponse = 27;
+inline constexpr uint8_t kQuestExchangeCooldownGet = 28;
+inline constexpr uint8_t kQuestExchangeCooldown = 29;
 } // namespace GatewayMsg
 
 // ---------------------------------------------------------------------------

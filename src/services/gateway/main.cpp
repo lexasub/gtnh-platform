@@ -129,7 +129,10 @@ int main(int argc, char* argv[]) {
     gateway.subscribe("quest.completed.notification");
     gateway.subscribe("quest.unlocked");
     gateway.subscribe("quest.progress.updated");
+    gateway.subscribe("quest.era.transition");
     gateway.subscribe("meta_db.quest.get.response");
+    gateway.subscribe("quest.exchange.response");
+    gateway.subscribe("quest.exchange.cooldown.response");
 
     spdlog::info("Gateway running — worker thread handles io_uring");
 

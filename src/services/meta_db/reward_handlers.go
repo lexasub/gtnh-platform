@@ -14,9 +14,15 @@ const (
 	RewardTypeSpecial = "special"
 )
 
+// rewardExecer is satisfied by both *sql.DB and *sql.Tx so quest rewards can
+// be stored inside the exchange transaction.
+type rewardExecer interface {
+	Exec(query string, args ...any) (sql.Result, error)
+}
+
 // StorePlayerQuestReward stores a quest reward in the player_quest_rewards table
 func StorePlayerQuestReward(
-	db *sql.DB,
+	db rewardExecer,
 	playerID uint64,
 	questID uint32,
 	rewardType string,
@@ -427,12 +433,16 @@ type PlayerQuestReward struct {
 // In a real implementation, this would be imported from a common package
 
 type QuestDef struct {
-	ID          uint32
-	Title       string
+	ID           uint32
+	Title        string
 	RewardItemID uint16
 	RewardCount  uint8
 	Era          uint8
-	Section     string
+	Section      string
+	DetectType   string
+	CostItemID   uint16
+	CostCount    uint8
+	CooldownSecs uint16
 }
 
 // GetQuestRewardsStats returns statistics about quest rewards for a player

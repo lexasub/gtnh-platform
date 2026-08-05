@@ -62,6 +62,16 @@ CREATE TABLE IF NOT EXISTS player_quest_rewards (
 CREATE INDEX IF NOT EXISTS idx_player_quest_rewards_player ON player_quest_rewards(player_id);
 CREATE INDEX IF NOT EXISTS idx_player_quest_rewards_quest ON player_quest_rewards(quest_id);
 CREATE INDEX IF NOT EXISTS idx_player_quest_rewards_redeemed ON player_quest_rewards(redeemed);
+
+CREATE TABLE IF NOT EXISTS quest_exchange_cooldowns (
+	player_id INTEGER NOT NULL,
+	quest_id INTEGER NOT NULL,
+	expires_at INTEGER NOT NULL,
+	PRIMARY KEY (player_id, quest_id),
+	FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_quest_exchange_cooldowns_player ON quest_exchange_cooldowns(player_id);
 `
 
 const entityStateSchema = `

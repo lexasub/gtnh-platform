@@ -16,6 +16,15 @@
 //        19=QuestProgressUpdate (gateway→client),
 //        20=QuestUnlockNotification (gateway→client),
 //        21=QuestCompletedNotification (gateway→client)
+//        26=QuestExchangeRequest (client→gateway),
+//        27=QuestExchangeResponse (gateway→client),
+//        28=QuestExchangeCooldownGet (client→gateway),
+//        29=QuestExchangeCooldown (gateway→client)
+// NOTE: quest union indices below are stale vs the C++ GatewayMsg constants
+// (gateway.h / NetClient.h). The C++ constants govern the wire:
+// QuestProgressUpdate=20, QuestUnlockNotification=21,
+// QuestCompletedNotification=22, QuestCompleteRequest=24,
+// QuestEraTransition=25, QuestExchange* = 26-29.
 
 include "core.fbs";
 include "quest.fbs";
@@ -46,6 +55,10 @@ union GatewayPayload {
   QuestUnlockNotification,   // 20 — gateway→client (new quests available)
   QuestCompletedNotification,// 21 — gateway→client (quest completed)
   QuestCompleteRequest,      // 22 — client→gateway (manual quest completion)
+  QuestExchangeRequest,      // 23 — client→gateway (market exchange request)
+  QuestExchangeResponse,     // 24 — gateway→client (exchange result)
+  QuestExchangeCooldownGet,  // 25 — client→gateway (cooldown query)
+  QuestExchangeCooldown,     // 26 — gateway→client (cooldown status)
 }
 
 table GatewayMessage {

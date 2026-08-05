@@ -3,8 +3,8 @@
     { "id": 1,  "prereqs": [],                     "position": { "x": 0,   "y": 0 } },
     { "id": 2,  "prereqs": [1],                    "position": { "x": 0,   "y": 1 } },
     { "id": 3,  "prereqs": [2],                    "position": { "x": 0,   "y": 2 } },
-    { "id": 4,  "prereqs": [],                     "position": { "x": 2,   "y": 0 } },
-    { "id": 5,  "prereqs": [4],                    "position": { "x": 2,   "y": 1 } },
+    { "id": 4,  "prereqs": [],                     "position": { "x": 4,   "y": 0 } },
+    { "id": 5,  "prereqs": [],                     "position": { "x": 2,   "y": 0 } },
     { "id": 6,  "prereqs": [1],                    "position": { "x": 1,   "y": 2 } },
     { "id": 7,  "prereqs": [5],                    "position": { "x": 0,   "y": 3 } },
     { "id": 8,  "prereqs": [7],                    "position": { "x": 0,   "y": 4 } },
@@ -36,7 +36,9 @@
     { "id": 34, "prereqs": [30],                   "position": { "x": 1,   "y": 11 } },
     { "id": 35, "prereqs": [18],                   "position": { "x": -2,  "y": 7 } },
     { "id": 37, "prereqs": [5],                    "position": { "x": 3,   "y": 2 } },
-    { "id": 38, "prereqs": [4],                    "position": { "x": 3,   "y": 1 } },
-    { "id": 39, "prereqs": [6],                    "position": { "x": 3,   "y": 3 } }
+    { "id": 38, "prereqs": [],                     "position": { "x": 3,   "y": 1 } },
+    { "id": 39, "prereqs": [6],                    "position": { "x": 3,   "y": 3 } },
+    { "id": 40, "prereqs": [18],                   "position": { "x": -1,  "y": 6 } },
+    { "id": 41, "prereqs": [22],                   "position": { "x": 3,   "y": 7 } }
   ]
 }

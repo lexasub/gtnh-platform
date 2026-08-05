@@ -49,6 +49,11 @@ inline constexpr uint8_t kQuestUnlockNotification = 21;
 inline constexpr uint8_t kQuestCompletedNotification = 22;
 inline constexpr uint8_t kMultiblockEvent = 23;
 inline constexpr uint8_t kQuestCompleteRequest = 24;
+inline constexpr uint8_t kQuestEraTransition = 25;
+inline constexpr uint8_t kQuestExchangeRequest = 26;
+inline constexpr uint8_t kQuestExchangeResponse = 27;
+inline constexpr uint8_t kQuestExchangeCooldownGet = 28;
+inline constexpr uint8_t kQuestExchangeCooldown = 29;
 } // namespace GatewayMsg
 
 class NetClient : public std::enable_shared_from_this<NetClient> {
@@ -161,6 +166,11 @@ public:
   // Manual quest completion (server-authoritative): sends QuestCompleteRequest
   // to the gateway, which forwards to SimulationCore for validation.
   void SendQuestComplete(uint64_t player_id, uint32_t quest_id);
+  // Repeatable-market quest exchange: requests a trade (cost deducted,
+  // reward granted) for exchange-type quests. MetaDB owns validation.
+  void SendQuestExchange(uint64_t player_id, uint32_t quest_id);
+  // Queries the current exchange cooldown (seconds remaining) for a quest.
+  void SendQuestExchangeCooldownGet(uint64_t player_id, uint32_t quest_id);
 
 private:
   // ---- Thread-safe message queue -----------------------------------------

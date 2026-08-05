@@ -105,6 +105,8 @@ func (rc *RouterClient) connectAndServe() error {
 		"meta_db.quest.get",
 		"meta_db.quest.set",
 		"quest.completed",
+		"quest.exchange.request",
+		"quest.exchange.cooldown.get",
 		"player.joined",
 		"player.left",
 	}
@@ -208,6 +210,12 @@ func (rc *RouterClient) handlePublish(payload []byte) {
 		return
 	case "quest.completed":
 		HandleQuestCompleted("quest.completed", fbData, rc.m)
+		return
+	case "quest.exchange.request":
+		HandleQuestExchangeRequest("quest.exchange.request", fbData, rc.m)
+		return
+	case "quest.exchange.cooldown.get":
+		HandleQuestExchangeCooldownGet("quest.exchange.cooldown.get", fbData, rc.m)
 		return
 	}
 

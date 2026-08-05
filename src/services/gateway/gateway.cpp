@@ -409,8 +409,14 @@ else if (topic == "player.chest.open.response")
         send_to_client_ctrl_raw(GatewayMsg::kQuestUnlockNotification, payload, plen);
     else if (topic == "quest.completed.notification")
         send_to_client_ctrl_raw(GatewayMsg::kQuestCompletedNotification, payload, plen);
+    else if (topic == "quest.era.transition")
+        send_to_client_ctrl_raw(GatewayMsg::kQuestEraTransition, payload, plen);
     else if (topic == "meta_db.quest.get.response")
         send_to_client_ctrl_raw(GatewayMsg::kQuestProgressUpdate, payload, plen);
+    else if (topic == "quest.exchange.response")
+        send_to_client_ctrl_raw(GatewayMsg::kQuestExchangeResponse, payload, plen);
+    else if (topic == "quest.exchange.cooldown.response")
+        send_to_client_ctrl_raw(GatewayMsg::kQuestExchangeCooldown, payload, plen);
     else if (on_router_message)
         on_router_message(topic, payload, plen);
 }
@@ -503,6 +509,18 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
         flatbuffers::Verifier v(data, len);
         if (!v.VerifyBuffer<Protocol::QuestCompleteRequest>(nullptr)) { spdlog::error("Gateway: invalid QuestCompleteRequest on ctrl"); return; }
         publish("quest.complete.request", data, len);
+        break;
+    }
+    case GatewayMsg::kQuestExchangeRequest: {
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::QuestExchangeRequest>(nullptr)) { spdlog::error("Gateway: invalid QuestExchangeRequest on ctrl"); return; }
+        publish("quest.exchange.request", data, len);
+        break;
+    }
+    case GatewayMsg::kQuestExchangeCooldownGet: {
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::QuestExchangeCooldownGet>(nullptr)) { spdlog::error("Gateway: invalid QuestExchangeCooldownGet on ctrl"); return; }
+        publish("quest.exchange.cooldown.get", data, len);
         break;
     }
     default: spdlog::warn("Gateway: unknown ctrl client msg type {}", msg_type); break;

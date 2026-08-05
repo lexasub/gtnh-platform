@@ -35,12 +35,18 @@ void QuestBookWindow::loadQuestData() {
         e.section = qdRef.section;
         e.rewardItemId = qdRef.rewardItemId;
         e.rewardCount = qdRef.rewardCount;
+        e.costItemId = qdRef.costItemId;
+        e.costCount = qdRef.costCount;
+        e.cooldownSecs = qdRef.cooldownSecs;
+        e.isExchange = (qdRef.detectType == quest::DetectionType::EXCHANGE);
         e.status = 0;
         e.progress = 0;
         quests_.push_back(e);
     }
 
     eraData_ = qd.BuildEraStructure();
+    eraCompleted_.assign(eraData_.size(), false);
+    newlyAvailableEra_ = -1;
     dataLoaded_ = true;
     spdlog::info("[Quest] Loaded {} quests across {} eras", quests_.size(), eraData_.size());
 }
@@ -77,7 +83,7 @@ void QuestBookWindow::Render(InventoryState* playerInv) {
     ImGui::SameLine();
 
     if (ImGui::BeginChild("rightPanel", ImVec2(0, 0), ImGuiChildFlags_Borders)) {
-        renderQuestDetail(playerInv ? playerInv->player_id : 0);
+        renderQuestDetail(playerInv);
     }
     ImGui::EndChild();
 
@@ -86,14 +92,26 @@ void QuestBookWindow::Render(InventoryState* playerInv) {
 
 void QuestBookWindow::renderEraTabs() {
     if (eraData_.empty()) return;
+    if (newlyAvailableEra_ >= 0 && static_cast<size_t>(newlyAvailableEra_) < eraData_.size()) {
+        selectedEra_ = newlyAvailableEra_;
+        selectedSection_ = 0;
+        selectedQuestId_ = 0;
+        newlyAvailableEra_ = -1;
+    }
     if (ImGui::BeginTabBar("eraTabs")) {
         for (size_t i = 0; i < eraData_.size(); ++i) {
-            if (ImGui::TabItemButton(eraData_[i].label.c_str(),
+            std::string label = eraData_[i].label;
+            if (i < eraCompleted_.size() && eraCompleted_[i]) label += " ✓";
+            if (static_cast<int>(i) == newlyAvailableEra_)
+                ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 200, 50, 255));
+            if (ImGui::TabItemButton(label.c_str(),
                 i == static_cast<size_t>(selectedEra_) ? ImGuiTabItemFlags_SetSelected : 0)) {
                 selectedEra_ = static_cast<int>(i);
                 selectedSection_ = 0;
                 selectedQuestId_ = 0;
             }
+            if (static_cast<int>(i) == newlyAvailableEra_)
+                ImGui::PopStyleColor();
         }
         ImGui::EndTabBar();
     }
@@ -134,7 +152,8 @@ void QuestBookWindow::renderQuestList() {
     }
 }
 
-void QuestBookWindow::renderQuestDetail(uint64_t playerId) {
+void QuestBookWindow::renderQuestDetail(const InventoryState* playerInv) {
+    uint64_t playerId = playerInv ? playerInv->player_id : 0;
     if (selectedQuestId_ == 0) {
         ImGui::TextWrapped("Select a quest to view details.");
         return;
@@ -157,14 +176,60 @@ void QuestBookWindow::renderQuestDetail(uint64_t playerId) {
             std::to_string(it->progress).append("%").c_str());
     }
 
-    if (it->rewardItemId > 0) {
+    if (it->rewardItemId > 0 && !it->isExchange) {
         ImGui::Dummy(ImVec2(0, 4));
         ImGui::Text("Reward: item %u x %u", it->rewardItemId, it->rewardCount);
     }
 
+    if (it->isExchange) {
+        ImGui::Dummy(ImVec2(0, 4));
+        if (it->costItemId > 0) {
+            ImGui::Text("Cost: item %u x %u", it->costItemId, it->costCount);
+        }
+        ImGui::Text("Reward: item %u x %u", it->rewardItemId, it->rewardCount);
+        if (it->cooldownSecs > 0) {
+            ImGui::Text("Cooldown: %us", it->cooldownSecs);
+        }
+
+        // Pull the server-side cooldown once per quest detail open; the
+        // response arrives async on kQuestExchangeCooldown.
+        if (cooldownQueriedQuestId_ != it->id) {
+            cooldownQueriedQuestId_ = it->id;
+            cooldownRemainingSecs_ = 0;
+            exchangeMessage_.clear();
+            onCooldownQuery(playerId);
+        }
+
+        ImGui::Dummy(ImVec2(0, 8));
+        ImGui::PushID(static_cast<int>(it->id));
+        bool onCooldown = cooldownRemainingSecs_ > 0;
+        bool lacksCost = playerId != 0 && it->costItemId > 0 &&
+                         countItem(playerInv, it->costItemId) < it->costCount;
+        if (onCooldown || lacksCost) {
+            if (onCooldown) {
+                ImGui::Text("Exchange again in %us", cooldownRemainingSecs_);
+            } else if (lacksCost) {
+                ImGui::Text("Need %u more to exchange", it->costCount - countItem(playerInv, it->costItemId));
+            }
+            ImGui::BeginDisabled();
+        }
+        if (ImGui::Button("Exchange", ImVec2(120, 0))) {
+            onExchangeClicked(playerId);
+        }
+        if (onCooldown || lacksCost) {
+            ImGui::EndDisabled();
+        }
+        ImGui::PopID();
+        if (!exchangeMessage_.empty()) {
+            ImGui::Dummy(ImVec2(0, 4));
+            ImGui::TextWrapped("%s", exchangeMessage_.c_str());
+        }
+    }
+
     // Manual completion (server-authoritative): shown only for AVAILABLE quests.
     // Local status is updated only on server confirmation (QuestCompletedNotification).
-    if (it->status == 1) {
+    // Exchange quests are repeatable and never complete.
+    if (it->status == 1 && !it->isExchange) {
         ImGui::Dummy(ImVec2(0, 8));
         ImGui::PushID(static_cast<int>(it->id));
         if (ImGui::Button("Complete", ImVec2(120, 0))) {
@@ -188,6 +253,37 @@ void QuestBookWindow::onCompleteClicked(uint64_t playerId) {
     }
     net->SendQuestComplete(playerId, selectedQuestId_);
     spdlog::debug("[Quest] Complete requested: player={} quest={}", playerId, selectedQuestId_);
+}
+
+void QuestBookWindow::onExchangeClicked(uint64_t playerId) {
+    if (!uiMgr_) {
+        spdlog::warn("[Quest] onExchangeClicked: no UIManager");
+        return;
+    }
+    NetClient *net = uiMgr_->GetNetClient();
+    if (!net) {
+        spdlog::warn("[Quest] onExchangeClicked: no NetClient");
+        return;
+    }
+    exchangeMessage_.clear();
+    net->SendQuestExchange(playerId, selectedQuestId_);
+    spdlog::debug("[Quest] Exchange requested: player={} quest={}", playerId, selectedQuestId_);
+}
+
+void QuestBookWindow::onCooldownQuery(uint64_t playerId) {
+    if (!uiMgr_) return;
+    NetClient *net = uiMgr_->GetNetClient();
+    if (!net) return;
+    net->SendQuestExchangeCooldownGet(playerId, selectedQuestId_);
+}
+
+int QuestBookWindow::countItem(const InventoryState* inv, uint16_t itemId) const {
+    if (!inv) return 0;
+    int total = 0;
+    for (const auto& s : inv->slots) {
+        if (s.item_id == itemId) total += s.count;
+    }
+    return total;
 }
 
 void QuestBookWindow::renderCompletionBadge(uint8_t status) {
@@ -236,6 +332,29 @@ void QuestBookWindow::applyQuestStatus(uint32_t questId, uint8_t status, uint8_t
     spdlog::debug("[Quest] Ignoring status for unknown quest {}", questId);
 }
 
+int QuestBookWindow::eraIndexFor(uint8_t eraVal) const {
+    if (eraVal > static_cast<uint8_t>(quest::Era::ADMINISTRATOR)) return -1;
+    const char* name = quest::EraLabel(static_cast<quest::Era>(eraVal));
+    for (size_t i = 0; i < eraData_.size(); ++i) {
+        if (eraData_[i].name == name) return static_cast<int>(i);
+    }
+    return (eraVal < eraData_.size()) ? static_cast<int>(eraVal) : -1;
+}
+
+void QuestBookWindow::applyEraTransition(uint8_t completedEra, uint8_t nextEra) {
+    if (eraData_.empty()) return;
+    int completedIdx = eraIndexFor(completedEra);
+    int nextIdx = eraIndexFor(nextEra);
+    if (completedIdx >= 0 && static_cast<size_t>(completedIdx) < eraCompleted_.size()) {
+        eraCompleted_[completedIdx] = true;
+        spdlog::info("[Quest] Era '{}' completed (all quests done)", eraData_[completedIdx].label);
+    }
+    if (nextIdx >= 0 && nextIdx != completedIdx) {
+        newlyAvailableEra_ = nextIdx;
+        spdlog::info("[Quest] Era '{}' now available", eraData_[nextIdx].label);
+    }
+}
+
 void QuestBookWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
     if (!data) return;
     switch (msgType) {
@@ -277,6 +396,48 @@ void QuestBookWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
             }
             auto* comp = flatbuffers::GetRoot<Protocol::QuestCompletedNotification>(data);
             applyQuestStatus(comp->quest_id(), Protocol::QuestStatus_COMPLETED, 100);
+            return;
+        }
+        case GatewayMsg::kQuestEraTransition: {
+            flatbuffers::Verifier v(static_cast<const uint8_t*>(data), 8192);
+            if (!v.VerifyBuffer<Protocol::EraTransitionNotification>(nullptr)) {
+                spdlog::warn("QuestBook: invalid EraTransitionNotification");
+                return;
+            }
+            auto* era = flatbuffers::GetRoot<Protocol::EraTransitionNotification>(data);
+            applyEraTransition(era->completed_era(), era->next_era());
+            return;
+        }
+        case GatewayMsg::kQuestExchangeResponse: {
+            flatbuffers::Verifier v(static_cast<const uint8_t*>(data), 8192);
+            if (!v.VerifyBuffer<Protocol::QuestExchangeResponse>(nullptr)) {
+                spdlog::warn("QuestBook: invalid QuestExchangeResponse");
+                return;
+            }
+            auto* resp = flatbuffers::GetRoot<Protocol::QuestExchangeResponse>(data);
+            if (resp->quest_id() != selectedQuestId_) return;
+            cooldownRemainingSecs_ = resp->cooldown_remaining_secs();
+            if (resp->success()) {
+                exchangeMessage_ = "Exchange complete!";
+                spdlog::info("[Quest] Exchange ok: quest={} cooldown={}s",
+                             resp->quest_id(), resp->cooldown_remaining_secs());
+            } else {
+                const char* msg = resp->error_message() ? resp->error_message()->c_str() : "unknown error";
+                exchangeMessage_ = std::string("Exchange failed: ") + msg;
+                spdlog::warn("[Quest] Exchange failed: quest={} err={}", resp->quest_id(), msg);
+            }
+            return;
+        }
+        case GatewayMsg::kQuestExchangeCooldown: {
+            flatbuffers::Verifier v(static_cast<const uint8_t*>(data), 8192);
+            if (!v.VerifyBuffer<Protocol::QuestExchangeCooldown>(nullptr)) {
+                spdlog::warn("QuestBook: invalid QuestExchangeCooldown");
+                return;
+            }
+            auto* cd = flatbuffers::GetRoot<Protocol::QuestExchangeCooldown>(data);
+            if (cd->quest_id() != selectedQuestId_) return;
+            cooldownRemainingSecs_ = cd->cooldown_remaining_secs();
+            spdlog::debug("[Quest] Cooldown for quest={}: {}s", cd->quest_id(), cd->cooldown_remaining_secs());
             return;
         }
         default:

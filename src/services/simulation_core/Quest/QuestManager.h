@@ -28,6 +28,13 @@ public:
   void checkCraftCompletion(uint64_t playerId, uint16_t itemId, uint8_t count);
   void checkBlockAction(uint64_t playerId, int32_t x, int32_t y, int32_t z,
                         uint16_t blockId);
+  // Detection handler for DetectionType::TOOL_CHARGED. `itemId` is the packed
+  // tool id; the quest completes when the tool's detectTarget matches and
+  // prerequisites are met.
+  void checkToolCharged(uint64_t playerId, uint16_t itemId);
+  // Detection handler for DetectionType::SIDE_CONFIGURED. `machineId` is the
+  // packed block id of the machine whose face was cycled (0 for hatches).
+  void checkSideConfigured(uint64_t playerId, uint16_t machineId);
   void loadProgress(uint64_t playerId, const std::vector<uint8_t> &fbData);
 
   // Server-authoritative manual completion (client "Complete" button).
@@ -39,11 +46,22 @@ public:
   bool completeQuest(uint64_t playerId, uint32_t questId);
 
 private:
+  // Shared one-step completion. Transitions the quest (any non-COMPLETED
+  // status) to COMPLETED when prerequisites are met, publishes quest.completed
+  // + quest.progress.updated, evaluates era transition, distributes rewards,
+  // and cascades unlocks via QuestGraph::NewlyAvailable() on quest.unlocked.
+  // Seeds missing quests as LOCKED so detection works even before onPlayerJoined.
+  // Returns false (no state change) for already-COMPLETED quests.
+  bool completeQuestInternal(uint64_t playerId, uint32_t questId);
   void publishQuestCompleted(uint64_t playerId, uint32_t questId);
   void publishQuestProgressUpdated(uint64_t playerId, uint32_t questId,
                                    quest::QuestStatus status, uint8_t progress);
   void publishQuestUnlocked(uint64_t playerId,
                             const std::vector<uint32_t> &questIds);
+  void publishEraTransition(uint64_t playerId, quest::Era completedEra);
+  void maybePublishEraTransition(uint64_t playerId, uint32_t questId);
+  void rebuildCompletedEras(uint64_t playerId,
+                            const std::unordered_map<uint32_t, quest::QuestStatus> &playerProgress);
   void distributeRewards(uint64_t playerId, const quest::QuestDef &questDef);
 
 private:
@@ -52,6 +70,8 @@ private:
   PublishCallback publishCallback_;
   std::unordered_map<uint64_t, std::unordered_map<uint32_t, quest::QuestStatus>>
       progress_;
+  std::unordered_map<uint64_t, std::unordered_set<uint8_t>> completedEras_;
+  std::unordered_map<uint32_t, quest::Era> questEraMap_;
   std::mutex mutex_;
 };
 

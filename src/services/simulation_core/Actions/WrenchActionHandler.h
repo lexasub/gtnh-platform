@@ -10,10 +10,12 @@ namespace simcore {
 
 class WrenchHandler;
 class IoUringRouterClient;
+class QuestManager;
 
 class WrenchActionHandler : public ITopicHandler {
 public:
-  explicit WrenchActionHandler(std::shared_ptr<WrenchHandler> wrenchHandler);
+  explicit WrenchActionHandler(std::shared_ptr<WrenchHandler> wrenchHandler,
+                               std::shared_ptr<QuestManager> questManager);
 
   void handle(const std::vector<uint8_t>& data) override;
   void setRouter(std::shared_ptr<IoUringRouterClient> router) { router_ = std::move(router); }
@@ -26,6 +28,7 @@ private:
   std::unordered_map<uint64_t, std::chrono::steady_clock::time_point> lastActionTime_;
   std::shared_ptr<WrenchHandler> wrenchHandler_;
   std::shared_ptr<IoUringRouterClient> router_;
+  std::shared_ptr<QuestManager> questManager_;
 };
 
 } // namespace simcore

@@ -12,6 +12,7 @@ struct WrenchCycleResult {
   std::string error;
   uint8_t newRole;
   uint8_t allRoles[6];
+  uint16_t machine_id = 0; // packed block id of the cycled machine; 0 for hatches
 };
 
 class IEventPublisher;

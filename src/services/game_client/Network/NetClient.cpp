@@ -422,6 +422,9 @@ void NetClient::OnMessage(uint8_t msg_type,
         case GatewayMsg::kQuestProgressUpdate:
         case GatewayMsg::kQuestUnlockNotification:
         case GatewayMsg::kQuestCompletedNotification:
+        case GatewayMsg::kQuestEraTransition:
+        case GatewayMsg::kQuestExchangeResponse:
+        case GatewayMsg::kQuestExchangeCooldown:
             if (onQuestUpdate_)
                 onQuestUpdate_(msg_type, data);
             return;
@@ -660,6 +663,26 @@ void NetClient::SendQuestComplete(uint64_t player_id, uint32_t quest_id) {
     EnqueueWrite(GatewayMsg::kQuestCompleteRequest, builder.GetBufferPointer(),
                  builder.GetSize());
     spdlog::debug("[Quest] SendQuestComplete: player={} quest={}", player_id, quest_id);
+}
+
+void NetClient::SendQuestExchange(uint64_t player_id, uint32_t quest_id) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(32);
+    auto req = Protocol::CreateQuestExchangeRequest(builder, player_id, quest_id);
+    builder.Finish(req);
+    EnqueueWrite(GatewayMsg::kQuestExchangeRequest, builder.GetBufferPointer(),
+                 builder.GetSize());
+    spdlog::debug("[Quest] SendQuestExchange: player={} quest={}", player_id, quest_id);
+}
+
+void NetClient::SendQuestExchangeCooldownGet(uint64_t player_id, uint32_t quest_id) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(32);
+    auto req = Protocol::CreateQuestExchangeCooldownGet(builder, player_id, quest_id);
+    builder.Finish(req);
+    EnqueueWrite(GatewayMsg::kQuestExchangeCooldownGet, builder.GetBufferPointer(),
+                 builder.GetSize());
+    spdlog::debug("[Quest] SendQuestExchangeCooldownGet: player={} quest={}", player_id, quest_id);
 }
 
 void NetClient::SendSetMachineSlot(uint64_t player_id, const BlockPos& pos,

@@ -1,4 +1,5 @@
 #include "QuestData.h"
+#include "common/ItemId.h"
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -61,10 +62,19 @@ bool QuestData::LoadCSV(const std::string& csvPath) {
         std::getline(ss, qd.detectTarget, ',');
 
         std::getline(ss, cell, ',');
-        qd.rewardItemId = parseUint(cell, uint16_t{0});
+        qd.rewardItemId = ItemId::pack(cell);
 
         std::getline(ss, cell, ',');
         qd.rewardCount = parseUint(cell, uint8_t{0});
+
+        std::getline(ss, cell, ',');
+        qd.costItemId = ItemId::pack(cell);
+
+        std::getline(ss, cell, ',');
+        qd.costCount = parseUint(cell, uint8_t{0});
+
+        std::getline(ss, cell, ',');
+        qd.cooldownSecs = parseUint(cell, uint16_t{0});
 
         idIndex_[qd.id] = quests_.size();
         quests_.push_back(std::move(qd));
@@ -243,6 +253,17 @@ std::vector<std::string> QuestData::SectionsForEra(Era era) const {
         }
     }
     return result;
+}
+
+std::unordered_map<uint32_t, Era> QuestData::BuildQuestEraMap() const {
+    std::unordered_map<uint32_t, Era> map;
+    map.reserve(quests_.size());
+    for (const auto& qd : quests_) {
+        if (qd.detectType == DetectionType::EXCHANGE)
+            continue;
+        map[qd.id] = qd.era;
+    }
+    return map;
 }
 
 }

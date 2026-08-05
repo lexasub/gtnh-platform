@@ -47,6 +47,39 @@ table QuestCompleteRequest {
   quest_id:uint32;
 }
 
+// Client → server: request an exchange on a repeatable market quest
+// (DetectionType::EXCHANGE). The quest never completes; each accepted
+// exchange consumes cost items, grants the reward, and starts a cooldown.
+table QuestExchangeRequest {
+  player_id:uint64;
+  quest_id:uint32;
+}
+
+// Server → client: result of an exchange request. On success the cooldown is
+// (re)started; cooldown_remaining_secs carries the active cooldown in both
+// success and cooldown_active cases.
+table QuestExchangeResponse {
+  player_id:uint64;
+  quest_id:uint32;
+  success:bool;
+  error_message:string;         // "" on success; "unknown_quest" | "not_exchange" | "cooldown_active" | "missing_items"
+  cooldown_remaining_secs:uint32; // 0 = no cooldown
+}
+
+// Client → server: query remaining cooldown for an exchange quest
+// (sent when the quest detail view opens).
+table QuestExchangeCooldownGet {
+  player_id:uint64;
+  quest_id:uint32;
+}
+
+// Server → client: cooldown status for an exchange quest.
+table QuestExchangeCooldown {
+  player_id:uint64;
+  quest_id:uint32;
+  cooldown_remaining_secs:uint32; // 0 = no active cooldown
+}
+
 // Server → client: notify when new quests become available
 table QuestUnlockNotification {
   player_id:uint64;
@@ -59,6 +92,16 @@ table QuestCompletedNotification {
   quest_id:uint32;
   reward_item_id:uint16;
   reward_count:uint8;
+}
+
+// Server → client: notify when all quests in an era reach COMPLETED status.
+// completed_era / next_era carry quest::Era values (VAGRANT=0, APPRENTICE=1,
+// EXPERT=2, ADMINISTRATOR=3). next_era equals completed_era when the final
+// era is done (no next era exists).
+table EraTransitionNotification {
+  player_id:uint64;
+  completed_era:uint8;
+  next_era:uint8;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,11 +1,13 @@
 #include "WrenchActionHandler.h"
 #include "WrenchHandler.h"
+#include "Quest/QuestManager.h"
 #include "Network/clients/IoUringRouterClient.h"
 #include "core_generated.h"
 #include <spdlog/spdlog.h>
 namespace simcore {
-WrenchActionHandler::WrenchActionHandler(std::shared_ptr<WrenchHandler> wrenchHandler)
-    : wrenchHandler_(std::move(wrenchHandler)) {}
+WrenchActionHandler::WrenchActionHandler(std::shared_ptr<WrenchHandler> wrenchHandler,
+                                         std::shared_ptr<QuestManager> questManager)
+    : wrenchHandler_(std::move(wrenchHandler)), questManager_(std::move(questManager)) {}
 
 uint64_t WrenchActionHandler::cooldownKey(uint64_t playerId, int32_t x, int32_t y, int32_t z, uint8_t face) {
     // Pack playerId (48 bits) + pos (16 bits each) + face (4 bits) into uint64
@@ -38,6 +40,12 @@ void WrenchActionHandler::handle(const std::vector<uint8_t>& data) {
     lastActionTime_[ckey] = now;
 
     auto r = wrenchHandler_->cycleFace(action->player_id(), p->x(), p->y(), p->z(), action->face());
+
+    // SIDE_CONFIGURED detection: a machine face was cycled successfully.
+    // Hatches carry machine_id == 0 and are not side-config quest targets.
+    if (r.success && r.machine_id != 0 && questManager_) {
+        questManager_->checkSideConfigured(action->player_id(), r.machine_id);
+    }
 
     flatbuffers::FlatBufferBuilder fbb(128);
     auto err = r.error.empty() ? 0 : fbb.CreateString(r.error);

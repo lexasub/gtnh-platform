@@ -51,6 +51,7 @@ enum class DetectionType : uint8_t {
   BLOCK_PLACED = 1,
   TOOL_CHARGED = 2,
   SIDE_CONFIGURED = 3,
+  EXCHANGE = 4,
 };
 
 inline DetectionType DetectFromString(const std::string &s) {
@@ -62,6 +63,8 @@ inline DetectionType DetectFromString(const std::string &s) {
     return DetectionType::TOOL_CHARGED;
   if (s == "side_configured")
     return DetectionType::SIDE_CONFIGURED;
+  if (s == "exchange")
+    return DetectionType::EXCHANGE;
   return DetectionType::CRAFT;
 }
 
@@ -76,6 +79,9 @@ struct QuestDef {
   std::string detectTarget;
   uint16_t rewardItemId = 0;
   uint8_t rewardCount = 0;
+  uint16_t costItemId = 0;
+  uint8_t costCount = 0;
+  uint16_t cooldownSecs = 0;
 };
 
 struct QuestProgress {

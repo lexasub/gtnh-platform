@@ -108,9 +108,11 @@ WrenchCycleResult WrenchHandler::cycleFace(uint64_t playerId, int32_t x, int32_t
     result.success = true;
     result.error = "";
     result.newRole = newRole;
+    result.machine_id = machine.machine_id;
     for (int i = 0; i < 6; i++) result.allRoles[i] = machine.side_config[i];
-    
-    spdlog::info("[Wrench] Face {} at ({},{},{}) cycled role {}→{}", face, x, y, z, currentRole, newRole);
+
+    spdlog::info("[Wrench] Face {} at ({},{},{}) cycled role {}→{} (machine {})",
+                 face, x, y, z, currentRole, newRole, machine.machine_id);
     return result;
 }
 

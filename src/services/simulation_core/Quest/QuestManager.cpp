@@ -58,9 +58,66 @@ void QuestManager::publishQuestUnlocked(uint64_t playerId,
                  playerId, questIds.size());
 }
 
+void QuestManager::publishEraTransition(uint64_t playerId, quest::Era completedEra) {
+    if (!publishCallback_) {
+        spdlog::warn("[QuestManager] publishEraTransition: no publish callback for player {}", playerId);
+        return;
+    }
+    uint8_t completedVal = static_cast<uint8_t>(completedEra);
+    uint8_t nextVal = (completedVal < static_cast<uint8_t>(quest::Era::ADMINISTRATOR))
+                          ? completedVal + 1
+                          : completedVal;
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto offset = Protocol::CreateEraTransitionNotification(builder, playerId, completedVal, nextVal);
+    builder.Finish(offset);
+    publishCallback_("quest.era.transition", builder.GetBufferPointer(), builder.GetSize());
+    spdlog::info("[QuestManager] Published quest.era.transition: player={}, era={} complete, next={}",
+                 playerId, static_cast<int>(completedVal), static_cast<int>(nextVal));
+}
+
+void QuestManager::maybePublishEraTransition(uint64_t playerId, uint32_t questId) {
+    if (!questData_ || !questGraph_) return;
+    const quest::QuestDef* qd = questData_->GetQuest(questId);
+    if (!qd) return;
+
+    auto& playerProgress = progress_[playerId];
+    auto& completed = completedEras_[playerId];
+    uint8_t eraVal = static_cast<uint8_t>(qd->era);
+    if (completed.count(eraVal)) return;
+
+    if (questEraMap_.empty()) questEraMap_ = questData_->BuildQuestEraMap();
+    if (!questGraph_->IsEraComplete(qd->era, playerProgress, questEraMap_)) return;
+
+    completed.insert(eraVal);
+    publishEraTransition(playerId, qd->era);
+}
+
+void QuestManager::rebuildCompletedEras(
+    uint64_t playerId,
+    const std::unordered_map<uint32_t, quest::QuestStatus>& playerProgress) {
+    if (!questData_ || !questGraph_) return;
+    if (questEraMap_.empty()) questEraMap_ = questData_->BuildQuestEraMap();
+    auto& completed = completedEras_[playerId];
+    completed.clear();
+    for (int e = 0; e <= static_cast<int>(quest::Era::ADMINISTRATOR); ++e) {
+        quest::Era era = static_cast<quest::Era>(e);
+        if (questGraph_->IsEraComplete(era, playerProgress, questEraMap_))
+            completed.insert(static_cast<uint8_t>(e));
+    }
+}
+
 bool QuestManager::completeQuest(uint64_t playerId, uint32_t questId) {
     if (!questData_ || !questGraph_) {
         spdlog::error("[QuestManager] completeQuest: questData_/questGraph_ null for player {}", playerId);
+        return false;
+    }
+
+    const auto& quests = questData_->AllQuests();
+    auto defIt = std::find_if(quests.begin(), quests.end(),
+                              [questId](const quest::QuestDef& qd) { return qd.id == questId; });
+    if (defIt != quests.end() && defIt->detectType == quest::DetectionType::EXCHANGE) {
+        spdlog::warn("[QuestManager] completeQuest: quest {} is EXCHANGE (repeatable, never completes)",
+                     questId);
         return false;
     }
 
@@ -84,9 +141,31 @@ bool QuestManager::completeQuest(uint64_t playerId, uint32_t questId) {
     }
 
     // Accept: transition AVAILABLE → COMPLETED.
+    bool ok = completeQuestInternal(playerId, questId);
+    if (ok) {
+        spdlog::info("[QuestManager] Quest {} COMPLETED for player {} (manual)", questId, playerId);
+    }
+    return ok;
+}
+
+bool QuestManager::completeQuestInternal(uint64_t playerId, uint32_t questId) {
+    auto& playerProgress = progress_[playerId];
+
+    // Seed missing quests as LOCKED so detection can complete a quest before
+    // onPlayerJoined has run (e.g. a player who crafts before joining).
+    auto it = playerProgress.find(questId);
+    if (it == playerProgress.end()) {
+        playerProgress[questId] = quest::QuestStatus::LOCKED;
+        it = playerProgress.find(questId);
+    }
+    if (it->second == quest::QuestStatus::COMPLETED) return false; // idempotent
+
+    // One-step completion: any non-COMPLETED status (LOCKED/AVAILABLE/IN_PROGRESS)
+    // transitions directly to COMPLETED. Prerequisites are validated by the caller.
     it->second = quest::QuestStatus::COMPLETED;
     publishQuestCompleted(playerId, questId);
     publishQuestProgressUpdated(playerId, questId, quest::QuestStatus::COMPLETED, 100);
+    maybePublishEraTransition(playerId, questId);
 
     // Reward delivery: the quest.completed event is consumed by MetaDB, which
     // stores the reward row and grants it to the player's inventory
@@ -109,7 +188,6 @@ bool QuestManager::completeQuest(uint64_t playerId, uint32_t questId) {
         publishQuestUnlocked(playerId, ids);
     }
 
-    spdlog::info("[QuestManager] Quest {} COMPLETED for player {} (manual)", questId, playerId);
     return true;
 }
 
@@ -146,155 +224,175 @@ void QuestManager::onPlayerJoined(uint64_t playerId) {
 }
 
 void QuestManager::checkCraftCompletion(uint64_t playerId, uint16_t itemId, uint8_t count) {
-    if (!questData_) {
-        spdlog::error("[QuestManager] checkCraftCompletion: questData_ is null for player {}, item {}", 
+    if (!questData_ || !questGraph_) {
+        spdlog::error("[QuestManager] checkCraftCompletion: questData_/questGraph_ null for player {}",
                      playerId, itemId);
         return;
     }
-    
+    if (count < 1) return;
+
     // detect_target is a hierarchical item id from items.csv; resolve packed id → hierarchical.
     std::string itemIdStr =
         RecipeManager::ItemRegistry::instance().idToHierarchical(itemId);
 
-    spdlog::debug("[QuestManager] Checking craft completion: player={}, item={} (hier={}), count={}", 
+    spdlog::debug("[QuestManager] Checking craft completion: player={}, item={} (hier={}), count={}",
                  playerId, itemId, itemIdStr, count);
-    
+
     try { //TODO refactor if HELL
         std::lock_guard<std::mutex> lock(mutex_);
-        
+
         auto& playerProgress = progress_[playerId];
-        
+
         for (const auto& questDef : questData_->AllQuests()) {
-            if (questDef.detectType != quest::DetectionType::CRAFT || 
+            if (questDef.detectType != quest::DetectionType::CRAFT ||
                 questDef.detectTarget != itemIdStr) {
                 continue;
             }
-            
-            auto questIt = playerProgress.find(questDef.id);
-            
-            if (questIt == playerProgress.end()) {
-                // Quest not started yet, check prerequisites
-                auto prereqs = questData_->GetPrerequisites(questDef.id);
-                bool prereqsMet = true;
-                for (uint32_t prereqId : prereqs) {
-                    auto prereqIt = playerProgress.find(prereqId);
-                    if (prereqIt == playerProgress.end() || 
-                        prereqIt->second != quest::QuestStatus::COMPLETED) {
-                        prereqsMet = false;
-                        break;
-                    }
-                }
-                
-                if (prereqsMet) {
-                    // Make quest AVAILABLE
-                    playerProgress[questDef.id] = quest::QuestStatus::AVAILABLE;
-                    publishQuestProgressUpdated(playerId, questDef.id, 
-                                               quest::QuestStatus::AVAILABLE, 0);
-                    spdlog::info("[QuestManager] Quest {} made AVAILABLE for player {}", 
-                               questDef.id, playerId);
-                } else {
-                    spdlog::debug("[QuestManager] Quest {} prerequisites not met for player {}", 
-                                 questDef.id, playerId);
-                }
+
+            // One-step: prerequisites evaluated via QuestGraph; LOCKED quests
+            // complete directly (no intermediate AVAILABLE gate).
+            if (!questGraph_->CanComplete(questDef.id, playerProgress)) {
+                spdlog::debug("[QuestManager] Craft quest {} prerequisites not met for player {}",
+                             questDef.id, playerId);
                 continue;
             }
-            
-            quest::QuestStatus& status = questIt->second;
-            
-            if (status == quest::QuestStatus::AVAILABLE && count >= 1) {
-                status = quest::QuestStatus::COMPLETED;
-                publishQuestCompleted(playerId, questDef.id);
-                publishQuestProgressUpdated(playerId, questDef.id, status, 100);
-                
-                // Trigger reward distribution
-                distributeRewards(playerId, questDef);
-                
-                spdlog::info("[QuestManager] Quest {} COMPLETED for player {} (crafted {} x{})", 
+
+            if (completeQuestInternal(playerId, questDef.id)) {
+                spdlog::info("[QuestManager] Quest {} COMPLETED for player {} (crafted {} x{})",
                            questDef.id, playerId, itemId, count);
-            } else if (status == quest::QuestStatus::IN_PROGRESS) {
-                uint8_t progress = std::min(static_cast<uint8_t>(100u), static_cast<uint8_t>((count * 100) / 10));
-                publishQuestProgressUpdated(playerId, questDef.id, status, progress);
-                
-                spdlog::debug("[QuestManager] Quest {} progress updated: player={}, progress={}%", 
-                             questDef.id, playerId, progress);
             }
         }
     } catch (const std::exception& e) {
-        spdlog::error("[QuestManager] Exception in checkCraftCompletion for player {}: {}", 
+        spdlog::error("[QuestManager] Exception in checkCraftCompletion for player {}: {}",
                      playerId, e.what());
     }
 }
 
 void QuestManager::checkBlockAction(uint64_t playerId, int32_t x, int32_t y, int32_t z, uint16_t blockId) {
-    if (!questData_) {
-        spdlog::error("[QuestManager] checkBlockAction: questData_ is null for player {}, block {}", 
+    if (!questData_ || !questGraph_) {
+        spdlog::error("[QuestManager] checkBlockAction: questData_/questGraph_ null for player {}, block {}",
                      playerId, blockId);
         return;
     }
-    
+
     // detect_target is a hierarchical item id from items.csv; resolve packed block id → hierarchical.
     std::string blockIdStr =
         RecipeManager::ItemRegistry::instance().idToHierarchical(blockId);
 
-    spdlog::debug("[QuestManager] Checking block action: player={}, block={} (hier={}), pos=({},{},{})", 
+    spdlog::debug("[QuestManager] Checking block action: player={}, block={} (hier={}), pos=({},{},{})",
                  playerId, blockId, blockIdStr, x, y, z);
-    
+
     try {//TODO refactor if HELL
         std::lock_guard<std::mutex> lock(mutex_);
-        
+
         auto& playerProgress = progress_[playerId];
-        
+
         for (const auto& questDef : questData_->AllQuests()) {
-            if (questDef.detectType != quest::DetectionType::BLOCK_PLACED || 
+            if (questDef.detectType != quest::DetectionType::BLOCK_PLACED ||
                 questDef.detectTarget != blockIdStr) {
                 continue;
             }
-            
-            auto questIt = playerProgress.find(questDef.id);
-            
-            if (questIt == playerProgress.end()) {
-                // Quest not started yet, check prerequisites
-                auto prereqs = questData_->GetPrerequisites(questDef.id);
-                bool prereqsMet = true;
-                for (uint32_t prereqId : prereqs) {
-                    auto prereqIt = playerProgress.find(prereqId);
-                    if (prereqIt == playerProgress.end() || 
-                        prereqIt->second != quest::QuestStatus::COMPLETED) {
-                        prereqsMet = false;
-                        break;
-                    }
-                }
-                
-                if (prereqsMet) {
-                    // Make quest AVAILABLE
-                    playerProgress[questDef.id] = quest::QuestStatus::AVAILABLE;
-                    publishQuestProgressUpdated(playerId, questDef.id, 
-                                               quest::QuestStatus::AVAILABLE, 0);
-                    spdlog::info("[QuestManager] Block quest {} made AVAILABLE for player {}", 
-                               questDef.id, playerId);
-                } else {
-                    spdlog::debug("[QuestManager] Block quest {} prerequisites not met for player {}", 
-                                 questDef.id, playerId);
-                }
+
+            // One-step: prerequisites evaluated via QuestGraph; LOCKED quests
+            // complete directly (no intermediate AVAILABLE gate).
+            if (!questGraph_->CanComplete(questDef.id, playerProgress)) {
+                spdlog::debug("[QuestManager] Block quest {} prerequisites not met for player {}",
+                             questDef.id, playerId);
                 continue;
             }
-            
-            quest::QuestStatus& status = questIt->second;
-            
-            if (status == quest::QuestStatus::AVAILABLE) {
-                status = quest::QuestStatus::COMPLETED;
-                publishQuestCompleted(playerId, questDef.id);
-                publishQuestProgressUpdated(playerId, questDef.id, status, 100);
-                
-                // Trigger reward distribution
-                distributeRewards(playerId, questDef);
-                
-                spdlog::info("[QuestManager] Block quest {} COMPLETED for player {} at ({},{},{})", 
+
+            if (completeQuestInternal(playerId, questDef.id)) {
+                spdlog::info("[QuestManager] Block quest {} COMPLETED for player {} at ({},{},{})",
                            questDef.id, playerId, x, y, z);
             }
         }
     } catch (const std::exception& e) {
-        spdlog::error("[QuestManager] Exception in checkBlockAction for player {}: {}", 
+        spdlog::error("[QuestManager] Exception in checkBlockAction for player {}: {}",
+                     playerId, e.what());
+    }
+}
+
+void QuestManager::checkToolCharged(uint64_t playerId, uint16_t itemId) {
+    if (!questData_ || !questGraph_) {
+        spdlog::error("[QuestManager] checkToolCharged: questData_/questGraph_ null for player {}",
+                     playerId, itemId);
+        return;
+    }
+
+    // detect_target is a hierarchical item id from items.csv; resolve packed id → hierarchical.
+    std::string itemIdStr =
+        RecipeManager::ItemRegistry::instance().idToHierarchical(itemId);
+
+    spdlog::debug("[QuestManager] Checking tool-charged completion: player={}, tool={} (hier={})",
+                 playerId, itemId, itemIdStr);
+
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        auto& playerProgress = progress_[playerId];
+
+        for (const auto& questDef : questData_->AllQuests()) {
+            if (questDef.detectType != quest::DetectionType::TOOL_CHARGED ||
+                questDef.detectTarget != itemIdStr) {
+                continue;
+            }
+
+            if (!questGraph_->CanComplete(questDef.id, playerProgress)) {
+                spdlog::debug("[QuestManager] Tool-charged quest {} prerequisites not met for player {}",
+                             questDef.id, playerId);
+                continue;
+            }
+
+            if (completeQuestInternal(playerId, questDef.id)) {
+                spdlog::info("[QuestManager] Quest {} COMPLETED for player {} (tool charged {})",
+                           questDef.id, playerId, itemId);
+            }
+        }
+    } catch (const std::exception& e) {
+        spdlog::error("[QuestManager] Exception in checkToolCharged for player {}: {}",
+                     playerId, e.what());
+    }
+}
+
+void QuestManager::checkSideConfigured(uint64_t playerId, uint16_t machineId) {
+    if (!questData_ || !questGraph_) {
+        spdlog::error("[QuestManager] checkSideConfigured: questData_/questGraph_ null for player {}",
+                     playerId, machineId);
+        return;
+    }
+    if (machineId == 0) return; // hatches carry no machine id
+
+    // detect_target is a hierarchical machine id from items.csv; resolve packed → hierarchical.
+    std::string machineIdStr =
+        RecipeManager::ItemRegistry::instance().idToHierarchical(machineId);
+
+    spdlog::debug("[QuestManager] Checking side-configured completion: player={}, machine={} (hier={})",
+                 playerId, machineId, machineIdStr);
+
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        auto& playerProgress = progress_[playerId];
+
+        for (const auto& questDef : questData_->AllQuests()) {
+            if (questDef.detectType != quest::DetectionType::SIDE_CONFIGURED ||
+                questDef.detectTarget != machineIdStr) {
+                continue;
+            }
+
+            if (!questGraph_->CanComplete(questDef.id, playerProgress)) {
+                spdlog::debug("[QuestManager] Side-config quest {} prerequisites not met for player {}",
+                             questDef.id, playerId);
+                continue;
+            }
+
+            if (completeQuestInternal(playerId, questDef.id)) {
+                spdlog::info("[QuestManager] Quest {} COMPLETED for player {} (side configured machine {})",
+                           questDef.id, playerId, machineId);
+            }
+        }
+    } catch (const std::exception& e) {
+        spdlog::error("[QuestManager] Exception in checkSideConfigured for player {}: {}",
                      playerId, e.what());
     }
 }
@@ -364,6 +462,8 @@ void QuestManager::loadProgress(uint64_t playerId, const std::vector<uint8_t>& f
 
         spdlog::info("[QuestManager] Loaded {} quest entries for player {} from MetaDB",
                      loadedCount, playerId);
+
+        rebuildCompletedEras(playerId, playerProgress);
     } catch (const std::exception& e) {
         spdlog::error("[QuestManager] Exception in loadProgress for player {}: {}",
                       playerId, e.what());

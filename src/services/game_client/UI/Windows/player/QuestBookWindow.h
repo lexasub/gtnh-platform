@@ -47,6 +47,10 @@ private:
     std::string detectTarget;
     uint16_t rewardItemId;
     uint8_t rewardCount;
+    uint16_t costItemId;
+    uint8_t costCount;
+    uint16_t cooldownSecs;
+    bool isExchange;
     uint8_t status; // 0=locked, 1=available, 2=in_progress, 3=completed
     uint8_t progress;
   };
@@ -54,18 +58,33 @@ private:
   std::vector<QuestEntry> quests_;
   bool dataLoaded_ = false;
 
+  // Exchange state for the currently selected quest. Cooldown is fetched
+  // server-side on each quest detail open; the response arrives async.
+  uint32_t cooldownRemainingSecs_ = 0;
+  uint32_t cooldownQueriedQuestId_ = 0;
+  std::string exchangeMessage_;
+
   std::vector<quest::EraInfo> eraData_;
+  std::vector<bool> eraCompleted_;
+  // Pending era index to auto-select on next render (transition may arrive
+  // before the window is first drawn).
+  int newlyAvailableEra_ = -1;
 
   void loadQuestData();
   void applyQuestStatus(uint32_t questId, uint8_t status, uint8_t progress);
+  void applyEraTransition(uint8_t completedEra, uint8_t nextEra);
+  int eraIndexFor(uint8_t eraVal) const;
 
   // Layout helpers
   void renderEraTabs();
   void renderSectionPanel();
   void renderQuestList();
-  void renderQuestDetail(uint64_t playerId);
+  void renderQuestDetail(const InventoryState* playerInv);
   void renderCompletionBadge(uint8_t status);
   void onCompleteClicked(uint64_t playerId);
+  void onExchangeClicked(uint64_t playerId);
+  void onCooldownQuery(uint64_t playerId);
+  int countItem(const InventoryState* inv, uint16_t itemId) const;
 
   // Color helpers
   ImU32 statusColor(uint8_t status) const;
