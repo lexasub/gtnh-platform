@@ -24,6 +24,16 @@ ROOT = Path(__file__).resolve().parent.parent  # adjust if scripts/ is nested di
 _FALLBACK_PRUNE = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build",
                    ".mypy_cache", ".pytest_cache", ".ruff_cache", ".tox", ".next", "target"}
 
+# Tooling/plugin directories that are not project surface. Guards must not scan
+# them: third-party skill docs, agent/IDE state, generated tool output, test
+# artifacts. None of these are owned by the project, so they must never gate the
+# gate. Declared scan-scope exception (see anti-drift-ci guard-catalog L / DoD);
+# most are also gitignored — this set guarantees the exclusion regardless of
+# .gitignore state and in the no-git fallback path.
+TOOL_DIRS = {".agent", ".aider", ".beads", ".cache", ".claude", ".codegraph",
+             ".idea", ".kilo", ".omo", ".opencode", ".sisyphus",
+             "Testing", "graphify-out"}
+
 
 def _glob_to_re(glob: str) -> re.Pattern[str]:
     """Glob -> regex where `*` matches across `/` (git-pathspec style)."""
@@ -54,11 +64,22 @@ def rel(p: Path) -> str:
         return str(p)
 
 
+def _is_project_surface(p: Path) -> bool:
+    """True unless the file lives under a TOOL_DIRS top-level dir."""
+    return rel(p).split("/", 1)[0] not in TOOL_DIRS
+
+
 def tracked(*globs: str) -> list[Path]:
-    """Tracked + not-ignored files matching any glob; regular files only."""
+    """Tracked + not-ignored files matching any glob; regular files only.
+
+    Files under TOOL_DIRS are excluded: they are tooling/plugin surface, not
+    project-owned, so no guard may gate on them.
+    """
     pats = [_glob_to_re(g) for g in globs]
     out = [p for p in _all_files()
-           if p.is_file() and not p.is_symlink() and any(pat.match(rel(p)) for pat in pats)]
+           if p.is_file() and not p.is_symlink()
+           and _is_project_surface(p)
+           and any(pat.match(rel(p)) for pat in pats)]
     return sorted(set(out))
 
 

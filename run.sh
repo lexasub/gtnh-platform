@@ -7,17 +7,21 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/cmake-build-debug"
 DB_DIR="${SCRIPT_DIR}/chunkdb"
 START_ALL=false
-START_CLIENT=false 
+START_CLIENT=false
 #true
 RESOLUTION="2000x1200"
+LOKI_HOST="192.168.2.109"
+LOKI_BRIDGE_PORT=1514
 
 cd cmake-build-debug; ninja -j5; cd ..
 cp -r data/ /mnt/nfs/src/cpp/gtnh-platform/
-sudo cp "${BUILD_DIR}"/bin/gameclientd /mnt/nfs/
+cp "${BUILD_DIR}"/bin/gameclientd /mnt/nfs/
 pushd ${SCRIPT_DIR}/src/services/message_router/
 go build *.go
 popd
 cp ${SCRIPT_DIR}/src/services/message_router/message_router $BUILD_DIR/src/services/message_router/routerd
+
+cp -r ${SCRIPT_DIR}/src/services/game_client /mnt/nfs/src/cpp/gtnh-platform/src/services
 pushd ${SCRIPT_DIR}/src/services/meta_db/ > /dev/null
 go build -o metadbd *.go
 popd > /dev/null
@@ -95,6 +99,9 @@ fi
 mkdir -p "${DB_DIR}"
 ok "DB directory: ${DB_DIR}"
 
+# ── log directory for Loki ────────────────────────────────────────
+mkdir -p /tmp/gtnh
+
 # ── kill leftover GTNH processes ────────────────────────────
 
 info "Cleaning up any leftover processes …"
@@ -117,7 +124,6 @@ ok "Clean"
 # ── process management ────────────────────────────────────────────
 
 PID_FILE=$(mktemp /tmp/gtnh-pids.XXXXXX)
-trap 'cleanup' INT TERM
 
 cleanup() {
     echo ""
@@ -132,13 +138,15 @@ cleanup() {
     ok "All services stopped."
     exit 0
 }
+trap 'cleanup' INT TERM
 
 LAUNCH() {
     local name="$1" bin="$2" log; shift 2
-    log="/tmp/gtnh-${name}.log"
+    log="/tmp/gtnh/${name}.log"
     info "Starting ${name} …"
     : > "${log}"
-    GTNH_LOG_LEVEL=TRACE "$bin" "$@" &> /dev/stdout | tee "${log}" &
+    # Service → tee (file + nc → Loki)
+    GTNH_LOG_LEVEL=trace "$bin" "$@" 2>&1 | tee -a "${log}" | nc "${LOKI_HOST}" "${LOKI_BRIDGE_PORT}" &
     local pid=$!
     echo "$pid" >> "$PID_FILE"
     ok "${name} (PID ${pid}) — log: ${log}"

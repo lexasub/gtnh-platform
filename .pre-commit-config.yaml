@@ -12,18 +12,56 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
 
+  # ── Anti-drift guards. Same set and same code as ci/check.sh tooling and CI.
+  #    always_run: every commit runs the full guard set — pre-commit == CI == gate.
+  #    (validate_ci_parity meta-guard asserts this parity holds.)
   - repo: local
     hooks:
       - id: validate-shell
         name: shell strict mode (set -euo pipefail)
         entry: python3 scripts/validate_shell.py
         language: system
-        files: '\.sh$'
         pass_filenames: false
+        always_run: true
 
       - id: validate-forbidden
         name: forbidden tokens in source code
         entry: python3 scripts/validate_forbidden.py
         language: system
-        files: '\.(cpp|hpp|h|go)$'
         pass_filenames: false
+        always_run: true
+
+      - id: validate-conan
+        name: every find_package has a conanfile.txt entry
+        entry: python3 scripts/validate_conan.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: validate-doc-links
+        name: relative links in markdown resolve to existing files
+        entry: python3 scripts/validate_doc_links.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: validate-ports
+        name: all code ports documented in .env.example
+        entry: python3 scripts/validate_ports.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: validate-headers
+        name: headers use #pragma once, no using namespace std
+        entry: python3 scripts/validate_headers.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: validate-ci-parity
+        name: CI/pre-commit/gate parity and guard-the-guard
+        entry: python3 scripts/validate_ci_parity.py
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -54,9 +54,7 @@ jobs:
             -DGTNH_NET_TESTS=ON \
             -GNinja
 
-      - name: Build
-        run: cmake --build build -j $(nproc)
-
-      - name: Run tests
-        working-directory: ./build
-        run: ctest --output-on-failure -j $(nproc)
+      # Body = thin wrapper over the in-repo gate. Same commands as a developer
+      # running `sh ci/check.sh cpp` locally — no logic duplicated in YAML.
+      - name: Gate (cpp) — build + tests
+        run: bash ci/check.sh cpp
