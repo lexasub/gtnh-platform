@@ -34,7 +34,7 @@ void BoilerSystem::tick(float /*dt*/) {
         if (container.slots[0].count == 0)
             container.slots[0].item_id = ItemId::pack("0:11111:3");
 
-        int32_t accepted = energy.addEnergy(std::min(energy.maxOutput, HeatConstants::CONVERSION_RATE));
+        int32_t accepted = energy.produceEnergy(std::min(energy.maxOutput, HeatConstants::CONVERSION_RATE));
         if (accepted > 0) {
             spdlog::debug("Boiler {} at entity {} produced {} STEAM",
                           machine.machine_id, static_cast<uint32_t>(ent), accepted);

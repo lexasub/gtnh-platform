@@ -61,7 +61,7 @@ void GeneratorSystem::tick(float /*dt*/) {
         }
 
         int32_t produced = std::min(energy.maxOutput, remaining);
-        int32_t accepted = energy.addEnergy(produced);
+        int32_t accepted = energy.produceEnergy(produced);
         remaining -= accepted;
 
         if (pipeClient_ && energy.type == EnergyType::HEAT) {

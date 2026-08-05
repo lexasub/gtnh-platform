@@ -31,6 +31,11 @@ struct EnergyStorage {
   // Helper: add energy, returns amount actually accepted (clamped to capacity)
   int32_t addEnergy(int32_t amount);
 
+  // Helper: add energy produced by the machine itself (generators/boilers).
+  // Clamps only to capacity — production is not limited by maxInput (maxInput
+  // gates how much EXTERNAL energy a machine may receive per tick).
+  int32_t produceEnergy(int32_t amount);
+
   // Helper: consume energy, returns amount actually consumed (clamped to
   // available)
   int32_t consumeEnergy(int32_t amount);
@@ -49,6 +54,15 @@ inline int32_t EnergyStorage::addEnergy(int32_t amount) {
     accepted = 0;
   if (accepted > maxInput)
     accepted = maxInput;
+  current += accepted;
+  return accepted;
+}
+
+inline int32_t EnergyStorage::produceEnergy(int32_t amount) {
+  int32_t space = capacity - current;
+  int32_t accepted = (amount < space) ? amount : space;
+  if (accepted < 0)
+    accepted = 0;
   current += accepted;
   return accepted;
 }

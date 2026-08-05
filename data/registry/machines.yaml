@@ -137,6 +137,7 @@ machine_classes:
         role: producer
         slots: { input: 2, output: 1 }
         energy:
+          capacity: 10000
           max_output: 32
 
       # Consumes steam → produces HEAT (steam→heat converter)
@@ -148,6 +149,7 @@ machine_classes:
         role: producer
         slots: { input: 1, output: 1 }
         energy:
+          capacity: 10000
           max_output: 32
 
   # ── Generator (produces energy from fuel) ───────────────
@@ -161,6 +163,7 @@ machine_classes:
         role: producer
         slots: { input: 1, output: 0 }
         energy:
+          capacity: 10000
           max_output: 32
 
       # Infinite ELECTRICITY source (creative)

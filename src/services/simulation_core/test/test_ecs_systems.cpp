@@ -163,6 +163,30 @@ static void test_GeneratorSystem_burns_coal() {
     PASS();
 }
 
+static void test_GeneratorSystem_producer_maxInput_zero() {
+    // Mirrors the runtime producer config from machines.yaml: the generator's
+    // EnergyStorage has maxInput=0 (producers have no external input). addEnergy
+    // clamps by maxInput, so production must use produceEnergy instead.
+    setupMachineRegistry();
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(std::make_shared<simcore::IoUringRouterClient>());
+    simcore::GeneratorSystem sys(reg, events, pipeClient);
+
+    auto ent = reg.create();
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:00:2"), 0, 200, 64, 200, 4);
+    reg.emplace<simcore::EnergyStorage>(ent, 10000, 0, 0, 32, 0, EnergyType::HEAT);
+    simcore::InventoryContainer container(0, 1, {{ItemId::pack("0:11110:2"), 1, 0}});
+    reg.emplace<simcore::InventoryContainer>(ent, container);
+
+    sys.tick(0.05f);
+    auto& energy = reg.get<simcore::EnergyStorage>(ent);
+
+    CHECK_GT(energy.current, 0, "generator produces energy even with maxInput=0");
+
+    PASS();
+}
+
 static void test_GeneratorSystem_no_fuel_no_energy() {
     setupMachineRegistry();
     entt::registry reg;
@@ -586,6 +610,7 @@ static void test_DrillSystem_falls_back_to_machine_energy() {
 
 void test_ecs_systems() {
     TEST(GeneratorSystem_burns_coal);
+    TEST(GeneratorSystem_producer_maxInput_zero);
     TEST(GeneratorSystem_no_fuel_no_energy);
     TEST(GeneratorSystem_full_storage_skips);
     TEST(HeatTransferSystem_adjacent_transfer);
