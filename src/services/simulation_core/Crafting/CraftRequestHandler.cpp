@@ -58,7 +58,10 @@ void CraftRequestHandler::handle(const std::vector<uint8_t>& data) {
     }
 
     auto originalGrid = grid;
-    grid = recipe->craft(grid);
+    // Consume inputs only — the crafted result goes to the result slot and the
+    // player's inventory, not into an input-grid slot (craft() would place the
+    // output into the first empty input slot, breaking consumption accounting).
+    grid = recipe->consumeInputs(grid);
 
     {
         auto inv = inventoryStore_->getSlots(playerId);

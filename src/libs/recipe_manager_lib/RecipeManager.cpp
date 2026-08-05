@@ -17,6 +17,22 @@ namespace RecipeManager {
 // ---------------------------------------------------------------------------
 
 bool Recipe::matches(const std::vector<ItemStack>& container_items) const {
+    if (has_pattern) {
+        if (container_items.size() < 9) return false;
+        for (size_t i = 0; i < 9; ++i) {
+            const auto& cell = pattern[i];
+            const auto& slot = container_items[i];
+            if (cell.item_id == 0) {
+                if (slot.item_id != 0) return false; // exact 3×3: must be empty
+            } else {
+                if (slot.item_id != cell.item_id) return false;
+                if (slot.metadata != cell.metadata) return false;
+                if (slot.count < cell.count) return false;
+            }
+        }
+        return true;
+    }
+
     size_t requiredInputs = 0;
     for (const auto& req : inputs) {
         if (req.item_id != 0) ++requiredInputs;
@@ -50,37 +66,58 @@ bool Recipe::matches(const std::vector<ItemStack>& container_items) const {
     return true;
 }
 
-std::vector<ItemStack> Recipe::craft(const std::vector<ItemStack>& container_items) const {
+std::vector<ItemStack> Recipe::consumeInputs(const std::vector<ItemStack>& container_items) const {
     std::vector<ItemStack> result = container_items;
 
-    for (const auto& req : inputs) {
-        if (!req.consume) {
-            if (req.replace_item > 0) {
-                for (auto& slot : result) {
-                    if (slot.item_id == req.item_id && slot.metadata == req.metadata) {
-                        slot.item_id = req.replace_item;
-                        slot.metadata = req.replace_meta;
-                        break;
+    if (has_pattern) {
+        // Positional (3×3): consume exactly the pattern cells.
+        for (size_t i = 0; i < 9 && i < result.size(); ++i) {
+            const auto& cell = pattern[i];
+            if (cell.item_id == 0) continue;
+            auto& slot = result[i];
+            uint8_t take = std::min(slot.count, cell.count);
+            slot.count -= take;
+            if (slot.count == 0) {
+                slot.item_id = 0;
+                slot.metadata = 0;
+            }
+        }
+    } else {
+        for (const auto& req : inputs) {
+            if (!req.consume) {
+                if (req.replace_item > 0) {
+                    for (auto& slot : result) {
+                        if (slot.item_id == req.item_id && slot.metadata == req.metadata) {
+                            slot.item_id = req.replace_item;
+                            slot.metadata = req.replace_meta;
+                            break;
+                        }
                     }
                 }
+                continue;
             }
-            continue;
-        }
 
-        int64_t remaining = req.count;
-        for (auto& slot : result) {
-            if (remaining <= 0) break;
-            if (slot.item_id == req.item_id && slot.metadata == req.metadata) {
-                uint8_t take = static_cast<uint8_t>(std::min(static_cast<int64_t>(slot.count), remaining));
-                slot.count -= take;
-                remaining -= take;
-                if (slot.count == 0) {
-                    slot.item_id = 0;
-                    slot.metadata = 0;
+            int64_t remaining = req.count;
+            for (auto& slot : result) {
+                if (remaining <= 0) break;
+                if (slot.item_id == req.item_id && slot.metadata == req.metadata) {
+                    uint8_t take = static_cast<uint8_t>(std::min(static_cast<int64_t>(slot.count), remaining));
+                    slot.count -= take;
+                    remaining -= take;
+                    if (slot.count == 0) {
+                        slot.item_id = 0;
+                        slot.metadata = 0;
+                    }
                 }
             }
         }
     }
+
+    return result;
+}
+
+std::vector<ItemStack> Recipe::craft(const std::vector<ItemStack>& container_items) const {
+    std::vector<ItemStack> result = consumeInputs(container_items);
 
     for (const auto& out : outputs) {
         bool stacked = false;
@@ -425,6 +462,38 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
                     if (item.item_id != 0 || inputs[i]["item"]) {
                         // Even id=0 items can be valid if explicitly set
                         recipe.inputs.push_back(item);
+                    }
+                }
+            }
+        }
+
+        // Optional positional 3x3 pattern (crafting table). When present,
+        // matching/crafting is positional instead of aggregate.
+        // Accepted shapes: 3 rows of 3 cells, or a flat list of 9 cells.
+        // A cell is an item name/id, or null/empty for an empty cell.
+        if (yaml["pattern"]) {
+            auto pat = yaml["pattern"];
+            recipe.has_pattern = true;
+            size_t cell = 0;
+            auto readCell = [&](const YAML::Node& n) {
+                if (cell >= 9) return;
+                std::string val;
+                if (n && !n.IsNull() && n.IsScalar()) val = n.as<std::string>("");
+                if (!val.empty())
+                    recipe.pattern[cell] = {resolveItemId(val), 1, 0};
+                else
+                    recipe.pattern[cell] = {0, 0, 0};
+                ++cell;
+            };
+            if (pat.IsSequence()) {
+                if (pat.size() == 9) {
+                    for (size_t i = 0; i < 9; ++i) readCell(pat[i]);
+                } else if (pat.size() == 3) {
+                    for (size_t r = 0; r < 3 && r < pat.size(); ++r) {
+                        auto row = pat[r];
+                        if (row.IsSequence()) {
+                            for (size_t c = 0; c < 3; ++c) readCell(row[c]);
+                        }
                     }
                 }
             }

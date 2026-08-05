@@ -2,6 +2,7 @@
 
 #include "RecipeConditions.h"
 #include "recipe_generated.h"
+#include <array>
 #include <cstdint>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -59,7 +60,21 @@ struct Recipe {
   float energy_output; // energy produced per operation (0 for consumers)
   RecipeConditions conditions;
 
+  // Optional positional 3x3 pattern (crafting table / workbench).
+  // When set, `matches` compares the container positionally (index 0 =
+  // top-left, 8 = bottom-right) and `craft` consumes per-slot. Empty cell =
+  // item_id 0. This makes the server agree with the client's positional
+  // preview instead of the aggregate `inputs` matching.
+  bool has_pattern = false;
+  std::array<ItemStack, 9> pattern{};
+
   bool matches(const std::vector<ItemStack> &container_items) const;
+  /// Consume the recipe inputs from the container (pattern or aggregate),
+  /// WITHOUT placing outputs. Used by the workbench where the result goes to
+  /// the result slot + player inventory, not into an input-grid slot.
+  std::vector<ItemStack>
+  consumeInputs(const std::vector<ItemStack> &container_items) const;
+  /// Consume inputs AND place outputs into the container (machine crafting).
   std::vector<ItemStack>
   craft(const std::vector<ItemStack> &container_items) const;
 };

@@ -6,21 +6,31 @@
 #include "Windows/block/ChestWindow.h"
 #include "Network/NetClient.h"
 
+#include <common/ItemId.h>
 #include <algorithm>
 
 BlockUIFactory::Registry& BlockUIFactory::GetRegistry() {
     static Registry reg = []() {
         Registry r;
-        r[static_cast<uint16_t>(BlockType::CraftingTable)] = [](UIManager& mgr, BlockPos pos) -> IUIWindow* {
-            auto* win = FindOrCreate<CraftingWindow>(mgr, pos, mgr.GetNetClient(), &mgr.GetDragManager());
-            if (auto* nc = mgr.GetNetClient()) {
-                nc->SetCraftResponseCallback(
-                    [win](bool s, uint16_t id, uint8_t cnt, uint16_t m, const std::string& e, const std::array<ItemStack, 9>& grid) {
-                        win->OnCraftResponse(s, id, cnt, m, e, grid);
-                    });
-            }
-            return win;
+        auto registerCraftingTable = [&r](uint16_t blockId) {
+            r[blockId] = [](UIManager& mgr, BlockPos pos) -> IUIWindow* {
+                auto* win = FindOrCreate<CraftingWindow>(mgr, pos, mgr.GetNetClient(), &mgr.GetDragManager());
+                if (auto* nc = mgr.GetNetClient()) {
+                    nc->SetCraftResponseCallback(
+                        [win](bool s, uint16_t id, uint8_t cnt, uint16_t m, const std::string& e, const std::array<ItemStack, 9>& grid) {
+                            win->OnCraftResponse(s, id, cnt, m, e, grid);
+                        });
+                }
+                return win;
+            };
         };
+        // The real crafting-table block id is the packed hierarchical
+        // "0:10:11:1" (22529) — the flat 14 is a legacy alias. The block is
+        // also listed in machines.yaml, so without this override LoadFromRegistry
+        // would open a MachineWindow (flat row of slots) instead of the 3×3
+        // crafting grid.
+        registerCraftingTable(ItemId::pack("0:10:11:1"));
+        registerCraftingTable(static_cast<uint16_t>(BlockType::CraftingTable));
         r[static_cast<uint16_t>(BlockType::Chest)] = [](UIManager& mgr, BlockPos pos) -> IUIWindow* {
             auto* win = FindOrCreate<ChestWindow>(mgr, pos);
             if (win) {
@@ -87,6 +97,9 @@ IUIWindow* BlockUIFactory::FindOrCreateMachine(UIManager& mgr, BlockPos pos, uin
 
 void BlockUIFactory::LoadFromRegistry(const MachineRegistry& reg) {
     for (auto& [id, info] : reg.All()) {
+        // Keep manually-registered custom windows (e.g. CraftingWindow for the
+        // crafting table) — LoadFromRegistry only fills in gaps.
+        if (GetRegistry().contains(id)) continue;
         GetRegistry()[id] = [id](UIManager& mgr, BlockPos pos) -> IUIWindow* {
             return FindOrCreateMachine(mgr, pos, id);
         };

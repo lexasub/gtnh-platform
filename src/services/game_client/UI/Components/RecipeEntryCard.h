@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <functional>
 #include <imgui.h>
@@ -20,6 +21,10 @@ struct RecipeEntry {
   std::vector<ItemStack> inputs;
   std::vector<ItemStack> outputs;
   uint32_t duration;
+  // Positional 3x3 pattern (crafting-table recipes). When set, inputs are
+  // rendered as a 3x3 grid instead of a single row.
+  bool has_pattern = false;
+  std::array<ItemStack, 9> pattern{};
 };
 
 // Renders a single recipe entry with input slots, arrow, output slots,
@@ -33,17 +38,36 @@ RenderRecipeEntry(const RecipeEntry &entry, int &slotIdx,
   ImGui::SameLine();
   ImGui::TextDisabled("(%s)", entry.group.c_str());
 
-  // Input slots
-  for (const auto &input : entry.inputs) {
-    ImGui::PushID(slotIdx++);
-    if (RenderSlot(input, false, ImGui::GetWindowDrawList())) {
-      if (onClick)
-        onClick(input);
+  // Input slots: 3x3 pattern for crafting recipes, flat row otherwise.
+  if (entry.has_pattern) {
+    for (int row = 0; row < 3; ++row) {
+      for (int col = 0; col < 3; ++col) {
+        int cell = row * 3 + col;
+        const ItemStack &stack = entry.pattern[cell];
+        ImGui::PushID(slotIdx++);
+        if (RenderSlot(stack, false, ImGui::GetWindowDrawList())) {
+          if (onClick && stack.item_id != 0)
+            onClick(stack);
+        }
+        ImGui::PopID();
+        if (col < 2)
+          ImGui::SameLine();
+        if (stack.item_id != 0 && ImGui::IsItemHovered())
+          ImGui::SetTooltip("%s", ItemRegistry::GetName(stack.item_id).data());
+      }
     }
-    ImGui::PopID();
-    ImGui::SameLine();
-    if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("%s", ItemRegistry::GetName(input.item_id).data());
+  } else {
+    for (const auto &input : entry.inputs) {
+      ImGui::PushID(slotIdx++);
+      if (RenderSlot(input, false, ImGui::GetWindowDrawList())) {
+        if (onClick)
+          onClick(input);
+      }
+      ImGui::PopID();
+      ImGui::SameLine();
+      if (ImGui::IsItemHovered())
+        ImGui::SetTooltip("%s", ItemRegistry::GetName(input.item_id).data());
+    }
   }
 
   // Arrow

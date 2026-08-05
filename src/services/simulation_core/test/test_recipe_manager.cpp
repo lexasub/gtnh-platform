@@ -79,12 +79,24 @@ static void test_recipe_manager_find_stick() {
         CHECK(!stick->outputs.empty(), "stick recipe has outputs");
     }
 
-    // Crafting with 1 oak_plank on crafting_table machine should find at least one recipe.
-    std::vector<RecipeManager::ItemStack> inputs = {
-        {ItemId::pack("0:10:00:0"), 1, 0},
+    // Crafting-table matching is positional (3x3 pattern): a single plank does
+    // not match anything, but two planks stacked vertically = stick.
+    const uint16_t kPlank = ItemId::pack("0:10:00:0");
+    std::vector<RecipeManager::ItemStack> lonePlank = {{kPlank, 1, 0}};
+    CHECK(mgr.findRecipeByInputs(ItemId::pack("0:10:11:1"), lonePlank) == nullptr,
+          "single plank matches nothing (positional 3x3)");
+
+    std::vector<RecipeManager::ItemStack> stickPattern = {
+        {kPlank, 1, 0}, {0, 0, 0}, {0, 0, 0},
+        {kPlank, 1, 0}, {0, 0, 0}, {0, 0, 0},
+        {0, 0, 0},      {0, 0, 0}, {0, 0, 0},
     };
-    auto* recipe = mgr.findRecipeByInputs(ItemId::pack("0:10:11:1"), inputs);
-    CHECK_NE(recipe, nullptr, "oak_planks match a crafting table recipe");
+    auto* recipe = mgr.findRecipeByInputs(ItemId::pack("0:10:11:1"), stickPattern);
+    CHECK_NE(recipe, nullptr, "stick pattern (2 planks vertical) matches");
+    CHECK_EQ(recipe->id, std::string("stick"), "matches the stick recipe");
+    if (recipe && !recipe->outputs.empty())
+        CHECK_EQ(recipe->outputs[0].item_id, uint16_t(ItemId::pack("0:11110:0")),
+                 "stick recipe outputs stick");
 
     PASS();
 }
@@ -150,6 +162,107 @@ recipes:
     PASS();
 }
 
+static void dumpMatch(RecipeManager::RecipeManager& mgr,
+                      const char* label,
+                      const std::vector<RecipeManager::ItemStack>& grid) {
+    auto* recipe = mgr.findRecipeByInputs(ItemId::pack("0:10:11:1"), grid);
+    if (!recipe) {
+        printf("  [%s] NO MATCH\n", label);
+        return;
+    }
+    printf("  [%s] MATCHED recipe='%s' outputs=%zu\n",
+           label, recipe->id.c_str(), recipe->outputs.size());
+    if (!recipe->outputs.empty()) {
+        printf("  [%s] output item=%u count=%u\n",
+               label, recipe->outputs[0].item_id, recipe->outputs[0].count);
+    }
+    auto crafted = recipe->craft(grid);
+    printf("  [%s] grid after craft: ", label);
+    for (auto& s : crafted) printf("%u/", s.item_id);
+    printf("\n");
+}
+
+static void test_recipe_manager_craft_patterns() {
+    RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
+    RecipeManager::RecipeManager mgr;
+    mgr.loadRecipesFromYamlDirectory(DATA_DIR "/recipes");
+    mgr.loadMachinesFromYaml(DATA_DIR "/registry/machines.yaml");
+
+    const uint16_t kPlank = ItemId::pack("0:10:00:0");
+    const uint16_t kStick = ItemId::pack("0:11110:0");
+    const uint16_t kCobble = ItemId::pack("0:0:2");
+    const uint16_t kIron = ItemId::pack("0:110:1");
+
+    // wooden_pickaxe pattern (client kRecipes): 3 planks top, 2 sticks col 1
+    std::vector<RecipeManager::ItemStack> pickaxe = {
+        {kPlank,1,0},{kPlank,1,0},{kPlank,1,0},
+        {0,0,0},     {kStick,1,0},{0,0,0},
+        {0,0,0},     {kStick,1,0},{0,0,0},
+    };
+    dumpMatch(mgr, "pickaxe", pickaxe);
+    auto* pickRecipe = mgr.findRecipeByInputs(ItemId::pack("0:10:11:1"), pickaxe);
+    CHECK_NE(pickRecipe, nullptr, "pickaxe pattern matches");
+    if (pickRecipe) CHECK_EQ(pickRecipe->id, std::string("wooden_pickaxe"),
+                             "pickaxe pattern matches wooden_pickaxe, not crafting_table");
+    if (pickRecipe) {
+        auto consumed = pickRecipe->consumeInputs(pickaxe);
+        bool allZero = true;
+        for (const auto& s : consumed)
+            if (s.item_id != 0) { allZero = false; break; }
+        CHECK(allZero, "consumeInputs clears all 5 pattern cells (no output in grid)");
+    }
+
+    // crafting_table 2x2: 4 planks
+    std::vector<RecipeManager::ItemStack> ct = {
+        {kPlank,1,0},{kPlank,1,0},{0,0,0},
+        {kPlank,1,0},{kPlank,1,0},{0,0,0},
+        {0,0,0},     {0,0,0},     {0,0,0},
+    };
+    dumpMatch(mgr, "crafting_table", ct);
+    auto* ctRecipe = mgr.findRecipeByInputs(ItemId::pack("0:10:11:1"), ct);
+    CHECK_NE(ctRecipe, nullptr, "crafting_table 2x2 matches");
+    if (ctRecipe) CHECK_EQ(ctRecipe->id, std::string("crafting_table"),
+                           "2x2 planks matches crafting_table recipe");
+
+    // stick: 2 planks vertical
+    std::vector<RecipeManager::ItemStack> stickPat = {
+        {kPlank,1,0},{0,0,0},{0,0,0},
+        {kPlank,1,0},{0,0,0},{0,0,0},
+        {0,0,0},     {0,0,0},{0,0,0},
+    };
+    dumpMatch(mgr, "stick", stickPat);
+    auto* stickRecipe = mgr.findRecipeByInputs(ItemId::pack("0:10:11:1"), stickPat);
+    CHECK_NE(stickRecipe, nullptr, "stick pattern matches");
+    if (stickRecipe) CHECK_EQ(stickRecipe->id, std::string("stick"),
+                              "vertical planks matches stick, not crafting_table");
+
+    // furnace: 8 cobblestone ring
+    std::vector<RecipeManager::ItemStack> furnace = {
+        {kCobble,1,0},{kCobble,1,0},{kCobble,1,0},
+        {kCobble,1,0},{0,0,0},     {kCobble,1,0},
+        {kCobble,1,0},{kCobble,1,0},{kCobble,1,0},
+    };
+    dumpMatch(mgr, "furnace", furnace);
+    auto* furnRecipe = mgr.findRecipeByInputs(ItemId::pack("0:10:11:1"), furnace);
+    CHECK_NE(furnRecipe, nullptr, "furnace ring matches");
+    if (furnRecipe) CHECK_EQ(furnRecipe->id, std::string("furnace"),
+                             "cobble ring matches furnace, not crafting_table");
+
+    // iron_pickaxe: 3 iron top, 2 sticks col 1
+    std::vector<RecipeManager::ItemStack> ironPick = {
+        {kIron,1,0},{kIron,1,0},{kIron,1,0},
+        {0,0,0},    {kStick,1,0},{0,0,0},
+        {0,0,0},    {kStick,1,0},{0,0,0},
+    };
+    dumpMatch(mgr, "iron_pickaxe", ironPick);
+    auto* ironRecipe = mgr.findRecipeByInputs(ItemId::pack("0:10:11:1"), ironPick);
+    CHECK_NE(ironRecipe, nullptr, "iron pickaxe pattern matches");
+    if (ironRecipe) CHECK_EQ(ironRecipe->id, std::string("iron_pickaxe"),
+                             "iron pattern matches iron_pickaxe");
+
+    PASS();
+}
+
 static void test_recipe_manager_no_match() {
     RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
     RecipeManager::RecipeManager mgr;
@@ -171,4 +284,5 @@ void test_recipe_manager() {
     TEST(recipe_manager_find_stick);
     TEST(recipe_manager_no_match);
     TEST(recipe_manager_item_id_formats);
+    TEST(recipe_manager_craft_patterns);
 }

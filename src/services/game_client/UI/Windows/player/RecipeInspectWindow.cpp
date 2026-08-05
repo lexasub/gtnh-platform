@@ -33,6 +33,8 @@ void RecipeInspectWindow::rebuildEntries() {
         uint32_t duration;
         std::vector<uint16_t> outputIds;
         std::vector<uint16_t> inputIds;
+        bool has_pattern = false;
+        std::array<ItemStack, 9> pattern{};
     };
     std::vector<TempEntry> all;
 
@@ -41,6 +43,8 @@ void RecipeInspectWindow::rebuildEntries() {
         TempEntry e;
         e.group = "Crafting Table";
         e.name = std::string(ItemRegistry::GetName(rec.output.item_id));
+        e.has_pattern = true;
+        e.pattern = rec.input_slots;  // keep the full 3x3 position
         for (int i = 0; i < 9; ++i) {
             if (rec.input_slots[i].item_id != 0)
                 e.inputs.push_back(rec.input_slots[i]);
@@ -77,6 +81,8 @@ void RecipeInspectWindow::rebuildEntries() {
             out.inputs = e.inputs;
             out.outputs = e.outputs;
             out.duration = e.duration;
+            out.has_pattern = e.has_pattern;
+            out.pattern = e.pattern;
             recipes_.push_back(std::move(out));
         }
         if (isUse) {
@@ -86,6 +92,8 @@ void RecipeInspectWindow::rebuildEntries() {
             out.inputs = e.inputs;
             out.outputs = e.outputs;
             out.duration = e.duration;
+            out.has_pattern = e.has_pattern;
+            out.pattern = e.pattern;
             uses_.push_back(std::move(out));
         }
     }
