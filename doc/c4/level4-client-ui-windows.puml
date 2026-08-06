@@ -32,6 +32,9 @@ Container_Boundary(gc, "GameClient") {
         Component(win_creative, "CreativeMenu", "C++", "Креативное меню\nпоиск предметов")
         Component(win_recipe_inspect, "RecipeInspectWindow", "C++", "Просмотр рецепта\nNEI-like информация")
         Component(win_craft_result, "CraftResultSlot", "C++", "Слот результата крафта")
+        Component(win_console, "ConsoleWindow", "C++", "Консоль команд\n/gamemode, /startGameScenario")
+        Component(win_questbook, "QuestBookWindow", "C++", "Книга заданий\nэры, секции, квесты")
+        Component(win_scenario, "GameScenario", "C++", "Невидимое окно\nприменяет StartScenarioResp")
     }
 
     ' ===================================================================
@@ -68,6 +71,9 @@ Rel(uicore_ref, win_inv, "владеет", "")
 Rel(uicore_ref, win_craft, "владеет", "")
 Rel(uicore_ref, win_creative, "владеет", "")
 Rel(uicore_ref, win_recipe_inspect, "владеет", "")
+Rel(uicore_ref, win_console, "владеет", "")
+Rel(uicore_ref, win_questbook, "владеет", "")
+Rel(uicore_ref, win_scenario, "владеет", "")
 Rel(uicore_ref, panel_nei, "владеет", "")
 Rel(uicore_ref, comp_slot_grid, "рендерит через окна", "")
 
@@ -80,8 +86,13 @@ Rel(win_creative, comp_paginated, "использует", "")
 Rel(panel_nei, comp_paginated, "использует", "")
 Rel(panel_nei, comp_item_index, "использует", "")
 Rel(panel_nei, comp_item_color, "использует", "")
+Rel(panel_nei, comp_item_color, "использует", "")
 Rel(panel_nei, comp_toast, "показывает уведомления", "")
 Rel(win_recipe_inspect, comp_item_index, "использует", "")
+
+' GameScenario → ConsoleWindow/QuestBookWindow (StartScenarioResp)
+Rel(win_scenario, win_console, "уведомляет", "")
+Rel(win_scenario, win_questbook, "SetEra + SetOpen", "")
 
 ' Crafting DBs → окна
 Rel(craft_ref, win_craft, "ClientRecipeDB → рецепты", "")

@@ -68,6 +68,7 @@ add_custom_target(simcored_fbs
 add_library(simcored
         main.cpp
         Quest/QuestManager.cpp
+        Scenario/GameScenario.cpp
 
         Network/RouterEventPublisher.cpp
         Network/PipeEnergyClient.cpp
@@ -184,6 +185,7 @@ add_executable(simcored_test
     test/test_ecs_systems.cpp
     test/test_recipe_manager.cpp
     test/test_quest_manager.cpp
+    test/test_game_scenario.cpp
 )
 target_compile_definitions(simcored_test PRIVATE
     DATA_DIR="${CMAKE_SOURCE_DIR}/data"

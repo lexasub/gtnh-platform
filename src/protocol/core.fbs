@@ -34,6 +34,27 @@ table GameModeChange {
   new_mode:GameMode;
 }
 
+// Scenario start request: client → gateway → SimulationCore.
+// scenario_index selects from the server-side scenario table
+// (scenario 0 = initial survival kit). The server owns the scenario
+// contents and applies inventory + mode server-authoritatively.
+table StartScenarioReq {
+  player_id:uint64;
+  scenario_index:uint8;
+}
+
+// Server → client ack for StartScenarioReq. The authoritative inventory
+// snapshot arrives separately via player.inventory.update (kInventoryUpdate);
+// this response carries the authoritative game mode + target quest era.
+table StartScenarioResp {
+  player_id:uint64;
+  scenario_index:uint8;
+  success:bool;
+  error:string;
+  game_mode:GameMode;
+  quest_book_era:uint8;  // 0 = VAGRANT
+}
+
 enum BlockAckStatus : uint8 {
   REJECTED = 0,
   ACCEPTED = 1,

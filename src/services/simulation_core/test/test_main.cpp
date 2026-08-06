@@ -7,6 +7,7 @@
 void test_ecs_systems();
 void test_recipe_manager();
 void test_quest_manager();
+void test_game_scenario();
 #include <cstdint>
 #include <cstdio>
 #include <cstddef>
@@ -185,6 +186,7 @@ int main(int argc, char** argv) {
     test_ecs_systems();
     test_recipe_manager();
     test_quest_manager();
+    test_game_scenario();
 
     printf("\n=== Results: %d tests, %d passed, %d failed ===\n",
            g_tests, g_passed, g_failed);

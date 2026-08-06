@@ -238,3 +238,16 @@ target_link_libraries(gameclient_drag_manager_test PRIVATE
     spdlog::spdlog
 )
 add_test(NAME gameclient_drag_manager_test COMMAND gameclient_drag_manager_test)
+
+add_executable(gameclient_start_scenario_test
+    tests/test_start_scenario_command.cpp
+)
+target_compile_definitions(gameclient_start_scenario_test PRIVATE
+    DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+)
+target_include_directories(gameclient_start_scenario_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/UI
+)
+add_test(NAME gameclient_start_scenario_test COMMAND gameclient_start_scenario_test)

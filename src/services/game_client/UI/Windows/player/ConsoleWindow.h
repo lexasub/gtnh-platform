@@ -43,9 +43,11 @@ public:
   void RegisterCommand(const std::string &name, CommandFn fn,
                        const std::string &help = "");
 
+  // Appends a line to the on-screen output log.
+  void addOutput(const std::string &msg);
+
 private:
   void executeCommand(const std::string &line, InventoryState *playerInv);
-  void addOutput(const std::string &msg);
 
   UIManager *uiMgr_ = nullptr;
   bool open_ = false;

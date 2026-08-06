@@ -107,6 +107,11 @@ void GameClient::subscribeNetClient() {
             uiMgr_.HandleNetwork(msgType, data->data());
         });
 
+    netClient_->SetStartScenarioRespCallback(
+        [this](std::shared_ptr<std::vector<uint8_t>> data) {
+            uiMgr_.HandleNetwork(GatewayMsg::kStartScenarioResp, data->data());
+        });
+
     netClient_->SetToolActionRespCallback(
         [this](bool success, uint8_t newRole, const std::vector<uint8_t>& allRoles) {
             if (!success) {

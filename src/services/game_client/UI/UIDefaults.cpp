@@ -6,6 +6,7 @@
 #include "Windows/player/RecipeInspectWindow.h"
 #include "Windows/player/QuestBookWindow.h"
 #include "Windows/player/ConsoleWindow.h"
+#include "Windows/player/GameScenario.h"
 #include "Panels/NeiPanel.h"
 
 namespace UIDefaults {
@@ -20,6 +21,7 @@ void RegisterPlayerUI(UIManager& mgr, InventoryState& invState) {
     mgr.Register<RecipeInspectWindow>();
     mgr.Register<QuestBookWindow>(&mgr);
     mgr.Register<ConsoleWindow>(&mgr);
+    mgr.Register<GameScenario>(&mgr);
     mgr.RegisterPanel<NeiPanel>(&mgr);
 
     mgr.GetBinder().LoadConfig("data/bindings.json");

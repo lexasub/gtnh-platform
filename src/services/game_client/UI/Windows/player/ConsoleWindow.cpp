@@ -1,5 +1,6 @@
 #include "ConsoleWindow.h"
 
+#include "GameScenario.h"
 #include "UIManager.h"
 #include "Common/Inventory.h"
 #include "Network/NetClient.h"
@@ -18,6 +19,10 @@ ConsoleWindow::ConsoleWindow(UIManager *mgr) : uiMgr_(mgr) {
     cw->addOutput("=== Commands ===");
     cw->addOutput("  /gamemode <0|1|2|3>");
     cw->addOutput("    0 = survival, 1 = creative, 2 = adventure, 3 = spectator");
+    cw->addOutput("  /startGameScenario <index> — start a game scenario");
+    for (const auto &sc : gamescenario::scenarios()) {
+      cw->addOutput("    " + std::to_string(sc.index) + " = " + sc.name);
+    }
     cw->addOutput("  /help  — show this message");
   }, "Show available commands");
 
@@ -59,6 +64,26 @@ ConsoleWindow::ConsoleWindow(UIManager *mgr) : uiMgr_(mgr) {
         }
       },
       "Switch game mode: 0=survival, 1=creative, 2=adventure, 3=spectator");
+
+  RegisterCommand("startGameScenario",
+      [](ConsoleWindow *cw, InventoryState *inv,
+         const std::vector<std::string_view> &args) {
+        if (args.empty()) {
+          cw->addOutput("Usage: /startGameScenario <scenario_index>");
+          return;
+        }
+        // Strict numeric + range validation, mirroring /gamemode. Invalid
+        // input produces a console error and no request is sent.
+        uint8_t index = 0;
+        if (!gamescenario::parseScenarioIndex(args[0], index)) {
+          cw->addOutput("Invalid scenario index \"" + std::string(args[0]) +
+                        "\". Use /help to list available scenarios.");
+          return;
+        }
+        if (auto *nc = cw->uiMgr_->GetNetClient())
+          nc->SendStartScenarioReq(inv ? inv->player_id : 0, index);
+      },
+      "Start a game scenario: 0 = initial survival kit");
 }
 
 // ──────────────────────────────────────────────────────────────────────────

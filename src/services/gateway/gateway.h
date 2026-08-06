@@ -60,6 +60,8 @@ inline constexpr uint8_t kQuestExchangeResponse = 27;
 inline constexpr uint8_t kQuestExchangeCooldownGet = 28;
 inline constexpr uint8_t kQuestExchangeCooldown = 29;
 inline constexpr uint8_t kGameModeChange = 30;
+inline constexpr uint8_t kStartScenarioReq = 31;
+inline constexpr uint8_t kStartScenarioResp = 32;
 } // namespace GatewayMsg
 
 // ---------------------------------------------------------------------------

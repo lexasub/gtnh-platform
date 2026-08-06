@@ -416,6 +416,7 @@ int main(int argc, char* argv[]) {
     routerClient->Subscribe("item.transfer.response");
     routerClient->Subscribe("player.chest.open");
     routerClient->Subscribe("player.gamemode.change");
+    routerClient->Subscribe("player.scenario.start");
     routerClient->Subscribe("player.inventory.load");
     routerClient->Subscribe("meta_db.quest.get.response");
     routerClient->Subscribe("quest.complete.request");

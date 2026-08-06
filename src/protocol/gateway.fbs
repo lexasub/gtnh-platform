@@ -20,11 +20,13 @@
 //        27=QuestExchangeResponse (gateway→client),
 //        28=QuestExchangeCooldownGet (client→gateway),
 //        29=QuestExchangeCooldown (gateway→client)
+//        30=GameModeChange, 31=StartScenarioReq, 32=StartScenarioResp
 // NOTE: quest union indices below are stale vs the C++ GatewayMsg constants
 // (gateway.h / NetClient.h). The C++ constants govern the wire:
 // QuestProgressUpdate=20, QuestUnlockNotification=21,
 // QuestCompletedNotification=22, QuestCompleteRequest=24,
-// QuestEraTransition=25, QuestExchange* = 26-29.
+// QuestEraTransition=25, QuestExchange* = 26-29, GameModeChange=30,
+// StartScenarioReq=31, StartScenarioResp=32.
 
 include "core.fbs";
 include "quest.fbs";
@@ -59,6 +61,8 @@ union GatewayPayload {
   QuestExchangeResponse,     // 24 — gateway→client (exchange result)
   QuestExchangeCooldownGet,  // 25 — client→gateway (cooldown query)
   QuestExchangeCooldown,     // 26 — gateway→client (cooldown status)
+  StartScenarioReq,          // 27 — client→gateway (start game scenario)
+  StartScenarioResp,         // 28 — gateway→client (scenario result)
 }
 
 table GatewayMessage {

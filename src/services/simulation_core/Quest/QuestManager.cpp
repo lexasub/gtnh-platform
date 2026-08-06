@@ -204,10 +204,20 @@ void QuestManager::onPlayerJoined(uint64_t playerId) {
         std::lock_guard<std::mutex> lock(mutex_);
         auto& playerProgress = progress_[playerId];
 
-        // Seed all known quests as LOCKED so the graph invariant holds:
-        // NewlyAvailable()/GetUnlocked() only consider quests present in the map.
+        // Seed root quests (no prereqs) as AVAILABLE so the client shows them
+        // as clickable/completable immediately. Dependent quests stay LOCKED
+        // until their prerequisites are completed.
+        std::vector<uint32_t> autoUnlocked;
         for (const auto& questDef : questData_->AllQuests()) {
-            playerProgress.emplace(questDef.id, quest::QuestStatus::LOCKED);
+            if (questData_->GetPrerequisites(questDef.id).empty()) {
+                playerProgress[questDef.id] = quest::QuestStatus::AVAILABLE;
+                autoUnlocked.push_back(questDef.id);
+            } else {
+                playerProgress[questDef.id] = quest::QuestStatus::LOCKED;
+            }
+        }
+        if (!autoUnlocked.empty()) {
+            publishQuestUnlocked(playerId, autoUnlocked);
         }
 
         // Validate that playerId is valid (non-zero for most implementations)

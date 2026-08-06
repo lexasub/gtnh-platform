@@ -16,6 +16,18 @@ void QuestBookWindow::SetOpen(bool open) {
     open_ = open;
 }
 
+void QuestBookWindow::SetEra(int eraIndex) {
+    if (!eraData_.empty()) {
+        if (eraIndex < 0) eraIndex = 0;
+        if (eraIndex >= static_cast<int>(eraData_.size()))
+            eraIndex = static_cast<int>(eraData_.size()) - 1;
+    }
+    selectedEra_ = eraIndex;
+    selectedSection_ = 0;
+    selectedQuestId_ = 0;
+    newlyAvailableEra_ = -1;
+}
+
 void QuestBookWindow::loadQuestData() {
     quest::QuestData qd;
     std::string dataDir = DATA_DIR;

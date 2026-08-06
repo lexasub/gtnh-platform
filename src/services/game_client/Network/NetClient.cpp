@@ -460,6 +460,18 @@ void NetClient::OnMessage(uint8_t msg_type,
             }
             break;
         }
+        case GatewayMsg::kStartScenarioResp: {
+            flatbuffers::Verifier v(payload, plen);
+            if (!v.VerifyBuffer<Protocol::StartScenarioResp>(nullptr)) {
+                spdlog::warn("NetClient: invalid StartScenarioResp buffer");
+                return;
+            }
+            if (onStartScenarioResp_) {
+                auto data = std::make_shared<std::vector<uint8_t>>(payload, payload + plen);
+                onStartScenarioResp_(std::move(data));
+            }
+            return;
+        }
         default:
             spdlog::trace("NetClient: ctrl unknown msg_type={}", msg_type);
             break;
@@ -743,4 +755,13 @@ void NetClient::SendGameModeChange(uint64_t player_id, uint8_t new_mode) {
                                                   static_cast<Protocol::GameMode>(new_mode));
     builder.Finish(change);
     EnqueueWrite(GatewayMsg::kGameModeChange, builder.GetBufferPointer(), builder.GetSize());
+}
+
+void NetClient::SendStartScenarioReq(uint64_t player_id, uint8_t scenario_index) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto req = Protocol::CreateStartScenarioReq(builder, player_id, scenario_index);
+    builder.Finish(req);
+    EnqueueWrite(GatewayMsg::kStartScenarioReq, builder.GetBufferPointer(), builder.GetSize());
+    spdlog::info("NetClient: SendStartScenarioReq player={} scenario={}", player_id, scenario_index);
 }

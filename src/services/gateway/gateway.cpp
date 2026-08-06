@@ -419,6 +419,8 @@ else if (topic == "player.chest.open.response")
         send_to_client_ctrl_raw(GatewayMsg::kQuestExchangeCooldown, payload, plen);
     else if (topic == "player.gamemode.changed")
         send_to_client_ctrl_raw(GatewayMsg::kGameModeChange, payload, plen);
+    else if (topic == "player.scenario.start.response")
+        send_to_client_ctrl_raw(GatewayMsg::kStartScenarioResp, payload, plen);
     else if (on_router_message)
         on_router_message(topic, payload, plen);
 }
@@ -531,6 +533,14 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
             spdlog::error("Gateway: invalid GameModeChange on ctrl"); return;
         }
         publish("player.gamemode.change", data, len);
+        break;
+    }
+    case GatewayMsg::kStartScenarioReq: {
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::StartScenarioReq>(nullptr)) {
+            spdlog::error("Gateway: invalid StartScenarioReq on ctrl"); return;
+        }
+        publish("player.scenario.start", data, len);
         break;
     }
     default: spdlog::warn("Gateway: unknown ctrl client msg type {}", msg_type); break;

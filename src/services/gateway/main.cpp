@@ -134,6 +134,7 @@ int main(int argc, char* argv[]) {
     gateway.subscribe("quest.exchange.response");
     gateway.subscribe("quest.exchange.cooldown.response");
     gateway.subscribe("player.gamemode.changed");
+    gateway.subscribe("player.scenario.start.response");
 
     spdlog::info("Gateway running — worker thread handles io_uring");
 

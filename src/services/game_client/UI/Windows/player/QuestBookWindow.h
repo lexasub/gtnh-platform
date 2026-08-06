@@ -29,6 +29,10 @@ public:
   bool WantsMouseCapture() const override { return open_; }
   bool WantsKeyboardCapture() const override { return open_; }
 
+  // Selects the era tab (clamped to loaded eras) and resets section/quest
+  // selection. Used by GameScenario to point the book at the response's era.
+  void SetEra(int eraIndex);
+
 private:
   bool open_ = false;
 

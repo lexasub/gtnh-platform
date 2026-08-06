@@ -20,6 +20,7 @@
 #include "World/WorldContainerInventory.h"
 #include "Storage/ChunkStoreRepository.h"
 #include "Storage/PlayerInventoryStore.h"
+#include "Scenario/GameScenario.h"
 #include "Crafting/CraftRequestHandler.h"
 #include "Crafting/RecipeCompletedHandler.h"
 #include "Quest/QuestManager.h"
@@ -285,6 +286,39 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                 fbb.Finish(echo);
                 std::vector<uint8_t> buf(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
                 routerClient->Publish("player.gamemode.changed", std::move(buf));
+            } else if (topic == "player.scenario.start") {
+                flatbuffers::Verifier v(data.data(), data.size());
+                if (!v.VerifyBuffer<Protocol::StartScenarioReq>(nullptr)) {
+                    spdlog::warn("[SimCore] Invalid StartScenarioReq payload");
+                    return;
+                }
+                auto* req = flatbuffers::GetRoot<Protocol::StartScenarioReq>(data.data());
+                uint64_t pid = req->player_id();
+                uint8_t idx = static_cast<uint8_t>(req->scenario_index());
+                if (pid == 0) {
+                    spdlog::warn("[SimCore] StartScenarioReq with player_id == 0 rejected");
+                    return;
+                }
+                const auto* sc = findScenario(idx);
+                if (!sc) {
+                    spdlog::warn("[SimCore] StartScenarioReq scenario_index={} out of range", idx);
+                    return;
+                }
+                if (!inventoryStore) return;
+                spdlog::info("[SimCore] Start scenario {} for player {}", idx, pid);
+                // setSlots/giveItem fire postMutation synchronously, so the
+                // authoritative player.inventory.update snapshot is enqueued
+                // before the response below reaches the client.
+                applyScenario(*inventoryStore, *sc, pid);
+                flatbuffers::FlatBufferBuilder fbb(64);
+                auto resp = Protocol::CreateStartScenarioResp(
+                    fbb, pid, idx, true, 0,
+                    static_cast<Protocol::GameMode>(sc->targetMode),
+                    sc->questBookEra);
+                fbb.Finish(resp);
+                std::vector<uint8_t> buf(fbb.GetBufferPointer(),
+                                         fbb.GetBufferPointer() + fbb.GetSize());
+                routerClient->Publish("player.scenario.start.response", std::move(buf));
             } else if (topicDispatcher->dispatch(topic, data)) {
             } else {
                 spdlog::debug("Unhandled topic: {}", topic);
