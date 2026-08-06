@@ -25,11 +25,23 @@ FACE_NAMES = ["+X", "-X", "+Y", "-Y", "+Z", "-Z"]
 
 CUBE_FACES = {
     "+X": [(1, 0, 0), (1, 1, 0), (1, 1, 1), (1, 0, 1)],
-    "-X": [(0, 1, 0), (0, 0, 0), (0, 0, 1), (0, 1, 1)],
-    "+Y": [(0, 1, 0), (1, 1, 0), (1, 1, 1), (0, 1, 1)],
-    "-Y": [(0, 0, 1), (1, 0, 1), (1, 0, 0), (0, 0, 0)],
-    "+Z": [(1, 0, 1), (1, 1, 1), (0, 1, 1), (0, 0, 1)],
-    "-Z": [(0, 0, 0), (0, 1, 0), (1, 1, 0), (1, 0, 0)],
+    "-X": [(0, 0, 1), (0, 1, 1), (0, 1, 0), (0, 0, 0)],
+    "+Y": [(0, 1, 1), (1, 1, 1), (1, 1, 0), (0, 1, 0)],
+    "-Y": [(0, 0, 0), (1, 0, 0), (1, 0, 1), (0, 0, 1)],
+    "+Z": [(0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)],
+    "-Z": [(1, 0, 0), (0, 0, 0), (0, 1, 0), (1, 1, 0)],
+}
+
+# Per-face UV axes matching ChunkMeshBuilder::kUVAxis:
+#   {u_comp_idx, u_neg, v_comp_idx, v_neg}
+#   vert = (x,y,z); u_comp = vert[axis[0]] ^ axis[1]; v_comp = vert[axis[2]] ^ axis[3]
+UV_AXIS = {
+    "+X": (2, 0, 1, 0),   # u=Z,     v=Y
+    "-X": (2, 1, 1, 0),   # u=1-Z,   v=Y
+    "+Y": (0, 0, 2, 1),   # u=X,     v=1-Z
+    "-Y": (0, 0, 2, 0),   # u=X,     v=Z
+    "+Z": (0, 0, 1, 0),   # u=X,     v=Y
+    "-Z": (0, 1, 1, 0),   # u=1-X,   v=Y
 }
 
 FACE_NORMALS = {
@@ -234,13 +246,18 @@ def draw_textured_cube(
     for i, face_name in enumerate(FACE_NAMES):
         tile_id = block_faces[i]
         u0, v0, u1, v1 = get_tile_uv(tile_id, slot_map)
+        du = u1 - u0
+        dv = v1 - v0
+        a0, a1, a2, a3 = UV_AXIS[face_name]
         nx, ny, nz = FACE_NORMALS[face_name]
         glNormal3f(nx, ny, nz)
-        verts = CUBE_FACES[face_name]
-        uvs = [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]
-        for v, uv in zip(verts, uvs):
-            glTexCoord2f(*uv)
-            glVertex3f(ox + v[0], oy + v[1], oz + v[2])
+        for vx, vy, vz in CUBE_FACES[face_name]:
+            uv_x = vx if a0 == 0 else vy if a0 == 1 else vz
+            uv_y = vx if a2 == 0 else vy if a2 == 1 else vz
+            u = u0 + du * (uv_x ^ a1)
+            v = v0 + dv * (uv_y ^ a3)
+            glTexCoord2f(u, v)
+            glVertex3f(ox + vx, oy + vy, oz + vz)
     glEnd()
 
 

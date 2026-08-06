@@ -76,8 +76,9 @@ void Camera::Update(float dt, const InputState& input) {
         // Gravity
         velocityY_ -= GRAVITY * dt;
 
-        // Jump
-        if (onGround_ && input.keys[keyAscend_]) {
+        // Jump / Sneak
+        bool sneaking = input.keys[keyDescend_] && onGround_;
+        if (onGround_ && input.keys[keyAscend_] && !sneaking) {
             velocityY_ = JUMP_VELOCITY;
             onGround_ = false;
         }
@@ -101,40 +102,58 @@ void Camera::Update(float dt, const InputState& input) {
         };
 
         float groundY = findGround(newPos.x, newPos.z);
-        if (newPos.y <= groundY + EYE_HEIGHT) {
-            newPos.y = groundY + EYE_HEIGHT;
+
+        // Sneak: stop at block edges — don't slide off
+        if (sneaking) {
+            float curGroundY = findGround(pos.x, pos.z);
+            if (groundY < curGroundY && onGround_) {
+                // Would step off a ledge — cancel horizontal movement
+                newPos.x = pos.x;
+                newPos.z = pos.z;
+                groundY = curGroundY;
+            }
+        }
+
+        float eyeHeight = sneaking ? EYE_HEIGHT - 0.3f : EYE_HEIGHT;
+        if (newPos.y <= groundY + eyeHeight) {
+            newPos.y = groundY + eyeHeight;
             velocityY_ = 0.0f;
             onGround_ = true;
         } else {
             onGround_ = false;
         }
 
-        // Simple block collision: check feet block and head block
-        int fx = static_cast<int>(std::floor(newPos.x));
-        int fy = static_cast<int>(std::floor(newPos.y - EYE_HEIGHT + 0.01f));
-        int fz = static_cast<int>(std::floor(newPos.z));
-        int hx = static_cast<int>(std::floor(newPos.x));
-        int hy = static_cast<int>(std::floor(newPos.y + 0.3f));
-        int hz = static_cast<int>(std::floor(newPos.z));
+        // Block collision: check all columns the player bounding box overlaps
+        // Player width ≈ 0.6 blocks (±0.3 from center)
+        static constexpr float kHalfWidth = 0.3f;
+        auto blockAt = [this](int bx, int by, int bz) -> bool {
+            return world_->GetBlockAt(BlockPos{bx, by, bz}) != 0;
+        };
+        auto collidesAt = [&](float px, float py, float pz) -> bool {
+            int fy = static_cast<int>(std::floor(py - eyeHeight + 0.01f));
+            int hy = static_cast<int>(std::floor(py + 0.3f));
+            int x0 = static_cast<int>(std::floor(px - kHalfWidth));
+            int x1 = static_cast<int>(std::floor(px + kHalfWidth));
+            int z0 = static_cast<int>(std::floor(pz - kHalfWidth));
+            int z1 = static_cast<int>(std::floor(pz + kHalfWidth));
+            for (int ix = x0; ix <= x1; ++ix)
+                for (int iz = z0; iz <= z1; ++iz)
+                    if (blockAt(ix, fy, iz) || blockAt(ix, hy, iz))
+                        return true;
+            return false;
+        };
 
-        bool blocked = world_->GetBlockAt(BlockPos{fx, fy, fz}) != 0 ||
-                       world_->GetBlockAt(BlockPos{hx, hy, hz}) != 0;
-
-        if (!blocked) {
+        if (!collidesAt(newPos.x, newPos.y, newPos.z)) {
             pos = newPos;
         } else {
             // Try X independently
             glm::vec3 testX = pos; testX.x = newPos.x;
-            int txfx = static_cast<int>(std::floor(testX.x));
-            if (world_->GetBlockAt(BlockPos{txfx, fy, fz}) == 0 &&
-                world_->GetBlockAt(BlockPos{txfx, hy, hz}) == 0) {
+            if (!collidesAt(testX.x, testX.y, testX.z)) {
                 pos.x = newPos.x;
             }
             // Try Z independently
             glm::vec3 testZ = pos; testZ.z = newPos.z;
-            int tzfz = static_cast<int>(std::floor(testZ.z));
-            if (world_->GetBlockAt(BlockPos{fx, fy, tzfz}) == 0 &&
-                world_->GetBlockAt(BlockPos{hx, hy, tzfz}) == 0) {
+            if (!collidesAt(testZ.x, testZ.y, testZ.z)) {
                 pos.z = newPos.z;
             }
             // Always apply gravity (vertical is never blocked by walls)
