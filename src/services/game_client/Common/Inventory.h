@@ -10,6 +10,26 @@ struct ItemStack {
   uint16_t meta = 0;
 };
 
+// ──────────────────────────────────────────────────────────────────────────
+// GameMode — client-side game mode (server trusts client for now)
+// ──────────────────────────────────────────────────────────────────────────
+enum class GameMode : uint8_t {
+  SURVIVAL = 0,
+  CREATIVE = 1,
+  ADVENTURE = 2,
+  SPECTATOR = 3,
+};
+
+inline const char* GameModeName(GameMode mode) {
+  switch (mode) {
+    case GameMode::SURVIVAL:  return "SURVIVAL";
+    case GameMode::CREATIVE:  return "CREATIVE";
+    case GameMode::ADVENTURE: return "ADVENTURE";
+    case GameMode::SPECTATOR: return "SPECTATOR";
+  }
+  return "UNKNOWN";
+}
+
 struct InventoryState {
   std::vector<ItemStack> slots;
   BlockPos position;
@@ -35,4 +55,7 @@ struct InventoryState {
   bool dragEnabled = true;
   bool dropEnabled = true;
   bool shiftDropEnabled = true;
+
+  // Game mode (client-authoritative for now, server trusts client)
+  GameMode gameMode = GameMode::CREATIVE;
 };

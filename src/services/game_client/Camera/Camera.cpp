@@ -4,6 +4,7 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/norm.hpp>
 #include "../Common/InputState.h"
+#include "../World/World.h"
 
 void Camera::Init() {
     // Start looking at -Z (identity orientation gives forward = (0,0,-1))
@@ -58,11 +59,94 @@ void Camera::Update(float dt, const InputState& input) {
     // If primary is nonzero, use it; otherwise fall back to secondary
     float forward = forward_primary + (1.0f - glm::abs(forward_primary)) * forward_secondary;
     float right = right_primary + (1.0f - glm::abs(right_primary)) * right_secondary;
-    pos += (forward * GetForward() + right * GetRight() + glm::vec3(
-        0.0f,
-        static_cast<float>(input.keys[keyAscend_]) - static_cast<float>(input.keys[keyDescend_]),
-        0.0f
-    )) * speed;
+
+    if (!flightEnabled_ && world_) {
+        // ── SURVIVAL / ADVENTURE: physics-based movement ──────────────────
+        // Project movement vectors onto XZ plane (no vertical from camera angle)
+        glm::vec3 fwdFlat = GetForward();
+        fwdFlat.y = 0.0f;
+        float fwdLen2 = glm::length2(fwdFlat);
+        if (fwdLen2 > 0.0001f) fwdFlat /= std::sqrt(fwdLen2);
+
+        glm::vec3 rightFlat = GetRight();
+        rightFlat.y = 0.0f;
+        float rightLen2 = glm::length2(rightFlat);
+        if (rightLen2 > 0.0001f) rightFlat /= std::sqrt(rightLen2);
+
+        // Gravity
+        velocityY_ -= GRAVITY * dt;
+
+        // Jump
+        if (onGround_ && input.keys[keyAscend_]) {
+            velocityY_ = JUMP_VELOCITY;
+            onGround_ = false;
+        }
+
+        // Compute new position
+        glm::vec3 move = (forward * fwdFlat + right * rightFlat) * speed;
+        glm::vec3 newPos = pos + move;
+        newPos.y += velocityY_ * dt;
+
+        // Ground detection (scan no more than 12 blocks down)
+        auto findGround = [this](float x, float z) -> float {
+            int bx = static_cast<int>(std::floor(x));
+            int bz = static_cast<int>(std::floor(z));
+            int startY = static_cast<int>(std::floor(pos.y - EYE_HEIGHT));
+            for (int y = startY; y >= 0 && y >= startY - 12; y--) {
+                if (world_->GetBlockAt(BlockPos{bx, y, bz}) != 0) {
+                    return static_cast<float>(y + 1);
+                }
+            }
+            return -1000.0f; // void — player falls
+        };
+
+        float groundY = findGround(newPos.x, newPos.z);
+        if (newPos.y <= groundY + EYE_HEIGHT) {
+            newPos.y = groundY + EYE_HEIGHT;
+            velocityY_ = 0.0f;
+            onGround_ = true;
+        } else {
+            onGround_ = false;
+        }
+
+        // Simple block collision: check feet block and head block
+        int fx = static_cast<int>(std::floor(newPos.x));
+        int fy = static_cast<int>(std::floor(newPos.y - EYE_HEIGHT + 0.01f));
+        int fz = static_cast<int>(std::floor(newPos.z));
+        int hx = static_cast<int>(std::floor(newPos.x));
+        int hy = static_cast<int>(std::floor(newPos.y + 0.3f));
+        int hz = static_cast<int>(std::floor(newPos.z));
+
+        bool blocked = world_->GetBlockAt(BlockPos{fx, fy, fz}) != 0 ||
+                       world_->GetBlockAt(BlockPos{hx, hy, hz}) != 0;
+
+        if (!blocked) {
+            pos = newPos;
+        } else {
+            // Try X independently
+            glm::vec3 testX = pos; testX.x = newPos.x;
+            int txfx = static_cast<int>(std::floor(testX.x));
+            if (world_->GetBlockAt(BlockPos{txfx, fy, fz}) == 0 &&
+                world_->GetBlockAt(BlockPos{txfx, hy, hz}) == 0) {
+                pos.x = newPos.x;
+            }
+            // Try Z independently
+            glm::vec3 testZ = pos; testZ.z = newPos.z;
+            int tzfz = static_cast<int>(std::floor(testZ.z));
+            if (world_->GetBlockAt(BlockPos{fx, fy, tzfz}) == 0 &&
+                world_->GetBlockAt(BlockPos{hx, hy, tzfz}) == 0) {
+                pos.z = newPos.z;
+            }
+            // Always apply gravity (vertical is never blocked by walls)
+            pos.y = newPos.y;
+        }
+    } else {
+        // ── CREATIVE / SPECTATOR: free flight ─────────────────────────────
+        float vertical = static_cast<float>(input.keys[keyAscend_]) - static_cast<float>(input.keys[keyDescend_]);
+        pos += (forward * GetForward() + right * GetRight() + glm::vec3(0.0f, vertical, 0.0f)) * speed;
+        velocityY_ = 0.0f;
+        onGround_ = false;
+    }
 }
 
 glm::mat4 Camera::GetViewMatrix() const {

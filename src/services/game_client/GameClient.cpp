@@ -215,6 +215,7 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
 
     camera_.Init();
     camera_.SetBinder(&uiMgr_.GetBinder());
+    camera_.SetWorld(&world_);
     interaction_.SetBinder(&uiMgr_.GetBinder());
 
     chunkLoadManager_ = std::make_unique<ChunkLoadManager>(world_, *netClient_);
@@ -232,6 +233,10 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
 }
 
 void GameClient::Update(float dt) {
+    // Flight only in CREATIVE and SPECTATOR; SURVIVAL/ADVENTURE walk only
+    camera_.SetFlightEnabled(invState_.gameMode == GameMode::CREATIVE ||
+                             invState_.gameMode == GameMode::SPECTATOR);
+
     if (inputMgr_.IsMouseCaptured()) {
         camera_.Update(dt, inputMgr_.State());
     }
@@ -258,7 +263,7 @@ void GameClient::Update(float dt) {
     }
 
     // ── World interaction (block break/place, only if UI not capturing) ──
-    if (!uiMgr_.AnyOpen()) {
+    if (!uiMgr_.AnyOpen() && invState_.gameMode != GameMode::ADVENTURE && invState_.gameMode != GameMode::SPECTATOR) {
         interaction_.SetInventory(&invState_);
         interaction_.Update(camera_, inputMgr_.State(), world_, *netClient_);
         // If block ack conflict occurs, invState_ gets out of sync — a future

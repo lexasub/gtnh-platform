@@ -54,6 +54,7 @@ inline constexpr uint8_t kQuestExchangeRequest = 26;
 inline constexpr uint8_t kQuestExchangeResponse = 27;
 inline constexpr uint8_t kQuestExchangeCooldownGet = 28;
 inline constexpr uint8_t kQuestExchangeCooldown = 29;
+inline constexpr uint8_t kGameModeChange = 30;
 } // namespace GatewayMsg
 
 class NetClient : public std::enable_shared_from_this<NetClient> {
@@ -84,6 +85,7 @@ public:
       std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
   using QuestUpdateCallback =
       std::function<void(uint8_t, std::shared_ptr<std::vector<uint8_t>>)>;
+  using GameModeChangeCallback = std::function<void(uint8_t new_mode)>;
   using ReconnectCallback = std::function<void()>;
 
   explicit NetClient();
@@ -137,6 +139,7 @@ public:
   void SetQuestUpdateCallback(QuestUpdateCallback cb) {
     onQuestUpdate_ = std::move(cb);
   }
+  void SetGameModeChangeCallback(GameModeChangeCallback cb) { onGameModeChange_ = std::move(cb); }
   void SetReconnectCallback(ReconnectCallback cb) {
     onReconnect_ = std::move(cb);
   }
@@ -171,6 +174,7 @@ public:
   void SendQuestExchange(uint64_t player_id, uint32_t quest_id);
   // Queries the current exchange cooldown (seconds remaining) for a quest.
   void SendQuestExchangeCooldownGet(uint64_t player_id, uint32_t quest_id);
+  void SendGameModeChange(uint64_t player_id, uint8_t new_mode);
 
 private:
   // ---- Thread-safe message queue -----------------------------------------
@@ -242,5 +246,6 @@ private:
   ToolActionRespCallback onToolActionResp_;
   MultiblockEventCallback onMultiblockEvent_;
   QuestUpdateCallback onQuestUpdate_;
+  GameModeChangeCallback onGameModeChange_;
   ReconnectCallback onReconnect_;
 };

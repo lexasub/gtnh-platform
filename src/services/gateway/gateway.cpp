@@ -417,6 +417,8 @@ else if (topic == "player.chest.open.response")
         send_to_client_ctrl_raw(GatewayMsg::kQuestExchangeResponse, payload, plen);
     else if (topic == "quest.exchange.cooldown.response")
         send_to_client_ctrl_raw(GatewayMsg::kQuestExchangeCooldown, payload, plen);
+    else if (topic == "player.gamemode.changed")
+        send_to_client_ctrl_raw(GatewayMsg::kGameModeChange, payload, plen);
     else if (on_router_message)
         on_router_message(topic, payload, plen);
 }
@@ -521,6 +523,14 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
         flatbuffers::Verifier v(data, len);
         if (!v.VerifyBuffer<Protocol::QuestExchangeCooldownGet>(nullptr)) { spdlog::error("Gateway: invalid QuestExchangeCooldownGet on ctrl"); return; }
         publish("quest.exchange.cooldown.get", data, len);
+        break;
+    }
+    case GatewayMsg::kGameModeChange: {
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::GameModeChange>(nullptr)) {
+            spdlog::error("Gateway: invalid GameModeChange on ctrl"); return;
+        }
+        publish("player.gamemode.change", data, len);
         break;
     }
     default: spdlog::warn("Gateway: unknown ctrl client msg type {}", msg_type); break;

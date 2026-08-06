@@ -79,6 +79,14 @@ public:
   buildUpdate(flatbuffers::FlatBufferBuilder &builder,
               uint64_t player_id) const;
 
+  // ── GameMode ────────────────────────────────────────────────────────────
+
+  void setGameMode(uint64_t pid, uint8_t m) { playerModes_[pid] = m; }
+  uint8_t getGameMode(uint64_t pid) const {
+    auto it = playerModes_.find(pid);
+    return it != playerModes_.end() ? it->second : 0;
+  }
+
 private:
   void notifySlot(uint64_t player_id, uint16_t slot_index,
                   const PersistSlot &slot);
@@ -88,6 +96,7 @@ private:
   PostMutationCallback postMutation_;
   std::unordered_map<uint64_t, std::array<PersistSlot, kInventorySlots>>
       inventories_;
+  std::unordered_map<uint64_t, uint8_t> playerModes_;
 };
 
 } // namespace simcore

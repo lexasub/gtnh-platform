@@ -17,6 +17,7 @@ add_library(UI
     Windows/player/PlayerInventory.cpp
     Windows/player/CreativeMenu.cpp
     Windows/player/QuestBookWindow.cpp
+    Windows/player/ConsoleWindow.cpp
 
     Panels/NeiPanel.cpp
 

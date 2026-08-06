@@ -9,11 +9,15 @@
 struct InputState;
 class InputBinder;
 
+class World;
+
 class Camera {
 public:
   void Init();
   void Update(float dt, const InputState &input);
   void SetBinder(const InputBinder *binder);
+  void SetFlightEnabled(bool enabled) { flightEnabled_ = enabled; }
+  void SetWorld(World *w) { world_ = w; }
 
   glm::mat4 GetViewMatrix() const;
   glm::mat4 GetProjectionMatrix(float aspect) const;
@@ -35,6 +39,13 @@ private:
   void resolveActionKeys();
 
   const InputBinder *binder_ = nullptr;
+  bool flightEnabled_ = true;
+  World *world_ = nullptr;
+
+  // Physics state (survival / adventure)
+  float velocityY_ = 0.0f;
+  bool onGround_ = false;
+
   // default
   int keyFwd_ = -1;
   int keyBkwd_ = -1;
@@ -52,4 +63,9 @@ private:
   static constexpr float SPEED = 14.317f;
   static constexpr float MOUSE_SENS = 0.1f;
   static constexpr float ZOOM_SENS = 0.1f;
+
+  // Survival physics constants
+  static constexpr float GRAVITY = 25.0f;
+  static constexpr float JUMP_VELOCITY = 8.5f;
+  static constexpr float EYE_HEIGHT = 1.6f;
 };

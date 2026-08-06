@@ -453,6 +453,13 @@ void NetClient::OnMessage(uint8_t msg_type,
             onChestOpenResp_(pos, true, slots);
             return;
         }
+        case GatewayMsg::kGameModeChange: {
+            auto* change = flatbuffers::GetRoot<Protocol::GameModeChange>(payload);
+            if (change && onGameModeChange_) {
+                onGameModeChange_(change->new_mode());
+            }
+            break;
+        }
         default:
             spdlog::trace("NetClient: ctrl unknown msg_type={}", msg_type);
             break;
@@ -727,4 +734,13 @@ void NetClient::SendInventoryAction(uint64_t player_id, uint8_t action_type,
                                                 source_slot, target_slot, count, 0);
     fbb.Finish(act);
     EnqueueWrite(GatewayMsg::kInventoryAction, fbb.GetBufferPointer(), fbb.GetSize());
+}
+
+void NetClient::SendGameModeChange(uint64_t player_id, uint8_t new_mode) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto change = Protocol::CreateGameModeChange(builder, player_id,
+                                                  static_cast<Protocol::GameMode>(new_mode));
+    builder.Finish(change);
+    EnqueueWrite(GatewayMsg::kGameModeChange, builder.GetBufferPointer(), builder.GetSize());
 }

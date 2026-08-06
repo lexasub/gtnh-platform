@@ -137,9 +137,10 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
     auto routerClient = d.routerClient;
     auto topicDispatcher = topicDispatcher_;
     auto questManager = d.questManager;
+    auto inventoryStore = d.inventoryStore;
 
     routerClient->OnMessage([&mainQueue, &dispatcher, &casHandler, &chunkHandler, &worldContainers,
-                             topicDispatcher, routerClient, entityStateClient,
+                             topicDispatcher, routerClient, entityStateClient, inventoryStore,
                              batteryBuffer, machineSystem, questManager]
                             (const std::string& topic, const std::vector<uint8_t>& data) {
         // Filter player.actions on the io thread, BEFORE mainQueue: the client
@@ -264,6 +265,26 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                     questManager->completeQuest(req->player_id(), req->quest_id());
                 }
 
+            } else if (topic == "player.gamemode.change") {
+                flatbuffers::Verifier v(data.data(), data.size());
+                if (!v.VerifyBuffer<Protocol::GameModeChange>(nullptr)) {
+                    spdlog::warn("[SimCore] Invalid GameModeChange payload");
+                    return;
+                }
+                auto* gmc = flatbuffers::GetRoot<Protocol::GameModeChange>(data.data());
+                uint64_t pid = gmc->player_id();
+                uint8_t mode = static_cast<uint8_t>(gmc->new_mode());
+                spdlog::info("[SimCore] GameMode change: player={} mode={}", pid, mode);
+                // Store locally
+                if (inventoryStore) {
+                    inventoryStore->setGameMode(pid, mode);
+                }
+                // Echo back
+                flatbuffers::FlatBufferBuilder fbb(32);
+                auto echo = Protocol::CreateGameModeChange(fbb, pid, static_cast<Protocol::GameMode>(mode));
+                fbb.Finish(echo);
+                std::vector<uint8_t> buf(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+                routerClient->Publish("player.gamemode.changed", std::move(buf));
             } else if (topicDispatcher->dispatch(topic, data)) {
             } else {
                 spdlog::debug("Unhandled topic: {}", topic);

@@ -1,6 +1,7 @@
 #include "CreativeMenu.h"
 #include "UIManager.h"
 #include "Core/ActionHandler.h"
+#include "Common/Inventory.h"
 #include "Crafting/ClientItemRegistry.h"
 #include "machine_registry/MachineRegistry.h"
 #include <imgui.h>
@@ -43,8 +44,9 @@ bool CreativeMenu::OnKeyEvent(int /*key*/, int /*action*/, int /*mods*/) {
     return false;
 }
 
-void CreativeMenu::Render(InventoryState* /*playerInv*/) {
+void CreativeMenu::Render(InventoryState* playerInv) {
     if (!open_) return;
+    if (playerInv && playerInv->gameMode != GameMode::CREATIVE) { open_ = false; return; }
 
     ImGui::Begin("Creative Menu", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
     ImGui::InputText("##search", searchBuf_, sizeof(searchBuf_));
