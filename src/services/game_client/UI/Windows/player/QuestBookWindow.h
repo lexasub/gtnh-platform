@@ -55,6 +55,9 @@ private:
     uint8_t costCount;
     uint16_t cooldownSecs;
     bool isExchange;
+    bool isInventory;     // DetectionType::INVENTORY — objective is "have N of item"
+    uint16_t targetItemId; // packed id of the inventory objective item
+    uint16_t targetCount;  // quantity required to complete the objective
     uint8_t status; // 0=locked, 1=available, 2=in_progress, 3=completed
     uint8_t progress;
   };

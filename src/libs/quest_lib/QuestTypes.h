@@ -52,6 +52,7 @@ enum class DetectionType : uint8_t {
   TOOL_CHARGED = 2,
   SIDE_CONFIGURED = 3,
   EXCHANGE = 4,
+  INVENTORY = 5,
 };
 
 inline DetectionType DetectFromString(const std::string &s) {
@@ -65,6 +66,8 @@ inline DetectionType DetectFromString(const std::string &s) {
     return DetectionType::SIDE_CONFIGURED;
   if (s == "exchange")
     return DetectionType::EXCHANGE;
+  if (s == "inventory")
+    return DetectionType::INVENTORY;
   return DetectionType::CRAFT;
 }
 
@@ -82,6 +85,9 @@ struct QuestDef {
   uint16_t costItemId = 0;
   uint8_t costCount = 0;
   uint16_t cooldownSecs = 0;
+  // DetectionType::INVENTORY objective: quantity of detectTarget the player
+  // must hold in their inventory to complete (default 0 → treated as ≥1).
+  uint16_t targetCount = 0;
 };
 
 struct QuestProgress {

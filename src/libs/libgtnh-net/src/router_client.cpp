@@ -2,6 +2,7 @@
 #include <gtnh/net/frame.h>
 
 #include <spdlog/spdlog.h>
+#include <algorithm>
 #include <cstring>
 
 namespace gtnh::net {
@@ -86,8 +87,12 @@ void RouterClient::send_register() {
 void RouterClient::subscribe(const std::string& topic) {
     spdlog::info("RouterClient::subscribe('{}') connected={}", topic, connected_);
 
-    if (!connected_) {
+    // Always remember topics for re-registration on reconnect.
+    // Duplicates are harmless — the Go router deduplicates on service Register.
+    if (std::find(pending_topics_.begin(), pending_topics_.end(), topic) == pending_topics_.end())
         pending_topics_.push_back(topic);
+
+    if (!connected_) {
         spdlog::info("RouterClient: deferred subscribe to '{}'", topic);
         return;
     }

@@ -139,18 +139,34 @@ int main(int argc, char* argv[]) {
     spdlog::info("Gateway running — worker thread handles io_uring");
 
     // ── Main event loop ───────────────────────────────────────────────────
+    static auto lastHb = std::chrono::steady_clock::now();
+    static auto lastRouterCheck = std::chrono::steady_clock::now();
+
     while (g_running) {
         if (metrics.poll()) {
             metrics.printMetrics("Gateway Service (gatewayd)",
                 std::string("Client Connected: ") + (gateway.has_client() ? "yes" : "no"));
         }
+
+        auto now = std::chrono::steady_clock::now();
         
         // ── Heartbeat timer ───────────────────────────────────────────────
-        static auto lastHb = std::chrono::steady_clock::now();
-        auto now = std::chrono::steady_clock::now();
         if (now - lastHb >= std::chrono::seconds(20)) {
             lastHb = now;
             gateway.sendHeartbeat();
+        }
+
+        // ── Router reconnect check ────────────────────────────────────────
+        // If the RouterClient dropped (no auto-reconnect), re-establish
+        // connection and re-register with stored topic subscriptions.
+        if (!gateway.is_router_connected() && now - lastRouterCheck >= std::chrono::seconds(3)) {
+            lastRouterCheck = now;
+            spdlog::warn("Gateway: router disconnected — attempting reconnect");
+            if (gateway.connect_router()) {
+                spdlog::info("Gateway: reconnected to router");
+            } else {
+                spdlog::error("Gateway: router reconnect failed");
+            }
         }
         
         std::this_thread::sleep_for(std::chrono::seconds(1));

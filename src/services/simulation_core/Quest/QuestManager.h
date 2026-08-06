@@ -12,6 +12,11 @@
 
 namespace simcore {
 
+// Player inventory slot (see Storage/PlayerInventoryStore.h). Forward-declared
+// so the header stays dependency-light; QuestManager.cpp includes the full
+// definition.
+struct PersistSlot;
+
 class QuestManager {
 public:
   using PublishCallback = std::function<void(const std::string &topic,
@@ -35,6 +40,12 @@ public:
   // Detection handler for DetectionType::SIDE_CONFIGURED. `machineId` is the
   // packed block id of the machine whose face was cycled (0 for hatches).
   void checkSideConfigured(uint64_t playerId, uint16_t machineId);
+  // Detection handler for DetectionType::INVENTORY. `slots` is a snapshot of
+  // the player's current inventory; each INVENTORY-type quest whose
+  // detectTarget item is held in quantity >= targetCount (targetCount 0 →
+  // ≥1) completes when prerequisites are met. Triggered when the player opens
+  // the quest book.
+  void checkInventory(uint64_t playerId, const std::vector<PersistSlot> &slots);
   void loadProgress(uint64_t playerId, const std::vector<uint8_t> &fbData);
 
   // Server-authoritative manual completion (client "Complete" button).

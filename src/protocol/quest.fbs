@@ -55,6 +55,16 @@ table QuestExchangeRequest {
   quest_id:uint32;
 }
 
+// Client → server: the player opened the quest book. Triggers a server-side
+// inventory check against INVENTORY-type quest objectives
+// (DetectionType::INVENTORY): each such quest whose detectTarget item is held
+// in quantity >= targetCount completes when prerequisites are met. No
+// response — completion notifications flow back via quest.completed /
+// quest.progress.updated / quest.unlocked.
+table QuestBookOpen {
+  player_id:uint64;
+}
+
 // Server → client: result of an exchange request. On success the cooldown is
 // (re)started; cooldown_remaining_secs carries the active cooldown in both
 // success and cooldown_active cases.

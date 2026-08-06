@@ -4,6 +4,7 @@
 #include "quest_lib/QuestData.h"
 #include "quest_lib/QuestGraph.h"
 #include "quest_generated.h"
+#include <common/ItemId.h>
 #include <imgui.h>
 #include <spdlog/spdlog.h>
 #include <string>
@@ -51,6 +52,9 @@ void QuestBookWindow::loadQuestData() {
         e.costCount = qdRef.costCount;
         e.cooldownSecs = qdRef.cooldownSecs;
         e.isExchange = (qdRef.detectType == quest::DetectionType::EXCHANGE);
+        e.isInventory = (qdRef.detectType == quest::DetectionType::INVENTORY);
+        e.targetItemId = e.isInventory ? ItemId::pack(qdRef.detectTarget) : 0;
+        e.targetCount = qdRef.targetCount;
         e.status = 0;
         e.progress = 0;
         quests_.push_back(e);
@@ -193,6 +197,20 @@ void QuestBookWindow::renderQuestDetail(const InventoryState* playerInv) {
         ImGui::Text("Reward: item %u x %u", it->rewardItemId, it->rewardCount);
     }
 
+    // INVENTORY objective: "have N of item" — checked server-side when the
+    // quest book opens. The count shown is the player's current held quantity.
+    if (it->isInventory) {
+        ImGui::Dummy(ImVec2(0, 4));
+        int have = countItem(playerInv, it->targetItemId);
+        uint16_t need = it->targetCount > 0 ? it->targetCount : 1;
+        bool met = have >= static_cast<int>(need);
+        ImGui::Text("Objective: hold %u of item %u", need, it->targetItemId);
+        ImGui::PushStyleColor(ImGuiCol_Text,
+            met ? IM_COL32(50, 200, 50, 255) : IM_COL32(255, 200, 50, 255));
+        ImGui::Text("Have: %d / %u", have, need);
+        ImGui::PopStyleColor();
+    }
+
     if (it->isExchange) {
         ImGui::Dummy(ImVec2(0, 4));
         if (it->costItemId > 0) {
@@ -236,6 +254,17 @@ void QuestBookWindow::renderQuestDetail(const InventoryState* playerInv) {
             ImGui::Dummy(ImVec2(0, 4));
             ImGui::TextWrapped("%s", exchangeMessage_.c_str());
         }
+    }
+
+    // Inventory objective: shows how many of the target item the player is
+    // holding vs how many are required. Completion is server-authoritative —
+    // the check runs when the quest book is opened (QuestManager::checkInventory).
+    if (it->isInventory) {
+        int have = playerInv ? countItem(playerInv, it->targetItemId) : 0;
+        uint16_t need = it->targetCount > 0 ? it->targetCount : 1;
+        ImGui::Dummy(ImVec2(0, 4));
+        ImGui::Text("Objective: have %d / %u of item %u", have, need,
+                    it->targetItemId);
     }
 
     // Manual completion (server-authoritative): shown only for AVAILABLE quests.

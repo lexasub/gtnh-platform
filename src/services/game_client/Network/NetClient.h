@@ -57,6 +57,7 @@ inline constexpr uint8_t kQuestExchangeCooldown = 29;
 inline constexpr uint8_t kGameModeChange = 30;
 inline constexpr uint8_t kStartScenarioReq = 31;
 inline constexpr uint8_t kStartScenarioResp = 32;
+inline constexpr uint8_t kQuestBookOpen = 33;
 } // namespace GatewayMsg
 
 class NetClient : public std::enable_shared_from_this<NetClient> {
@@ -179,6 +180,9 @@ public:
   void SendQuestExchange(uint64_t player_id, uint32_t quest_id);
   // Queries the current exchange cooldown (seconds remaining) for a quest.
   void SendQuestExchangeCooldownGet(uint64_t player_id, uint32_t quest_id);
+  // Notifies the server the player opened the quest book → triggers the
+  // server-side inventory check against INVENTORY-type quest objectives.
+  void SendQuestBookOpen(uint64_t player_id);
   void SendGameModeChange(uint64_t player_id, uint8_t new_mode);
   void SendStartScenarioReq(uint64_t player_id, uint8_t scenario_index);
 

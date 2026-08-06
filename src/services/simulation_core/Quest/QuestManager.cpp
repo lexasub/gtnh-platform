@@ -1,5 +1,6 @@
 #include "QuestManager.h"
 #include "quest_generated.h"
+#include "Storage/PlayerInventoryStore.h"
 #include <recipe_manager_lib/ItemRegistry.h>
 #include <spdlog/spdlog.h>
 #include <algorithm>
@@ -404,6 +405,62 @@ void QuestManager::checkSideConfigured(uint64_t playerId, uint16_t machineId) {
     } catch (const std::exception& e) {
         spdlog::error("[QuestManager] Exception in checkSideConfigured for player {}: {}",
                      playerId, e.what());
+    }
+}
+
+void QuestManager::checkInventory(uint64_t playerId,
+                                  const std::vector<PersistSlot>& slots) {
+    if (!questData_ || !questGraph_) {
+        spdlog::error("[QuestManager] checkInventory: questData_/questGraph_ null for player {}",
+                     playerId);
+        return;
+    }
+
+    // Aggregate held quantity per hierarchical item id. detect_target is a
+    // hierarchical id from items.csv (same convention as craft/block/tool
+    // detection); multiple packed variants of one item sum together.
+    std::unordered_map<std::string, uint32_t> held;
+    for (const auto& s : slots) {
+        if (s.item_id == 0 || s.count == 0) continue;
+        std::string hier =
+            RecipeManager::ItemRegistry::instance().idToHierarchical(s.item_id);
+        if (!hier.empty()) held[hier] += s.count;
+    }
+
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        auto& playerProgress = progress_[playerId];
+
+        for (const auto& questDef : questData_->AllQuests()) {
+            if (questDef.detectType != quest::DetectionType::INVENTORY) continue;
+
+            uint32_t have = 0;
+            auto it = held.find(questDef.detectTarget);
+            if (it != held.end()) have = it->second;
+            uint32_t need = questDef.targetCount > 0 ? questDef.targetCount : 1;
+            if (have < need) {
+                spdlog::debug("[QuestManager] Inventory quest {} not met for player {}: "
+                              "have {} of {} (need {})",
+                              questDef.id, playerId, have, questDef.detectTarget, need);
+                continue;
+            }
+
+            if (!questGraph_->CanComplete(questDef.id, playerProgress)) {
+                spdlog::debug("[QuestManager] Inventory quest {} prerequisites not met for player {}",
+                              questDef.id, playerId);
+                continue;
+            }
+
+            if (completeQuestInternal(playerId, questDef.id)) {
+                spdlog::info("[QuestManager] Quest {} COMPLETED for player {} "
+                             "(has {} x{} of {})",
+                             questDef.id, playerId, have, need, questDef.detectTarget);
+            }
+        }
+    } catch (const std::exception& e) {
+        spdlog::error("[QuestManager] Exception in checkInventory for player {}: {}",
+                      playerId, e.what());
     }
 }
 

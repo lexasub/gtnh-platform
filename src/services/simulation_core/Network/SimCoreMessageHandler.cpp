@@ -266,6 +266,21 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                     questManager->completeQuest(req->player_id(), req->quest_id());
                 }
 
+            } else if (topic == "quest.book.open") {
+                // Player opened the quest book → check INVENTORY-type quest
+                // objectives against the authoritative player inventory.
+                flatbuffers::Verifier v(data.data(), data.size());
+                if (!v.VerifyBuffer<Protocol::QuestBookOpen>(nullptr)) {
+                    spdlog::warn("[Quest] invalid QuestBookOpen");
+                    return;
+                }
+                auto* req = flatbuffers::GetRoot<Protocol::QuestBookOpen>(data.data());
+                if (!req || !questManager || !inventoryStore) return;
+                uint64_t pid = req->player_id();
+                auto slotsArr = inventoryStore->getSlots(pid);
+                std::vector<simcore::PersistSlot> slots(slotsArr.begin(), slotsArr.end());
+                questManager->checkInventory(pid, slots);
+
             } else if (topic == "player.gamemode.change") {
                 flatbuffers::Verifier v(data.data(), data.size());
                 if (!v.VerifyBuffer<Protocol::GameModeChange>(nullptr)) {

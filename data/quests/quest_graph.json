@@ -39,6 +39,8 @@
     { "id": 38, "prereqs": [],                     "position": { "x": 3,   "y": 1 } },
     { "id": 39, "prereqs": [6],                    "position": { "x": 3,   "y": 3 } },
     { "id": 40, "prereqs": [18],                   "position": { "x": -1,  "y": 6 } },
-    { "id": 41, "prereqs": [22],                   "position": { "x": 3,   "y": 7 } }
+    { "id": 41, "prereqs": [22],                   "position": { "x": 3,   "y": 7 } },
+    { "id": 42, "prereqs": [7],                    "position": { "x": 1,   "y": 5 } },
+    { "id": 43, "prereqs": [18],                   "position": { "x": -3,  "y": 7 } }
   ]
 }

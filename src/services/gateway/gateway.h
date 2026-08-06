@@ -62,6 +62,7 @@ inline constexpr uint8_t kQuestExchangeCooldown = 29;
 inline constexpr uint8_t kGameModeChange = 30;
 inline constexpr uint8_t kStartScenarioReq = 31;
 inline constexpr uint8_t kStartScenarioResp = 32;
+inline constexpr uint8_t kQuestBookOpen = 33;
 } // namespace GatewayMsg
 
 // ---------------------------------------------------------------------------
@@ -117,6 +118,8 @@ public:
 
   void shutdown();
   void sendHeartbeat();
+  bool is_router_connected() const { return router_.is_connected(); }
+  bool connect_router();                                           // re-registers with stored topics
 
   std::function<void(const uint8_t *data, size_t len)> on_client_message;
   std::function<void(const std::string &topic, const uint8_t *data, size_t len)>
@@ -146,6 +149,10 @@ private:
 
   // Client state for inventory chain
   mutable std::mutex client_state_mutex_;
+
+  // Router reconnect state
+  std::string router_host_;
+  uint16_t router_port_ = 0;
 
   // Session generation bumped on each accept().  Captured in on_closed
   // so stale callbacks from old sessions don't corrupt the new session's

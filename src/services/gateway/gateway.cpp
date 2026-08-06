@@ -167,11 +167,26 @@ bool IoUringGateway::listen(uint16_t ctrl_port, uint16_t bulk_port) {
 // =========================================================================
 
 bool IoUringGateway::connect_router(const std::string& host, uint16_t port) {
+    router_host_ = host;
+    router_port_ = port;
     router_.on_publish = [this](const std::string& topic,
                                  std::shared_ptr<std::vector<uint8_t>> data) {
         on_router_publish(topic, std::move(data));
     };
     return router_.connect(host.c_str(), port, "gateway");
+}
+
+bool IoUringGateway::connect_router() {
+    if (router_host_.empty()) {
+        spdlog::error("Gateway: connect_router() called before initial connect");
+        return false;
+    }
+    spdlog::info("Gateway: reconnecting to router {}:{}", router_host_, router_port_);
+    router_.on_publish = [this](const std::string& topic,
+                                 std::shared_ptr<std::vector<uint8_t>> data) {
+        on_router_publish(topic, std::move(data));
+    };
+    return router_.connect(router_host_.c_str(), router_port_, "gateway");
 }
 
 // =========================================================================
@@ -513,6 +528,12 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
         flatbuffers::Verifier v(data, len);
         if (!v.VerifyBuffer<Protocol::QuestCompleteRequest>(nullptr)) { spdlog::error("Gateway: invalid QuestCompleteRequest on ctrl"); return; }
         publish("quest.complete.request", data, len);
+        break;
+    }
+    case GatewayMsg::kQuestBookOpen: {
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::QuestBookOpen>(nullptr)) { spdlog::error("Gateway: invalid QuestBookOpen on ctrl"); return; }
+        publish("quest.book.open", data, len);
         break;
     }
     case GatewayMsg::kQuestExchangeRequest: {

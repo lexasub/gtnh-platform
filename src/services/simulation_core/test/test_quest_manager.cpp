@@ -6,6 +6,7 @@
 #include "quest_lib/QuestData.h"
 #include "quest_lib/QuestGraph.h"
 #include "quest_generated.h"
+#include "Storage/PlayerInventoryStore.h"
 #include <recipe_manager_lib/ItemRegistry.h>
 #include <common/ItemId.h>
 #include <flatbuffers/flatbuffers.h>
@@ -229,7 +230,8 @@ static void test_QuestManager_completeQuest_unlocks_dependents() {
   QuestFixture fx(player);
 
   CHECK(fx.mgr.completeQuest(player, 2), "completeQuest(2) accepted");
-  CHECK_EQ(countTopic(fx.pub, "quest.unlocked"), 1, "quest.unlocked published");
+  CHECK_EQ(countTopic(fx.pub, "quest.unlocked"), 2,
+           "quest.unlocked published (auto + completion cascade)");
   CHECK_EQ(lastAdvertisedStatus(fx.pub, 3),
            static_cast<int>(quest::QuestStatus::AVAILABLE),
            "dependent quest 3 advertised AVAILABLE after prereq 2 completed");
@@ -315,8 +317,8 @@ static void test_QuestManager_detection_one_step_craft() {
            "quest.completed published once");
 
   // Completing quest 2 cascades unlocks: quest 3 (prereq 2) → AVAILABLE.
-  CHECK_EQ(countTopic(pub, "quest.unlocked"), 1,
-           "quest.unlocked published after detection completion");
+  CHECK_EQ(countTopic(pub, "quest.unlocked"), 2,
+           "quest.unlocked published (auto + detection cascade)");
   CHECK_EQ(lastAdvertisedStatus(pub, 3),
            static_cast<int>(quest::QuestStatus::AVAILABLE),
            "dependent quest 3 advertised AVAILABLE after detection");
@@ -379,6 +381,54 @@ static void test_QuestManager_detection_side_configured() {
   PASS();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INVENTORY detection (quest book open): checkInventory completes quest 42
+// (copper ore 10:3, prereq 7, target_count 8) only when the player holds the
+// target quantity. Below-target and unmet-prereq cases are no-ops. Multiple
+// slots holding the item aggregate.
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestManager_detection_inventory() {
+  const uint64_t player = 51;
+  quest::QuestData qd;
+  quest::QuestGraph graph;
+  RecordingPublisher pub;
+  simcore::QuestManager mgr(&qd, &graph, pub.callback());
+  buildManager(qd, graph);
+
+  // Quest 7 (Bronze Age, prereq of 42) COMPLETED; quest 42 stays LOCKED.
+  seedProgress(mgr, player,
+      {{7, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+
+  // Below target: 5 copper ore < 8 required → no completion.
+  std::vector<simcore::PersistSlot> below;
+  below.push_back({ItemId::pack("10:3"), 5, 0});
+  mgr.checkInventory(player, below);
+  CHECK_EQ(countTopic(pub, "quest.completed"), 0,
+           "below-target inventory does not complete quest 42");
+
+  // At target: slots aggregate (3 + 5 = 8) → quest 42 completes.
+  std::vector<simcore::PersistSlot> met;
+  met.push_back({ItemId::pack("10:3"), 3, 0});
+  met.push_back({ItemId::pack("10:3"), 5, 0});
+  mgr.checkInventory(player, met);
+  CHECK_EQ(lastAdvertisedStatus(pub, 42),
+           static_cast<int>(quest::QuestStatus::COMPLETED),
+           "INVENTORY quest 42 completes when target quantity held");
+  CHECK_EQ(countTopic(pub, "quest.completed"), 1,
+           "quest.completed published once");
+
+  // Prereq gate: quest 43 (iron ore, prereq 18 not completed) must not
+  // complete even with enough iron ore held.
+  std::vector<simcore::PersistSlot> iron;
+  iron.push_back({ItemId::pack("10:0"), 32, 0});
+  mgr.checkInventory(player, iron);
+  CHECK_EQ(lastAdvertisedStatus(pub, 43), -1,
+           "INVENTORY quest 43 not completed when prereq unmet");
+  CHECK_EQ(countTopic(pub, "quest.completed"), 1,
+           "no extra quest.completed for unmet-prereq inventory quest");
+  PASS();
+}
+
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
 void test_quest_manager() {
@@ -391,4 +441,5 @@ void test_quest_manager() {
   TEST(QuestManager_detection_one_step_craft);
   TEST(QuestManager_detection_tool_charged);
   TEST(QuestManager_detection_side_configured);
+  TEST(QuestManager_detection_inventory);
 }

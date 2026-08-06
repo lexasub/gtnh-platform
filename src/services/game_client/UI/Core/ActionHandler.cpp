@@ -88,7 +88,13 @@ void ActionHandler::DoToggleCreativeMenu() {
 
 void ActionHandler::DoToggleQuestBook() {
     if (auto* qb = uiMgr_->FindByType<QuestBookWindow>()) {
-        qb->SetOpen(!qb->IsOpen());
+        bool wasOpen = qb->IsOpen();
+        qb->SetOpen(!wasOpen);
+        // On open, ask the server to check INVENTORY-type quest objectives
+        // against the player's inventory (DetectionType::INVENTORY).
+        if (!wasOpen && netClient_ && playerInv_) {
+            netClient_->SendQuestBookOpen(playerInv_->player_id);
+        }
         spdlog::debug("[Quest] Toggle quest book window: open={}", qb->IsOpen());
     }
 }

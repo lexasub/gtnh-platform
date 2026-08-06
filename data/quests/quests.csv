@@ -1,4 +1,4 @@
-id,title,description,era,section,prereqs,detect_type,detect_target,reward_item,reward_count,cost_item,cost_count,cooldown
+id,title,description,era,section,prereqs,detect_type,detect_target,reward_item,reward_count,cost_item,cost_count,cooldown,target_count
 1,First Steps,Craft a wooden pickaxe and mine some stone. Your journey begins here.,vagrant,getting_started,,craft,0:11110:3,7,8,,,
 2,Gathering Resources,Mine iron ore and smelt it into iron ingots. Iron is the backbone of all technology.,vagrant,getting_started,1,craft,0:110:1,4,4,,,
 3,Better Tools,Craft an iron pickaxe. With iron tools you can mine faster and reach new depths.,vagrant,getting_started,2,craft,0:11110:5,4,2,,,
@@ -39,3 +39,5 @@ id,title,description,era,section,prereqs,detect_type,detect_target,reward_item,r
 39,Place a Chest,Place a chest to start storing materials.,vagrant,basic_crafting,6,block_placed,0:10:11:0,37,1,,,
 40,Charge Your Drill,Charge the ULV drill to full power. A charged drill mines without interruption.,expert,electric_tools,18,tool_charged,1111:00:0,60,1,,,
 41,Side Configuration,Use the wrench to configure heat furnace sides for automation.,expert,automation,22,side_configured,1110:00:0,61,1,,,
+42,Ore Collector,Amass copper ore for bronze and alloy smelting.,apprentice,steam_power,7,inventory,10:3,0:110:1,2,,,,8
+43,Iron Reserve,Stockpile iron ore to fuel your tool and machine production.,expert,electric_tools,18,inventory,10:0,0:110:1,4,,,,16

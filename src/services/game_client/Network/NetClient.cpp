@@ -111,6 +111,7 @@ bool NetClient::start_ctrl_connection(int fd) {
     conn->on_closed = [this]() {
         connected_ctrl_ = false;
         spdlog::info("NetClient: ctrl connection closed");
+        request_reconnect();
     };
     if (!conn->start_reading()) {
         spdlog::error("NetClient: failed to start ctrl read loop");
@@ -208,11 +209,21 @@ void NetClient::request_reconnect() {
 }
 
 void NetClient::do_reconnect() {
-    spdlog::info("NetClient: bulk reconnecting...");
+    spdlog::info("NetClient: reconnecting...");
 
-    // Destroy old connection (joins its poll thread)
+    // Destroy old connections (joins their poll threads)
+    ctrl_conn_.reset();
     bulk_conn_.reset();
+    connected_ctrl_ = false;
     connected_bulk_ = false;
+    {
+        std::lock_guard<std::mutex> lock(ctrl_mutex_);
+        ctrl_queue_.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lock(bulk_mutex_);
+        bulk_queue_.clear();
+    }
 
     // Wait 100ms so the gateway's poll loop (50ms timeout) detects EOF on
     // the old connection. Otherwise the gateway rejects the new one because
@@ -223,23 +234,30 @@ void NetClient::do_reconnect() {
         int backoff = 1 << attempt;
         if (backoff > 30) backoff = 30;
 
-        int fd = tcp_connect(host_.c_str(), bulk_port_);
-        if (fd < 0) {
-            spdlog::error("NetClient: bulk reconnect attempt {}/{} failed (backoff={}s)",
+        // Reconnect ctrl
+        int ctrl_fd = tcp_connect(host_.c_str(), ctrl_port_);
+        if (ctrl_fd < 0 || !start_ctrl_connection(ctrl_fd)) {
+            if (ctrl_fd >= 0) ::close(ctrl_fd);
+            spdlog::error("NetClient: ctrl reconnect attempt {}/{} failed (backoff={}s)",
                           attempt + 1, max_reconnect_attempts_, backoff);
             std::this_thread::sleep_for(std::chrono::seconds(backoff));
             continue;
         }
 
-        if (!start_bulk_connection(fd)) {
-            ::close(fd);
-            spdlog::error("NetClient: bulk reconnect init failed on attempt {}/{}",
-                          attempt + 1, max_reconnect_attempts_);
+        // Reconnect bulk
+        int bulk_fd = tcp_connect(host_.c_str(), bulk_port_);
+        if (bulk_fd < 0 || !start_bulk_connection(bulk_fd)) {
+            if (bulk_fd >= 0) ::close(bulk_fd);
+            spdlog::error("NetClient: bulk reconnect attempt {}/{} failed (backoff={}s)",
+                          attempt + 1, max_reconnect_attempts_, backoff);
+            // Don't leave ctrl half-connected — tear it down
+            ctrl_conn_.reset();
+            connected_ctrl_ = false;
             std::this_thread::sleep_for(std::chrono::seconds(backoff));
             continue;
         }
 
-        spdlog::info("NetClient: bulk reconnected successfully on attempt {}/{}",
+        spdlog::info("NetClient: reconnected successfully on attempt {}/{}",
                      attempt + 1, max_reconnect_attempts_);
         reconnect_attempts_ = attempt + 1;
         reconnecting_ = false;
@@ -248,7 +266,8 @@ void NetClient::do_reconnect() {
         return;
     }
 
-    spdlog::warn("NetClient: bulk reconnect failed after {} attempts", max_reconnect_attempts_);
+    spdlog::warn("NetClient: reconnect failed after {} attempts", max_reconnect_attempts_);
+    connected_ctrl_ = false;
     connected_bulk_ = false;
     reconnecting_ = false;
 }
@@ -702,6 +721,16 @@ void NetClient::SendQuestExchangeCooldownGet(uint64_t player_id, uint32_t quest_
     EnqueueWrite(GatewayMsg::kQuestExchangeCooldownGet, builder.GetBufferPointer(),
                  builder.GetSize());
     spdlog::debug("[Quest] SendQuestExchangeCooldownGet: player={} quest={}", player_id, quest_id);
+}
+
+void NetClient::SendQuestBookOpen(uint64_t player_id) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(32);
+    auto req = Protocol::CreateQuestBookOpen(builder, player_id);
+    builder.Finish(req);
+    EnqueueWrite(GatewayMsg::kQuestBookOpen, builder.GetBufferPointer(),
+                 builder.GetSize());
+    spdlog::debug("[Quest] SendQuestBookOpen: player={}", player_id);
 }
 
 void NetClient::SendSetMachineSlot(uint64_t player_id, const BlockPos& pos,

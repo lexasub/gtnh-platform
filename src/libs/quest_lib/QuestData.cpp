@@ -76,6 +76,12 @@ bool QuestData::LoadCSV(const std::string& csvPath) {
         std::getline(ss, cell, ',');
         qd.cooldownSecs = parseUint(cell, uint16_t{0});
 
+        // target_count is the last column; existing rows have no 14th field, so
+        // clear cell first to avoid a stale value when getline hits EOF.
+        cell.clear();
+        std::getline(ss, cell, ',');
+        qd.targetCount = parseUint(cell, uint16_t{0});
+
         idIndex_[qd.id] = quests_.size();
         quests_.push_back(std::move(qd));
     }

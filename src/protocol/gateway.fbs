@@ -63,6 +63,7 @@ union GatewayPayload {
   QuestExchangeCooldown,     // 26 — gateway→client (cooldown status)
   StartScenarioReq,          // 27 — client→gateway (start game scenario)
   StartScenarioResp,         // 28 — gateway→client (scenario result)
+  QuestBookOpen,             // 29 — client→gateway (quest book opened)
 }
 
 table GatewayMessage {
