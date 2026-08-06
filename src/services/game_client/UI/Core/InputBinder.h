@@ -71,6 +71,13 @@ public:
   // ── Per-frame ────────────────────────────────────────────────────────
   void Process(const InputState &cur, const std::array<bool, 512> &prev);
 
+  // ── Text-input capture ───────────────────────────────────────────────
+  // When true, only "close_ui" (ESC) and "toggle_console" (F4) bindings
+  // dispatch; all other global hotkeys (E/Tab/U/R/hotbar...) are
+  // suppressed so typing in a text input doesn't trigger game actions.
+  // Set per-frame from UIManager::ProcessInput (ImGui WantTextInput).
+  void SetTextCapture(bool on) { textCapture_ = on; }
+
   // ── Edge detection ───────────────────────────────────────────────────
   static bool WasPressed(const std::array<bool, 512> &prev,
                          const InputState &cur, int key);
@@ -94,6 +101,7 @@ private:
   std::vector<size_t> active_; // indices into contexts_, top = last
   ScrollFn onScroll_;
   std::string configPath_;
+  bool textCapture_ = false;
 
   // Held bindings: action → key (continuous state, not edge-triggered)
   std::unordered_map<std::string, int> heldBindings_;

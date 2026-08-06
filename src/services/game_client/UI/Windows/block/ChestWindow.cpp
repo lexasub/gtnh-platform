@@ -109,6 +109,6 @@ void ChestWindow::Render(InventoryState* playerInv) {
 
 bool ChestWindow::OnKeyEvent(int /*key*/, int /*action*/, int /*mods*/) {
     if (!open_) return false;
-    // ESCAPE close is handled by InputBinder → close_ui → UIManager::CloseAll
+    // ESCAPE close is handled by InputBinder → close_ui → UIManager::TopWindow
     return false;
 }

@@ -83,6 +83,11 @@ public:
   void CloseAll();
   bool AnyOpen() const;
 
+  // Top-most open window in draw order (last registered = rendered last =
+  // visually on top). PlayerInventory is registered first, so it is the
+  // bottom-most. Returns nullptr when nothing is open.
+  IUIWindow *TopWindow() const;
+
   // Opens window and closes all others.
   // If window is already open, closes it (toggle).
   void OpenExclusive(IUIWindow *window);

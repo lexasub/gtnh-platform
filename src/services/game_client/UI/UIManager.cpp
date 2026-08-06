@@ -41,6 +41,11 @@ void UIManager::RenderPanels() {
 }
 
 void UIManager::ProcessInput(const InputState& input) {
+    // While ImGui owns an active text input (console, NEI/creative/quest
+    // search), suppress global hotkeys so typing doesn't trigger game
+    // actions (E=inventory, Tab=creative, U=item list, 1-9=hotbar, ...).
+    // ESC (close_ui) and F4 (toggle_console) stay live.
+    binder_.SetTextCapture(ImGui::GetIO().WantTextInput);
     binder_.Process(input, prevKeys_);
     std::memcpy(prevKeys_.data(), input.keys.data(), sizeof(prevKeys_));
 }
@@ -91,6 +96,13 @@ bool UIManager::AnyOpen() const {
         if (w->IsOpen()) return true;
     }
     return playerInv_ && playerInv_->open;
+}
+
+IUIWindow* UIManager::TopWindow() const {
+    for (auto it = windows_.rbegin(); it != windows_.rend(); ++it) {
+        if ((*it)->IsOpen()) return it->get();
+    }
+    return nullptr;
 }
 
 void UIManager::OpenExclusive(IUIWindow* window) {

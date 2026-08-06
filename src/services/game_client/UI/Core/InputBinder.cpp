@@ -40,6 +40,7 @@ void InputBinder::registerDefaults() {
     Bind(GLFW_KEY_ESCAPE,  "close_ui");
     Bind(GLFW_KEY_E,       "INVENTORY");
     Bind(GLFW_KEY_TAB,     "CREATIVE_MENU");
+    Bind(GLFW_KEY_F4,      "toggle_console");
     for (int i = 0; i < 9; ++i)
         Bind(GLFW_KEY_1 + i, "hotbar_" + std::to_string(i));
     Bind(GLFW_KEY_0, "hotbar_9");
@@ -140,6 +141,15 @@ bool InputBinder::WasPressed(const std::array<bool, 512>& prev,
     return cur.keys[key] && !prev[key];
 }
 
+namespace {
+// Actions that stay reachable while ImGui owns a text input (console,
+// NEI/creative/quest search). Everything else (E/Tab/U/R/hotbar...) must
+// not fire while the user is typing.
+bool AllowedInTextCapture(const std::string& action) {
+    return action == "close_ui" || action == "toggle_console";
+}
+}  // namespace
+
 void InputBinder::Process(const InputState& cur,
                            const std::array<bool, 512>& prev) {
     // Keyboard keys
@@ -149,6 +159,7 @@ void InputBinder::Process(const InputState& cur,
                                            &ctx - contexts_.data()) != active_.end();
         if (!ctxActive) continue;
         for (const auto&[key, mods, action] : ctx.bindings) {
+            if (textCapture_ && !AllowedInTextCapture(action)) continue;
             if (key >= 0 && WasPressed(prev, cur, key)) {
                 // Check mods
                 bool ctrl = cur.keys[GLFW_KEY_LEFT_CONTROL] || cur.keys[GLFW_KEY_RIGHT_CONTROL];

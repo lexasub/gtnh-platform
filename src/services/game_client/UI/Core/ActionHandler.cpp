@@ -5,6 +5,7 @@
 #include "Windows/player/CreativeMenu.h"
 #include "../Windows/player/RecipeInspectWindow.h"
 #include "../Windows/player/QuestBookWindow.h"
+#include "../Windows/player/ConsoleWindow.h"
 #include "Panels/NeiPanel.h"
 #include "Network/NetClient.h"
 #include "Common/Inventory.h"
@@ -30,10 +31,11 @@ void ActionHandler::Init(ActionRegistry* reg, UIManager* mgr, NetClient* nc,
     // Register all built-in actions
     reg->Register("toggle_item_list",  [this]() { DoToggleItemList(); });//TODO give object func instead lambda
     reg->Register("show_recipe",       [this]() { DoShowRecipeForHovered(); });
-    reg->Register("close_ui",          [this]() { DoCloseAll(); });
+    reg->Register("close_ui",          [this]() { DoCloseTop(); });
     reg->Register("toggle_inv",        [this]() { DoToggleInventory(); });
     reg->Register("toggle_creative",   [this]() { DoToggleCreativeMenu(); });
     reg->Register("toggle_quest_book", [this]() { DoToggleQuestBook(); });
+    reg->Register("toggle_console",    [this]() { DoToggleConsole(); });
     reg->Register("INVENTORY",         [this]() { DoToggleInventory(); });
     reg->Register("CREATIVE_MENU",     [this]() { DoToggleCreativeMenu(); });
     for (int i = 0; i < 10; ++i) {
@@ -59,8 +61,10 @@ void ActionHandler::DoShowRecipeForHovered() {
     }
 }
 
-void ActionHandler::DoCloseAll() {
-    uiMgr_->CloseAll();
+void ActionHandler::DoCloseTop() {
+    if (auto* top = uiMgr_->TopWindow()) {
+        top->SetOpen(false);
+    }
 }
 
 void ActionHandler::DoToggleInventory() {
@@ -70,6 +74,13 @@ void ActionHandler::DoToggleInventory() {
 }
 
 void ActionHandler::DoToggleCreativeMenu() {
+    if (playerInv_ && playerInv_->gameMode != GameMode::CREATIVE) {
+        if (auto* menu = uiMgr_->FindByType<CreativeMenu>()) {
+            if (!menu->IsOpen()) return;
+            menu->SetOpen(false);
+        }
+        return;
+    }
     if (auto* menu = uiMgr_->FindByType<CreativeMenu>()) {
         menu->SetOpen(!menu->IsOpen());
     }
@@ -97,6 +108,12 @@ void ActionHandler::DoOpenRecipeInspect(uint16_t itemId) {
     if (auto* w = uiMgr_->FindByType<RecipeInspectWindow>()) {
         w->SetItem(itemId);
         w->SetOpen(!w->IsOpen());
+    }
+}
+
+void ActionHandler::DoToggleConsole() {
+    if (auto* cw = uiMgr_->FindByType<ConsoleWindow>()) {
+        cw->SetOpen(!cw->IsOpen());
     }
 }
 

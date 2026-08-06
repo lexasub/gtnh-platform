@@ -15,13 +15,14 @@ public:
   // Actions registered for keyboard/mouse binding
   void DoToggleItemList();
   void DoShowRecipeForHovered();
-  void DoCloseAll();
+  void DoCloseTop();
   void DoToggleInventory();
   void DoToggleCreativeMenu();
   void DoSelectHotbar(int slot);
   void DoScrollHotbar(float delta);
   void DoOpenRecipeInspect(uint16_t itemId);
   void DoToggleQuestBook();
+  void DoToggleConsole();
 
   // Direct call (from UI clicks, not keybindings)
   void SpawnItem(uint16_t itemId, uint8_t count, int16_t targetSlot = -1);
