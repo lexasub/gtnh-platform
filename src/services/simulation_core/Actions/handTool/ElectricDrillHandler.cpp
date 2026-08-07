@@ -1,7 +1,7 @@
 #include "ElectricDrillHandler.h"
-#include "MiningCalculator.h"
-#include "../ECS/components/ItemEnergyStorage.h"
-#include "../InventoryActionHandler.h"
+#include "../MiningCalculator.h"
+#include "../../ECS/components/ItemEnergyStorage.h"
+#include "../../InventoryActionHandler.h"
 #include "../../data/registry/ToolIds.h"
 #include <spdlog/spdlog.h>
 

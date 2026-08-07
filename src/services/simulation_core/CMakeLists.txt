@@ -88,11 +88,11 @@ add_library(simcored
 
         Actions/ActionDispatcher.cpp
         Actions/SetBlockCASHandler.cpp
-        Actions/WrenchHandler.cpp
-        Actions/ElectricDrillHandler.cpp
+        Actions/handTool/WrenchHandler.cpp
+        Actions/handTool/ElectricDrillHandler.cpp
         Actions/MachineSlotHandler.cpp
-        Actions/ToolActionHandler.cpp
-        Actions/WrenchActionHandler.cpp
+        Actions/handTool/ToolActionHandler.cpp
+        Actions/handTool/WrenchActionHandler.cpp
 
         World/ChunkEventHandler.cpp
         World/BlockTransforms.cpp

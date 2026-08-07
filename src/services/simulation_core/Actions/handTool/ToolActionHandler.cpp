@@ -1,10 +1,10 @@
 #include "ToolActionHandler.h"
-#include "../ECS/components/ItemEnergyStorage.h"
+#include "../../ECS/components/ItemEnergyStorage.h"
 #include "Quest/QuestManager.h"
 #include "ECS/SimulationEngine.h"
 #include "Storage/PlayerInventoryStore.h"
 #include "Network/clients/IoUringRouterClient.h"
-#include "MiningCalculator.h"
+#include "../MiningCalculator.h"
 #include "core_generated.h"
 #include <spdlog/spdlog.h>
 namespace simcore {

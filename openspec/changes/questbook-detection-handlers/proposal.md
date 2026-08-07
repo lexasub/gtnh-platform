@@ -15,7 +15,7 @@ QuestManager detects CRAFT and BLOCK_PLACED but has no handlers for TOOL_CHARGED
 - Affected code:
   - `src/services/simulation_core/Quest/QuestManager.{h,cpp}` — one-step detection refactor, `checkToolCharged()`/`checkSideConfigured()`, unlock cascade + publish on detection paths
   - `src/services/simulation_core/Actions/WrenchHandler.{h,cpp}` — add `machine_id` to `WrenchCycleResult`
-  - `src/services/simulation_core/Actions/WrenchActionHandler.cpp` — call `checkSideConfigured()` after `cycleFace()` succeeds
-  - `src/services/simulation_core/Actions/ToolActionHandler.cpp` — implement `CHARGE_ITEM`
+  - `../../../src/services/simulation_core/Actions/handTool/WrenchActionHandler.cpp` — call `checkSideConfigured()` after `cycleFace()` succeeds
+  - `../../../src/services/simulation_core/Actions/handTool/ToolActionHandler.cpp` — implement `CHARGE_ITEM`
   - `data/quests/quests.csv`, `data/quests/quest_graph.json` — two new quests
   - `src/libs/quest_lib/QuestGraph.{h,cpp}` — already exposes `CanComplete()`/`NewlyAvailable()`; no change expected

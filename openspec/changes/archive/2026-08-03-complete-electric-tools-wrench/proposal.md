@@ -34,7 +34,7 @@ Electric tools (drills, battery buffers) and wrench machine-side-config are most
 - Affected code:
   - `src/protocol/core.fbs` — add `itemId` to `ToolAction` table
   - `src/services/game_client/` — InteractionSystem (wrench-in-hand filter), texture subscription
-  - `src/services/simulation_core/Actions/WrenchHandler.cpp` — itemId param, permissions check
-  - `src/services/simulation_core/Actions/WrenchActionHandler.cpp` — cooldown
+  - `../../../../src/services/simulation_core/Actions/handTool/WrenchHandler.cpp` — itemId param, permissions check
+  - `../../../../src/services/simulation_core/Actions/handTool/WrenchActionHandler.cpp` — cooldown
   - `src/services/simulation_core/ECS/Systems/DrillSystem.cpp` — item energy check
   - `src/services/pipe_network/CableGraph.cpp` — BFS side_config filtering, config update subscription
