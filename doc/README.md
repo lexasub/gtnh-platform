@@ -8,7 +8,7 @@ design decisions, EPIC specifications, and operational notes.
 New to the project? Start here:
 
 1. **[ROADMAP.md](../ROADMAP.md)** — project status: what's done, what's WIP, what's planned. Per-service breakdown, protocol status, data flows. **This is the single source of truth.**
-2. **[C4 Diagrams](c4/README.md)** — visual architecture (Level 1–4): service topology, component internals, deployment, event flows. 55 PlantUML files.
+2. **[C4 Diagrams](c4/README.md)** — visual architecture (Level 1–4): service topology, component internals, deployment, event flows. 26 PlantUML files + 28 PNG renders.
 3. **[init_adr.md](init_adr.md)** — architecture decisions made at inception. Why services are separate, why LMDB, why EnTT, etc.
 
 ## Reference
@@ -32,14 +32,14 @@ All planning docs have been completed or deferred. See [archive/](archive/) for 
 
 ## Operational
 
-- [NEXT_STEPS.md](NEXT_STEPS.md) — active task tracking (P0/P1/P2)
+- [NEXT_STEPS.md](NEXT_STEPS.md) — historical task tracking (P0/P1/P2, last updated 2026-06-11; superseded by openspec/changes)
 - [war-stories.md](war-stories.md) — bugs and lessons learned
 - [performance_bug.md](performance_bug.md) — io_uring HOL blocking deep-dive
 - [optimization-audit-cpp26.md](optimization-audit-cpp26.md) — C++26 optimization opportunities
 
 ## Architecture Diagrams (C4)
 
-See [c4/README.md](c4/README.md) for full index of 55 PlantUML diagrams covering:
+See [c4/README.md](c4/README.md) for full index of 26 PlantUML diagrams (28 PNG renders) covering:
 
 | Level | Name | Coverage |
 |-------|------|----------|

@@ -19,11 +19,11 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 # GTNH Platform Knowledge Base
 
-**Generated**: 2026-06-07
+**Generated**: 2026-08-07
 
 ## OVERVIEW
 
-Distributed Minecraft-style platform with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + Asio TCP) connects 10 services via message router.
+Distributed Minecraft-style platform with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + TCP) connects 13 service directories (10 real services + spatial_index stub + storage_interfaces + validation) via MessageRouter.
 Linux-only project. No Windows/macOS support.
 
 ## STRUCTURE
@@ -32,18 +32,23 @@ Linux-only project. No Windows/macOS support.
 src/
 ├── src/
 │   ├── services/
-│   │   ├── gateway/           # TCP gateway, interest management
-│   │   ├── chunk_store/       # LMDB-backed block storage
-│   │   ├── world_generator/   # Chunk generation
-│   │   ├── simulation_core/   # ECS, multiblocks, 20 Hz tick
-│   │   ├── pipe_network/      # Energy/liquid flow graphs
-│   │   ├── spatial_index/     # R-tree/Octree, multiblock queries
-│   │   ├── meta_db/           # Player saves, inventories
+│   │   ├── message_router/    # Go pub/sub broker, service discovery
+│   │   ├── gateway/           # TCP gateway, io_uring, interest mgmt
+│   │   ├── chunk_store/       # LMDB-backed block storage, io_uring
+│   │   ├── world_generator/   # Terrain + ore/tree gen (library, no binary)
+│   │   ├── simulation_core/   # ECS, multiblocks L2/L3, quests, 20 Hz tick
+│   │   ├── pipe_network/      # Energy/fluid/item flow graphs
+│   │   ├── spatial_index/     # STUB — not built (R-tree/Octree planned)
 │   │   ├── entity_state_store/ # Entity state persistence, TCP RPC
-│   │   └── game_client/       # bgfx render, ImGui, input
-│   └── protocol/              # FlatBuffers schemas
-├── build/                     # CMake build directory
-└── data/                      # Recipes, item registry
+│   │   ├── meta_db/           # Player saves, quests, inventories (Go)
+│   │   ├── recipe_manager/    # Standalone recipe RPC service (:5555)
+│   │   ├── storage_interfaces/ # Header-only storage interfaces
+│   │   ├── validation/        # Item/block validation (not in default build)
+│   │   └── game_client/       # bgfx render, ImGui, input, physics
+│   └── protocol/              # FlatBuffers schemas (12 .fbs)
+├── src/libs/                  # libgtnh-net, quest_lib, recipe_manager_lib, ...
+├── cmake-build-debug/         # CMake build directory (Conan toolchain)
+├── data/                      # YAML recipes, item registry
 └── docs/                      # Service documentation
 ```
 
@@ -51,34 +56,41 @@ src/
 
 | Service | Subdir | Language |
 |---------|--------|----------|
+| MessageRouter | `src/services/message_router/` | Go |
 | Gateway | `src/services/gateway/` | C++ |
 | ChunkStore | `src/services/chunk_store/` | C++ |
-| WorldGenerator | `src/services/world_generator/` | C++ |
+| WorldGenerator | `src/services/world_generator/` | C++ (library) |
 | SimulationCore | `src/services/simulation_core/` | C++ |
 | PipeNetwork | `src/services/pipe_network/` | C++ |
-| SpatialIndex | `src/services/spatial_index/` | C++ |
-| MetaDB | `src/services/meta_db/` | Go |
+| SpatialIndex | `src/services/spatial_index/` | C++ (STUB, not built) |
 | EntityStateStore | `src/services/entity_state_store/` | C++ |
-| RecipeManager | `src/libs/recipe_manager_lib/` | C++ (shared lib) |
+| MetaDB | `src/services/meta_db/` | Go |
+| RecipeManager | `src/services/recipe_manager/` | C++ (RPC service, :5555) |
+| StorageInterfaces | `src/services/storage_interfaces/` | C++ (headers only) |
+| Validation | `src/services/validation/` | C++ (not in default build) |
 | GameClient | `src/services/game_client/` | C++ |
+
+Key libs: RecipeManagerLib `src/libs/recipe_manager_lib/`, libgtnh-net `src/libs/libgtnh-net/` (io_uring networking), quest_lib `src/libs/quest_lib/`, machine_registry `src/libs/machine_registry/`.
 
 ## WHERE TO LOOK
 
 | Task                      | Location                      | Notes                              |
 |---------------------------|-------------------------------|------------------------------------|
-| Binary protocol schema    | `src/protocol/`                       | FlatBuffers `.fbs` files           |
+| Binary protocol schema    | `src/protocol/`                       | 12 FlatBuffers `.fbs` files; wire protocol = C++ `GatewayMsg` constants (41, 1-based) — `GatewayPayload` union in gateway.fbs is stale |
 | Internal message routing  | `src/services/message_router/`       | Go channels, pub/sub topics        |
 | Client connections        | `src/services/gateway/`              | TCP accept, interest management    |
 | Block data storage        | `src/services/chunk_store/`          | LMDB, chunk serialization          |
 | Terrain generation        | `src/services/world_generator/`      | Noise functions, biomes            |
 | ECS, multiblocks, mobs    | `src/services/simulation_core/`      | EnTT, pattern matching             |
 | Energy/liquid networks    | `src/services/pipe_network/`         | Graph algorithms, flow solving     |
-| Spatial queries           | `src/services/spatial_index/`        | R-tree, multiblock lookup          |
+| Spatial queries           | `src/services/spatial_index/`        | STUB — not implemented, not built   |
 | Entity state persistence  | `src/services/entity_state_store/`   | LMDB-backed, TCP RPC port 5200     |
 | Player saves              | `src/services/meta_db/`              | SQLite, transactional saves        |
-| Crafting recipes          | `data/recipes/`                      | JSON files per machine type        |
-| Item registry             | `data/registry/`                     | items.csv + items.db               |
-| Recipe system             | `src/libs/recipe_manager_lib/`       | JSON recipes, ConditionEvaluator    |
+| Quest system              | `src/services/meta_db/` + `src/services/game_client/` | quest_lib data model, quest.fbs protocol, QuestBookWindow |
+| Quest system              | `src/services/meta_db/` + `src/services/game_client/` | quest_lib data model, quest.fbs protocol, QuestBookWindow |
+| Crafting recipes          | `data/recipes/`                      | YAML files per machine type (14 files) |
+| Item registry             | `data/registry/`                     | items.csv, items.db, machines.yaml, ores.json |
+| Recipe system             | `src/libs/recipe_manager_lib/` + `src/services/recipe_manager/` | YAML recipes, ConditionEvaluator (MachineState from ECS) |
 | Rendering, input, audio   | `src/services/game_client/`          | bgfx, GLFW, ImGui                  |
 
 ## CONVENTIONS
@@ -115,11 +127,13 @@ ninja -j5
 ./cmake-build-release/chunkd             # 2. World persistence (C++, :5001)
 ./cmake-build-release/entitystated       # 3. Entity state (C++, :5200)
 ./cmake-build-release/gatewayd           # 4. TCP gateway (C++, :7777 ctrl + :7778 bulk)
-./cmake-build-release/simcored           # 5. Simulation (C++, 20Hz tick)
-./cmake-build-release/meta-dbd           # 6. Player DB (Go, :5005 + :5006)
-./cmake-build-release/pipe_networkd      # 7. Energy/fluid transport (C++)
-./cmake-build-release/client             # 8. Game client (C++, bgfx)
+./cmake-build-debug/src/services/simulation_core/simcored_exec  # 5. Simulation (C++, 20Hz tick)
+./src/services/meta_db/metadbd           # 6. Player DB (Go, :5005 + :5006)
+./cmake-build-debug/src/services/pipe_network/pipenetworkd  # 7. Energy/fluid transport (C++)
+./cmake-build-debug/bin/gameclientd      # 8. Game client (C++, bgfx)
 ```
+
+**Alternative**: `./run.sh` — builds ninja in cmake-build-debug, rebuilds Go services, starts everything in order (with `--all` also pipenetworkd/spatialindexd/validationd; `--no-client` to skip the client).
 
 **If build fails**: Check `conan install` was run. See README.md for Conan setup.
 
@@ -207,17 +221,16 @@ Can run 2 instances (one per dimension) without interference.
 
 ## TODO
 
-- [ ] CraftResponse UI feedback in WorkbenchWindow
-- [ ] ConditionEvaluator with real MachineState (currently empty)
+- [ ] Pause menu / settings window in game client (missing)
+- [ ] Sound: miniaudio linked in CMake, no audio code yet
+- [ ] SpatialIndex: implement R-tree/Octree (currently 2-line stub, not built)
+- [ ] Dedicated Drill UI window (only tooltip so far)
+- [ ] Resolve GatewayMsg C++ constants vs FlatBuffers `GatewayPayload` union divergence
 - [ ] Server-authoritative grid state via TileEntityStore RPC
-- [ ] Inventory chain: SimulationCore → MetaDB → gateway → client
-- [ ] Drag-and-drop state machine in SlotGrid
-- [ ] macerator.json recipes
-- [ ] RecipeManager standalone RPC service (protocol defined, not deployed)
 
 ---
 
-**Generated**: 2026-07-14 | **Branch**: main
+**Generated**: 2026-08-07 | **Branch**: main
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:7510c1e2 -->
 ## Beads Issue Tracker

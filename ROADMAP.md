@@ -1,7 +1,7 @@
 # ROADMAP
 
 **GTNH Platform** — распределённый Minecraft-style движок. C++ performance core, Go sidecars.
-FlatBuffers + Asio TCP. MessageRouter (Go) — внутренний pub/sub.
+FlatBuffers + TCP. MessageRouter (Go) — внутренний pub/sub.
 
 ## Условные обозначения
 
@@ -20,50 +20,72 @@ FlatBuffers + Asio TCP. MessageRouter (Go) — внутренний pub/sub.
 
 | Компонент | Язык | Статус | Линк | Что делает |
 |-----------|------|--------|------|------------|
-| MessageRouter | Go | ✅ | `:4000` | Pub/sub: `player.actions`, `world.chunk.loaded`, `world.blocks.changed` |
-| Gateway | C++ | ✅ | `:7777` (ctrl), `:7778` (bulk), `:4000` (router) | TCP сервер, interest mgmt (ShouldSendChunk закомментирован), форвардинг, io_uring |
-| ChunkStore | C++ | ✅ | `:5001` (RPC), `:4000` (router) | LMDB, чанки 32³, SetBlock/GetBlock, meta-layer для mb_id |
-| WorldGenerator | C++ | 🟡 | **Библиотека, не сервис.** FastNoiseLite, flat world (нет руд) |
-| SimulationCore | C++ | ✅ | `:4000` (router, нет собственного RPC-порта) | ECS (EnTT), MachineSystem 20Hz tick, multiblock detection, RecipeManager integration, PipeEnergyClient (публикует energy.node.update → PipeNetwork, асинхронный consume request/response, обработка energy.flow). World→ECS registration не сделана. Дополнительно: Overheat detection (WARNING/CRITICAL), Machine explosion, Boiler heat/water→STEAM conversion, MachineSystem 50% speed at WARNING |
-| GameClient | C++ | 🟡 | `:7777` (gw ctrl), `:7778` (gw bulk) | bgfx, GLFW, ImGui, FPS cam, DDA raycast, break/place, workbench 3×3, BlockEntityUpdate handler |
-| MetaDB | Go | ✅ | `:5005` (JSON API), `:5006` (FlatBuffers RPC) | SQLite, подключён к MessageRouter. Player joined/left end-to-end (Gateway→`player.joined`/`player.left`→MetaDB) |
-| EntityStateStore | C++ | ✅ | `:5200` (RPC), `:4000` (router) | LMDB-backed entity persistence, 11 файлов, pub/sub `entity.state.get/set`, ChunkStoreClient |
-| **RecipeManagerLib** | C++ | ✅ | `src/libs/recipe_manager_lib/` | Shared library (9 файлов). JSON-рецепты (6 типов), ConditionEvaluator с MachineState из ECS. Выделен из SimulationCore. |
-| PipeNetwork | C++ | ✅ | `:—` | BFS граф (PipeNetworkManager, distributeEnergy/distributeFluid), MessageRouter integration — подписка на `energy.node.update`, `energy.consume.request`, `energy.check.request`; публикация `energy.consume.response`, `energy.flow`. Дополнительно: Cable overheat detection (WARNING/CRITICAL), Cable explosion, Fluid heat/water→STEAM conversion, ItemPipe network support |
-| SpatialIndex | C++ | 🔴 | `:—` | **Не начат** (main.cpp = 51 байт). L2 deferred. |
-| ChestSync | C++ | ✅ | `:—` | ChestOpenReq/Resp protocol, gateway+netclient routing, chest window network sync |
-| DrillSystem | C++ | ✅ | `:—` | Autonomous Mining MVP — DrillSystem with spiral BFS, mining progress, output buffer, energy consumption |
+| MessageRouter | Go | ✅ | `:4000` | Pub/sub: `player.actions`, `world.chunk.loaded`, `world.blocks.changed`. 3 уровня приоритета, heartbeat, service discovery |
+| Gateway | C++ | ✅ | `:7777` (ctrl), `:7778` (bulk), `:4000` (router) | TCP сервер, interest mgmt, форвардинг, io_uring (libgtnh-net) |
+| ChunkStore | C++ | ✅ | `:5001` (RPC), `:4000` (router) | LMDB, чанки 32³, SetBlock/GetBlock, meta-layer для mb_id. Переписан на libgtnh-net (io_uring, 2026-07-31), palette-native MutableChunk |
+| WorldGenerator | C++ | ✅ | **Библиотека, не сервис** (линкуется в chunkd) | FastNoiseLite, OreGenerator (GTNH-вейны), TreeGenerator, SurfaceHeights, GenerationQueue |
+| SimulationCore | C++ | ✅ | `:4000` (router), RPC → `:5001`, `:5200` | ECS (EnTT), MachineSystem 20Hz tick, мультиблоки L2+L3, heat, quests, DrillSystem, hatches |
+| PipeNetwork | C++ | ✅ | `:4000` (router) | BFS граф (CableGraph, PipeNetworkManager), energy/fluid/item, per-tick demand, HeatLoss, трансформаторы, перегрев, взрывы |
+| SpatialIndex | C++ | 🔴 | `:—` | **СТАБ** — `main.cpp` = 2 строки, `add_subdirectory` закомментирован, не собирается. R-tree/Octree planned |
+| EntityStateStore | C++ | ✅ | `:5200` (RPC), `:4000` (router) | LMDB-backed entity persistence, pub/sub `entity.state.get/set` |
+| MetaDB | Go | ✅ | `:5005` (JSON API), `:5006` (FlatBuffers RPC) | SQLite, квесты, награды, exchange, инвентари, player joined/left end-to-end |
+| GameClient | C++ | ✅ | `:7777` (gw ctrl), `:7778` (gw bulk) | bgfx, GLFW, ImGui, survival physics, game modes, quest UI, hotbar, NEI |
+| **RecipeManager** | C++ | ✅ | `:5555` (router RPC, аргумент `--router-port`) | **Новый standalone сервис** — recipe check/craft/catalog queries. Бинарь `reciped` |
+| RecipeManagerLib | C++ | ✅ | `src/libs/recipe_manager_lib/` | RecipeManager.cpp (1065 строк), ItemRegistry, ConditionEvaluator с MachineState из ECS |
+| StorageInterfaces | C++ | ✅ | `src/services/storage_interfaces/` | Заголовки IEntityStateStorage.h, IPlayerInventoryStorage.h — не сервис |
+| Validation | C++ | 🔴 | `:—` | Item/block validation. **НЕ в корневом CMakeLists** — не собирается по умолчанию |
 
-## FlatBuffers схемы
+Примечание: **ChestSync** — протокольная фича (ChestOpenReq/Resp) + клиентское окно, не сервис.
+**DrillSystem** — ECS-система внутри SimulationCore, не сервис.
+
+## FlatBuffers схемы (12 файлов, `src/protocol/`)
 
 | Файл | Статус | Сообщения |
 |------|--------|-----------|
 | `protocol/core.fbs` | ✅ | Vec3i, Vec3f, ItemStack, PlayerAction, ChunkData, EntitySnapshot, BlockChangedEvent, BlockEntityUpdate, MultiblockCreatedEvent, InventoryUpdate |
-| `protocol/gateway.fbs` | ✅ | GatewayPayload union (types 0-10), GatewayMessage |
+| `protocol/gateway.fbs` | ⚠️ | GatewayPayload union — **УСТАРЕЛ**, реальный провод = C++ константы `GatewayMsg` (см. ниже) |
 | `protocol/chunkstore.fbs` | ✅ | GetBlock/SetBlock/GetChunk/SaveChunk RPC |
 | `protocol/simcore.fbs` | ✅ | BlockChangedReq, MatchPatternReq, TickReq + resp |
 | `protocol/recipe.fbs` | ✅ | CheckRecipeReq, CraftReq, EvaluateConditionsReq, MachineType enum (NONE..CHEMICAL_REACTOR) |
 | `protocol/entity_state_store.fbs` | ✅ | GetEntityStateReq/Resp, SetEntityStateReq/Ack RPC |
 | `protocol/tile_entity_store.fbs` | ✅ | TileEntity save/load RPC |
-| `protocol/item_registry.fbs` | ✅ | ItemRegistry sync RPC |
-| `protocol/machine_state.fbs` | ✅ | MachineState RPC |
+| `protocol/machine_state.fbs` | ✅ | MachineState RPC (NEW) |
+| `protocol/multiblock_state.fbs` | ✅ | MultiblockState blob (NEW) |
 | `protocol/meta_db.fbs` | ✅ | Player inventory/position/state RPC |
+| `protocol/pipe_network.fbs` | ✅ | ItemNodeUpdate, ItemTransferReq/Resp, ItemFlowEvent, fluid/energy протокол |
+| `protocol/quest.fbs` | ✅ | Quest book protocol (NEW) |
+
+`item_registry.fbs` **НЕ СУЩЕСТВУЕТ** — item registry = `data/registry/items.csv` + items.db.
+Мёртвые члены union'а (в .fbs, нет C++-использования): GridUpdate, MachineAction, MachineActionResp — кандидаты на чистку.
 
 ## Протокол клиент-гейтвей
 
+Формат фрейма: `[4B size BE][1B msg_type][FlatBuffer]`.
+
+**Авторитетный источник — C++ константы `GatewayMsg` (1-based, 41 тип)** в `gateway.h`/`NetClient.h`:
+
 ```
-[4B size BE][1B msg_type][FlatBuffer]
-  0 = PlayerAction         (client→gateway)
-  1 = ChunkData            (gateway→client) — full chunk on load/resync
-  2 = EntitySnapshot       (gateway→client)
-  3 = BlockAck             (gateway→client) — commit confirmation/rejection
-  4 = SetBlockAction       (client→gateway) — CAS block placement
-  5 = InventoryUpdate      (gateway→client) — inventory snapshot/update
-  6 = InventoryAction      (client→gateway) — inventory operation
-  7 = CraftRequest         (client→gateway) — craft from workbench (io_uring)
-  8 = CraftResponse        (gateway→client) — craft result (io_uring)
-  9 = GridUpdate           (gateway→client) — workbench grid state
-  10 = BlockEntityUpdate   (gateway→client) — machine/multiblock state
+ 1 = PlayerAction           22 = QuestCompletedNotification
+ 2 = ChunkSnapshot          23 = MultiblockEvent
+ 3 = EntitySnapshot         24 = QuestCompleteRequest
+ 4 = BlockUpdate            25 = QuestEraTransition
+ 5 = BlockAck               26 = QuestExchangeRequest
+ 6 = InventoryUpdate        27 = QuestExchangeResponse
+ 7 = InventoryAction        28 = QuestExchangeCooldownGet
+ 8 = BlockEntityUpdate      29 = QuestExchangeCooldown
+ 9 = CraftRequest           30 = GameModeChange
+10 = CraftResponse          31 = StartScenarioReq
+11 = SetBlockAction         32 = StartScenarioResp
+12 = CompressedChunkData    33 = QuestBookOpen
+13 = ToolAction             34 = RecipeCheckReq
+14 = ToolActionResp         35 = RecipeCheckResp
+15 = SetMachineSlot         36 = RecipeCatalogReq
+16 = SetMachineSlotResp     37 = RecipeCatalogResp
+17 = RecipeCompleted        38 = RecipeItemReq
+18 = ChestOpenReq           39 = RecipeItemResp
+19 = ChestOpenResp          40 = RecipeMachineReq
+20 = QuestProgressUpdate    41 = RecipeMachineResp
+21 = QuestUnlockNotification
 ```
 
 ## Startup log
@@ -79,7 +101,7 @@ FlatBuffers + Asio TCP. MessageRouter (Go) — внутренний pub/sub.
 
 ---
 
-# Этап 1: Стабилизация геймплея 🟡
+# Этап 1: Стабилизация геймплея ✅
 
 **Цель:** клиент подключается, видит мир, ходит, ломает и ставит блоки.
 
@@ -118,40 +140,39 @@ NetClient::ProcessBlockUpdate → World::OnBlockUpdate → ChunkView::SetBlock �
 - **Протокол:** добавить `UNLOAD(5)` в `PlayerActionType` (`core.fbs`)
 
 ### 1.2 WorldContainerInventory persistence
-- `WorldContainerInventory::storage_` = `nullptr` — персистентность не подключена
-- Wire `storage_` → EntityStateStore RPC
+- `WorldContainerInventory::storage_` — персистентность через EntityStateStore RPC
 - См. item-inventory continuation spec
 
 ### 1.3 Chunk versioning (опционально)
 - ChunkStore хранит `version:uint64`, инкрементит при `SetBlock`
-- Клиент игнорирует чанки с version ≤ текущей
 - **Приоритет:** низкий (нет сетевых race)
 
 ---
 
-# Этап 2: Мультиблоки 🟡
+# Этап 2: Мультиблоки ✅ (L2+L3)
 
 **Цель:** поставить 3×3×3 специальных блоков → SimulationCore находит паттерн → создаёт MultiblockController.
 
 ## Реализовано
 
-- [x] **Pattern matching** — `SimulationEngine.cpp:matchElectrolyser`, `registerController`
+- [x] **Pattern registry** — паттерны мультиблоков, не только Electrolyser
+- [x] **EBF / Boiler / LCR** — системы мультиблоков (08-02)
 - [x] **SetBlockMeta RPC** — SimulationCore пишет `mb_id` в meta-layer ChunkStore
 - [x] **ECS компоненты** — `MachineComponent`, `RecipeProgress`, `InventoryContainer`, `EnergyStorage`
 - [x] **MachineSystem** — 20Hz tick, recipe matching, energy consumption, progress
-- [x] **BlockEntityUpdate протокол** — FlatBuffers таблица (hatches, covers, fluids, mb_id, structure_valid, network_id), тип 10 в gateway.fbs
+- [x] **Hatches** — детекция хатчей + аллокация слотов (08-03)
+- [x] **Item IO** — ввод/вывод предметов через хатчи
+- [x] **Block-break guard** — защита от разрушения структурных блоков
+- [x] **Persistence** — сохранение мультиблоков (SimulationCore ↔ EntityStateStore)
+- [x] **Client GUI** — MachineWindow: progress bars, energy/heat/steam, overheat, hatches
+- [x] **FlowHandlers** — обработка потоков мультиблоков (08-03)
+- [x] **BlockEntityUpdate протокол** — FlatBuffers таблица (hatches, covers, fluids, mb_id, structure_valid, network_id), тип 8
 
-## Осталось (continuation spec)
-
-1. **World→ECS регистрация** — при `SetBlockAction` создавать ECS entity с `MachineComponent`
-2. **Machine GUI** — client handler для `BlockEntityUpdate` (progress bar, energy, slots)
-3. **Multiblocks L2** — формирование/разрыв, сохранение через EntityStateStore
-
-**Spec:** `doc/EPICS/1-gameplay-machines-multiblocks/1-gameplay-machines-multiblocks.md`
+**Spec:** `openspec/specs/implement-multiblocks-l2/`, `openspec/specs/multiblocks-l3/`
 
 ---
 
-# Этап 3: PipeNetwork 🟡
+# Этап 3: PipeNetwork ✅
 
 **Цель:** трубы проводят энергию/жидкость/предметы. Строишь трубы → PipeNetwork решает граф → flow_map.
 
@@ -159,23 +180,20 @@ NetClient::ProcessBlockUpdate → World::OnBlockUpdate → ChunkView::SetBlock �
 
 - [x] **BFS граф** — `PipeNetworkManager` в `PipeNetwork.h/.cpp`
 - [x] **distributeEnergy / distributeFluid** — базовые алгоритмы распределения
-- [x] **MessageRouter integration** — подписка `energy.node.update`, `energy.consume.request`, `energy.check.request`; публикация `energy.consume.response`, `energy.flow`; обработчики `handleConsumeRequest`, `handleEnergyFlow`
-- [x] **Tick integration с SimulationCore** — SimulationCore публикует `energy.node.update`, отправляет `energy.consume.request` через PipeNetwork, получает `energy.consume.response` и `energy.flow`
-- [x] **CableGraph** — пакетная маршрутизация электричества по кабелям (BFS, voltage/ampacity, overheat)
-- [x] **Item Pipe Network** — `moveItemsInNetwork/tickItemNetworks/findNextItemHop` — перемещение предметов через BFS от source к sink
-- [x] **Fluid Protocol + Service** — подписка на `fluid.node.update/check.request/consume.request`, хендлеры `handleFluidNodeUpdate/Check/Consume`
-- [x] **FluidClient** — `Network/FluidClient.h/.cpp` для SimulationCore (публикация fluid.node.update, fluid.consume.request)
-- [x] **FluidRegistry** — инициализация дефолтных жидкостей (water=84, steam=85, sulfuric_acid=86)
-- [x] **FlatBuffers Item Protocol** — `ItemNodeUpdate`, `ItemTransferReq/Resp`, `ItemFlowEvent` в `pipe_network.fbs`
-- [x] **Transformer ECS** — `TransformerComponent` + `TransformerSystem` для блоков 72-73 (MV/HV step-up/down)
-- [x] **PipeMeshBuilder fix** — исправлены ID блоков (ITEM_PIPE→62, FLUID_PIPE→61, кабели 66-71)
+- [x] **Per-tick energy demand** + loss calcs + network health (07-08)
+- [x] **MessageRouter integration** — подписка `energy.node.update`, `energy.consume.request`, `energy.check.request`; публикация `energy.consume.response`, `energy.flow`
+- [x] **CableGraph** — пакетная маршрутизация электричества (BFS, voltage/ampacity, overheat)
+- [x] **Item Pipe Network** — перемещение предметов через BFS от source к sink, item buffering (08-03)
+- [x] **Fluid Protocol + Service** — `fluid.node.update/check.request/consume.request`, FluidRegistry (water=84, steam=85, sulfuric_acid=86)
+- [x] **HeatLoss module** — теплоотвод труб (08-03)
+- [x] **Tiered cables** — примыкание кабелей по тиру (08-03)
+- [x] **Transformer ECS** — `TransformerComponent` + `TransformerSystem` (MV/HV step-up/down)
+- [x] **PipeMeshBuilder** — корректные ID блоков (ITEM_PIPE→62, FLUID_PIPE→61, кабели 66-71), UV-текстуры
+- [x] **Перегрев и взрывы** — Cable overheat detection (WARNING/CRITICAL), explosion
 
 ## Осталось
 
-- [ ] Client визуализация (цвет труб, соединения)
 - [ ] Multi-dimension (2 инстанса)
-
-**Spec:** `doc/EPICS/0-foundation-energy-fluids/0-foundation-energy-fluids.md`
 
 ---
 
@@ -183,93 +201,122 @@ NetClient::ProcessBlockUpdate → World::OnBlockUpdate → ChunkView::SetBlock �
 
 **Цель:** быстрые пространственные запросы — R-tree для мультиблоков, Octree для entity.
 
-**Статус:** `src/services/spatial_index/main.cpp` = 51 байт. Не начат.
+**Статус:** `src/services/spatial_index/main.cpp` = 2 строки (`int main(){return 0;}`),
+`add_subdirectory` закомментирован в корневом CMakeLists.txt — сервис **не собирается**.
 
 - R-tree (`bgi::rtree<AABB>`) для bounding box мультиблоков
 - Dynamic octree для entity queries
 - RPC: FindInRadius, FindAtPoint, FindEntitiesInAABB
-- SimulationCore использует SpatialIndex для multiblock queries
 
-**Причина defer:** Current multiblock queries работают напрямую в SimulationCore.
+**Причина defer:** текущие multiblock queries работают напрямую в SimulationCore.
 SpatialIndex понадобится при 100+ мультиблоков в одном чанке.
 
 ---
 
-# Этап 5: GameClient улучшения 🔴
+# Этап 5: GameClient улучшения 🟡
 
 **Цель:** клиент перестаёт быть tech-demo.
 
 | Задача | Статус |
 |--------|--------|
-| Block atlas (UV-координаты) | 🔴 |
-| Hotbar + block picking | 🔴 |
-| Sound (miniaudio) | 🔴 |
-| Drag-and-drop в инвентаре | 🔴 |
-| Pause menu, settings | 🔴 |
+| Block atlas (UV-координаты) | ✅ TextureAtlas, FaceTextureRegistry, ChunkMeshBuilder UVs |
+| Hotbar + block picking | ✅ SlotGrid::RenderHotbar, ActionHandler DoSelectHotbar/DoScrollHotbar, клавиши 1-9,0 |
+| Drag-and-drop в инвентаре | ✅ DragManager (285 строк), 14 юнит-тестов: pickup/drop/merge/swap/split/shift-click/ESC/Q |
+| Machine windows | ✅ MachineWindow (635 строк, data-driven), BlockUIFactory, ChestWindow |
+| NEI panel | ✅ NeiPanel (232 строки), toggle `U`, клик-спавн |
+| Quest book UI | ✅ QuestBookWindow (497 строк), toggle `~` |
+| Crafting UI | ✅ CraftingWindow, CraftingGrid 3×3, server-driven preview, toast |
+| Sound (miniaudio) | 🟡 miniaudio подключён в CMake, аудио-кода нет |
+| Drill UI | 🟡 только тултип (energy/progress в SlotGrid), отдельного окна нет |
+| Pause menu, settings | 🔴 отсутствует |
 
 ---
 
-# Этап 6: Инфраструктура 🔴
+# Этап 6: Инфраструктура 🟡
 
-- Dependency management (Conan/vcpkg — единый подход)
-- CI (GitHub Actions сборка + тесты)
-- Packaging (AppImage / Docker compose)
-- Graceful shutdown, health checks
+- [x] CI (GitHub Actions, `.github/workflows/build.yml`) — anti-drift guards (07-14), pre-commit always_run, gate parity (08-05)
+- [x] `--version` флаг + SIGUSR1 metrics во все сервисы (07-20)
+- [x] Dependency management (Conan, toolchain в cmake-build-*)
+- [ ] Packaging (AppImage / Docker compose)
+- [ ] Graceful shutdown, health checks (частично)
 
 ---
 
 # Этап 7: Будущее ⏸
 
 - Entity system (мобы, игроки в ECS)
-- Physics (гравитация, коллизия)
-- Networking v2 (LZ4, rate limiting, reconnection, channels)
-- Mod runtime (C++ `.so`/`.dll`, Lua/Python)
+- Networking v2 (LZ4, rate limiting, reconnection, channels) — request_id-трейсинг уже есть (07-19/07-30)
+- Mod runtime (C++ `.so`/`.dlopen`, Lua/Python deferred)
 - AssetServer
 - Scale (HTTP/3 + QUIC, шардирование, web client)
 
 ---
 
-# Этап 8: Crafting Pipeline 🟡
+# Этап 8: Crafting Pipeline ✅
 
 **Цель:** крафт через RecipeManager.
 
 ## Реализовано
 
 - [x] **GridPatternMatcher** — shape-aware 3×3 matching с rotation/reflection (8 трансформаций)
-- [x] **CraftRequestHandler** — io_uring, protocol types 7/8, shape-aware matching
-- [x] **RecipeManager → shared library** — `src/libs/recipe_manager_lib/` (9 files)
-- [x] **ConditionEvaluator** — заполняется MachineState из ECS (`RecipeManager.cpp` overload). Больше не пустой placeholder.
-- [x] **CraftResponse UI feedback** — цветной текст + таймер в WorkbenchWindow
-- [x] **6 recipe JSONs** — все типы машин (кроме macerator.json)
-- [x] **MachineState struct** — `id, inventory[9], output, tickRate`
+- [x] **YAML миграция** — рецепты из JSON → YAML (коммит c5cfc39, 2026-06-28), JSON-парсинг удалён (eb599b5)
+- [x] **14 YAML-рецептов** — assembler, boiler, bronze_alloy_smelter, chemical_reactor, compressor, crafting_table, crystallizer, ebf, electrolyser, extractor, furnace, generator, **macerator** (есть!), mixer
+- [x] **energy_type matching** — рецепты по типу энергии
+- [x] **Hierarchical packed item IDs** — unified GTNH-2qi (08-03), 3×3 positional matching (da3b5a2)
+- [x] **CraftRequestHandler** — protocol types 9/10, shape-aware matching
+- [x] **ConditionEvaluator** — MachineState из ECS (`RecipeManager.cpp` overload). Больше не пустой placeholder
+- [x] **CraftResponse UI feedback** — цветной текст + таймер в CraftingWindow
+- [x] **RecipeManager → standalone сервис** — `src/services/recipe_manager/` (`reciped`, RPC :5555), lib `recipe_manager_lib/`
 
 ## Осталось
 
-- [ ] **Macerator recipes** — `data/recipes/macerator.json` отсутствует
-- [ ] **Server-authoritative grid state** — WorkbenchStateManager не подключён к EntityStateStore RPC
-- [ ] **Inventory consumption** — `publishInventoryUpdate()` шлёт пустой `InventoryUpdate` без дельты
-- [ ] **Drag-and-drop** — idle → drag_start → drag → drop state machine
-
-**Specs:** `doc/EPICS/0-foundation-item-inventory/0-foundation-item-inventory.md`
+- [ ] **Server-authoritative grid state** — server grid через TileEntityStore RPC
+- [ ] **Inventory consumption delta** — `publishInventoryUpdate()` шлёт пустой `InventoryUpdate` без дельты
 
 ---
 
-# Этап 9: Инвентарная система 🟡
+# Этап 9: Инвентарная система ✅
 
 ## Реализовано
 
-- [x] **NetClient handlers** — InventoryUpdate (type 5), InventoryAction (type 6)
+- [x] **NetClient handlers** — InventoryUpdate (тип 6), InventoryAction (тип 7)
 - [x] **Gateway forwarding** — pub/sub `player.inventory.update` → MetaDB, `player.inventory.action` → SimulationCore
 - [x] **MetaDB pub/sub** — `PublishInventoryUpdate()`, `PublishInventoryAction()`
 - [x] **EntityStateStore RPC** — GetEntityStateReq/Resp, SetEntityStateReq/Ack (LMDB, :5200)
-- [x] **Player joined/left** — end-to-end (Gateway `player.joined`/`player.left` → MetaDB handlePlayerJoined/handlePlayerLeft)
-- [x] **PlayerInventory UI** — базовое окно (E key), 27 слотов
+- [x] **Player joined/left** — end-to-end (Gateway `player.joined`/`player.left` → MetaDB)
+- [x] **Drag-and-drop** — DragManager state machine (Idle→Holding), 14 тестов, machine drag context
+- [x] **PlayerInventory UI** — окно (E key), 27 слотов
 
 ## Осталось
 
-- [ ] Drag-and-drop state machine
 - [ ] Выгрузка crafted items в player inventory
 - [ ] Синхронизация с MetaDB при коннекте
+
+---
+
+# Этап 10: Quests & Game Modes ✅
+
+## Quests (квестовая система, конец-2026-07 … 08-06)
+
+- [x] **Базовый quest system** (07-03) — quest_lib data model + quest graph
+- [x] **Server-side detection** — дефиниции квестов в MetaDB (CSV), topic split (08-03)
+- [x] **Wire протокол** — FlatBuffers QuestProgressUpdate (20), QuestUnlockNotification (21), QuestCompletedNotification (22), QuestBookOpen (33)
+- [x] **Награды** — quest rewards → инвентарь + энергия бура через ItemEnergyStorage (08-03)
+- [x] **Manual completion** — server-authoritative (08-03)
+- [x] **Era transition** + detection handlers + exchange market (08-05)
+- [x] **INVENTORY-type детекция** + QuestBookOpen (08-06)
+- [x] **QuestBookWindow** — era tabs, INVENTORY/EXCHANGE детекция, cooldown, complete/exchange кнопки
+
+## Game Modes (08-06)
+
+- [x] **Console + `/gamemode`** — режимы SURVIVAL/CREATIVE/ADVENTURE/SPECTATOR
+- [x] **Mode sync** — gateway ↔ client, flight toggled by mode
+- [x] **Game scenario** — `/startGameScenario` (StartScenarioReq/Resp)
+
+## Survival Physics (08-06)
+
+- [x] **Гравитация/прыжок/sneak** — Camera.cpp (gravity 25.0, jump 8.5, sneak eye-height + edge-stop)
+- [x] **Коллизии** — per-axis AABB, ground ray scan
 
 ---
 
@@ -281,72 +328,81 @@ Active work is tracked as **openspec changes** (`openspec/changes/<id>/`). Each 
 
 ```
 openspec/changes/
-├── complete-electric-tools-wrench/   # 🟡 WIP — raycast, persistence, textures
-├── implement-pipes-cables-transport/ # 🟡 WIP — item/fluid/energy transport
-├── implement-ore-generation/         # 🔴 Not started — sinusoidal veins
-├── implement-multiblocks-l2/         # 🔴 Not started — EBF, SpatialIndex, patterns
-├── implement-questbook/              # 🔴 Not started — progression system
-└── complete-autonomous-mining/      # 🟡 WIP — persistence, UI, pipes
+├── add-game-modes/                  # 🟡 WIP — game modes + console
+├── add-quest-exchange/              # ✅ done — exchange market
+├── add-quest-inventory-detection/   # ✅ done — INVENTORY-type detection
+├── add-texture-system/              # 🟡 WIP
+├── add-tree-generation/             # 🟡 WIP — TreeGenerator + SurfaceHeights
+├── complete-autonomous-mining/      # 🟡 WIP — drill persistence, UI
+├── fix-ore-processing-chain/        # 🟡 WIP
+├── implement-multiplayer-sync/      # 🟡 WIP
+├── init-game-flow/                  # ✅ done
+├── questbook-client-polish/         # 🟡 WIP
+└── questbook-detection-handlers/    # ✅ done
 ```
 
-Completed / superseded specs live in `doc/EPICS/archive/`.
+Архив: `openspec/changes/archive/` (electric-tools-wrench, multiblocks-l2, questbook,
+pipes-cables-transport, explosion-mechanics, unify-recipe-ids).
+Live specs: `openspec/specs/`.
 
 ## Где что лежит
 
 | Что нужно сделать | Куда идти |
 |------------------|-----------|
-| Добавить FlatBuffers сообщение | `src/protocol/*.fbs` |
-| Изменить протокол клиент-гейтвей | `gateway/main.cpp`, `game_client/Network/NetClient.*` |
-| Player save/load | `meta_db/main.go` |
+| Добавить FlatBuffers сообщение | `src/protocol/*.fbs` (12 файлов) |
+| Изменить протокол клиент-гейтвей | `gateway/gateway.h`, `gateway/main.cpp`, `game_client/Network/NetClient.*` |
+| Player save/load, квесты | `meta_db/main.go` |
 | Gateway форвардинг | `gateway/message_router_client.*`, `gateway/public_server.*` |
 | Логика чанков | `chunk_store/`, `game_client/World/`, `game_client/Cache/` |
-| Симуляция / ECS | `simulation_core/` |
-| Energy / liquids | `pipe_network/` |
-| Spatial queries | `spatial_index/` (L2 deferred) |
+| Симуляция / ECS / мультиблоки | `simulation_core/` |
+| Energy / liquids / items | `pipe_network/` |
+| Spatial queries | `spatial_index/` (стаб, не собирается) |
 | Client UI / Render | `game_client/UI/`, `game_client/Render/` |
-| Recipe system | `libs/recipe_manager_lib/` |
+| Recipe system | `data/recipes/` (YAML), `libs/recipe_manager_lib/`, `services/recipe_manager/` |
 | Entity persistence | `entity_state_store/` |
+| Quest data model | `libs/quest_lib/`, `src/protocol/quest.fbs` |
 
 ## Сборка
 
-```bash
-# Release
-conan install . --build=missing
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
+**Никогда не пересобирать с нуля, не удалять `cmake-build-debug/` / `cmake-build-release/`** — внутри Conan toolchain.
 
-# Debug
-conan install . --build=missing
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build -j$(nproc)
+```bash
+cd cmake-build-debug
+ninja -j5
 ```
+
+Go-сервисы (routerd, metadbd) собираются через `go build` (см. run.sh).
 
 ## Запуск (порядок важен)
 
 ```bash
-./build/routerd          # 1. Pub/sub
-./build/chunkd           # 2. World
-./build/entitystated     # 3. Entity state
-./build/gatewayd         # 4. Gateway
-./build/simcored         # 5. Simulation
-./build/meta-dbd         # 6. Player DB
-./build/pipe_networkd    # 7. PipeNetwork
-./build/client           # 8. Client
+./cmake-build-debug/src/services/message_router/routerd            # 1. Pub/sub (Go, :4000)
+./cmake-build-debug/src/services/chunk_store/chunkd                # 2. World (C++, :5001)
+./cmake-build-debug/src/services/entity_state_store/entitystated   # 3. Entity state (C++, :5200)
+./cmake-build-debug/src/services/gateway/gatewayd                  # 4. Gateway (C++, :7777/:7778)
+./cmake-build-debug/src/services/simulation_core/simcored_exec     # 5. Simulation (C++, 20Hz)
+./src/services/meta_db/metadbd                                     # 6. Player DB (Go, :5005/:5006)
+./cmake-build-debug/src/services/pipe_network/pipenetworkd         # 7. PipeNetwork (C++)
+./cmake-build-debug/bin/gameclientd                                # 8. Client (C++, bgfx)
 
-# spatial-index — заглушка, не запускать
+# spatial-index — стаб, не собирается/не запускается
+# recipe_manager (:5555) — standalone, запускать отдельно при необходимости
 ```
+
+**Или одной командой:** `./run.sh` (сборка ninja + Go, запуск всего; `--all` добавит pipenetworkd/spatialindexd/validationd; `--no-client` без клиента).
 
 ## Известные проблемы
 
 | Проблема | Где | Статус |
 |----------|-----|--------|
-| Gateway шлёт лишние чанки | `public_server.cpp` | 🔴 TODO |
-| Inventory persistence (storage_ = nullptr) | `WorldContainerInventory` | 🔴 TODO |
-| Drag-and-drop не реализован | `SlotGrid/` | 🔴 TODO |
+| GatewayMsg C++ константы vs FlatBuffers `GatewayPayload` union — расхождение | `gateway.fbs` | 🔴 TODO |
+| Мёртвые сообщения GridUpdate / MachineAction / MachineActionResp | `gateway.fbs` | 🔴 TODO |
+| Pause menu / settings отсутствует | `game_client/` | 🔴 TODO |
+| Sound: miniaudio подключён, аудио-кода нет | `game_client/` | 🟡 WIP |
+| SpatialIndex не собирается (add_subdirectory закомментирован) | `CMakeLists.txt` | 🔴 TODO |
+| Drill UI — только тултип | `game_client/UI/` | 🟡 WIP |
+| Server-authoritative grid state | crafting | 🔴 TODO |
 | Inventory sync с MetaDB при коннекте | `MetaDB/` | 🔴 TODO |
-| Macerator recipes отсутствуют | `data/recipes/` | 🔴 TODO |
-| ConditionEvaluator MachineState gap | **ConditionEvaluator.cpp** | ✅ DONE (RecipeManager.cpp overload) |
-| CraftResponse UI feedback | **WorkbenchWindow** | ✅ DONE |
 
 ## Ключевые архитектурные решения
 
@@ -354,15 +410,13 @@ cmake --build build -j$(nproc)
 - EnergyStorage — ECS-буфер. PipeNetwork считает поток.
 - Fluids/gas/plasma — как `ItemStack`, не отдельный тип. Нет `FluidTankComponent`.
 
-### RecipeManager — shared library
-- Вынесен из SimulationCore в `src/libs/recipe_manager_lib/` (9 файлов)
-- Не отдельный RPC-сервис на MVP
+### RecipeManager — shared library + standalone сервис
+- Lib `src/libs/recipe_manager_lib/` (RecipeManager.cpp 1065 строк) + сервис `src/services/recipe_manager/` (`reciped`, RPC :5555)
 
 ### BlockEntityUpdate — FlatBuffers table
-- В `core.fbs` с HatchInfo, CoverInfo, FluidTank, mb_id, structure_valid, network_id
-- Тип 10 в `gateway.fbs` GatewayPayload
+- В `core.fbs` с HatchInfo, CoverInfo, FluidTank, mb_id, structure_valid, network_id. Тип 8 в протоколе
 
-### MessageRouter: io_urning вместо NATS/Redis
+### MessageRouter: io_uring вместо NATS/Redis
 
 | Фактор | io_uring | NATS/Redis |
 |--------|----------|------------|
@@ -393,4 +447,4 @@ cmake --build build -j$(nproc)
 ---
 
 **Legend:** ✅ DONE | 🟡 WIP | 🔴 TODO | ⏸ DEFERRED
-**Updated:** 2026-06-28 — Completed EPICs archived, WIP tracked as openspec changes.
+**Updated:** 2026-08-07 — docs refreshed to current state; WIP tracked as openspec changes.
