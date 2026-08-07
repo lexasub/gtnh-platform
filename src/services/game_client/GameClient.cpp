@@ -12,6 +12,7 @@
 #include "UI/BlockUIFactory.h"
 #include "UI/Windows/player/PlayerInventory.h"
 #include "UI/Windows/player/CreativeMenu.h"
+#include "UI/Windows/block/MachineWindow.h"
 #include "Common/BlockType.h"
 #include "core_generated.h"
 #include "machine_registry/MachineRegistry.h"
@@ -263,7 +264,20 @@ void GameClient::Update(float dt) {
         BlockPos target = interaction_.RaycastTarget(camera_);
         if (target.x != std::numeric_limits<int32_t>::max()) {
             uint16_t blockId = world_.GetBlockAt(target);
-            UIDefaults::TryOpenBlockUI(uiMgr_, blockId, target);
+            IUIWindow* opened = UIDefaults::TryOpenBlockUI(uiMgr_, blockId, target);
+            // A MachineWindow just opened, but the server only re-publishes
+            // current machine state (energy type, slots, progress) when it
+            // receives a right-click on the machine. Without this, a window
+            // opened after a reconnect sits on stale/zeroed data — e.g. a
+            // heat generator shown as ELECTRICITY — until the next periodic
+            // force-publish happens to land.
+            if (dynamic_cast<MachineWindow*>(opened)) {
+                netClient_->SendBlockAction(
+                    Protocol::PlayerActionType::PlayerActionType_RIGHT_MOUSE_CLICK,
+                    target.x, target.y, target.z,
+                    blockId, static_cast<uint16_t>(0),
+                    0, invState_.player_id);
+            }
         }
     }
 

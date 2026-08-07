@@ -1,6 +1,7 @@
 #include "MachineRegistry.h"
 #include <fstream>
 #include <sstream>
+#include <cctype>
 #include <spdlog/spdlog.h>
 #include <yaml-cpp/yaml.h>
 #include <common/ItemId.h>
@@ -15,8 +16,13 @@ inline EnergyType ParseEnergy(const std::string& str) {
 }
 
 inline MachineRole ParseRole(const std::string& str) {
-    if (str == "CONSUMER")    return MachineRole::CONSUMER;
-    if (str == "PRODUCER")    return MachineRole::PRODUCER;
+    // machines.yaml uses lowercase ("producer"/"consumer"), the legacy CSV
+    // used uppercase. Accept both — otherwise every producer is silently
+    // misparsed as CONSUMER (maxOutput=0, maxInput=usage default 32).
+    std::string up = str;
+    for (auto& c : up) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    if (up == "CONSUMER") return MachineRole::CONSUMER;
+    if (up == "PRODUCER") return MachineRole::PRODUCER;
     return MachineRole::CONSUMER;
 }
 

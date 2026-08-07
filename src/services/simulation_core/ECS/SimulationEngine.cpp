@@ -201,12 +201,6 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
         auto& mc = reg_.emplace_or_replace<MachineComponent>(entity, block_id, mb_id, x, y, z, next_machine_id_++);
         if (mb_id != 0) {
             mc.managed_externally = true;
-            if (onMachineCreated) {
-                onMachineCreated(static_cast<int32_t>(x),
-                                 static_cast<int32_t>(y),
-                                 static_cast<int32_t>(z),
-                                 block_id);
-            }
         }
         reg_.emplace_or_replace<RecipeProgress>(entity);
         InventoryContainer container;
@@ -236,6 +230,13 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
             reg_.emplace_or_replace<HeatIntakeComponent>(entity);
         }
 
+        if (onMachineCreated) {
+            onMachineCreated(static_cast<int32_t>(x),
+                             static_cast<int32_t>(y),
+                             static_cast<int32_t>(z),
+                             block_id);
+        }
+
         spdlog::debug("[ECS] Created machine entity #{} type={} at ({},{},{})",
                       next_machine_id_ - 1, block_id, x, y, z);
 
@@ -256,12 +257,8 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
                 mc.mb_id = static_cast<uint32_t>(ctrl_id);
                 block.mb_id = static_cast<uint32_t>(ctrl_id);
                 container.entity_type = 2;
-                if (onMachineCreated) {
-                    onMachineCreated(static_cast<int32_t>(x),
-                                     static_cast<int32_t>(y),
-                                     static_cast<int32_t>(z),
-                                     block_id);
-                }
+                // onMachineCreated fires once above (after all components are
+                // created) — no duplicate here.
                 const auto* pat = pattern_registry_.getPattern(result.pattern_id);
                 spdlog::info("[ECS] Matched multiblock '{}' #{} at ({},{},{})",
                              pat ? pat->name : "?", ctrl_id, x, y, z);

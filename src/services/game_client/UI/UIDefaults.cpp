@@ -27,14 +27,14 @@ void RegisterPlayerUI(UIManager& mgr, InventoryState& invState) {
     mgr.GetBinder().LoadConfig("data/bindings.json");
 }
 
-bool TryOpenBlockUI(UIManager& mgr, uint16_t blockId, const BlockPos& pos) {
+IUIWindow* TryOpenBlockUI(UIManager& mgr, uint16_t blockId, const BlockPos& pos) {
     if (!BlockUIFactory::CanOpen(blockId))
-        return false;
+        return nullptr;
     IUIWindow* win = BlockUIFactory::Create(blockId, pos, mgr);
     if (!win)
-        return false;
+        return nullptr;
     mgr.OpenExclusive(win);
-    return true;
+    return win;
 }
 
 }  // namespace UIDefaults

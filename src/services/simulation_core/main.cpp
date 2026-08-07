@@ -244,7 +244,18 @@ int main(int argc, char* argv[]) {
 
     simulationEngine->onMachineCreated = [eventPublisher, &simulationEngine, entityStateClient, &mainQueue](
         int32_t x, int32_t y, int32_t z, uint16_t machine_id) {
-        eventPublisher->publishBlockEntityUpdate(x, y, z, machine_id, {}, 0.0f, 0);
+        EnergyType etype = EnergyType::ELECTRICITY;
+        if (auto machEntity = findEntityAt(simulationEngine->reg(), x, y, z); machEntity != entt::null) {
+            if (auto* es = simulationEngine->reg().try_get<simcore::EnergyStorage>(machEntity)) {
+                etype = es->type;
+            }
+        } else if (auto* reg = MachineRegistry::instance()) {
+            if (auto* info = reg->Get(machine_id)) {
+                if (info->energy_in.has_value()) etype = info->energy_in.value();
+                else if (info->energy_out.has_value()) etype = info->energy_out.value();
+            }
+        }
+        eventPublisher->publishBlockEntityUpdate(x, y, z, machine_id, {}, 0.0f, 0, etype);
 
         // Try to restore previously saved machine state
         auto entity = findEntityAt(simulationEngine->reg(), x, y, z);

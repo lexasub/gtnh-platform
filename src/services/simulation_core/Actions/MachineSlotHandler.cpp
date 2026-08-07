@@ -4,6 +4,7 @@
 #include "ECS/components/MachineComponent.h"
 #include "ECS/components/InventoryContainer.h"
 #include "Storage/PlayerInventoryStore.h"
+#include "Storage/ChunkStoreRepository.h"
 #include "Network/clients/EntityStateStoreClient.h"
 #include "Network/IEventPublisher.h"
 #include "Network/clients/IoUringRouterClient.h"
@@ -13,8 +14,9 @@
 #include <cstring>
 namespace simcore {
 MachineSlotHandler::MachineSlotHandler(std::shared_ptr<SimulationEngine> e, std::shared_ptr<PlayerInventoryStore> inv,
-    std::shared_ptr<EntityStateStoreClient> ess, std::shared_ptr<IEventPublisher> ev, std::shared_ptr<IoUringRouterClient> r)
-    : engine_(std::move(e)), inventoryStore_(std::move(inv)), entityState_(std::move(ess)), events_(std::move(ev)), router_(std::move(r)) {}
+    std::shared_ptr<EntityStateStoreClient> ess, std::shared_ptr<IEventPublisher> ev, std::shared_ptr<IoUringRouterClient> r,
+    std::shared_ptr<ChunkStoreRepository> csr)
+    : engine_(std::move(e)), inventoryStore_(std::move(inv)), entityState_(std::move(ess)), events_(std::move(ev)), router_(std::move(r)), chunkStore_(std::move(csr)) {}
 void MachineSlotHandler::handle(const std::vector<uint8_t>& data) {
     flatbuffers::Verifier v(data.data(), data.size());
     if (!v.VerifyBuffer<Protocol::SetMachineSlotReq>(nullptr)) return;
@@ -37,7 +39,16 @@ void MachineSlotHandler::handle(const std::vector<uint8_t>& data) {
     for (auto e : vw) { auto& pp = vw.get<const Position>(e);
         if (static_cast<int32_t>(pp.x)==static_cast<int32_t>(x) && static_cast<int32_t>(pp.y)==static_cast<int32_t>(y) && static_cast<int32_t>(pp.z)==static_cast<int32_t>(z)) { entity = e; break; } }
     if (entity == entt::null) {
-        spdlog::warn("[SimCore] MachineSlotHandler: no ECS entity at ({},{},{})", x, y, z);
+        spdlog::warn("[MachineSlotHandler] no ECS entity at ({},{},{}) — lazy-init from ChunkStore", x, y, z);
+        if (chunkStore_) {
+            chunkStore_->getBlock(static_cast<int32_t>(x), static_cast<int32_t>(y), static_cast<int32_t>(z),
+                [engine = engine_, rx = x, ry = y, rz = z](const BlockData& bd) {
+                    if (bd.block_id != 0) {
+                        engine->onBlockChanged(rx, ry, rz, bd.block_id, bd.meta, bd.mb_id);
+                        spdlog::info("[SimCore] Lazy-created ECS entity at ({},{},{}) block_id={}", rx, ry, rz, bd.block_id);
+                    }
+                });
+        }
         pub(false,"No machine");
         return;
     }
@@ -98,8 +109,12 @@ void MachineSlotHandler::handle(const std::vector<uint8_t>& data) {
             std::memcpy(ptr, &s.meta, sizeof(uint16_t)); ptr += sizeof(uint16_t);
         }
     }
+    EnergyType etype = EnergyType::ELECTRICITY;
+    if (auto* es = reg.try_get<EnergyStorage>(entity)) {
+        etype = es->type;
+    }
     events_->publishBlockEntityUpdate(static_cast<int32_t>(x), static_cast<int32_t>(y), static_cast<int32_t>(z),
-                                      machineId, rawInv, 0.0f, 0, EnergyType::ELECTRICITY, 0, slotsIn);
+                                      machineId, rawInv, 0.0f, 0, etype, 0, slotsIn);
     pub(true);
     spdlog::info("[SimCore] Set slot {} at ({},{},{}) to item {} count {} — OK", slot_idx, x, y, z, item_id, count);
 }

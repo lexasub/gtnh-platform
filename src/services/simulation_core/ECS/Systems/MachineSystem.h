@@ -30,7 +30,11 @@ public:
   void onConsumeResponse(uint64_t node_id = 0, int32_t consumed = 0,
                          int32_t remaining = 0);
 
-  static constexpr int kForcePublishInterval = 100;
+  // TODO(perf): force-publishing every machine every 10 ticks (~0.5s) is
+  // O(#machines) traffic per interval — temporary measure so late-connecting
+  // clients catch up on machine state. Revisit (dirty-flag only) once machine
+  // counts grow.
+  static constexpr int kForcePublishInterval = 10;
 
 private:
   void pushOutputToPipe(uint64_t entity_id, const MachineComponent& machine,
@@ -44,6 +48,7 @@ private:
   std::unordered_map<uint64_t, int32_t> pendingConsumes_;
   std::unordered_map<uint64_t, uint64_t> lastInventoryHash_;
   int tickCounter_ = 0;
+  int startupTicks_ = 3;
 };
 
 } // namespace simcore

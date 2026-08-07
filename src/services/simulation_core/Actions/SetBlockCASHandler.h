@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include <entt/entt.hpp>
 #include "core_generated.h"
 
 namespace simcore {
@@ -36,6 +37,20 @@ public:
 
 private:
   auto handle(const Protocol::SetBlockAction *action) -> void;
+
+  // ── Machine interaction helpers (right-click on a machine) ───────────────
+  // Machines may predate this simcore instance: the block persists in
+  // ChunkStore but no ECS entity exists (entities are created only on
+  // block-change events). An entity-less machine is invisible to the tick
+  // systems, so right-click lazily creates it and reports real energy state.
+  entt::entity findEntityAt(int32_t x, int32_t y, int32_t z) const;
+  void handleMachineInteraction(int32_t x, int32_t y, int32_t z,
+                                uint16_t machine_id, uint64_t player_id,
+                                uint32_t request_id);
+  void publishMachineState(int32_t x, int32_t y, int32_t z,
+                           uint16_t machine_id, uint64_t player_id,
+                           uint32_t request_id);
+
   std::shared_ptr<IBlockRepository> repo_;
   std::shared_ptr<IEventPublisher> publisher_;
   std::shared_ptr<SimulationEngine> engine_;

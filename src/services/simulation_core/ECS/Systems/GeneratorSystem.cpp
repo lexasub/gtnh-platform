@@ -38,11 +38,11 @@ void GeneratorSystem::tick(float /*dt*/) {
         auto& energy = view.get<EnergyStorage>(ent);
 
         if (!isGenerator(machine.machine_id)) continue;
-        spdlog::info("[GeneratorSystem] processing entity {} machine_id={} slots={} coal={} energy={}/{}",
-                     static_cast<uint32_t>(ent), machine.machine_id,
-                     container.slots.size(),
-                     (!container.slots.empty() ? container.slots[0].item_id : 0),
-                     energy.current, energy.capacity);
+        spdlog::debug("[GeneratorSystem] processing entity {} machine_id={} slots={} coal={} energy={}/{}",
+                      static_cast<uint32_t>(ent), machine.machine_id,
+                      container.slots.size(),
+                      (!container.slots.empty() ? container.slots[0].item_id : 0),
+                      energy.current, energy.capacity);
         if (energy.isFull()) continue;
 
         int32_t& remaining = burnEnergy_[ent];
@@ -60,7 +60,10 @@ void GeneratorSystem::tick(float /*dt*/) {
             if (remaining <= 0) continue;
         }
 
-        int32_t produced = std::min(energy.maxOutput, remaining);
+       // Safety: fallback if MachineRegistry data is corrupted (maxOutput=0, capacity=0)
+        int32_t rate = energy.maxOutput > 0 ? energy.maxOutput : 32;//TODO fix reading real data
+        energy.capacity = energy.capacity > 0 ? energy.capacity : 10000;//TODO fix reading real data
+        int32_t produced = std::min(rate, remaining);
         int32_t accepted = energy.produceEnergy(produced);
         remaining -= accepted;
 

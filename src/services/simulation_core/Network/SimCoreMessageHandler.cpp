@@ -69,7 +69,7 @@ void SimCoreMessageHandler::setup() {
         d.engine));
 
     topicDispatcher_->on("player.machine.slot", std::make_unique<MachineSlotHandler>(
-        d.engine, d.inventoryStore, d.entityStateClient, d.eventPublisher, d.routerClient));
+        d.engine, d.inventoryStore, d.entityStateClient, d.eventPublisher, d.routerClient, d.blockRepository));
     topicDispatcher_->on("player.tool.action", std::make_unique<ToolActionHandler>(
         d.engine, d.inventoryStore, d.routerClient, d.questManager));
 

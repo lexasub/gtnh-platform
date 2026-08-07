@@ -68,6 +68,100 @@ SetBlockCASHandler::SetBlockCASHandler(std::shared_ptr<IBlockRepository> repo,
     , postToMain_(std::move(postToMain))
 {}
 
+entt::entity SetBlockCASHandler::findEntityAt(int32_t x, int32_t y, int32_t z) const {
+    auto& reg = engine_->reg();
+    auto vw = reg.view<const simcore::Position>();
+    for (auto e : vw) {
+        auto& pp = vw.get<const simcore::Position>(e);
+        if (static_cast<int32_t>(pp.x) == x &&
+            static_cast<int32_t>(pp.y) == y &&
+            static_cast<int32_t>(pp.z) == z) return e;
+    }
+    return entt::null;
+}
+
+void SetBlockCASHandler::publishMachineState(int32_t x, int32_t y, int32_t z,
+                                             uint16_t machine_id, uint64_t player_id,
+                                             uint32_t request_id) {
+    engine_->onMachineInteracted(x, y, z, machine_id, player_id);
+
+    // Report the entity's real state so the client's MachineWindow opens with
+    // the correct energy type/level (not a hardcoded 0/EU).
+    auto* machineReg = engine_->getMachineRegistry();
+    EnergyType etype = EnergyType::ELECTRICITY;
+    uint32_t energy = 0;
+    uint32_t capacity = 0;
+    int slotsIn = -1;
+
+    if (auto ent = findEntityAt(x, y, z); ent != entt::null) {
+        if (auto* es = engine_->reg().try_get<simcore::EnergyStorage>(ent)) {
+            etype = es->type;
+            energy = static_cast<uint32_t>(es->current);
+            capacity = static_cast<uint32_t>(es->capacity);
+        }
+        if (auto* mc = engine_->reg().try_get<simcore::MachineComponent>(ent)) {
+            if (machineReg) {
+                if (auto* info = machineReg->Get(mc->machine_id)) {
+                    slotsIn = info->slots_in;
+                }
+            }
+        }
+    } else if (machineReg) {
+        if (auto* info = machineReg->Get(machine_id)) {
+            if (info->energy_in.has_value()) etype = info->energy_in.value();
+            else if (info->energy_out.has_value()) etype = info->energy_out.value();
+        }
+    }
+
+    publisher_->publishBlockEntityUpdate(x, y, z, machine_id, {}, 0.0f, energy, etype, capacity, slotsIn);
+    publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED),
+                                x, y, z, machine_id, 0, "Machine interacted", request_id);
+}
+
+void SetBlockCASHandler::handleMachineInteraction(int32_t x, int32_t y, int32_t z,
+                                                  uint16_t machine_id, uint64_t player_id,
+                                                  uint32_t request_id) {
+    // A machine the player right-clicks may predate this simcore instance
+    // (persisted in ChunkStore before a restart). ECS machine entities are
+    // created ONLY on block-change events (onBlockChanged), so such machines
+    // have no entity — and an entity-less machine is invisible to
+    // GeneratorSystem, MachineSystem, and HeatTransferSystem (heat can never
+    // reach a furnace that has no entity). Lazily create it from ChunkStore,
+    // mirroring MachineSlotHandler.
+    if (findEntityAt(x, y, z) != entt::null) {
+        publishMachineState(x, y, z, machine_id, player_id, request_id);
+        return;
+    }
+
+    spdlog::warn("SetBlockCASHandler: no ECS entity for machine {} at ({},{},{}) — lazy-init from ChunkStore",
+                 machine_id, x, y, z);
+    repo_->getBlock(x, y, z,
+        [this, x, y, z, machine_id, player_id, request_id](const BlockData& bd) {
+            uint16_t finalId = machine_id;
+            if (bd.block_id != 0) {
+                finalId = bd.block_id;
+                engine_->onBlockChanged(static_cast<uint32_t>(x),
+                                        static_cast<uint32_t>(y),
+                                        static_cast<uint32_t>(z),
+                                        bd.block_id, bd.meta, bd.mb_id);
+                spdlog::info("[SimCore] Lazy-created ECS entity at ({},{},{}) block_id={}",
+                             x, y, z, bd.block_id);
+            }
+            // The actual block may no longer be what the client expected —
+            // only treat this as a machine interaction if it really is one.
+            auto* machineReg = engine_->getMachineRegistry();
+            if (!machineReg || !machineReg->IsMachine(finalId)) {
+                spdlog::warn("SetBlockCASHandler: block {} at ({},{},{}) is not a machine — reject",
+                             finalId, x, y, z);
+                publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_REJECTED),
+                                            x, y, z, finalId, 0,
+                                            "Block is not a machine", request_id);
+                return;
+            }
+            publishMachineState(x, y, z, finalId, player_id, request_id);
+        });
+}
+
 void SetBlockCASHandler::handle(const void *table) {
     handle(static_cast<const Protocol::SetBlockAction*>(table));
 }
@@ -88,10 +182,7 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
         if (engine_) {
             auto* machineReg = engine_->getMachineRegistry();
             if (machineReg && machineReg->IsMachine(expected_block_id)) {
-                engine_->onMachineInteracted(x, y, z, expected_block_id, player_id);
-                publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED),
-                                            x, y, z, expected_block_id, 0, "Machine interacted",
-                                            request_id);
+                handleMachineInteraction(x, y, z, expected_block_id, player_id, request_id);
                 return;
             }
         }

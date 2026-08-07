@@ -5,6 +5,7 @@
 
 class UIManager;
 struct InventoryState;
+class IUIWindow;
 
 namespace UIDefaults {
 
@@ -13,8 +14,8 @@ namespace UIDefaults {
 void RegisterPlayerUI(UIManager &mgr, InventoryState &invState);
 
 // Opens UI window for a world block (workbench, furnace, etc.).
-// Returns true if a window was opened.
+// Returns the opened window, or nullptr if no window was opened.
 // Call from GameClient::Update on right-click.
-bool TryOpenBlockUI(UIManager &mgr, uint16_t blockId, const BlockPos &pos);
+IUIWindow *TryOpenBlockUI(UIManager &mgr, uint16_t blockId, const BlockPos &pos);
 
 } // namespace UIDefaults

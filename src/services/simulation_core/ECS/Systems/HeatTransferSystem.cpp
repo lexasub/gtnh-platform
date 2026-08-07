@@ -41,7 +41,11 @@ void HeatTransferSystem::tick(float /*dt*/) {
         auto& pos = view.get<Position>(ent);
         if (energy.type != EnergyType::HEAT) continue;
         auto* info = machineRegistry_.Get(mc.machine_id);
-        if (!info || info->role != MachineRole::PRODUCER) continue;
+        if (!info) continue;
+        bool isProducer = info->role == MachineRole::PRODUCER //TODO fix read real info
+                       || (info->energy_out.has_value()
+                        && info->energy_out.value() == EnergyType::HEAT);
+        if (!isProducer) continue;
         if (energy.current <= 0) continue;
         producers.push_back({ent, pos.x, pos.y, pos.z, &energy});
     }

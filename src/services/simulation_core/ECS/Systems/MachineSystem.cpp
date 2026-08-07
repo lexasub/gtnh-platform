@@ -41,6 +41,8 @@ void MachineSystem::tick(float /*dt*/) {
     ++tickCounter_;
     bool forcePublish = (tickCounter_ >= kForcePublishInterval);
     if (forcePublish) tickCounter_ = 0;
+    // Force-publish on first few ticks to catch late-connecting clients
+    if (startupTicks_ > 0) { forcePublish = true; --startupTicks_; }
 
     // ---- Pass 0: publish inventory state for ALL machines ----
     for (auto ent : view) {

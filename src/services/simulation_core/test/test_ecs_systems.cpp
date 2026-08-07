@@ -30,6 +30,10 @@
 #include "Network/PipeEnergyClient.h"
 #include "MachineRegistry.h"
 #include "RecipeManager/RecipeManager.h"
+#include "Actions/SetBlockCASHandler.h"
+#include "Storage/IBlockRepository.h"
+#include "core_generated.h"
+#include <flatbuffers/flatbuffers.h>
 #include <common/ItemId.h>
 
 extern int g_tests, g_passed, g_failed;
@@ -122,6 +126,27 @@ struct MockBlockRepository : simcore::IBlockRepository {
     }
 };
 
+// ChunkStore-backed repo whose getBlock returns a pre-existing block — the
+// scenario of a machine block placed before this simcore instance started
+// (the block persists in the world, but no ECS entity was ever created).
+struct FakeBlockRepository : simcore::IBlockRepository {
+    uint16_t block_id = 0;
+    uint8_t meta = 0;
+    uint32_t mb_id = 0;
+    int get_calls = 0;
+    int set_cas_calls = 0;
+    void setBlockCAS(int32_t, int32_t, int32_t, uint16_t, uint16_t, uint8_t,
+                     simcore::IBlockRepository::SetBlockCASCallback cb) override {
+        set_cas_calls++;
+        cb({0, 0, 0});
+    }
+    void getBlock(int32_t, int32_t, int32_t,
+                  simcore::IBlockRepository::GetBlockCallback cb) override {
+        get_calls++;
+        cb({block_id, meta, mb_id});
+    }
+};
+
 static std::string g_consumersPath, g_producersPath;
 
 void setupMachineRegistry() {
@@ -138,6 +163,61 @@ void setupMachineRegistry() {
     auto reg = MachineRegistry::Load(g_consumersPath.c_str(), g_producersPath.c_str());
     MachineRegistry::setInstance(reg.get());
     reg.release();
+}
+
+// machines.yaml uses lowercase role ("producer"/"consumer"). ParseRole must be
+// case-insensitive, otherwise every producer is parsed as CONSUMER →
+// maxOutput=0 (generators never produce) and maxInput=usage-default 32.
+static void test_MachineRegistry_Yaml_lowercase_role() {
+    std::string yaml =
+        "machine_classes:\n"
+        "  - class: generator\n"
+        "    variants:\n"
+        "      - block_id: \"1110:00:2\"\n"
+        "        name: heat_generator\n"
+        "        energy_out: HEAT\n"
+        "        role: producer\n"
+        "        slots: { input: 1, output: 0 }\n"
+        "        energy:\n"
+        "          capacity: 10000\n"
+        "          max_output: 32\n"
+        "  - class: macerator\n"
+        "    variants:\n"
+        "      - block_id: \"1110:00:8\"\n"
+        "        name: macerator\n"
+        "        energy_in: ELECTRICITY\n"
+        "        role: consumer\n"
+        "        slots: { input: 1, output: 1 }\n"
+        "        energy:\n"
+        "          capacity: 5000\n"
+        "          usage: 16\n";
+    std::string path = makeTempFile(yaml);
+    auto reg = MachineRegistry::LoadFromYaml(path.c_str());
+    CHECK(reg != nullptr, "YAML registry should load");
+
+    auto* gen = reg->Get(ItemId::pack("1110:00:2"));
+    CHECK(gen != nullptr, "heat_generator should load from YAML");
+    if (gen) {
+        CHECK_EQ(static_cast<int>(gen->role), static_cast<int>(MachineRole::PRODUCER),
+                 "lowercase 'producer' must parse as PRODUCER");
+        CHECK_EQ(gen->maxOutput, 32, "producer must read max_output");
+        CHECK_EQ(gen->maxInput, 0, "producer without usage must have maxInput 0");
+        CHECK(gen->energy_out.has_value(), "energy_out must parse");
+        if (gen->energy_out.has_value()) {
+            CHECK_EQ(static_cast<int>(gen->energy_out.value()),
+                     static_cast<int>(EnergyType::HEAT), "energy_out must be HEAT");
+        }
+    }
+
+    auto* mac = reg->Get(ItemId::pack("1110:00:8"));
+    CHECK(mac != nullptr, "macerator should load from YAML");
+    if (mac) {
+        CHECK_EQ(static_cast<int>(mac->role), static_cast<int>(MachineRole::CONSUMER),
+                 "lowercase 'consumer' must parse as CONSUMER");
+        CHECK_EQ(mac->maxInput, 16, "consumer must read usage");
+        CHECK(mac->energy_in.has_value(), "energy_in must parse");
+    }
+    PASS();
 }
 
 static void test_GeneratorSystem_burns_coal() {
@@ -285,6 +365,152 @@ static void test_HeatTransferSystem_non_adjacent_no_transfer() {
 
     auto& furnEnergy = reg.get<simcore::EnergyStorage>(furn);
     CHECK_EQ(furnEnergy.current, 0, "non-adjacent furnace gets no heat");
+
+    PASS();
+}
+
+// Heat propagation end-to-end through the real onBlockChanged entity-creation
+// path with the real machines.yaml: heat_generator (1110:00:2, PRODUCER/HEAT)
+// burning coal must transfer heat into an adjacent heat_furnace (1110:00:0,
+// CONSUMER/HEAT). Guards the ParseRole + HeatTransferSystem producer-detection
+// fixes — before them the generator parsed as CONSUMER (maxOutput=0) and was
+// never treated as a heat source.
+static void test_HeatTransferSystem_yaml_generator_to_furnace() {
+    auto reg = MachineRegistry::LoadFromYaml(DATA_DIR "/registry/machines.yaml");
+    CHECK(reg != nullptr, "real machines.yaml should load");
+    if (!reg) { PASS(); return; }
+    MachineRegistry::setInstance(reg.get());
+
+    simcore::SimulationEngine engine;
+    engine.setMachineRegistry(reg.get());
+    auto events = std::make_shared<MockEventPublisher>();
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(std::make_shared<simcore::IoUringRouterClient>());
+    simcore::GeneratorSystem genSys(engine.reg(), events, pipeClient);
+    simcore::HeatTransferSystem heatSys(engine.reg(), *MachineRegistry::instance(), events);
+
+    engine.onBlockChanged(0, 0, 0, ItemId::pack("1110:00:2"), 0, 0); // heat_generator
+    engine.onBlockChanged(1, 0, 0, ItemId::pack("1110:00:0"), 0, 0); // heat_furnace
+
+    // Verify the registry-derived components are correct (root-cause guards).
+    entt::entity gen = entt::null, furn = entt::null;
+    auto& r = engine.reg();
+    for (auto e : r.view<simcore::Position>()) {
+        auto& pos = r.get<simcore::Position>(e);
+        auto* es = r.try_get<simcore::EnergyStorage>(e);
+        CHECK(es != nullptr, "machine entity has EnergyStorage");
+        if (pos.x == 0 && es) {
+            gen = e;
+            CHECK_EQ(static_cast<int>(es->type), static_cast<int>(EnergyType::HEAT),
+                     "heat_generator must be HEAT type");
+            CHECK_EQ(es->maxOutput, 32, "heat_generator must have maxOutput from yaml");
+            CHECK_EQ(es->maxInput, 0, "heat_generator (producer) must have maxInput 0");
+        } else if (pos.x == 1 && es) {
+            furn = e;
+            CHECK_EQ(static_cast<int>(es->type), static_cast<int>(EnergyType::HEAT),
+                     "heat_furnace must be HEAT type");
+        }
+    }
+    CHECK(gen != entt::null, "heat_generator entity created");
+    CHECK(furn != entt::null, "heat_furnace entity created");
+
+    // Put coal in the generator's slot 0 (same as MachineSlotHandler would).
+    if (auto* c = r.try_get<simcore::InventoryContainer>(gen)) {
+        if (c->slots.size() > 0) {
+            c->slots[0] = {ItemId::pack("0:11110:2"), 64, 0};
+        }
+    }
+
+    for (int i = 0; i < 20; ++i) {
+        genSys.tick(0.05f);
+        heatSys.tick(0.05f);
+    }
+
+    auto& fe = r.get<simcore::EnergyStorage>(furn);
+    auto& ge = r.get<simcore::EnergyStorage>(gen);
+    CHECK_GT(fe.current, 0, "adjacent heat_furnace receives heat from heat_generator");
+    CHECK_LT(ge.current, 10000, "generator heat transferred away (not full)");
+    CHECK_GT(fe.current, 100, "furnace accumulated meaningful heat over 20 ticks");
+
+    PASS();
+}
+
+// A machine block that predates this simcore instance (exists only in the
+// block repository, no ECS entity) must be lazy-created on right-click —
+// otherwise it is invisible to GeneratorSystem/MachineSystem/HeatTransferSystem
+// and heat can never reach it. Guards the SetBlockCASHandler lazy-init fix.
+static void test_SetBlockCASHandler_lazy_creates_pre_existing_machine() {
+    auto reg = MachineRegistry::LoadFromYaml(DATA_DIR "/registry/machines.yaml");
+    CHECK(reg != nullptr, "real machines.yaml should load");
+    if (!reg) { PASS(); return; }
+    MachineRegistry::setInstance(reg.get());
+
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    engine->setMachineRegistry(reg.get());
+    auto events = std::make_shared<MockEventPublisher>();
+
+    // The furnace "exists" in the world (ChunkStore) but has no ECS entity —
+    // the scenario of a block placed before simcore restarted.
+    auto repo = std::make_shared<FakeBlockRepository>();
+    repo->block_id = ItemId::pack("1110:00:0"); // heat_furnace
+    repo->meta = 0;
+    repo->mb_id = 0;
+
+    simcore::SetBlockCASHandler handler(repo, events, engine);
+
+    // Client right-clicks the furnace at (5,10,5) to open its window.
+    flatbuffers::FlatBufferBuilder fb(256);
+    Protocol::Vec3i pos(5, 10, 5);
+    auto action = Protocol::CreateSetBlockAction(
+        fb, /*player_id=*/1, Protocol::PlayerActionType_RIGHT_MOUSE_CLICK,
+        &pos, /*expected_block_id=*/repo->block_id, /*new_block_id=*/0,
+        /*request_id=*/7);
+    fb.Finish(action);
+    // Mirrors SimCoreMessageHandler: GetRoot + cast to void* to hit the
+    // public IActionHandler::handle(const void*) overload.
+    handler.handle(static_cast<void*>(
+        const_cast<Protocol::SetBlockAction*>(
+            flatbuffers::GetRoot<Protocol::SetBlockAction>(fb.GetBufferPointer()))));
+
+    // Right-click must have queried ChunkStore, created the entity, and
+    // published its state.
+    CHECK_EQ(repo->get_calls, 1, "right-click queried ChunkStore for the block");
+    CHECK_EQ(events->block_entity_update_count, 1, "right-click published machine state");
+    CHECK_EQ(events->last_machine_id, repo->block_id, "published state is for the furnace");
+
+    entt::entity furn = entt::null;
+    auto& r = engine->reg();
+    for (auto e : r.view<simcore::Position>()) {
+        auto& pp = r.get<simcore::Position>(e);
+        if (pp.x == 5 && pp.y == 10 && pp.z == 5) furn = e;
+    }
+    CHECK(furn != entt::null, "furnace entity lazy-created from ChunkStore");
+    if (furn == entt::null) { PASS(); return; }
+
+    // Place a heat_generator adjacent and burn coal — heat must now flow into
+    // the lazy-created furnace (the pre-fix behaviour: no entity → no transfer).
+    engine->onBlockChanged(4, 10, 5, ItemId::pack("1110:00:2"), 0, 0);
+    entt::entity gen = entt::null;
+    for (auto e : r.view<simcore::Position>()) {
+        auto& pp = r.get<simcore::Position>(e);
+        if (pp.x == 4 && pp.y == 10 && pp.z == 5) gen = e;
+    }
+    CHECK(gen != entt::null, "generator entity created");
+    if (gen == entt::null) { PASS(); return; }
+    if (auto* c = r.try_get<simcore::InventoryContainer>(gen)) {
+        if (!c->slots.empty()) c->slots[0] = {ItemId::pack("0:11110:2"), 64, 0};
+    }
+
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(
+        std::make_shared<simcore::IoUringRouterClient>());
+    simcore::GeneratorSystem genSys(r, events, pipeClient);
+    simcore::HeatTransferSystem heatSys(r, *MachineRegistry::instance(), events);
+    for (int i = 0; i < 20; ++i) {
+        genSys.tick(0.05f);
+        heatSys.tick(0.05f);
+    }
+
+    auto& fe = r.get<simcore::EnergyStorage>(furn);
+    CHECK_GT(fe.current, 0, "lazy-created furnace receives heat from generator");
 
     PASS();
 }
@@ -609,6 +835,9 @@ static void test_DrillSystem_falls_back_to_machine_energy() {
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
 void test_ecs_systems() {
+    TEST(MachineRegistry_Yaml_lowercase_role);
+    TEST(HeatTransferSystem_yaml_generator_to_furnace);
+    TEST(SetBlockCASHandler_lazy_creates_pre_existing_machine);
     TEST(GeneratorSystem_burns_coal);
     TEST(GeneratorSystem_producer_maxInput_zero);
     TEST(GeneratorSystem_no_fuel_no_energy);
