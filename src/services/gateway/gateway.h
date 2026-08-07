@@ -63,6 +63,16 @@ inline constexpr uint8_t kGameModeChange = 30;
 inline constexpr uint8_t kStartScenarioReq = 31;
 inline constexpr uint8_t kStartScenarioResp = 32;
 inline constexpr uint8_t kQuestBookOpen = 33;
+// Server-driven recipe queries (client↔gateway↔RecipeManagerService).
+// Payload is always a Protocol::RecipeFrame (recipe.fbs).
+inline constexpr uint8_t kRecipeCheckReq = 34;
+inline constexpr uint8_t kRecipeCheckResp = 35;
+inline constexpr uint8_t kRecipeCatalogReq = 36;
+inline constexpr uint8_t kRecipeCatalogResp = 37;
+inline constexpr uint8_t kRecipeItemReq = 38;
+inline constexpr uint8_t kRecipeItemResp = 39;
+inline constexpr uint8_t kRecipeMachineReq = 40;
+inline constexpr uint8_t kRecipeMachineResp = 41;
 } // namespace GatewayMsg
 
 // ---------------------------------------------------------------------------

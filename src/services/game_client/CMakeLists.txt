@@ -51,9 +51,8 @@ add_executable(gameclientd
 
     Camera/Camera.cpp
 
-    Crafting/ClientRecipeDB.cpp
     Crafting/ClientItemRegistry.cpp
-    Crafting/ClientMachineRecipeDB.cpp
+    Crafting/ServerRecipeDB.cpp
 
     Network/NetClient.cpp
 
@@ -251,3 +250,9 @@ target_include_directories(gameclient_start_scenario_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/UI
 )
 add_test(NAME gameclient_start_scenario_test COMMAND gameclient_start_scenario_test)
+
+add_executable(gameclient_static_assert_test
+    tests/test_client.cpp
+)
+target_include_directories(gameclient_static_assert_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME gameclient_static_assert_test COMMAND gameclient_static_assert_test)

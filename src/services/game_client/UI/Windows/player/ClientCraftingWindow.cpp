@@ -4,17 +4,34 @@
 #include "Components/PlayerInventoryGrid.h"
 #include "Network/NetClient.h"
 #include "core_generated.h"
+#include <common/ItemId.h>
 #include <imgui.h>
 #include <cstdio>
 #include <spdlog/spdlog.h>
 #include <flatbuffers/verifier.h>
 
-CraftingWindow::CraftingWindow(BlockPos pos, NetClient* netClient, DragManager* dragMgr)
+namespace {
+constexpr uint16_t kCraftingTableId = ItemId::pack("0:10:11:1");
+} // namespace
+
+CraftingWindow::CraftingWindow(BlockPos pos, NetClient* netClient, DragManager* dragMgr,
+                               ServerRecipeDB* recipeDb)
     : BlockAttachedWindow(pos)
     , dragMgr_(dragMgr)
     , netClient_(netClient)
+    , recipeDb_(recipeDb)
 {
     open_ = false;
+    // Server-driven live preview: the client has no recipe knowledge of its
+    // own — every grid change is checked against the server's recipe table
+    // (results cached by ServerRecipeDB, LRU on grid hash).
+    grid_.onGridChanged_ = [this](const std::array<ItemStack, 9>& g) {
+        if (!recipeDb_) return;
+        uint32_t gen = grid_.Generation();
+        recipeDb_->CheckGrid(kCraftingTableId, g, [this, gen](const ItemStack& out) {
+            grid_.ApplyServerResult(gen, out);
+        });
+    };
 }
 
 void CraftingWindow::OnCraftResponse(bool success, uint16_t item_id, uint8_t count,
@@ -23,6 +40,9 @@ void CraftingWindow::OnCraftResponse(bool success, uint16_t item_id, uint8_t cou
     if (success) {
         grid_.SetSlots(grid);
         grid_.SetResult(ItemStack{item_id, count, meta});
+        // Any in-flight grid-check replies for the (now consumed) grid are
+        // stale — drop them so they don't erase the "crafted" result slot.
+        grid_.InvalidatePreview();
         craftToast_.lifetime = 0.0f;
         auto name = ItemRegistry::GetName(item_id);
         char buf[128];

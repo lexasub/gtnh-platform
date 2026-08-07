@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../../../Common/Inventory.h"
+#include "../../../Crafting/ServerRecipeDB.h"
 #include "../../../Network/NetClient.h"
 #include "../BlockAttachedWindow.h"
 #include "Components/CraftingGrid.h"
@@ -17,7 +18,8 @@ struct ImDrawList;
 
 class CraftingWindow : public BlockAttachedWindow {
 public:
-  CraftingWindow(BlockPos pos, NetClient *netClient, DragManager *dragMgr);
+  CraftingWindow(BlockPos pos, NetClient *netClient, DragManager *dragMgr,
+                 ServerRecipeDB *recipeDb);
 
   std::string_view Name() const override { return "Workbench"; }
 
@@ -42,4 +44,5 @@ private:
   bool open_ = false;
 
   NetClient *netClient_;
+  ServerRecipeDB *recipeDb_;
 };

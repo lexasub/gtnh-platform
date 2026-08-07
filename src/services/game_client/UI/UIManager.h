@@ -16,6 +16,7 @@
 struct InventoryState;
 struct BlockPos;
 class NetClient;
+class ServerRecipeDB;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // UIManager — mediator between input / network / rendering and UI windows.
@@ -75,6 +76,10 @@ public:
   // ── Network access ───────────────────────────────────────────────────────
   void SetNetClient(NetClient *nc);
   NetClient *GetNetClient() const { return netClient_; }
+
+  // ── Server-driven recipe store (shared by windows/panels) ────────────────
+  void SetRecipeDb(ServerRecipeDB *db) { recipeDb_ = db; }
+  ServerRecipeDB *GetRecipeDb() const { return recipeDb_; }
 
   // ── Drag manager ────────────────────────────────────────────────────────
   DragManager &GetDragManager() { return dragMgr_; }
@@ -137,6 +142,7 @@ private:
   std::vector<std::unique_ptr<IUIWindow>> windows_;
   std::vector<std::unique_ptr<ISidePanel>> panels_;
   NetClient *netClient_ = nullptr;
+  ServerRecipeDB *recipeDb_ = nullptr;
   InventoryState *playerInv_ = nullptr;
   std::array<bool, 512> prevKeys_{};
 

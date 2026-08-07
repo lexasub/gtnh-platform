@@ -2,6 +2,7 @@
 #include "../World/ChunkView.h"
 #include "gateway_generated.h"
 #include "core_generated.h"
+#include "recipe_generated.h"
 #include "quest_generated.h"
 
 #include <gtnh/net/io_uring_connection.h>
@@ -391,6 +392,22 @@ void NetClient::OnMessage(uint8_t msg_type,
             if (onRecipeCompleted_)
                 onRecipeCompleted_(data);
             return;
+        case GatewayMsg::kRecipeCheckResp:
+            if (onRecipeCheckResp_)
+                onRecipeCheckResp_(data);
+            return;
+        case GatewayMsg::kRecipeCatalogResp:
+            if (onRecipeCatalogResp_)
+                onRecipeCatalogResp_(data);
+            return;
+        case GatewayMsg::kRecipeItemResp:
+            if (onRecipesForItemResp_)
+                onRecipesForItemResp_(data);
+            return;
+        case GatewayMsg::kRecipeMachineResp:
+            if (onRecipesForMachineResp_)
+                onRecipesForMachineResp_(data);
+            return;
         case GatewayMsg::kToolActionResp: {
             flatbuffers::Verifier v(payload, plen);
             if (!v.VerifyBuffer<Protocol::ToolActionResp>(nullptr)) {
@@ -691,6 +708,86 @@ void NetClient::SendCraftRequest(uint64_t player_id, const BlockPos& pos,
     auto req = Protocol::CreateCraftRequest(builder, player_id, &posVec, slotsOffset);
     builder.Finish(req);
     EnqueueWrite(GatewayMsg::kCraftRequest, builder.GetBufferPointer(), builder.GetSize());
+}
+
+// =========================================================================
+//  Server-driven recipe queries — always a RecipeFrame (recipe.fbs) payload
+// =========================================================================
+
+void NetClient::SendRecipeCheckReq(uint16_t machine_id,
+                                   const std::array<ItemStack, 9>& grid,
+                                   uint32_t req_id) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(128);
+    std::array<Protocol::ItemStack, 9> items{};
+    for (int i = 0; i < 9; ++i) {
+        items[i] = Protocol::ItemStack(grid[i].item_id, grid[i].count, grid[i].meta);
+    }
+    Protocol::Container container(flatbuffers::span<const Protocol::ItemStack, 9>(items), 0, 9);
+    auto req = Protocol::CreateCheckRecipeReq(builder, &container, machine_id);
+    Protocol::RecipeMessageBuilder msgBuilder(builder);
+    msgBuilder.add_req_id(req_id);
+    msgBuilder.add_request_type(Protocol::RecipeRequest_CheckRecipeReq);
+    msgBuilder.add_request(req.Union());
+    auto msgOffset = msgBuilder.Finish();
+    Protocol::RecipeFrameBuilder frameBuilder(builder);
+    frameBuilder.add_payload_type(Protocol::RecipePayload_RecipeMessage);
+    frameBuilder.add_payload(msgOffset.Union());
+    auto frameOffset = frameBuilder.Finish();
+    builder.Finish(frameOffset);
+    EnqueueWrite(GatewayMsg::kRecipeCheckReq, builder.GetBufferPointer(), builder.GetSize());
+}
+
+void NetClient::SendRecipeCatalogReq(uint32_t req_id) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto req = Protocol::CreateRecipeCatalogReq(builder);
+    Protocol::RecipeMessageBuilder msgBuilder(builder);
+    msgBuilder.add_req_id(req_id);
+    msgBuilder.add_request_type(Protocol::RecipeRequest_RecipeCatalogReq);
+    msgBuilder.add_request(req.Union());
+    auto msgOffset = msgBuilder.Finish();
+    Protocol::RecipeFrameBuilder frameBuilder(builder);
+    frameBuilder.add_payload_type(Protocol::RecipePayload_RecipeMessage);
+    frameBuilder.add_payload(msgOffset.Union());
+    auto frameOffset = frameBuilder.Finish();
+    builder.Finish(frameOffset);
+    EnqueueWrite(GatewayMsg::kRecipeCatalogReq, builder.GetBufferPointer(), builder.GetSize());
+}
+
+void NetClient::SendRecipesForItemReq(uint16_t item_id, uint8_t mode,
+                                      uint32_t req_id) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto req = Protocol::CreateRecipesForItemReq(builder, item_id, mode);
+    Protocol::RecipeMessageBuilder msgBuilder(builder);
+    msgBuilder.add_req_id(req_id);
+    msgBuilder.add_request_type(Protocol::RecipeRequest_RecipesForItemReq);
+    msgBuilder.add_request(req.Union());
+    auto msgOffset = msgBuilder.Finish();
+    Protocol::RecipeFrameBuilder frameBuilder(builder);
+    frameBuilder.add_payload_type(Protocol::RecipePayload_RecipeMessage);
+    frameBuilder.add_payload(msgOffset.Union());
+    auto frameOffset = frameBuilder.Finish();
+    builder.Finish(frameOffset);
+    EnqueueWrite(GatewayMsg::kRecipeItemReq, builder.GetBufferPointer(), builder.GetSize());
+}
+
+void NetClient::SendRecipesForMachineReq(uint16_t machine_id, uint32_t req_id) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto req = Protocol::CreateRecipesForMachineReq(builder, machine_id);
+    Protocol::RecipeMessageBuilder msgBuilder(builder);
+    msgBuilder.add_req_id(req_id);
+    msgBuilder.add_request_type(Protocol::RecipeRequest_RecipesForMachineReq);
+    msgBuilder.add_request(req.Union());
+    auto msgOffset = msgBuilder.Finish();
+    Protocol::RecipeFrameBuilder frameBuilder(builder);
+    frameBuilder.add_payload_type(Protocol::RecipePayload_RecipeMessage);
+    frameBuilder.add_payload(msgOffset.Union());
+    auto frameOffset = frameBuilder.Finish();
+    builder.Finish(frameOffset);
+    EnqueueWrite(GatewayMsg::kRecipeMachineReq, builder.GetBufferPointer(), builder.GetSize());
 }
 
 void NetClient::SendQuestComplete(uint64_t player_id, uint32_t quest_id) {

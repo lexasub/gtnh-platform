@@ -27,8 +27,11 @@ void RecipeManagerService::Start() {
     router_.Subscribe("recipe.check");
     router_.Subscribe("recipe.craft");
     router_.Subscribe("recipe.evaluate");
+    router_.Subscribe("recipe.catalog");
+    router_.Subscribe("recipe.item");
+    router_.Subscribe("recipe.machine");
     router_.Subscribe("world.block_entity.update");
-    spdlog::info("RecipeManagerService started, subscribed to recipe.check/craft/evaluate/block_entity.update");
+    spdlog::info("RecipeManagerService started, subscribed to recipe.check/craft/evaluate/catalog/item/machine/block_entity.update");
 }
 
 void RecipeManagerService::onRouterMessage(const std::string& topic, const std::vector<uint8_t>& data) {
@@ -36,7 +39,8 @@ void RecipeManagerService::onRouterMessage(const std::string& topic, const std::
         handleBlockEntityUpdate(data);
         return;
     }
-    if (topic == "recipe.check" || topic == "recipe.craft" || topic == "recipe.evaluate") {
+    if (topic == "recipe.check" || topic == "recipe.craft" || topic == "recipe.evaluate" ||
+        topic == "recipe.catalog" || topic == "recipe.item" || topic == "recipe.machine") {
         flatbuffers::Verifier verifier(data.data(), data.size());
         if (!Protocol::VerifyRecipeFrameBuffer(verifier)) {
             spdlog::warn("RecipeManager: invalid FlatBuffer on '{}'", topic);
@@ -63,6 +67,18 @@ void RecipeManagerService::onRouterMessage(const std::string& topic, const std::
             auto* req = msg->request_as_EvaluateConditionsReq();
             if (!req) return;
             response = recipes_->handleEvaluateConditionsRequest(req, req_id);
+        } else if (topic == "recipe.catalog") {
+            auto* req = msg->request_as_RecipeCatalogReq();
+            if (!req) return;
+            response = recipes_->handleCatalogRequest(req_id);
+        } else if (topic == "recipe.item") {
+            auto* req = msg->request_as_RecipesForItemReq();
+            if (!req) return;
+            response = recipes_->handleRecipesForItemRequest(req, req_id);
+        } else if (topic == "recipe.machine") {
+            auto* req = msg->request_as_RecipesForMachineReq();
+            if (!req) return;
+            response = recipes_->handleRecipesForMachineRequest(req, req_id);
         }
         if (!response.empty()) {
             publishResponse(topic + ".response", response);

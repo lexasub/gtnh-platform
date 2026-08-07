@@ -19,6 +19,8 @@ int,name,stack,meta
 0:10:10:1,spruce_door,,0
 0:10:11:0,chest,,0
 0:10:11:1,crafting_table,,0
+0:10:11:2,oak_log,,0
+0:10:11:3,oak_leaves,,0
 # INGOTS (0:110)
 0:110:1,iron_ingot,,0
 0:110:2,gold_ingot,,0

@@ -36,10 +36,31 @@ table EvaluateConditionsReq {
   recipe_id:string;
 }
 
+// Client asks for the compact catalog of item ids that appear in any recipe
+// (inputs or outputs). Used for "what recipes exist" and to know what is
+// queryable before issuing per-item / per-machine requests.
+table RecipeCatalogReq {
+}
+
+// Recipes involving a single item: mode 0 = both, 1 = craft (item is an
+// output), 2 = use (item is an input). "How is X crafted / where is X used".
+table RecipesForItemReq {
+  item_id:uint16;
+  mode:uint8;
+}
+
+// All recipes a machine class can run (NEI-style listing for a block_id).
+table RecipesForMachineReq {
+  machine_id:uint16;
+}
+
 union RecipeRequest {
   CheckRecipeReq,
   CraftReq,
   EvaluateConditionsReq,
+  RecipeCatalogReq,
+  RecipesForItemReq,
+  RecipesForMachineReq,
 }
 // ---------------------------------------------------------------------------
 // Response types
@@ -47,6 +68,9 @@ union RecipeRequest {
 
 table CheckRecipeResp {
   recipe_id:string;
+  // Matched recipe details (output + pattern + inputs) so the client can show
+  // the result slot / preview without a second round trip. Null on no match.
+  recipe:RecipeInfo;
 }
 
 table CraftResp {
@@ -59,17 +83,26 @@ table EvaluateConditionsResp {
 
 table RecipeInfo {
   machine_type:uint16;
+  machine_class:string;
   recipe_id:string;
   duration:uint32;
   inputs:[ItemStack];
   outputs:[ItemStack];
+  // Positional 3x3 pattern (9 entries, item_id 0 = empty cell). Only set for
+  // has_pattern recipes.
+  has_pattern:bool;
+  pattern:[ItemStack];
 }
 
-table RecipesForItemReq {
-  item_id:uint16;
+table RecipeCatalogResp {
+  item_ids:[ushort];
 }
 
 table RecipesForItemResp {
+  recipes:[RecipeInfo];
+}
+
+table RecipesForMachineResp {
   recipes:[RecipeInfo];
 }
 
@@ -78,7 +111,9 @@ union RecipeResponse {
   CraftResp,
   EvaluateConditionsResp,
   ErrorResp,
+  RecipeCatalogResp,
   RecipesForItemResp,
+  RecipesForMachineResp,
 }
 
 // ---------------------------------------------------------------------------

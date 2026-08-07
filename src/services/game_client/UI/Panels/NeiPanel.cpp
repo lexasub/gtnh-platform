@@ -1,6 +1,4 @@
 #include "Panels/NeiPanel.h"
-#include "Crafting/ClientMachineRecipeDB.h"
-#include "Crafting/ClientRecipeDB.h"
 #include "Crafting/ClientItemRegistry.h"
 #include "UI/Components/ItemIndex.h"
 #include "UIManager.h"
@@ -40,27 +38,46 @@ void NeiPanel::Render([[maybe_unused]] InventoryState* playerInv) {
 
 void NeiPanel::RenderMachineRecipes(MachineWindow* mw) {
     uint16_t machineType = mw->GetMachineType();
-    const auto& recipes = MachineRecipes::GetRecipes(machineType);
+
+    // Server-driven: on machine change (or first open), fetch the machine's
+    // recipes; results are cached by ServerRecipeDB (LRU).
+    auto* db = uiMgr_ ? uiMgr_->GetRecipeDb() : nullptr;
+    if (db && machineType != machineRequested_) {
+        machineRequested_ = machineType;
+        machineLoaded_ = false;
+        machineRecipes_.clear();
+        selectedRecipe_ = -1;
+        db->GetRecipesForMachine(machineType, [this, db, machineType]() {
+            if (machineType != machineRequested_) return; // machine switched
+            machineRecipes_ = db->GetMachineRecipesCopy(machineType);
+            machineLoaded_ = true;
+        });
+    }
 
     auto title = std::string("Recipes for Machine ") + std::to_string(machineType);
     ImGui::Begin(title.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize);
     ImGui::Text("Machine %u Recipes", machineType);
     ImGui::Separator();
 
-    if (recipes.empty()) {
+    if (!machineLoaded_) {
+        ImGui::Text("Loading...");
+        ImGui::End();
+        return;
+    }
+    if (machineRecipes_.empty()) {
         ImGui::Text("No recipes found");
         ImGui::End();
         return;
     }
 
-    if (selectedRecipe_ >= static_cast<int>(recipes.size()))
+    if (selectedRecipe_ >= static_cast<int>(machineRecipes_.size()))
         selectedRecipe_ = -1;
 
     ImGui::BeginChild("recipeList", ImVec2(220, 300), true);
-    for (int i = 0; i < static_cast<int>(recipes.size()); ++i) {
+    for (int i = 0; i < static_cast<int>(machineRecipes_.size()); ++i) {
         ImGui::PushID(i);
         bool selected = (i == selectedRecipe_);
-        if (ImGui::Selectable(recipes[i].name.c_str(), &selected))
+        if (ImGui::Selectable(machineRecipes_[i].recipe_id.c_str(), &selected))
             selectedRecipe_ = i;
         ImGui::PopID();
     }
@@ -70,8 +87,8 @@ void NeiPanel::RenderMachineRecipes(MachineWindow* mw) {
 
     ImGui::BeginChild("recipeDetail", ImVec2(300, 300), true);
     if (selectedRecipe_ >= 0) {
-        const auto& recipe = recipes[selectedRecipe_];
-        ImGui::Text("%s", recipe.name.c_str());
+        const auto& recipe = machineRecipes_[selectedRecipe_];
+        ImGui::Text("%s", recipe.recipe_id.c_str());
         ImGui::Separator();
 
         auto spawnItem = [this](const ItemStack& item) {

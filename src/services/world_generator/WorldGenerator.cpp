@@ -9,6 +9,8 @@
 #include "FastNoise/FastNoise.h"
 #include "OreConfig.h"
 #include "OreGenerator.h"
+#include "SurfaceHeights.h"
+#include "TreeGenerator.h"
 #include "common/ItemId.h"
 
 namespace {
@@ -23,28 +25,13 @@ namespace {
     constexpr uint16_t BLOCK_DIRT  = ItemId::pack("0:0:7");
     constexpr uint16_t BLOCK_WATER = ItemId::pack("1111:11:0");
 
-    // Параметры шума
-    constexpr float BASE_FREQ = 0.02f;   // 1/50
-    constexpr float CONT_FREQ = 0.005f;  // 1/200
     constexpr float CAVE_FREQ = 0.03f;   // 1/33.33
 
-    constexpr float BASE_AMP    = 12.0f;
-    constexpr float CONT_AMP    = 20.0f;
-    constexpr float BASE_HEIGHT = 64.0f;
+    // === Cave noise (kept here — not part of surface heights) ===
+    thread_local FastNoise::SmartNode<FastNoise::Simplex>    caveSimplex = FastNoise::New<FastNoise::Simplex>();
+    thread_local FastNoise::SmartNode<FastNoise::FractalFBm> caveFBM     = FastNoise::New<FastNoise::FractalFBm>();
 
-    // === Шумы ===
-    thread_local FastNoise::SmartNode<FastNoise::Perlin> basePerlin = FastNoise::New<FastNoise::Perlin>();
-    thread_local FastNoise::SmartNode<FastNoise::FractalFBm> baseFBM = FastNoise::New<FastNoise::FractalFBm>();
-
-    thread_local FastNoise::SmartNode<FastNoise::Simplex> contSimplex = FastNoise::New<FastNoise::Simplex>();
-    thread_local FastNoise::SmartNode<FastNoise::FractalFBm> contFBM = FastNoise::New<FastNoise::FractalFBm>();
-
-    thread_local FastNoise::SmartNode<FastNoise::Simplex> caveSimplex = FastNoise::New<FastNoise::Simplex>();
-    thread_local FastNoise::SmartNode<FastNoise::FractalFBm> caveFBM = FastNoise::New<FastNoise::FractalFBm>();
-
-    // === Буферы ===
-    thread_local std::array<float, CHUNK_SIZE_SQ>  baseNoise;
-    thread_local std::array<float, CHUNK_SIZE_SQ>  contNoise;
+    // === Thread-local buffers ===
     thread_local std::array<float, CHUNK_SIZE_SQ>  heights;
     thread_local std::array<float, CHUNK_SIZE_CUB> caveNoise;
 
@@ -54,18 +41,6 @@ namespace {
 
     void init() {
         if (initialized) [[likely]] return;
-
-        basePerlin->SetScale(1.0f / BASE_FREQ);
-        baseFBM->SetSource(basePerlin);
-        baseFBM->SetOctaveCount(3);
-        baseFBM->SetLacunarity(2.0f);
-        baseFBM->SetGain(0.5f);
-
-        contSimplex->SetScale(1.0f / CONT_FREQ);
-        contFBM->SetSource(contSimplex);
-        contFBM->SetOctaveCount(2);
-        contFBM->SetLacunarity(2.0f);
-        contFBM->SetGain(0.5f);
 
         caveSimplex->SetScale(1.0f / CAVE_FREQ);
         caveFBM->SetSource(caveSimplex);
@@ -87,24 +62,19 @@ void WorldGenerator::GenerateTerrain(Chunk& c, int cx, int cy, int cz) {
     const int baseY = cy * CHUNK_SIZE;
     init();
 
-    // === 2D шум: высоты ===
-    baseFBM->GenUniformGrid2D(baseNoise.data(), baseX, baseZ, CHUNK_SIZE, CHUNK_SIZE, 1.0f, 1.0f, SEED);
-    contFBM->GenUniformGrid2D(contNoise.data(), baseX, baseZ, CHUNK_SIZE, CHUNK_SIZE, 1.0f, 1.0f, SEED + 1);
+    // ── Surface heights (single owner of the formula) ────────────────────
+    SurfaceHeights surf(SEED);
+    surf.fill(heights.data(), CHUNK_SIZE, baseX, baseZ);
 
-    for (int i = 0; i < CHUNK_SIZE_SQ; ++i) {
-        heights[i] = BASE_HEIGHT + baseNoise[i] * BASE_AMP + contNoise[i] * CONT_AMP;
-    }
-
-    // === 3D шум: пещеры ===
+    // ── 3D cave noise ───────────────────────────────────────────────────
     caveFBM->GenUniformGrid3D(caveNoise.data(), baseX, baseY, baseZ,
                               CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE,
                               1.0f, 1.0f, 1.0f, SEED + 2);
 
-
     for (int y = 0; y < CHUNK_SIZE; ++y) {
         int worldY = baseY + y;
         int yShft = y << 10;
-        uint16_t* __restrict src_row = c.blocks.data() + yShft; // + 1 << 5 in cycle
+        uint16_t* __restrict src_row = c.blocks.data() + yShft;
         for (int z = 0; z < CHUNK_SIZE; ++z) {
             for (int x = 0; x < CHUNK_SIZE; ++x) {
                 float terrainHeight = heights[idx2(x, z)];
@@ -123,7 +93,7 @@ void WorldGenerator::GenerateTerrain(Chunk& c, int cx, int cy, int cz) {
                     continue;
                 }
 
-                if (std::abs(caveNoise[idx3(x, y, z)]) < 0.12f && worldY < terrainHeight - 5.0f) // Распространение воды
+                if (std::abs(caveNoise[idx3(x, y, z)]) < 0.12f && worldY < terrainHeight - 5.0f)
                     block = (worldY < 0) ? BLOCK_WATER : BLOCK_AIR;
 
                 src_row[x] = block;
@@ -132,10 +102,15 @@ void WorldGenerator::GenerateTerrain(Chunk& c, int cx, int cy, int cz) {
         }
     }
 
+    // ── Ore generation ───────────────────────────────────────────────────
     static std::once_flag oreConfigFlag;
     std::call_once(oreConfigFlag, []{
         OreConfig::instance().load("data/registry/ores.json");
     });
 
     oreGen.generateOres(cx, cy, cz, c.getBlocks(), CHUNK_SIZE);
+
+    // ── Oak tree generation (after terrain + ores, writes into AIR only) ──
+    TreeGenerator treeGen(SEED);
+    treeGen.generateTrees(c, surf, baseX, baseY, baseZ, CHUNK_SIZE);
 }

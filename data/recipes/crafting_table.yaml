@@ -181,3 +181,16 @@ recipes:
     duration: 100
     min_tier: 0
     max_tier: 32767
+
+  - name: oak_log_to_planks
+    pattern:
+      - [oak_log, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: oak_log, count: 1 }
+    outputs:
+      - { item: oak_planks, count: 4 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767

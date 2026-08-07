@@ -1,6 +1,6 @@
 #include "RecipeInspectWindow.h"
-#include "Crafting/ClientMachineRecipeDB.h"
-#include "Crafting/ClientRecipeDB.h"
+#include "UIManager.h"
+#include "Crafting/ServerRecipeDB.h"
 #include "Crafting/ClientItemRegistry.h"
 #include "Components/SlotGrid.h"
 #include <GLFW/glfw3.h>
@@ -8,94 +8,61 @@
 #include <algorithm>
 #include <cstdio>
 
-RecipeInspectWindow::RecipeInspectWindow() {}
+RecipeInspectWindow::RecipeInspectWindow(UIManager *uiMgr) : uiMgr_(uiMgr) {}
 
 void RecipeInspectWindow::SetItem(uint16_t itemId) {
     if (itemId == itemId_) return;
     itemId_ = itemId;
     activeTab_ = 0;
     page_ = 0;
+    recipes_.clear();
+    uses_.clear();
     rebuildEntries();
 }
 
 void RecipeInspectWindow::rebuildEntries() {
+    if (itemId_ == 0 || !uiMgr_) return;
+    auto *db = uiMgr_->GetRecipeDb();
+    if (!db) return;
+    uint16_t id = itemId_;
+    // Async: server returns every recipe involving this item (both directions);
+    // rebuildFromServer splits into "crafted as output" / "used as input".
+    db->GetRecipesForItem(id, [this, id]() {
+        if (id != itemId_) return; // user switched items while in flight
+        rebuildFromServer();
+    });
+}
+
+void RecipeInspectWindow::rebuildFromServer() {
     recipes_.clear();
     uses_.clear();
-    page_ = 0;
+    if (!uiMgr_ || itemId_ == 0) return;
+    auto *db = uiMgr_->GetRecipeDb();
+    if (!db) return;
+    auto itemRecipes = db->GetItemRecipesCopy(itemId_);
 
-    if (itemId_ == 0) return;
-
-    struct TempEntry {
-        std::string group;
-        std::string name;
-        std::vector<ItemStack> inputs;
-        std::vector<ItemStack> outputs;
-        uint32_t duration;
-        std::vector<uint16_t> outputIds;
-        std::vector<uint16_t> inputIds;
-        bool has_pattern = false;
-        std::array<ItemStack, 9> pattern{};
+    auto makeEntry = [](const ServerRecipeDB::RecipeInfo &ri) -> RecipeEntry {
+        RecipeEntry e;
+        e.group = ri.machine_class.empty()
+                      ? (ri.machine_type ? std::to_string(ri.machine_type)
+                                         : "Crafting Table")
+                      : ri.machine_class;
+        e.name = ri.outputs.empty()
+                     ? ri.recipe_id
+                     : std::string(ItemRegistry::GetName(ri.outputs[0].item_id));
+        e.inputs = ri.inputs;
+        e.outputs = ri.outputs;
+        e.duration = ri.duration;
+        e.has_pattern = ri.has_pattern;
+        e.pattern = ri.pattern;
+        return e;
     };
-    std::vector<TempEntry> all;
 
-    for (const auto& rec : Crafting::kRecipes) {
-        if (rec.output.item_id == 0) continue;
-        TempEntry e;
-        e.group = "Crafting Table";
-        e.name = std::string(ItemRegistry::GetName(rec.output.item_id));
-        e.has_pattern = true;
-        e.pattern = rec.input_slots;  // keep the full 3x3 position
-        for (int i = 0; i < 9; ++i) {
-            if (rec.input_slots[i].item_id != 0)
-                e.inputs.push_back(rec.input_slots[i]);
-        }
-        e.outputs.push_back(rec.output);
-        e.duration = 0;
-        e.outputIds.push_back(rec.output.item_id);
-        for (const auto& in : e.inputs) e.inputIds.push_back(in.item_id);
-        all.push_back(std::move(e));
+    for (const auto &ri : itemRecipes.craft) {
+        recipes_.push_back(makeEntry(ri));
     }
-
-    for (auto& [type, recs] : MachineRecipes::s_recipes) {
-        for (const auto& rec : recs) {
-            TempEntry e;
-            e.group = std::to_string(type);
-            e.name = rec.name;
-            e.outputs = rec.outputs;
-            e.inputs = rec.inputs;
-            e.duration = rec.duration;
-            for (const auto& out : rec.outputs) e.outputIds.push_back(out.item_id);
-            for (const auto& in : rec.inputs) e.inputIds.push_back(in.item_id);
-            all.push_back(std::move(e));
-        }
-    }
-
-    for (const auto& e : all) {
-        bool isRecipe = std::find(e.outputIds.begin(), e.outputIds.end(), itemId_) != e.outputIds.end();
-        bool isUse = std::find(e.inputIds.begin(), e.inputIds.end(), itemId_) != e.inputIds.end();
-
-        if (isRecipe) {
-            RecipeEntry out;
-            out.group = e.group;
-            out.name = e.name;
-            out.inputs = e.inputs;
-            out.outputs = e.outputs;
-            out.duration = e.duration;
-            out.has_pattern = e.has_pattern;
-            out.pattern = e.pattern;
-            recipes_.push_back(std::move(out));
-        }
-        if (isUse) {
-            RecipeEntry out;
-            out.group = e.group;
-            out.name = e.name;
-            out.inputs = e.inputs;
-            out.outputs = e.outputs;
-            out.duration = e.duration;
-            out.has_pattern = e.has_pattern;
-            out.pattern = e.pattern;
-            uses_.push_back(std::move(out));
-        }
+    for (const auto &ri : itemRecipes.use) {
+        uses_.push_back(makeEntry(ri));
     }
 }
 

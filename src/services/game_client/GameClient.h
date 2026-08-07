@@ -6,6 +6,7 @@
 #include "Common/Inventory.h"
 #include "Common/NamedThreadPool.h"
 #include "Common/Types.h"
+#include "Crafting/ServerRecipeDB.h"
 #include "Network/NetClient.h"
 #include "Render/RenderBridge.h"
 #include "UI/InputManager.h"
@@ -44,6 +45,9 @@ private:
       chunkLoadWorkGuard_;
   std::shared_ptr<NetClient> netClient_;
   NamedThreadPool &threadPool_ = NamedThreadPool::instance();
+
+  // Server-driven recipe store (catalog + LRU caches); owns recipe queries.
+  ServerRecipeDB recipeDb_;
 
   // ---- Core subsystems ----
   GLFWWindow window_;

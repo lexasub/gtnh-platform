@@ -58,6 +58,14 @@ inline constexpr uint8_t kGameModeChange = 30;
 inline constexpr uint8_t kStartScenarioReq = 31;
 inline constexpr uint8_t kStartScenarioResp = 32;
 inline constexpr uint8_t kQuestBookOpen = 33;
+inline constexpr uint8_t kRecipeCheckReq = 34;
+inline constexpr uint8_t kRecipeCheckResp = 35;
+inline constexpr uint8_t kRecipeCatalogReq = 36;
+inline constexpr uint8_t kRecipeCatalogResp = 37;
+inline constexpr uint8_t kRecipeItemReq = 38;
+inline constexpr uint8_t kRecipeItemResp = 39;
+inline constexpr uint8_t kRecipeMachineReq = 40;
+inline constexpr uint8_t kRecipeMachineResp = 41;
 } // namespace GatewayMsg
 
 class NetClient : public std::enable_shared_from_this<NetClient> {
@@ -77,6 +85,11 @@ public:
   using BlockEntityUpdateCallback =
       std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
   using RecipeCompletedCallback =
+      std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
+  // Server-driven recipe query replies (payload = Protocol::RecipeFrame →
+  // RecipeReply). Parsing/caching happens in ServerRecipeDB, so these are thin
+  // raw-buffer callbacks.
+  using RecipeQueryCallback =
       std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
   using SetMachineSlotRespCallback = std::function<void(
       BlockPos, uint8_t, bool, const std::string &, const ItemStack &)>;
@@ -125,6 +138,18 @@ public:
   }
   void SetRecipeCompletedCallback(RecipeCompletedCallback cb) {
     onRecipeCompleted_ = std::move(cb);
+  }
+  void SetRecipeCheckRespCallback(RecipeQueryCallback cb) {
+    onRecipeCheckResp_ = std::move(cb);
+  }
+  void SetRecipeCatalogRespCallback(RecipeQueryCallback cb) {
+    onRecipeCatalogResp_ = std::move(cb);
+  }
+  void SetRecipesForItemRespCallback(RecipeQueryCallback cb) {
+    onRecipesForItemResp_ = std::move(cb);
+  }
+  void SetRecipesForMachineRespCallback(RecipeQueryCallback cb) {
+    onRecipesForMachineResp_ = std::move(cb);
   }
   void SetCraftResponseCallback(CraftResponseCallback cb) {
     onCraftResponse_ = std::move(cb);
@@ -185,6 +210,14 @@ public:
   void SendQuestBookOpen(uint64_t player_id);
   void SendGameModeChange(uint64_t player_id, uint8_t new_mode);
   void SendStartScenarioReq(uint64_t player_id, uint8_t scenario_index);
+
+  // ── Server-driven recipe queries (payload = Protocol::RecipeFrame) ──
+  void SendRecipeCheckReq(uint16_t machine_id,
+                          const std::array<ItemStack, 9> &grid,
+                          uint32_t req_id);
+  void SendRecipeCatalogReq(uint32_t req_id);
+  void SendRecipesForItemReq(uint16_t item_id, uint8_t mode, uint32_t req_id);
+  void SendRecipesForMachineReq(uint16_t machine_id, uint32_t req_id);
 
 private:
   // ---- Thread-safe message queue -----------------------------------------
@@ -250,6 +283,10 @@ private:
   InventoryUpdateCallback onInventoryUpdate_;
   BlockEntityUpdateCallback onBlockEntityUpdate_;
   RecipeCompletedCallback onRecipeCompleted_;
+  RecipeQueryCallback onRecipeCheckResp_;
+  RecipeQueryCallback onRecipeCatalogResp_;
+  RecipeQueryCallback onRecipesForItemResp_;
+  RecipeQueryCallback onRecipesForMachineResp_;
   CraftResponseCallback onCraftResponse_;
   SetMachineSlotRespCallback onSetMachineSlotResp_;
   ChestOpenRespCallback onChestOpenResp_;

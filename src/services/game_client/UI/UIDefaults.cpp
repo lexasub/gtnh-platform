@@ -18,7 +18,7 @@ void RegisterPlayerUI(UIManager& mgr, InventoryState& invState) {
     auto& invWin = mgr.Register<PlayerInventory>(invState);
     invWin.SetDragManager(mgr.GetDragManager());
     mgr.Register<CreativeMenu>(&mgr);
-    mgr.Register<RecipeInspectWindow>();
+    mgr.Register<RecipeInspectWindow>(&mgr);
     mgr.Register<QuestBookWindow>(&mgr);
     mgr.Register<ConsoleWindow>(&mgr);
     mgr.Register<GameScenario>(&mgr);

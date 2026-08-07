@@ -99,6 +99,23 @@ void GameClient::subscribeNetClient() {
         [this](std::shared_ptr<std::vector<uint8_t>> data) {
             uiMgr_.HandleNetwork(GatewayMsg::kRecipeCompleted, data->data());
         });
+    // Server-driven recipe query replies → ServerRecipeDB (parse + cache).
+    netClient_->SetRecipeCheckRespCallback(
+        [this](std::shared_ptr<std::vector<uint8_t>> data) {
+            recipeDb_.HandleRecipeResponse(GatewayMsg::kRecipeCheckResp, std::move(data));
+        });
+    netClient_->SetRecipeCatalogRespCallback(
+        [this](std::shared_ptr<std::vector<uint8_t>> data) {
+            recipeDb_.HandleRecipeResponse(GatewayMsg::kRecipeCatalogResp, std::move(data));
+        });
+    netClient_->SetRecipesForItemRespCallback(
+        [this](std::shared_ptr<std::vector<uint8_t>> data) {
+            recipeDb_.HandleRecipeResponse(GatewayMsg::kRecipeItemResp, std::move(data));
+        });
+    netClient_->SetRecipesForMachineRespCallback(
+        [this](std::shared_ptr<std::vector<uint8_t>> data) {
+            recipeDb_.HandleRecipeResponse(GatewayMsg::kRecipeMachineResp, std::move(data));
+        });
     netClient_->SetMultiblockEventCallback(
         [this](std::shared_ptr<std::vector<uint8_t>> data) {
             uiMgr_.HandleNetwork(GatewayMsg::kMultiblockEvent, data->data());
@@ -203,6 +220,10 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
     UIDefaults::RegisterPlayerUI(uiMgr_, invState_);
     uiMgr_.SetNetClient(netClient_.get());
 
+    // Server-driven recipe store (catalog + LRU caches)
+    recipeDb_.Init(netClient_.get());
+    uiMgr_.SetRecipeDb(&recipeDb_);
+
     // Wire action system (after UI registration so windows are created)
     uiMgr_.GetActions().Init(&uiMgr_.GetActionRegistry(), &uiMgr_,
                               netClient_.get(), &invState_);
@@ -232,6 +253,8 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
         spdlog::error("GameClient: failed to connect to server");
         return false;
     }
+    // Prime the recipe catalog ("what recipes exist") once connected.
+    recipeDb_.RequestCatalog();
     threadPool_.addThread(worldContext_, "ClientWorld");
     threadPool_.addThread(chunkLoadContext_, "ChunkLoad");
 

@@ -2,6 +2,7 @@
 #include "gateway.h"
 #include "gateway_generated.h"
 #include "quest_generated.h"
+#include "recipe_generated.h"
 
 #include <gtnh/net/frame.h>
 #include <flatbuffers/flatbuffers.h>
@@ -395,6 +396,15 @@ void IoUringGateway::on_router_publish(
         send_to_client_ctrl_raw(GatewayMsg::kBlockEntityUpdate, payload, plen);
     else if (topic == "sim.craft.response")
         send_to_client_ctrl_raw(GatewayMsg::kCraftResponse, payload, plen);
+    // Server-driven recipe query replies (RecipeFrame payload, pass-through)
+    else if (topic == "recipe.check.response")
+        send_to_client_ctrl_raw(GatewayMsg::kRecipeCheckResp, payload, plen);
+    else if (topic == "recipe.catalog.response")
+        send_to_client_ctrl_raw(GatewayMsg::kRecipeCatalogResp, payload, plen);
+    else if (topic == "recipe.item.response")
+        send_to_client_ctrl_raw(GatewayMsg::kRecipeItemResp, payload, plen);
+    else if (topic == "recipe.machine.response")
+        send_to_client_ctrl_raw(GatewayMsg::kRecipeMachineResp, payload, plen);
 else if (topic == "player.machine.slot.response")
     send_to_client_ctrl_raw(GatewayMsg::kSetMachineSlotResp, payload, plen);
 else if (topic == "player.chest.open.response")
@@ -562,6 +572,27 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
             spdlog::error("Gateway: invalid StartScenarioReq on ctrl"); return;
         }
         publish("player.scenario.start", data, len);
+        break;
+    }
+    // Server-driven recipe queries → RecipeManagerService (RecipeFrame payload).
+    // The gateway is a pure pass-through: it only verifies the frame and
+    // forwards to the recipe.* topic; replies come back on recipe.*.response.
+    case GatewayMsg::kRecipeCheckReq:
+    case GatewayMsg::kRecipeCatalogReq:
+    case GatewayMsg::kRecipeItemReq:
+    case GatewayMsg::kRecipeMachineReq: {
+        flatbuffers::Verifier v(data, len);
+        if (!Protocol::VerifyRecipeFrameBuffer(v)) {
+            spdlog::error("Gateway: invalid RecipeFrame on ctrl msg_type {}", msg_type); return;
+        }
+        const char* topic = nullptr;
+        switch (msg_type) {
+            case GatewayMsg::kRecipeCheckReq:   topic = "recipe.check"; break;
+            case GatewayMsg::kRecipeCatalogReq: topic = "recipe.catalog"; break;
+            case GatewayMsg::kRecipeItemReq:    topic = "recipe.item"; break;
+            case GatewayMsg::kRecipeMachineReq: topic = "recipe.machine"; break;
+        }
+        publish(topic, data, len);
         break;
     }
     default: spdlog::warn("Gateway: unknown ctrl client msg type {}", msg_type); break;

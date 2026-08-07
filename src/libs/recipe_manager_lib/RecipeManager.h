@@ -83,12 +83,36 @@ public:
                                           uint32_t req_id);
   std::vector<uint8_t> handleEvaluateConditionsRequest(
       const Protocol::EvaluateConditionsReq *request, uint32_t req_id);
+  // Client-driven recipe queries (catalog + per-item + per-machine).
+  std::vector<uint8_t> handleCatalogRequest(uint32_t req_id);
+  std::vector<uint8_t> handleRecipesForItemRequest(
+      const Protocol::RecipesForItemReq *request, uint32_t req_id);
+  std::vector<uint8_t> handleRecipesForMachineRequest(
+      const Protocol::RecipesForMachineReq *request, uint32_t req_id);
 
   // ── Public accessors ────────────────────────────────────────────
   size_t recipeCount() const { return recipes_.size(); }
   const Recipe *getRecipeById(const std::string &id) const;
   const Recipe *findRecipeByInputs(uint16_t machine_id,
                                    const std::vector<ItemStack> &inputs) const;
+
+  /// Compact catalog: every item id appearing as a recipe input or output
+  /// (deduped, insertion order). "What recipes exist" for the client.
+  std::vector<uint16_t> collectRecipeItemIds() const;
+
+  /// Recipes involving `item_id`. mode: 0 = both, 1 = craft (item is an
+  /// output), 2 = use (item is an input).
+  std::vector<const Recipe *> findRecipesForItem(uint16_t item_id,
+                                                 uint8_t mode) const;
+
+  /// All recipes the machine class of `machine_id` can run (NEI-style
+  /// listing). Empty if the block_id is not a known machine.
+  std::vector<const Recipe *> findRecipesForMachine(uint16_t machine_id) const;
+
+  /// Serialize a Recipe into Protocol::RecipeInfo (inputs/outputs as ItemStack
+  /// vectors, optional positional pattern). Used by the client-query handlers.
+  static flatbuffers::Offset<Protocol::RecipeInfo>
+  buildRecipeInfo(flatbuffers::FlatBufferBuilder &builder, const Recipe &recipe);
 
   /// Get the tier of a machine variant by block_id.
   /// Returns 0 if not found (safe default for legacy machines).

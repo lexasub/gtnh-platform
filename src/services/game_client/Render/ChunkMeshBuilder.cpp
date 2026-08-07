@@ -13,9 +13,13 @@ namespace {
 
     static constexpr uint32_t GetBlockColor(uint16_t blockId) {
         switch (blockId) {
-            case ItemId::pack("0:0:1"):  return 0xFF808080;  // stone
-            case ItemId::pack("0:0:2"):  return 0xFF2B5A8B;  // dirt
-            case ItemId::pack("0:0:3"):  return 0xFF50AF4C;  // grass
+            case ItemId::pack("0:0:1"):       return 0xFF808080;  // stone
+            case ItemId::pack("0:0:2"):       return 0xFF9B9B9B;  // cobblestone
+            case ItemId::pack("0:0:3"):       return 0xFFE3D5A8;  // sand
+            case ItemId::pack("0:0:7"):       return 0xFF8B4513;  // dirt
+            case ItemId::pack("0:0:8"):       return 0xFF228B22;  // grass
+            case ItemId::pack("0:10:11:2"):   return 0xFF8B5A2B;  // oak_log
+            case ItemId::pack("0:10:11:3"):   return 0xFF228B22;  // oak_leaves
             default: return 0xFFFFFFFF;
         }
     }

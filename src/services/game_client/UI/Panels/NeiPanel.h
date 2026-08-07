@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Common/Types.h"
+#include "Crafting/ServerRecipeDB.h"
 #include "ISidePanel.h"
 #include "UI/Components/ItemIndex.h"
 #include <imgui.h>
@@ -33,6 +34,11 @@ private:
   int selectedRecipe_ = -1;
   char searchBuf_[128] = {};
   ItemIndex itemIndex_;
+
+  // Server-fetched recipes for the currently open machine (NEI panel).
+  uint16_t machineRequested_ = 0;
+  bool machineLoaded_ = false;
+  std::vector<ServerRecipeDB::RecipeInfo> machineRecipes_;
 
   void RenderMachineRecipes(MachineWindow *mw);
   void RenderAllRecipes();

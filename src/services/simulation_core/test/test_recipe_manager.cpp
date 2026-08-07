@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <unistd.h>
 
+#include <flatbuffers/flatbuffers.h>
 #include <common/ItemId.h>
 #include <recipe_manager_lib/ItemRegistry.h>
 #include <recipe_manager_lib/RecipeManager.h>
@@ -278,6 +279,97 @@ static void test_recipe_manager_no_match() {
     PASS();
 }
 
+// Client-driven queries: catalog, per-item (craft/use), per-machine, and the
+// RecipeInfo serializer the wire handlers build on.
+static void test_recipe_manager_queries() {
+    RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
+    RecipeManager::RecipeManager mgr;
+    mgr.loadRecipesFromYamlDirectory(DATA_DIR "/recipes");
+    mgr.loadMachinesFromYaml(DATA_DIR "/registry/machines.yaml");
+
+    const uint16_t kPlank = ItemId::pack("0:10:00:0");
+    const uint16_t kStick = ItemId::pack("0:11110:0");
+    const uint16_t kCraftingTable = ItemId::pack("0:10:11:1");
+
+    // Catalog = union of all input/output item ids.
+    auto ids = mgr.collectRecipeItemIds();
+    CHECK(!ids.empty(), "catalog is non-empty");
+    bool hasPlank = false, hasStick = false;
+    for (auto id : ids) {
+        if (id == kPlank) hasPlank = true;
+        if (id == kStick) hasStick = true;
+    }
+    CHECK(hasPlank, "catalog includes oak_planks (a crafting input)");
+    CHECK(hasStick, "catalog includes stick (a crafting output)");
+
+    // Per-item, craft direction: stick is produced by the 'stick' recipe.
+    auto stickCraft = mgr.findRecipesForItem(kStick, 1);
+    bool hasStickRecipe = false;
+    for (auto* r : stickCraft) if (r->id == "stick") hasStickRecipe = true;
+    CHECK(hasStickRecipe, "findRecipesForItem(stick, craft) finds the stick recipe");
+
+    // Per-item, use direction: stick is consumed by wooden_pickaxe.
+    auto stickUse = mgr.findRecipesForItem(kStick, 2);
+    bool hasPickaxeUse = false;
+    for (auto* r : stickUse) if (r->id == "wooden_pickaxe") hasPickaxeUse = true;
+    CHECK(hasPickaxeUse, "findRecipesForItem(stick, use) finds wooden_pickaxe");
+
+    // Per-machine: crafting table class lists the crafting_table recipe.
+    auto ctRecipes = mgr.findRecipesForMachine(kCraftingTable);
+    CHECK(!ctRecipes.empty(), "crafting_table machine has recipes");
+    bool hasCt = false;
+    for (auto* r : ctRecipes) if (r->id == "crafting_table") hasCt = true;
+    CHECK(hasCt, "crafting_table machine list includes the crafting_table recipe");
+    CHECK(mgr.findRecipesForMachine(12345).empty(), "unknown machine returns empty");
+
+    // RecipeInfo serializer round-trips the stick recipe.
+    auto* stick = mgr.getRecipeById("stick");
+    CHECK_NE(stick, nullptr, "stick recipe exists");
+    if (stick) {
+        flatbuffers::FlatBufferBuilder builder;
+        auto off = RecipeManager::RecipeManager::buildRecipeInfo(builder, *stick);
+        builder.Finish(off);
+        auto* info = flatbuffers::GetRoot<Protocol::RecipeInfo>(builder.GetBufferPointer());
+        CHECK_NE(info, nullptr, "buildRecipeInfo produces a valid RecipeInfo");
+        if (info) {
+            CHECK_NE(info->recipe_id(), nullptr, "recipe_id present");
+            if (info->recipe_id())
+                CHECK_EQ(std::string(info->recipe_id()->c_str()), std::string("stick"),
+                         "recipe_id round-trips");
+            CHECK(info->has_pattern(), "stick recipe is positional");
+            auto* pat = info->pattern();
+            CHECK_NE(pat, nullptr, "pattern vector present");
+            if (pat) CHECK_EQ(pat->size(), size_t(9), "pattern has 9 cells");
+            auto* outs = info->outputs();
+            CHECK_NE(outs, nullptr, "outputs present");
+        }
+    }
+
+    // Wire handlers produce valid RecipeFrame replies (req_id echoed).
+    {
+        auto bytes = mgr.handleCatalogRequest(42);
+        flatbuffers::Verifier v(bytes.data(), bytes.size());
+        CHECK(Protocol::VerifyRecipeFrameBuffer(v), "catalog reply is a valid RecipeFrame");
+        auto* frame = flatbuffers::GetRoot<Protocol::RecipeFrame>(bytes.data());
+        CHECK_NE(frame, nullptr, "catalog reply parses");
+        if (frame) {
+            CHECK_EQ(frame->payload_type(), Protocol::RecipePayload_RecipeReply,
+                     "catalog reply payload is RecipeReply");
+            if (frame->payload_type() == Protocol::RecipePayload_RecipeReply) {
+                auto* reply = frame->payload_as_RecipeReply();
+                CHECK_NE(reply, nullptr, "catalog reply has RecipeReply");
+                if (reply) {
+                    CHECK_EQ(reply->req_id(), uint32_t(42), "catalog reply echoes req_id");
+                    CHECK_NE(reply->response_as_RecipeCatalogResp(), nullptr,
+                             "catalog reply carries RecipeCatalogResp");
+                }
+            }
+        }
+    }
+
+    PASS();
+}
+
 void test_recipe_manager() {
     TEST(recipe_manager_empty);
     TEST(recipe_manager_load_crafting_table);
@@ -285,4 +377,5 @@ void test_recipe_manager() {
     TEST(recipe_manager_no_match);
     TEST(recipe_manager_item_id_formats);
     TEST(recipe_manager_craft_patterns);
+    TEST(recipe_manager_queries);
 }

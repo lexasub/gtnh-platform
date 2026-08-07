@@ -14,7 +14,7 @@ BlockUIFactory::Registry& BlockUIFactory::GetRegistry() {
         Registry r;
         auto registerCraftingTable = [&r](uint16_t blockId) {
             r[blockId] = [](UIManager& mgr, BlockPos pos) -> IUIWindow* {
-                auto* win = FindOrCreate<CraftingWindow>(mgr, pos, mgr.GetNetClient(), &mgr.GetDragManager());
+                auto* win = FindOrCreate<CraftingWindow>(mgr, pos, mgr.GetNetClient(), &mgr.GetDragManager(), mgr.GetRecipeDb());
                 if (auto* nc = mgr.GetNetClient()) {
                     nc->SetCraftResponseCallback(
                         [win](bool s, uint16_t id, uint8_t cnt, uint16_t m, const std::string& e, const std::array<ItemStack, 9>& grid) {

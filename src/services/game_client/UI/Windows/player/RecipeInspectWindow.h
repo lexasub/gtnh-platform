@@ -8,9 +8,11 @@
 #include <string>
 #include <vector>
 
+class UIManager;
+
 class RecipeInspectWindow : public IUIWindow {
 public:
-  RecipeInspectWindow();
+  explicit RecipeInspectWindow(UIManager *uiMgr);
 
   std::string_view Name() const override { return "RecipeInspect"; }
   void Render(InventoryState *playerInv) override;
@@ -21,6 +23,7 @@ public:
   void SetItem(uint16_t itemId);
 
 private:
+  UIManager *uiMgr_;
   bool open_ = false;
   uint16_t itemId_ = 0;
   int activeTab_ = 0; // 0 = Recipes, 1 = Uses
@@ -30,6 +33,7 @@ private:
   std::vector<RecipeEntry> recipes_;
   std::vector<RecipeEntry> uses_;
 
-  void rebuildEntries();
+  void rebuildEntries();           // kicks off the server query (async)
+  void rebuildFromServer();        // builds entries from the fetched recipes
   void renderTabContent(const std::vector<RecipeEntry> &entries);
 };

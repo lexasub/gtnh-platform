@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include <climits>
+#include <unordered_set>
 
 namespace RecipeManager {
 
@@ -792,11 +793,23 @@ bool RecipeManager::evaluateConditions(const std::string& recipeId, const Machin
 }
 
 std::vector<uint8_t> RecipeManager::handleCheckRecipeRequest(const Protocol::CheckRecipeReq* request, uint32_t req_id) {
-    std::string recipeId = checkRecipe(request->container(), request->machine_id());
+    // findRecipeByInputs gives the matched Recipe* so we can attach its details
+    // (output + pattern) to the response — one round trip for the client's
+    // live 3x3 grid preview.
+    const Recipe* matched = nullptr;
+    if (request->container()) {
+        matched = findRecipeByInputs(request->machine_id(),
+                                     convertContainerItems(request->container()));
+    }
+    std::string recipeId = matched ? matched->id : "";
 
     flatbuffers::FlatBufferBuilder builder;
     auto idOffset = builder.CreateString(recipeId);
-    auto respOffset = Protocol::CreateCheckRecipeResp(builder, idOffset);
+    flatbuffers::Offset<Protocol::RecipeInfo> recipeInfoOffset = 0;
+    if (matched) {
+        recipeInfoOffset = buildRecipeInfo(builder, *matched);
+    }
+    auto respOffset = Protocol::CreateCheckRecipeResp(builder, idOffset, recipeInfoOffset);
 
     Protocol::RecipeReplyBuilder replyBuilder(builder);
     replyBuilder.add_req_id(req_id);
@@ -864,6 +877,179 @@ std::vector<uint8_t> RecipeManager::handleEvaluateConditionsRequest(const Protoc
     Protocol::RecipeReplyBuilder replyBuilder(builder);
     replyBuilder.add_req_id(req_id);
     replyBuilder.add_response_type(Protocol::RecipeResponse_EvaluateConditionsResp);
+    replyBuilder.add_response(respOffset.Union());
+    auto replyOffset = replyBuilder.Finish();
+
+    Protocol::RecipeFrameBuilder frameBuilder(builder);
+    frameBuilder.add_payload_type(Protocol::RecipePayload_RecipeReply);
+    frameBuilder.add_payload(replyOffset.Union());
+    auto frameOffset = frameBuilder.Finish();
+
+    builder.Finish(frameOffset);
+    return {builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize()};
+}
+
+// ===========================================================================
+// Client-driven recipe queries
+// ===========================================================================
+
+std::vector<uint16_t> RecipeManager::collectRecipeItemIds() const {
+    std::unordered_set<uint16_t> seen;
+    std::vector<uint16_t> result;
+    for (const auto& [id, recipe] : recipes_) {
+        for (const auto& out : recipe.outputs) {
+            if (out.item_id != 0 && seen.insert(out.item_id).second) {
+                result.push_back(out.item_id);
+            }
+        }
+        for (const auto& in : recipe.inputs) {
+            if (in.item_id != 0 && seen.insert(in.item_id).second) {
+                result.push_back(in.item_id);
+            }
+        }
+    }
+    return result;
+}
+
+std::vector<const Recipe*> RecipeManager::findRecipesForItem(uint16_t item_id, uint8_t mode) const {
+    const bool wantCraft = (mode == 0 || mode == 1);
+    const bool wantUse = (mode == 0 || mode == 2);
+    std::vector<const Recipe*> result;
+    result.reserve(recipes_.size());
+    for (const auto& [id, recipe] : recipes_) {
+        bool isCraft = false;
+        bool isUse = false;
+        if (wantCraft) {
+            for (const auto& out : recipe.outputs) {
+                if (out.item_id == item_id) { isCraft = true; break; }
+            }
+        }
+        if (wantUse && !isCraft) {
+            for (const auto& in : recipe.inputs) {
+                if (in.item_id == item_id) { isUse = true; break; }
+            }
+        }
+        if (isCraft || isUse) {
+            result.push_back(&recipe);
+        }
+    }
+    return result;
+}
+
+std::vector<const Recipe*> RecipeManager::findRecipesForMachine(uint16_t machine_id) const {
+    auto classIt = classByBlockId_.find(machine_id);
+    if (classIt == classByBlockId_.end()) return {};
+    auto recipesIt = recipesByClass_.find(classIt->second);
+    if (recipesIt == recipesByClass_.end()) return {};
+    std::vector<const Recipe*> result;
+    result.reserve(recipesIt->second.size());
+    for (const auto& recipeId : recipesIt->second) {
+        auto it = recipes_.find(recipeId);
+        if (it != recipes_.end()) result.push_back(&it->second);
+    }
+    return result;
+}
+
+flatbuffers::Offset<Protocol::RecipeInfo>
+RecipeManager::buildRecipeInfo(flatbuffers::FlatBufferBuilder& builder, const Recipe& recipe) {
+    std::vector<Protocol::ItemStack> fbsInputs;
+    fbsInputs.reserve(recipe.inputs.size());
+    for (const auto& in : recipe.inputs) {
+        if (in.item_id == 0) continue;
+        fbsInputs.push_back(Protocol::ItemStack(in.item_id, in.count, in.metadata));
+    }
+    std::vector<Protocol::ItemStack> fbsOutputs;
+    fbsOutputs.reserve(recipe.outputs.size());
+    for (const auto& out : recipe.outputs) {
+        if (out.item_id == 0) continue;
+        fbsOutputs.push_back(Protocol::ItemStack(out.item_id, out.count, out.metadata));
+    }
+    std::vector<Protocol::ItemStack> fbsPattern;
+    if (recipe.has_pattern) {
+        fbsPattern.reserve(9);
+        for (const auto& cell : recipe.pattern) {
+            fbsPattern.push_back(Protocol::ItemStack(cell.item_id, cell.count, cell.metadata));
+        }
+    }
+    return Protocol::CreateRecipeInfoDirect(
+        builder,
+        recipe.machine_id,
+        recipe.machine_class.c_str(),
+        recipe.id.c_str(),
+        recipe.duration,
+        &fbsInputs,
+        &fbsOutputs,
+        recipe.has_pattern,
+        &fbsPattern);
+}
+
+std::vector<uint8_t> RecipeManager::handleCatalogRequest(uint32_t req_id) {
+    std::vector<uint16_t> itemIds = collectRecipeItemIds();
+
+    flatbuffers::FlatBufferBuilder builder;
+    auto idsOffset = builder.CreateVector(itemIds);
+    auto respOffset = Protocol::CreateRecipeCatalogResp(builder, idsOffset);
+
+    Protocol::RecipeReplyBuilder replyBuilder(builder);
+    replyBuilder.add_req_id(req_id);
+    replyBuilder.add_response_type(Protocol::RecipeResponse_RecipeCatalogResp);
+    replyBuilder.add_response(respOffset.Union());
+    auto replyOffset = replyBuilder.Finish();
+
+    Protocol::RecipeFrameBuilder frameBuilder(builder);
+    frameBuilder.add_payload_type(Protocol::RecipePayload_RecipeReply);
+    frameBuilder.add_payload(replyOffset.Union());
+    auto frameOffset = frameBuilder.Finish();
+
+    builder.Finish(frameOffset);
+    return {builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize()};
+}
+
+std::vector<uint8_t> RecipeManager::handleRecipesForItemRequest(const Protocol::RecipesForItemReq* request, uint32_t req_id) {
+    uint8_t mode = request ? request->mode() : 0;
+    uint16_t item_id = request ? request->item_id() : 0;
+    auto recipes = findRecipesForItem(item_id, mode);
+
+    flatbuffers::FlatBufferBuilder builder;
+    std::vector<flatbuffers::Offset<Protocol::RecipeInfo>> infoOffsets;
+    infoOffsets.reserve(recipes.size());
+    for (const auto* r : recipes) {
+        infoOffsets.push_back(buildRecipeInfo(builder, *r));
+    }
+    auto vecOffset = builder.CreateVector(infoOffsets);
+    auto respOffset = Protocol::CreateRecipesForItemResp(builder, vecOffset);
+
+    Protocol::RecipeReplyBuilder replyBuilder(builder);
+    replyBuilder.add_req_id(req_id);
+    replyBuilder.add_response_type(Protocol::RecipeResponse_RecipesForItemResp);
+    replyBuilder.add_response(respOffset.Union());
+    auto replyOffset = replyBuilder.Finish();
+
+    Protocol::RecipeFrameBuilder frameBuilder(builder);
+    frameBuilder.add_payload_type(Protocol::RecipePayload_RecipeReply);
+    frameBuilder.add_payload(replyOffset.Union());
+    auto frameOffset = frameBuilder.Finish();
+
+    builder.Finish(frameOffset);
+    return {builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize()};
+}
+
+std::vector<uint8_t> RecipeManager::handleRecipesForMachineRequest(const Protocol::RecipesForMachineReq* request, uint32_t req_id) {
+    uint16_t machine_id = request ? request->machine_id() : 0;
+    auto recipes = findRecipesForMachine(machine_id);
+
+    flatbuffers::FlatBufferBuilder builder;
+    std::vector<flatbuffers::Offset<Protocol::RecipeInfo>> infoOffsets;
+    infoOffsets.reserve(recipes.size());
+    for (const auto* r : recipes) {
+        infoOffsets.push_back(buildRecipeInfo(builder, *r));
+    }
+    auto vecOffset = builder.CreateVector(infoOffsets);
+    auto respOffset = Protocol::CreateRecipesForMachineResp(builder, vecOffset);
+
+    Protocol::RecipeReplyBuilder replyBuilder(builder);
+    replyBuilder.add_req_id(req_id);
+    replyBuilder.add_response_type(Protocol::RecipeResponse_RecipesForMachineResp);
     replyBuilder.add_response(respOffset.Union());
     auto replyOffset = replyBuilder.Finish();
 

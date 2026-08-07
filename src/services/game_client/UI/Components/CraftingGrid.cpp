@@ -1,6 +1,5 @@
 #include "UI/Components/CraftingGrid.h"
 #include "UI/Core/DragManager.h"
-#include "Crafting/ClientRecipeDB.h"
 
 void CraftingGrid::HandleActivate(int gridIdx, InventoryState& inv, DragManager& dm) {
     if (gridIdx < 0 || gridIdx >= 9) return;
@@ -62,6 +61,7 @@ void CraftingGrid::HandleCancel(DragManager& dm) {
 }
 
 void CraftingGrid::Clear() {
+    ++gen_;
     slots_.clear();
     result_ = ItemStack{};
 }
@@ -72,5 +72,12 @@ void CraftingGrid::SetSlots(const std::array<ItemStack, 9>& slots) {
 }
 
 void CraftingGrid::Recalc() {
-    Crafting::MatchGrid(slots_.data(), &result_);
+    ++gen_;
+    if (onGridChanged_) {
+        // The owning window issues a server grid-check; the reply comes back
+        // via ApplyServerResult(gen, output).
+        onGridChanged_(slots_.data());
+    } else {
+        result_ = ItemStack{};
+    }
 }
