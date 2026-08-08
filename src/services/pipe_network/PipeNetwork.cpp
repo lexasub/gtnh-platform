@@ -737,11 +737,11 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeHeat(uint64_
 
         const auto& node = nodeIt->second;
 
-        if (node.heatStored > node.heatCapacity * 0.9) {
+        if (node.isSource && node.heatStored > node.heatCapacity * 0.9) {
             heatSources.push_back(nid);
         }
 
-        if (node.heatStored < node.heatCapacity) {
+        if (node.isSink && node.heatStored < node.heatCapacity) {
             heatSinks.push_back(nid);
         }
     }

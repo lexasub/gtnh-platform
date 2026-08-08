@@ -194,3 +194,64 @@ recipes:
     duration: 100
     min_tier: 0
     max_tier: 32767
+
+  - name: heat_generator
+    pattern:
+      - [cobblestone, cobblestone, cobblestone]
+      - [cobblestone, heat_furnace, cobblestone]
+      - [cobblestone, cobblestone, cobblestone]
+    inputs:
+      - { item: cobblestone, count: 8 }
+      - { item: heat_furnace, count: 1 }
+    outputs:
+      - { item: heat_generator, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Macerators ────────────────────────────────────────────
+  - name: heat_macerator
+    pattern:
+      - [cobblestone, cobblestone, cobblestone]
+      - [cobblestone, heat_furnace, cobblestone]
+      - [cobblestone, crafting_table, cobblestone]
+    inputs:
+      - { item: cobblestone, count: 7 }
+      - { item: heat_furnace, count: 1 }
+      - { item: crafting_table, count: 1 }
+    outputs:
+      - { item: heat_macerator, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: steam_macerator
+    pattern:
+      - [bronze_plate, bronze_plate, bronze_plate]
+      - [cable_copper, heat_macerator, cable_copper]
+      - [bronze_plate, bronze_plate, bronze_plate]
+    inputs:
+      - { item: bronze_plate, count: 6 }
+      - { item: cable_copper, count: 2 }
+      - { item: heat_macerator, count: 1 }
+    outputs:
+      - { item: steam_macerator, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: rotare_macerator
+    pattern:
+      - [stick, cobblestone, stick]
+      - [cobblestone, crafting_table, cobblestone]
+      - [cobblestone, stone, cobblestone]
+    inputs:
+      - { item: stick, count: 2 }
+      - { item: cobblestone, count: 4 }
+      - { item: crafting_table, count: 1 }
+      - { item: stone, count: 1 }
+    outputs:
+      - { item: rotare_macerator, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767

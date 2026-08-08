@@ -50,3 +50,64 @@ recipes:
     eu: 0.1
     min_tier: 0
     max_tier: 32767
+
+  # ── Dust → Ingot smelting ────────────────────────────────
+  - name: gtnh:smelt_iron_dust
+    inputs:
+      - { item: iron_dust, count: 1 }
+    outputs:
+      - { item: iron_ingot, count: 1 }
+    duration: 200
+    eu: 0.7
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_gold_dust
+    inputs:
+      - { item: gold_dust, count: 1 }
+    outputs:
+      - { item: gold_ingot, count: 1 }
+    duration: 200
+    eu: 0.7
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_tin_dust
+    inputs:
+      - { item: tin_dust, count: 1 }
+    outputs:
+      - { item: tin_ingot, count: 1 }
+    duration: 200
+    eu: 0.5
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_copper_dust
+    inputs:
+      - { item: copper_dust, count: 1 }
+    outputs:
+      - { item: copper_ingot, count: 1 }
+    duration: 200
+    eu: 0.5
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_uranium_dust
+    inputs:
+      - { item: uranium_dust, count: 1 }
+    outputs:
+      - { item: uranium_ingot, count: 1 }
+    duration: 300
+    eu: 1.0
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_electrum_dust
+    inputs:
+      - { item: electrum_dust, count: 1 }
+    outputs:
+      - { item: electrum_ingot, count: 1 }
+    duration: 200
+    eu: 0.7
+    min_tier: 0
+    max_tier: 32767

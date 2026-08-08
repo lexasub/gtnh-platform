@@ -96,6 +96,106 @@ recipes:
     min_tier: 0
     max_tier: 32767
 
+  # ── Name-based recipes (resolve via ItemRegistry) ─────────
+  - name: gtnh:mac_iron_ore
+    inputs:
+      - { item: iron_ore, count: 1 }
+    outputs:
+      - { item: iron_dust, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_gold_ore
+    inputs:
+      - { item: gold_ore, count: 1 }
+    outputs:
+      - { item: gold_dust, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_tin_ore
+    inputs:
+      - { item: tin_ore, count: 1 }
+    outputs:
+      - { item: tin_dust, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_copper_ore
+    inputs:
+      - { item: coper_ore, count: 1 }
+    outputs:
+      - { item: copper_dust, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_uranium_ore
+    inputs:
+      - { item: uranium_ore, count: 1 }
+    outputs:
+      - { item: uranium_dust, count: 2 }
+    duration: 500
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_electrum_ore
+    inputs:
+      - { item: electrum_ore, count: 1 }
+    outputs:
+      - { item: electrum_dust, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_quartz_ore
+    inputs:
+      - { item: quartz_ore, count: 1 }
+    outputs:
+      - { item: quartz, count: 2 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_coal_ore
+    inputs:
+      - { item: coal_ore, count: 1 }
+    outputs:
+      - { item: coal, count: 2 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_redstone_ore
+    inputs:
+      - { item: redstone_ore, count: 1 }
+    outputs:
+      - { item: redstone, count: 4 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_lapis_ore
+    inputs:
+      - { item: lapis_ore, count: 1 }
+    outputs:
+      - { item: lapis, count: 6 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_diamond_ore
+    inputs:
+      - { item: diamond_ore, count: 1 }
+    outputs:
+      - { item: diamond, count: 1 }
+    duration: 500
+    min_tier: 0
+    max_tier: 32767
+
   # ── Steam-only recipes (faster: 160 vs 400 tick) ────────
   - name: gtnh:steam_mac_copper
     energy_in: STEAM

@@ -3,7 +3,7 @@ id,title,description,era,section,prereqs,detect_type,detect_target,reward_item,r
 2,Gathering Resources,Mine iron ore and smelt it into iron ingots. Iron is the backbone of all technology.,vagrant,getting_started,1,craft,0:110:1,4,4,,,
 3,Better Tools,Craft an iron pickaxe. With iron tools you can mine faster and reach new depths.,vagrant,getting_started,2,craft,0:11110:5,4,2,,,
 4,Workbench,Trade oak planks for a crafting table. The market accepts repeat trades — handy when you need more tables.,vagrant,market,,exchange,,0:10:11:1,1,0:10:00:0,4,60
-5,Furnace Mastery,Craft a furnace. Smelting is essential for processing ores and creating advanced materials.,vagrant,basic_crafting,,craft,1110:00:0,53,2,,,
+5,Furnace Mastery,Craft a heat furnace and heat generator. Smelting is essential for processing ores and creating advanced materials.,vagrant,basic_crafting,,craft,1110:00:0,53,2,,,
 6,Getting Organized,Craft a chest. Keep your materials organized as your collection grows.,vagrant,basic_crafting,1,craft,0:10:11:0,37,1,,,
 7,Bronze Age,Process tin and copper into bronze. Bronze is the gateway to steam power.,apprentice,steam_power,5,craft,0:110:6,53,8,,,
 8,Steam Boiler,Craft a steam solid boiler. Boilers burn solid fuel to produce steam for your machines.,apprentice,steam_power,7,craft,1110:01:0,54,4,,,
