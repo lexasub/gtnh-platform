@@ -117,6 +117,7 @@ int main(int argc, char* argv[]) {
     gateway.subscribe("sim.multiblock.created");
     gateway.subscribe("sim.multiblock.destroyed");
     gateway.subscribe("player.actions.ack");
+    gateway.subscribe("player.actions.directive");
     gateway.subscribe("player.inventory.update");
     gateway.subscribe("sim.craft.response");
     gateway.subscribe("player.machine.slot.response");
