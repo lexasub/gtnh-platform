@@ -70,12 +70,17 @@ void GameClient::subscribeNetClient() {
     netClient_->SetBlockAckCallback(
         [this](BlockPos pos, uint8_t status, uint16_t block_id, uint8_t meta, uint32_t request_id, [[maybe_unused]] uint8_t action_type) {
             if (status != static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED)) {
-                spdlog::warn("BlockAck CONFLICT at ({},{},{}) actual_id={} rid={}", pos.x, pos.y, pos.z, block_id, request_id);
+                spdlog::warn("BlockAck status={} at ({},{},{}) actual_id={} rid={}",
+                             static_cast<int>(status), pos.x, pos.y, pos.z, block_id, request_id);
             }
-            // Apply + rebuild mesh on main thread so the next raycaster frame
-            // sees the change immediately (BlockChangedEvent is skipped back
-            // to the source player, so BlockAck is the only signal).
-            meshMgr_.OnBlockUpdate(pos, block_id, meta, 0, world_);
+            // Apply + rebuild mesh only when the server actually changed the
+            // world (ACCEPTED) or reports a state mismatch (CONFLICT carries
+            // the real block). REJECTED means nothing changed — touching the
+            // mesh with block_id=0 would make an intact block disappear.
+            if (status == static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED) ||
+                status == static_cast<uint8_t>(Protocol::BlockAckStatus_CONFLICT)) {
+                meshMgr_.OnBlockUpdate(pos, block_id, meta, 0, world_);
+            }
             world_.ClearBlockActionPending(pos);
         });
 

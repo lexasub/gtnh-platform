@@ -267,10 +267,13 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
             publishChestState(x, y, z, expected_block_id, player_id, request_id);
             return;
         }
-        if (action->held_item() == 0) {
-            spdlog::warn("SetBlockCASHandler: nothing in hand to place at ({},{},{})", x, y, z);
+        if (action->held_item() == 0 || isMiningTool(action->held_item()) ||
+            action->held_item() == ITEM_WRENCH) {
+            spdlog::warn("SetBlockCASHandler: nothing placeable in hand at ({},{},{})",
+                         x, y, z);
             publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_REJECTED),
-                                        x, y, z, 0, 0, "Nothing in hand to place",
+                                        x, y, z, expected_block_id, 0,
+                                        "Nothing placeable in hand",
                                         request_id,
                                         static_cast<uint8_t>(action_type));
             return;
