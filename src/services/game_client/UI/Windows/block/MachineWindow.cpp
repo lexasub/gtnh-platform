@@ -102,6 +102,10 @@ ImU32 EnergyBarColor(EnergyType et, float ratio) {
             int g = static_cast<int>(140 + 80 * ratio);
             return IM_COL32(80, g, b, 255);
         }
+        case EnergyType::ROTATION: {
+            int v = 140 + static_cast<int>(90 * ratio);
+            return IM_COL32(v, 130, 220, 255);
+        }
     }
     return IM_COL32(180, 180, 180, 255);
 }
@@ -288,7 +292,7 @@ void MachineWindow::Render(InventoryState* playerInv) {
         int outCount = info ? info->slots_out : 3;
 
         for (int i = 0; i < inCount; ++i) {
-            ImGui::PushID(100 + i);
+            ImGui::PushID(DragManager::kMachineSlotBase + i);
             ItemStack item = (hasPendingUpdate_ && static_cast<size_t>(i) < pendingUpdate_.inputItems.size())
                 ? pendingUpdate_.inputItems[i]
                 : ItemStack{0, 0, 0};
@@ -321,13 +325,13 @@ void MachineWindow::Render(InventoryState* playerInv) {
                     spdlog::info("[MachineWindow] Pick up from machine slot {} at ({},{},{})", i, pos_.x, pos_.y, pos_.z);
                     // Pick up item from machine input slot into cursor
                     if (dragMgr_) {
-                        dragMgr_->StartExternalDrag(100 + i, item);
+                        dragMgr_->StartExternalDrag(DragManager::kMachineSlotBase + i, item);
                         dragMgr_->SetMachineDragContext(pos_, i);
                         dragMgr_->SyncTo(*playerInv);
                     } else {
                         playerInv->dragItem = item;
                         playerInv->isDragging = true;
-                        playerInv->dragSourceSlot = -(100 + i);
+                        playerInv->dragSourceSlot = -(DragManager::kMachineSlotBase + i);
                     }
                     netClient_->SendSetMachineSlot(playerInv->player_id, pos_,
                         static_cast<uint16_t>(i), 0, 0, 0);
@@ -359,7 +363,7 @@ void MachineWindow::Render(InventoryState* playerInv) {
         ImGui::SameLine();
 
         for (int i = 0; i < outCount; ++i) {
-            ImGui::PushID(200 + i);
+            ImGui::PushID(DragManager::kMachineOutputBase + i);
             ItemStack item = (hasPendingUpdate_ && static_cast<size_t>(i) < pendingUpdate_.outputItems.size())
                 ? pendingUpdate_.outputItems[i]
                 : ItemStack{0, 0, 0};
@@ -392,13 +396,13 @@ void MachineWindow::Render(InventoryState* playerInv) {
                     spdlog::info("[MachineWindow] Pick up from output slot {} at ({},{},{})", i, pos_.x, pos_.y, pos_.z);
                     // Pick up output item into cursor
                     if (dragMgr_) {
-                        dragMgr_->StartExternalDrag(200 + i, item);
+                        dragMgr_->StartExternalDrag(DragManager::kMachineOutputBase + i, item);
                         dragMgr_->SetMachineDragContext(pos_, inCount + i);
                         dragMgr_->SyncTo(*playerInv);
                     } else {
                         playerInv->dragItem = item;
                         playerInv->isDragging = true;
-                        playerInv->dragSourceSlot = -(100 + inCount + i);
+                        playerInv->dragSourceSlot = -(DragManager::kMachineOutputBase + i);
                     }
                     netClient_->SendSetMachineSlot(playerInv->player_id, pos_,
                         static_cast<uint16_t>(inCount + i), 0, 0, 0);
@@ -502,12 +506,14 @@ void MachineWindow::Render(InventoryState* playerInv) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             // Cancel drag - restore item to source slot
             int absSlot = std::abs(playerInv->dragSourceSlot);
-            if (absSlot >= 100) {
+            if (absSlot >= DragManager::kMachineSlotBase) {
                 int inCount = 3;
                 if (auto* info = MachineRegistry::instance()->Get(machineType_)) {
                     inCount = info->slots_in;
                 }
-                int machineSlot = (absSlot >= 200) ? inCount + (absSlot - 200) : (absSlot - 100);
+                int machineSlot = (absSlot >= DragManager::kMachineOutputBase)
+                    ? inCount + (absSlot - DragManager::kMachineOutputBase)
+                    : (absSlot - DragManager::kMachineSlotBase);
                 netClient_->SendSetMachineSlot(playerInv->player_id, pos_,
                     static_cast<uint16_t>(machineSlot),
                     playerInv->dragItem.item_id,

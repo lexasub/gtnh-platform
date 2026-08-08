@@ -11,8 +11,6 @@
 //        13=ToolActionResp (gateway→client), 14=MachineAction (client→gateway),
 //        15=MachineActionResp (gateway→client),
 //        16=SetMachineSlotResp (gateway→client),
-//        17=ChestOpenReq (client→gateway),
-//        18=ChestOpenResp (gateway→client)
 //        19=QuestProgressUpdate (gateway→client),
 //        20=QuestUnlockNotification (gateway→client),
 //        21=QuestCompletedNotification (gateway→client)
@@ -51,8 +49,6 @@ union GatewayPayload {
   MachineAction,      // 14 — client→gateway (machine config changes)
   MachineActionResp,  // 15 — gateway→client (machine config result)
   SetMachineSlotResp, // 16 — gateway→client (machine slot ACK)
-  ChestOpenReq,       // 17 — client→gateway (chest open request)
-  ChestOpenResp,      // 18 — gateway→client (chest open response)
   QuestProgressUpdate,       // 19 — gateway→client (quest status update)
   QuestUnlockNotification,   // 20 — gateway→client (new quests available)
   QuestCompletedNotification,// 21 — gateway→client (quest completed)

@@ -89,6 +89,15 @@ public:
   static constexpr uint8_t kActionSplit = 1;
   static constexpr uint8_t kActionDrop = 2;
   static constexpr uint8_t kActionQuickMove = 3;
+
+  // ── Global slot-source numbering ─────────────────────────────────────
+  // Drag sources outside the player inventory (0..99) are identified by
+  // disjoint ranges, so a source slot alone tells where the item came from.
+  // Invariant: ranges stay disjoint AND < 256 (sourceSlot is uint8_t).
+  static constexpr int kGridSlotBase = 100;
+  static constexpr int kMachineSlotBase = 200;
+  static constexpr int kMachineOutputBase = 220;
+
   // Вызывается после завершения операции (drop/merge/swap/drop-outside)
   using ActionCallback =
       std::function<void(uint8_t actionType, uint8_t sourceSlot,

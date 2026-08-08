@@ -18,7 +18,10 @@ void UIManager::SetNetClient(NetClient* nc) {
     if (netClient_ && playerInv_) {
         dragMgr_.SetActionCallback([this](uint8_t actionType, uint8_t src, uint8_t tgt, uint8_t count) {
             if (!netClient_ || !playerInv_) return;
-            if (dragMgr_.HasMachineDragContext() && src >= 100) {
+            // Machine drag: item already landed in the player grid (tgt);
+            // server only clears the machine slot. src is a machine-slot
+            // source id, never a player inventory index.
+            if (dragMgr_.HasMachineDragContext() && src >= DragManager::kMachineSlotBase) {
                 BlockPos pos = dragMgr_.GetMachineDragPos();
                 int machineSlot = dragMgr_.GetMachineDragSlotIdx();
                 uint8_t playerSlot = (actionType == DragManager::kActionDrop) ? 255 : tgt;
@@ -27,6 +30,9 @@ void UIManager::SetNetClient(NetClient* nc) {
                 dragMgr_.ClearMachineDragContext();
                 return;
             }
+            // Craft-grid sources are client-side staging synced to the server
+            // via craft requests — never an InventoryAction.
+            if (src >= DragManager::kGridSlotBase) return;
             netClient_->SendInventoryAction(playerInv_->player_id, actionType, src, tgt, count);
         });
     }

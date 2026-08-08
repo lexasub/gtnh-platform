@@ -425,7 +425,7 @@ int main(int argc, char* argv[]) {
     routerClient->Subscribe("fluid.consume.response");
     routerClient->Subscribe("item.flow");
     routerClient->Subscribe("item.transfer.response");
-    routerClient->Subscribe("player.chest.open");
+    routerClient->Subscribe("player.chest.save");
     routerClient->Subscribe("player.gamemode.change");
     routerClient->Subscribe("player.scenario.start");
     routerClient->Subscribe("player.inventory.load");

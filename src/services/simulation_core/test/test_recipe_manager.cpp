@@ -279,6 +279,71 @@ static void test_recipe_manager_no_match() {
     PASS();
 }
 
+// unlock_era gating: the YAML parser reads the optional field (default 0), and
+// the RecipeInfo serializer round-trips it so the client can apply its UX filter.
+static void test_recipe_manager_unlock_era() {
+    RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
+
+    const char* kYaml = R"(
+class: ebf
+recipes:
+  - name: gated_recipe
+    inputs:
+      - { item: 3, count: 1 }
+    outputs:
+      - { item: 4, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+    unlock_era: 2
+  - name: always_visible
+    inputs:
+      - { item: 5, count: 1 }
+    outputs:
+      - { item: 6, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+)";
+
+    auto tmp = std::filesystem::temp_directory_path() /
+               ("gtnh_recipe_unlock_era_" + std::to_string(::getpid()) + ".yaml");
+    {
+        std::ofstream out(tmp);
+        out << kYaml;
+    }
+
+    RecipeManager::RecipeManager mgr;
+    bool ok = mgr.loadRecipesFromYamlFile(tmp.string());
+    std::filesystem::remove(tmp);
+    CHECK(ok, "temp YAML with unlock_era loads");
+    if (!ok) { PASS(); return; }
+
+    auto* gated = mgr.getRecipeById("gated_recipe");
+    CHECK_NE(gated, nullptr, "gated_recipe exists");
+    if (gated) {
+        CHECK_EQ(gated->unlock_era, uint8_t(2), "gated recipe parsed unlock_era = 2");
+    }
+
+    auto* open = mgr.getRecipeById("always_visible");
+    CHECK_NE(open, nullptr, "always_visible exists");
+    if (open) {
+        CHECK_EQ(open->unlock_era, uint8_t(0), "recipe without unlock_era defaults to 0");
+    }
+
+    // buildRecipeInfo must carry unlock_era to the client.
+    flatbuffers::FlatBufferBuilder builder;
+    auto off = RecipeManager::RecipeManager::buildRecipeInfo(builder, *gated);
+    builder.Finish(off);
+    auto* info = flatbuffers::GetRoot<Protocol::RecipeInfo>(builder.GetBufferPointer());
+    CHECK_NE(info, nullptr, "buildRecipeInfo produces a valid RecipeInfo");
+    if (info) {
+        CHECK_EQ(info->unlock_era(), uint8_t(2), "RecipeInfo serializes unlock_era");
+    }
+
+    PASS();
+}
+
 // Client-driven queries: catalog, per-item (craft/use), per-machine, and the
 // RecipeInfo serializer the wire handlers build on.
 static void test_recipe_manager_queries() {
@@ -377,5 +442,6 @@ void test_recipe_manager() {
     TEST(recipe_manager_no_match);
     TEST(recipe_manager_item_id_formats);
     TEST(recipe_manager_craft_patterns);
+    TEST(recipe_manager_unlock_era);
     TEST(recipe_manager_queries);
 }

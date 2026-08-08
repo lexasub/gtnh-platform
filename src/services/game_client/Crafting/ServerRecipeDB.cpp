@@ -171,6 +171,7 @@ ServerRecipeDB::RecipeInfo ServerRecipeDB::ParseRecipeInfo(
     ri.machine_class = info->machine_class() ? info->machine_class()->str() : "";
     ri.recipe_id = info->recipe_id() ? info->recipe_id()->str() : "";
     ri.duration = info->duration();
+    ri.unlock_era = info->unlock_era();
     ri.has_pattern = info->has_pattern();
     if (auto *inputs = info->inputs()) {
         ri.inputs.reserve(inputs->size());

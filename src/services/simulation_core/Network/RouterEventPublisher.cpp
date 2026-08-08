@@ -35,7 +35,8 @@ void RouterEventPublisher::publishBlockAck(uint8_t status,
                                            int32_t x, int32_t y, int32_t z,
                                            uint16_t block_id, uint8_t meta,
                                            const char* reason,
-                                           uint32_t request_id)
+                                           uint32_t request_id,
+                                           uint8_t action_type)
 {
     auto t0 = std::chrono::steady_clock::now();
     flatbuffers::FlatBufferBuilder builder(128);
@@ -46,7 +47,8 @@ void RouterEventPublisher::publishBlockAck(uint8_t status,
     }
     auto ack = Protocol::CreateBlockAck(builder, &pos,
                                         static_cast<Protocol::BlockAckStatus>(status),
-                                        block_id, meta, reason_off, request_id);
+                                        block_id, meta, reason_off, request_id,
+                                        static_cast<Protocol::PlayerActionType>(action_type));
     builder.Finish(ack);
     std::vector<uint8_t> ack_data(builder.GetBufferPointer(),
                                   builder.GetBufferPointer() + builder.GetSize());

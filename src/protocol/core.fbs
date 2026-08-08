@@ -120,6 +120,7 @@ table BlockAck {
   meta:uint8;            // final meta (ACCEPTED/CONFLICT)
   reason:string;         // human-readable (for REJECTED, e.g. "no permission")
   request_id:uint32 = 0; // echoes the client's request_id from SetBlockAction
+  action:PlayerActionType = RIGHT_MOUSE_CLICK; // action type that triggered this ACK
 }
 
 // ---------------------------------------------------------------------------
@@ -493,21 +494,6 @@ table SetMachineSlotResp {
     error: string;
     item: ItemStack;
 }
-
-// Chest inventory open/close
-// Gateway ↔ Client: chest inventory data exchange
-table ChestOpenReq {
-  player_id: uint64;
-  pos: Vec3i (required);      // chest block position (x, y, z)
-  open: bool = false;         // true=open, false=close
-}
-
-table ChestOpenResp {
-  pos: Vec3i (required);      // chest block position (x, y, z)
-  success: bool = false;      // true if operation succeeded
-  slots: [InventorySlot];     // 27 inventory slots
-}
-
 table SideConfigData {
     machine_instance_id: uint64;
     faces: [uint8];

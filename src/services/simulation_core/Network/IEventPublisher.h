@@ -25,7 +25,9 @@ public:
   virtual void publishBlockAck(uint8_t status, int32_t x, int32_t y, int32_t z,
                                uint16_t block_id, uint8_t meta,
                                const char *reason,
-                               uint32_t request_id = 0) = 0;
+                               uint32_t request_id = 0,
+                               uint8_t action_type = 1  // RIGHT_MOUSE_CLICK
+                               ) = 0;
 
   virtual void publishBlockChangedEvent(int32_t x, int32_t y, int32_t z,
                                         uint16_t block_id, uint8_t meta,

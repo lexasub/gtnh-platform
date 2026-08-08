@@ -2,9 +2,12 @@
 #include "Storage/IBlockRepository.h"
 #include "Storage/PlayerInventoryStore.h"
 #include "Network/IEventPublisher.h"
+#include "Network/clients/EntityStateStoreClient.h"
 #include "ECS/SimulationEngine.h"
 #include "World/BlockTransforms.h"
 #include "core_generated.h"
+#include "machine_state_generated.h"
+#include <common/ItemId.h>
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
 #include <chrono>
@@ -118,6 +121,46 @@ void SetBlockCASHandler::publishMachineState(int32_t x, int32_t y, int32_t z,
                                 x, y, z, machine_id, 0, "Machine interacted", request_id);
 }
 
+void SetBlockCASHandler::publishChestState(int32_t x, int32_t y, int32_t z,
+                                           uint16_t chest_id, uint64_t player_id,
+                                           uint32_t request_id) {
+    // Load chest inventory from EntityStateStore and publish in BlockEntityUpdate
+    if (entityStateClient_) {
+        entityStateClient_->LoadEntityState(0, x, y, z, kChestEntityType,
+            [this, x, y, z, chest_id, player_id, request_id](
+                const EntityStateStoreClient::EntityStateData& state) {
+                std::vector<uint8_t> inventory_data;
+                if (!state.state.empty()) {
+                    auto verifier = flatbuffers::Verifier(state.state.data(), state.state.size());
+                    if (verifier.VerifyBuffer<Protocol::MachineState>(nullptr)) {
+                        auto fbState = flatbuffers::GetRoot<Protocol::MachineState>(state.state.data());
+                        auto* inv = fbState->inventory();
+                        if (inv && inv->slots()) {
+                            inventory_data.resize(inv->slots()->size() * 5);
+                            uint8_t* ptr = inventory_data.data();
+                            for (size_t i = 0; i < inv->slots()->size(); ++i) {
+                                auto* s = inv->slots()->Get(i);
+                                uint16_t id = s ? s->item_id() : 0;
+                                uint8_t cnt = s ? static_cast<uint8_t>(s->count()) : 0;
+                                uint16_t mt = s ? s->meta() : 0;
+                                std::memcpy(ptr, &id, sizeof(uint16_t)); ptr += sizeof(uint16_t);
+                                *ptr++ = cnt;
+                                std::memcpy(ptr, &mt, sizeof(uint16_t)); ptr += sizeof(uint16_t);
+                            }
+                        }
+                    }
+                }
+                if (inventory_data.empty()) inventory_data.resize(27 * 5, 0);
+                publisher_->publishBlockEntityUpdate(x, y, z, chest_id, inventory_data, 0.0f, 0,
+                                                     EnergyType::ELECTRICITY, 0, 27);
+            });
+    } else {
+        // No entity store — publish empty inventory
+        std::vector<uint8_t> empty(27 * 5, 0);
+        publisher_->publishBlockEntityUpdate(x, y, z, chest_id, empty, 0.0f, 0);
+    }
+}
+
 void SetBlockCASHandler::handleMachineInteraction(int32_t x, int32_t y, int32_t z,
                                                   uint16_t machine_id, uint64_t player_id,
                                                   uint32_t request_id) {
@@ -186,11 +229,22 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
                 return;
             }
         }
+        // Chest (packed ID 0:10:11:0 → ItemId::pack("0:10:11:0")).
+        if (expected_block_id == ItemId::pack("0:10:11:0")) {
+            spdlog::info("SetBlockCASHandler: chest interact at ({},{},{})", x, y, z);
+            publisher_->publishBlockAck(
+                static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED),
+                x, y, z, expected_block_id, 0, nullptr, request_id,
+                static_cast<uint8_t>(action_type));
+            publishChestState(x, y, z, expected_block_id, player_id, request_id);
+            return;
+        }
         if (new_block_id == 0) {
             spdlog::warn("SetBlockCASHandler: cannot place air at ({},{},{})", x, y, z);
             publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_REJECTED),
                                         x, y, z, 0, 0, "Cannot place air",
-                                        request_id);
+                                        request_id,
+                                        static_cast<uint8_t>(action_type));
             return;
         }
     }
@@ -216,7 +270,8 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
                 publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_REJECTED),
                                             x, y, z, expected_block_id, 0,
                                             "Multiblock contents do not fit in inventory",
-                                            request_id);
+                                            request_id,
+                                            static_cast<uint8_t>(action_type));
                 return;
             }
             if (!contents.empty()) {
@@ -235,7 +290,8 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
     }
 
     publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED),
-        x, y, z, final_block_id, final_meta, nullptr, request_id);
+        x, y, z, final_block_id, final_meta, nullptr, request_id,
+        static_cast<uint8_t>(action_type));
 
     auto cas_t0 = std::chrono::steady_clock::now();
     repo_->setBlockCAS(x, y, z, expected_block_id, final_block_id, final_meta,
@@ -259,11 +315,21 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
                         }
                     }
 
-                    // Place: consume the placed block from the player
+                    // Place: consume the placed block from the player's inventory
                     if (action_type == Protocol::PlayerActionType_RIGHT_MOUSE_CLICK) {
                         uint16_t placed_block = new_block_id;
-                        if (placed_block != 0 && onGiveItem_) {
-                            spdlog::info("Placed block {} by player {}", placed_block, player_id);
+                        if (placed_block != 0 && inventoryStore_) {
+                            auto slots = inventoryStore_->getSlots(player_id);
+                            for (auto& s : slots) {
+                                if (s.item_id == placed_block && s.count > 0) {
+                                    s.count--;
+                                    if (s.count == 0) s = {};
+                                    spdlog::info("Placed block {} by player {} — consumed from inv",
+                                                 placed_block, player_id);
+                                    break;
+                                }
+                            }
+                            inventoryStore_->setSlots(player_id, slots);
                         }
                     }
 
@@ -280,7 +346,8 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
                 } else { // CONFLICT
                     spdlog::warn("Block CAS CONFLICT at ({},{},{}) actual_id={}, from_id={}, to_id={}", x, y, z, result.block_id, expected_block_id, final_block_id);
                     publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_CONFLICT),
-                                                x, y, z, result.block_id, result.meta, nullptr, request_id);
+                                                x, y, z, result.block_id, result.meta, nullptr, request_id,
+                                                static_cast<uint8_t>(action_type));
                 }
             };
             if (postToMain_) {

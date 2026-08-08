@@ -55,6 +55,7 @@ struct Recipe {
   int16_t max_tier = 32767;  // new: inclusive upper tier bound (INT16_MAX)
   uint8_t energy_type =
       ENERGY_TYPE_ANY; // filter: machine must have this energy_in (255 = any)
+  uint8_t unlock_era = 0; // quest era required to see this recipe (0 = always)
   uint32_t duration;
   float energy_cost;   // energy consumed per tick (eu / recipe base)
   float energy_output; // energy produced per operation (0 for consumers)

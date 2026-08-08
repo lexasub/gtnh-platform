@@ -68,9 +68,15 @@ void GameClient::subscribeNetClient() {
         });
 
     netClient_->SetBlockAckCallback(
-        [this](BlockPos pos, uint8_t status, uint16_t block_id, uint8_t meta, uint32_t request_id) {
+        [this](BlockPos pos, uint8_t status, uint16_t block_id, uint8_t meta, uint32_t request_id, uint8_t action_type) {
             if (status != static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED)) {
                 spdlog::warn("BlockAck CONFLICT at ({},{},{}) actual_id={} rid={}", pos.x, pos.y, pos.z, block_id, request_id);
+            } else if (action_type == static_cast<uint8_t>(Protocol::PlayerActionType_RIGHT_MOUSE_CLICK)
+                       && BlockUIFactory::CanOpen(block_id)) {
+                // Interaction (chest/machine/workbench open): open UI.
+                // Block placement consumption is server-authoritative —
+                // server deducts from inventory and pushes InventoryUpdate.
+                UIDefaults::TryOpenBlockUI(uiMgr_, block_id, pos);
             }
             // Apply + rebuild mesh on main thread so the next raycaster frame
             // sees the change immediately (BlockChangedEvent is skipped back
@@ -280,32 +286,33 @@ void GameClient::Update(float dt) {
         inputMgr_.SetMouseCaptured(true);
     }
 
-    // ── Right-click → open block UI ────────────────────────────────────
-    // Check before InteractionSystem so UI opening takes priority over placing blocks.
+    // ── Right-click → open block UI (server-authoritative) ──────────────────
+    // Client sends RIGHT_MOUSE_CLICK, server decides if interaction is allowed.
+    // The window opens only when BlockAck(ACCEPTED) arrives.
+    bool rightClickHandled = false;
     if (inputMgr_.State().mouseRightPressed && !uiMgr_.AnyOpen()) {
-        // Fresh ray-cast per frame — don't use stale highlightedBlock_ from last Update call
         BlockPos target = interaction_.RaycastTarget(camera_);
         if (target.x != std::numeric_limits<int32_t>::max()) {
             uint16_t blockId = world_.GetBlockAt(target);
-            IUIWindow* opened = UIDefaults::TryOpenBlockUI(uiMgr_, blockId, target);
-            // A MachineWindow just opened, but the server only re-publishes
-            // current machine state (energy type, slots, progress) when it
-            // receives a right-click on the machine. Without this, a window
-            // opened after a reconnect sits on stale/zeroed data — e.g. a
-            // heat generator shown as ELECTRICITY — until the next periodic
-            // force-publish happens to land.
-            if (dynamic_cast<MachineWindow*>(opened)) {
+            if (BlockUIFactory::CanOpen(blockId)) {
                 netClient_->SendBlockAction(
                     Protocol::PlayerActionType::PlayerActionType_RIGHT_MOUSE_CLICK,
                     target.x, target.y, target.z,
                     blockId, static_cast<uint16_t>(0),
                     0, invState_.player_id);
+                world_.MarkBlockActionSent(target);
+                rightClickHandled = true;
             }
         }
     }
 
     // ── World interaction (block break/place, only if UI not capturing) ──
-    if (!uiMgr_.AnyOpen() && invState_.gameMode != GameMode::ADVENTURE && invState_.gameMode != GameMode::SPECTATOR) {
+    // Skip when the GameClient already sent a right-click for an interactive
+    // block above — otherwise both code-paths fire duplicate SendBlockActions.
+    if (!uiMgr_.AnyOpen()
+        && invState_.gameMode != GameMode::ADVENTURE
+        && invState_.gameMode != GameMode::SPECTATOR
+        && !rightClickHandled) {
         interaction_.SetInventory(&invState_);
         interaction_.Update(camera_, inputMgr_.State(), world_, *netClient_);
         // If block ack conflict occurs, invState_ gets out of sync — a future

@@ -49,7 +49,13 @@ void NeiPanel::RenderMachineRecipes(MachineWindow* mw) {
         selectedRecipe_ = -1;
         db->GetRecipesForMachine(machineType, [this, db, machineType]() {
             if (machineType != machineRequested_) return; // machine switched
-            machineRecipes_ = db->GetMachineRecipesCopy(machineType);
+            uint8_t playerEra = uiMgr_ ? uiMgr_->GetCurrentEra() : 0;
+            auto all = db->GetMachineRecipesCopy(machineType);
+            machineRecipes_.clear();
+            for (const auto& ri : all) {
+                if (ri.unlock_era > playerEra) continue; // locked until quest era advances
+                machineRecipes_.push_back(ri);
+            }
             machineLoaded_ = true;
         });
     }

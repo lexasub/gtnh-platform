@@ -119,6 +119,8 @@ void SimCoreMessageHandler::setup() {
             inventoryStore->giveItem(player_id, item_id, count, target_slot);
         });
 
+    casHandler_->setEntityStateStore(d.entityStateClient);
+
     chunkHandler_ = std::make_shared<ChunkEventHandler>(d.engine);
 
     auto wrenchActionHandler = std::make_unique<WrenchActionHandler>(d.wrenchHandler, d.questManager);
@@ -165,6 +167,54 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                 if (!v.VerifyBuffer<Protocol::SetBlockAction>()) return;
                 auto* action = flatbuffers::GetRoot<Protocol::SetBlockAction>(data.data());
                 casHandler.handle((void*)action);
+            } else if (topic == "player.chest.save") {
+                // Payload: [12: pos xyz][4: player_id][4: chest_cnt][N*5: chest slots][4: player_cnt][M*5: player slots]
+                if (data.size() >= 20 && entityStateClient) {
+                    const uint8_t* p = data.data();
+                    int32_t cx, cy, cz; uint32_t pid, chestCnt, playerCnt;
+                    std::memcpy(&cx, p, 4); p += 4;
+                    std::memcpy(&cy, p, 4); p += 4;
+                    std::memcpy(&cz, p, 4); p += 4;
+                    std::memcpy(&pid, p, 4); p += 4;
+                    std::memcpy(&chestCnt, p, 4); p += 4;
+                    size_t chestDataSz = chestCnt * 5;
+                    if (p + chestDataSz + 4 > data.data() + data.size()) return;
+                    // Save chest to EntityStateStore as MachineState
+                    flatbuffers::FlatBufferBuilder fbb(256);
+                    std::vector<flatbuffers::Offset<Protocol::MachineInventorySlot>> offs;
+                    const uint8_t* cp = p;
+                    for (uint32_t i = 0; i < chestCnt; ++i) {
+                        uint16_t id; uint8_t cnt; uint16_t mt;
+                        std::memcpy(&id, cp, 2); cp += 2;
+                        cnt = *cp++;
+                        std::memcpy(&mt, cp, 2); cp += 2;
+                        offs.push_back(Protocol::CreateMachineInventorySlot(fbb, id, cnt, mt));
+                    }
+                    auto inv = Protocol::CreateMachineInventory(fbb, static_cast<uint8_t>(chestCnt), fbb.CreateVector(offs));
+                    auto st = Protocol::CreateMachineState(fbb, 1, 0, 0, inv, 0);
+                    fbb.Finish(st);
+                    std::vector<uint8_t> blob(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+                    entityStateClient->SaveEntityState(0, cx, cy, cz, 3, blob,
+                                                       [cx, cy, cz](bool ok) {
+                        spdlog::info("[SimCore] Chest save at ({},{},{}) — {}", cx, cy, cz, ok ? "OK" : "FAIL");
+                    });
+                    // Apply player inventory
+                    p = cp;
+                    std::memcpy(&playerCnt, p, 4); p += 4;
+                    auto invStore = inventoryStore;  // copy shared_ptr for lambda
+                    if (invStore && playerCnt > 0) {
+                        std::array<PersistSlot, kInventorySlots> slots{};
+                        size_t n = std::min(static_cast<size_t>(playerCnt), slots.size());
+                        for (size_t i = 0; i < n && p + 5 <= data.data() + data.size(); ++i) {
+                            uint16_t id; uint8_t cnt; uint16_t mt;
+                            std::memcpy(&id, p, 2); p += 2;
+                            cnt = *p++;
+                            std::memcpy(&mt, p, 2); p += 2;
+                            slots[i] = {id, cnt, mt};
+                        }
+                        invStore->setSlots(pid, slots);
+                    }
+                }
             } else if (topic == "player.actions") {
                 dispatcher.dispatch(data);
             } else if (topic == "world.blocks.changed") {
@@ -189,53 +239,6 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                 if (!resp) return;
                 spdlog::debug("ItemTransferResp: transferred={} remaining={}",
                               resp->transferred(), resp->remaining());
-
-            } else if (topic == "player.chest.open") {
-                flatbuffers::Verifier v(data.data(), data.size());
-                if (!v.VerifyBuffer<Protocol::ChestOpenReq>(nullptr)) return;
-                auto* req = flatbuffers::GetRoot<Protocol::ChestOpenReq>(data.data());
-                if (!req || !req->pos()) return;
-                auto* p = req->pos();
-                int32_t x = p->x(), y = p->y(), z = p->z();
-
-                if (req->open()) {
-                    entityStateClient->LoadEntityState(0, x, y, z, 3,
-                        [&mainQueue, routerClient, x, y, z](const EntityStateStoreClient::EntityStateData& state) {
-                            mainQueue.push([routerClient, x, y, z, state]() {
-                                flatbuffers::FlatBufferBuilder fbb(512);
-                                auto posFb = Protocol::Vec3i(x, y, z);
-                                std::vector<flatbuffers::Offset<Protocol::InventorySlot>> slotOffsets;
-                                if (!state.state.empty()) {
-                                    auto verifier = flatbuffers::Verifier(state.state.data(), state.state.size());
-                                    if (verifier.VerifyBuffer<Protocol::MachineState>(nullptr)) {
-                                        auto fbState = flatbuffers::GetRoot<Protocol::MachineState>(state.state.data());
-                                        auto* inv = fbState->inventory();
-                                        if (inv && inv->slots()) {
-                                            for (size_t i = 0; i < inv->slots()->size(); ++i) {
-                                                auto* s = inv->slots()->Get(i);
-                                                slotOffsets.push_back(Protocol::CreateInventorySlot(fbb, s->item_id(), static_cast<uint8_t>(s->count()), s->meta()));
-                                            }
-                                        }
-                                    }
-                                }
-                                for (int i = static_cast<int>(slotOffsets.size()); i < 27; ++i)
-                                    slotOffsets.push_back(Protocol::CreateInventorySlot(fbb, 0, 0, 0));
-                                auto slots = fbb.CreateVector(slotOffsets);
-                                auto resp = Protocol::CreateChestOpenResp(fbb, &posFb, true, slots);
-                                fbb.Finish(resp);
-                                std::vector<uint8_t> rd(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
-                                routerClient->Publish("player.chest.open.response", std::move(rd));
-                            });
-                        });
-                } else {
-                    worldContainers.onContainerClose(req->player_id(), x, y, z);
-                    flatbuffers::FlatBufferBuilder fbb(128);
-                    auto posFb = Protocol::Vec3i(x, y, z);
-                    auto resp = Protocol::CreateChestOpenResp(fbb, &posFb, true, 0);
-                    fbb.Finish(resp);
-                    std::vector<uint8_t> rd(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
-                    routerClient->Publish("player.chest.open.response", std::move(rd));
-                }
 
             } else if (topic == "meta_db.quest.get.response") {
                 if (questManager && data.size() >= 4) {

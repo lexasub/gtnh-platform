@@ -31,20 +31,19 @@ BlockUIFactory::Registry& BlockUIFactory::GetRegistry() {
         // crafting grid.
         registerCraftingTable(ItemId::pack("0:10:11:1"));
         registerCraftingTable(static_cast<uint16_t>(BlockType::CraftingTable));
-        r[static_cast<uint16_t>(BlockType::Chest)] = [](UIManager& mgr, BlockPos pos) -> IUIWindow* {
-            auto* win = FindOrCreate<ChestWindow>(mgr, pos);
-            if (win) {
-                win->SetDragManager(&mgr.GetDragManager());
-                win->SetNetClient(mgr.GetNetClient());
-                if (auto* nc = mgr.GetNetClient()) {
-                    nc->SetChestOpenRespCallback(
-                        [win](BlockPos p, bool success, const std::vector<ItemStack>& slots) {
-                            win->onChestSlotAck(p, success, slots);
-                        });
+        // Chest: register both legacy flat ID (37) and actual packed ID (0:10:11:0 → 22528)
+        auto registerChest = [&r](uint16_t blockId) {
+            r[blockId] = [](UIManager& mgr, BlockPos pos) -> IUIWindow* {
+                auto* win = FindOrCreate<ChestWindow>(mgr, pos);
+                if (win) {
+                    win->SetDragManager(&mgr.GetDragManager());
+                    win->SetNetClient(mgr.GetNetClient());
                 }
-            }
-            return win;
+                return win;
+            };
         };
+        registerChest(static_cast<uint16_t>(BlockType::Chest));          // 37 (legacy)
+        registerChest(ItemId::pack("0:10:11:0"));                       // 22528 (packed)
         return r;
     }();
     return reg;

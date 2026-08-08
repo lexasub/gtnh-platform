@@ -86,6 +86,10 @@ table RecipeInfo {
   machine_class:string;
   recipe_id:string;
   duration:uint32;
+  // Quest era required to see this recipe (VAGRANT=0 … ADMINISTRATOR=3).
+  // Client-side UX filter only: recipes with unlock_era > player era are
+  // hidden from NEI/inspect. Crafting is not blocked.
+  unlock_era:uint8 = 0;
   inputs:[ItemStack];
   outputs:[ItemStack];
   // Positional 3x3 pattern (9 entries, item_id 0 = empty cell). Only set for

@@ -11,6 +11,7 @@ recipes:
     duration: 250
     min_tier: 0
     max_tier: 32767
+    unlock_era: 1   # hidden from NEI until APPRENTICE era (UX filter demo)
 
   - name: gtnh:electrolyser_electrum
     inputs:

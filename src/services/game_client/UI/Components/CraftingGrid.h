@@ -1,15 +1,14 @@
 #pragma once
 
 #include "Common/Inventory.h"
+#include "UI/Core/DragManager.h"
 #include "common/SlotContainer.h"
 #include <array>
 #include <cstdint>
 #include <functional>
 
-class DragManager;
-
 class CraftingGrid {
-  static constexpr int kGridFlag = 100;
+  static constexpr int kGridFlag = DragManager::kGridSlotBase;
   SlotContainer<9, ItemStack> slots_{};
   ItemStack result_{};
   uint32_t gen_ = 0; // bumped on every Recalc; guards stale server previews

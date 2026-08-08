@@ -240,6 +240,42 @@ void MachineSystem::tick(float /*dt*/) {
                     spdlog::debug("Electricity machine {} at entity {} requested {} energy from CableGraph",
                                  recipe->id, static_cast<uint32_t>(ent), needed);
                 }
+            } else if (energy.type == EnergyType::ROTATION) {
+                uint64_t node_id = static_cast<uint64_t>(ent);
+                auto pending_it = pendingConsumes_.find(node_id);
+                if (pending_it == pendingConsumes_.end()) {
+                    int32_t needed = static_cast<int32_t>(recipe->energy_cost);
+                    if (pipeClient_) {
+                        // Publish the node update first: PipeNetwork registers
+                        // sink nodes only on demand, and the consume request
+                        // is rejected until the node is known.
+                        pipeClient_->publishNodeUpdate(
+                            node_id,
+                            static_cast<int32_t>(machine.x),
+                            static_cast<int32_t>(machine.y),
+                            static_cast<int32_t>(machine.z),
+                            energy.current,
+                            energy.capacity,
+                            energy.maxInput,
+                            energy.maxOutput,
+                            energy.tier,
+                            static_cast<int32_t>(energy.type),
+                            false,
+                            true
+                        );
+                        pipeClient_->sendConsumeRequest(
+                            node_id,
+                            static_cast<int32_t>(machine.x),
+                            static_cast<int32_t>(machine.y),
+                            static_cast<int32_t>(machine.z),
+                            static_cast<int32_t>(energy.type),
+                            needed
+                        );
+                    }
+                    pendingConsumes_[node_id] = needed;
+                    spdlog::debug("Rotation machine {} at entity {} requested {} energy from PipeNetwork",
+                                 recipe->id, static_cast<uint32_t>(ent), needed);
+                }
             }
             continue;
         }

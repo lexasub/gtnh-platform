@@ -13,6 +13,7 @@ class IBlockRepository;
 class IEventPublisher;
 class SimulationEngine;
 class PlayerInventoryStore;
+class EntityStateStoreClient;
 
 using ItemGiveCallback = std::function<void(
     uint64_t player_id, uint16_t item_id, uint8_t count, int32_t target_slot)>;
@@ -35,6 +36,10 @@ public:
 
   void handle(const void *table) override;
 
+  void setEntityStateStore(std::shared_ptr<EntityStateStoreClient> client) {
+    entityStateClient_ = std::move(client);
+  }
+
 private:
   auto handle(const Protocol::SetBlockAction *action) -> void;
 
@@ -55,10 +60,14 @@ private:
   std::shared_ptr<IEventPublisher> publisher_;
   std::shared_ptr<SimulationEngine> engine_;
   std::shared_ptr<PlayerInventoryStore> inventoryStore_;
+  std::shared_ptr<EntityStateStoreClient> entityStateClient_;
   ItemGiveCallback onGiveItem_;
   DrillUseCallback onDrillUse_;
   BlockPlacedCallback onBlockPlaced_;
   PostCallback postToMain_;
+
+  static constexpr uint16_t kChestEntityType = 3;
+  void publishChestState(int32_t x, int32_t y, int32_t z, uint16_t chest_id, uint64_t player_id, uint32_t request_id);
 };
 
 } // namespace simcore

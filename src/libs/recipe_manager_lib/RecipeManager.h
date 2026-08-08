@@ -19,6 +19,7 @@ enum class EnergyType : uint8_t {
   ELECTRICITY = 0,
   HEAT = 1,
   STEAM = 2,
+  ROTATION = 3,
 };
 
 /// Per-variant multiplier that scales base recipe values

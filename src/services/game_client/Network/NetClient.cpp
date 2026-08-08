@@ -2,6 +2,7 @@
 #include "../World/ChunkView.h"
 #include "gateway_generated.h"
 #include "core_generated.h"
+#include "machine_state_generated.h"
 #include "recipe_generated.h"
 #include "quest_generated.h"
 
@@ -464,31 +465,6 @@ void NetClient::OnMessage(uint8_t msg_type,
             if (onQuestUpdate_)
                 onQuestUpdate_(msg_type, data);
             return;
-        case GatewayMsg::kChestOpenResp: {
-            flatbuffers::Verifier v(payload, plen);
-            if (!v.VerifyBuffer<Protocol::ChestOpenResp>(nullptr)) {
-                spdlog::warn("NetClient: invalid ChestOpenResp buffer");
-                return;
-            }
-            auto resp = flatbuffers::GetRoot<Protocol::ChestOpenResp>(payload);
-            if (!onChestOpenResp_) return;
-            BlockPos pos{};
-            if (resp->pos()) {
-                pos.x = resp->pos()->x();
-                pos.y = resp->pos()->y();
-                pos.z = resp->pos()->z();
-            }
-            std::vector<ItemStack> slots;
-            if (auto* fbSlots = resp->slots()) {
-                slots.reserve(fbSlots->size());
-                for (flatbuffers::uoffset_t i = 0; i < fbSlots->size(); ++i) {
-                    auto* s = fbSlots->Get(i);
-                    if (s) slots.push_back(ItemStack{static_cast<uint16_t>(s->item_id()), s->count(), static_cast<uint16_t>(s->meta())});
-                }
-            }
-            onChestOpenResp_(pos, true, slots);
-            return;
-        }
         case GatewayMsg::kGameModeChange: {
             auto* change = flatbuffers::GetRoot<Protocol::GameModeChange>(payload);
             if (change && onGameModeChange_) {
@@ -634,7 +610,8 @@ void NetClient::ProcessBlockAck(std::shared_ptr<std::vector<uint8_t>> data) {
         onBlockAck_(BlockPos{pos->x(), pos->y(), pos->z()},
                     static_cast<uint8_t>(ack->status()),
                     ack->block_id(), ack->meta(),
-                    ack->request_id());
+                    ack->request_id(),
+                    static_cast<uint8_t>(ack->action()));
 }
 
 // =========================================================================
@@ -844,13 +821,39 @@ void NetClient::SendSetMachineSlot(uint64_t player_id, const BlockPos& pos,
     EnqueueWrite(GatewayMsg::kSetMachineSlot, builder.GetBufferPointer(), builder.GetSize());
 }
 
-void NetClient::SendChestOpen(uint64_t player_id, const BlockPos& pos) {
+void NetClient::SendChestSaveReq(const BlockPos& pos, const std::vector<ItemStack>& chestSlots,
+                                const std::vector<ItemStack>& playerSlots, uint64_t player_id) {
     if (!ctrl_conn_ || !connected_ctrl_) return;
-    flatbuffers::FlatBufferBuilder builder(64);
-    auto posVec = Protocol::Vec3i(pos.x, pos.y, pos.z);
-    auto req = Protocol::CreateChestOpenReq(builder, player_id, &posVec);
-    builder.Finish(req);
-    EnqueueWrite(GatewayMsg::kChestOpenReq, builder.GetBufferPointer(), builder.GetSize());
+    // Payload:
+    // [12: pos x/y/z][4: player_id]
+    // [4: chest_slot_count][chest_slots: 5 bytes each (u16 id + u8 cnt + u16 meta)]
+    // [4: player_slot_count][player_slots: 5 bytes each]
+    constexpr size_t kSlotSz = 5;
+    size_t chestSize = chestSlots.size() * kSlotSz;
+    size_t playerSize = playerSlots.size() * kSlotSz;
+    std::vector<uint8_t> payload(16 + 4 + chestSize + 4 + playerSize);
+    int32_t vx = pos.x, vy = pos.y, vz = pos.z;
+    uint32_t pid = static_cast<uint32_t>(player_id);
+    uint32_t chestCnt = static_cast<uint32_t>(chestSlots.size());
+    uint32_t playerCnt = static_cast<uint32_t>(playerSlots.size());
+    uint8_t* p = payload.data();
+    std::memcpy(p, &vx, 4); p += 4;
+    std::memcpy(p, &vy, 4); p += 4;
+    std::memcpy(p, &vz, 4); p += 4;
+    std::memcpy(p, &pid, 4); p += 4;
+    std::memcpy(p, &chestCnt, 4); p += 4;
+    for (const auto& s : chestSlots) {
+        std::memcpy(p, &s.item_id, 2); p += 2;
+        *p++ = s.count;
+        std::memcpy(p, &s.meta, 2); p += 2;
+    }
+    std::memcpy(p, &playerCnt, 4); p += 4;
+    for (const auto& s : playerSlots) {
+        std::memcpy(p, &s.item_id, 2); p += 2;
+        *p++ = s.count;
+        std::memcpy(p, &s.meta, 2); p += 2;
+    }
+    EnqueueWrite(GatewayMsg::kChestSaveReq, payload.data(), payload.size());
 }
 
 void NetClient::SendToolAction(uint64_t player_id, Protocol::ToolActionType action,

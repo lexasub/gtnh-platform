@@ -54,6 +54,7 @@ PIPENETWORKD="$(BIN pipe_network pipenetworkd)"
 SPATIALINDEXD="$(BIN spatial_index spatialindexd)"
 METADBD="${SCRIPT_DIR}/src/services/meta_db/metadbd"
 ENTITYSTATED="$(BIN entity_state_store entitystated)"
+RECIPED="$(BIN recipe_manager reciped)"
 VALIDATIOND="$(BIN validation validationd)"
 
 # ── preamble ──────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ fi
 
 # ── check prerequisites ───────────────────────────────────────────
 
-for exe in "${ROUTERD}" "${CHUNKD}" "${GATEWAYD}" "${SIMCORED}" "${ENTITYSTATED}" "${METADBD}"; do
+for exe in "${ROUTERD}" "${CHUNKD}" "${GATEWAYD}" "${SIMCORED}" "${ENTITYSTATED}" "${RECIPED}" "${METADBD}"; do
     [ -x "$exe" ] || die "Binary not found: ${exe} — did you run make?"
 done
 
@@ -164,6 +165,7 @@ printf "\n${CYAN}═══ GTNH Platform ═══${NC}\n\n"
 LAUNCH "routerd"        "${ROUTERD}"
 LAUNCH "chunkd"         "${CHUNKD}"         "${DB_DIR}"  5001  "127.0.0.1"  4000
 LAUNCH "gatewayd"       "${GATEWAYD}"       --router-port 4000  --port 7777
+LAUNCH "reciped"        "${RECIPED}"        --router-port 4000
 LAUNCH "entitystated"   "${ENTITYSTATED}"
 LAUNCH "simcored"       "${SIMCORED}"       "127.0.0.1"  4000  "127.0.0.1"  5001 /home/su/src/local/gtnh-platform/data/recipes
 LAUNCH "metadbd"        "${METADBD}"

@@ -365,8 +365,8 @@ void PipeNetworkService::handleNodeUpdate(const std::vector<uint8_t>& data) {
     st.is_source = update->is_source();
     st.is_sink = update->is_sink();
 
-    // Wire up CableGraph for ELECTRICITY nodes
-    if (st.type == Protocol::EnergyType_ELECTRICITY) {
+    // Wire up CableGraph for ELECTRICITY / ROTATION nodes
+    if (st.type == Protocol::EnergyType_ELECTRICITY || st.type == Protocol::EnergyType_ROTATION) {
         if (st.is_source) cable_graph_.registerGenerator(mgr_id, x, y, z, st.tier);
         if (st.is_sink)   cable_graph_.registerMachine(mgr_id, x, y, z, st.tier);
     } else if (st.type == Protocol::EnergyType_HEAT || st.type == Protocol::EnergyType_STEAM) {

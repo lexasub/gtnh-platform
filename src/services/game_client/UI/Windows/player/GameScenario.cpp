@@ -55,4 +55,6 @@ void GameScenario::OnNetworkUpdate(uint8_t msgType, const void *data) {
     qb->SetOpen(true);
     qb->SetEra(static_cast<int>(resp->quest_book_era()));
   }
+  // Authoritative player era — gates recipe visibility (UX filter).
+  uiMgr->SetCurrentEra(resp->quest_book_era());
 }

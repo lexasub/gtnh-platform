@@ -81,6 +81,13 @@ public:
   void SetRecipeDb(ServerRecipeDB *db) { recipeDb_ = db; }
   ServerRecipeDB *GetRecipeDb() const { return recipeDb_; }
 
+  // ── Player quest era (VAGRANT=0 … ADMINISTRATOR=3) ──────────────────────
+  // Authoritative source is the server (StartScenarioResp.quest_book_era /
+  // EraTransitionNotification). Used by recipe windows to hide recipes whose
+  // unlock_era exceeds the player's current era (UX filter).
+  void SetCurrentEra(uint8_t era) { currentEra_ = era; }
+  uint8_t GetCurrentEra() const { return currentEra_; }
+
   // ── Drag manager ────────────────────────────────────────────────────────
   DragManager &GetDragManager() { return dragMgr_; }
 
@@ -144,6 +151,7 @@ private:
   NetClient *netClient_ = nullptr;
   ServerRecipeDB *recipeDb_ = nullptr;
   InventoryState *playerInv_ = nullptr;
+  uint8_t currentEra_ = 0; // player quest era; default VAGRANT
   std::array<bool, 512> prevKeys_{};
 
   DragManager dragMgr_;

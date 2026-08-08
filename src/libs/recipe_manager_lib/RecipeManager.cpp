@@ -208,6 +208,7 @@ EnergyType RecipeManager::parseEnergyType(const std::string& str) const {
     if (str.empty()) return static_cast<EnergyType>(255);
     if (str == "HEAT") return EnergyType::HEAT;
     if (str == "STEAM") return EnergyType::STEAM;
+    if (str == "ROTATION") return EnergyType::ROTATION;
     return EnergyType::ELECTRICITY;
 }
 
@@ -443,6 +444,9 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
         // Tier bounds (inclusive)
         recipe.min_tier = yaml["min_tier"].as<int16_t>(0);
         recipe.max_tier = yaml["max_tier"].as<int16_t>(32767);
+
+        // Quest era required to see this recipe (UX filter; default 0 = always)
+        recipe.unlock_era = yaml["unlock_era"].as<uint8_t>(0);
 
         // Energy type filter (optional — ENERGY_TYPE_ANY = matches all)
         if (yaml["energy_in"]) {
@@ -977,6 +981,7 @@ RecipeManager::buildRecipeInfo(flatbuffers::FlatBufferBuilder& builder, const Re
         recipe.machine_class.c_str(),
         recipe.id.c_str(),
         recipe.duration,
+        recipe.unlock_era,
         &fbsInputs,
         &fbsOutputs,
         recipe.has_pattern,

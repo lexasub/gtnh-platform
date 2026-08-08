@@ -3,10 +3,12 @@
 #include <cstdint>
 #include <string_view>
 
+#include "common/ItemId.h"
+
 enum class BlockType : uint16_t {
   Unknown = 0,
-  CraftingTable = 14,
-  Chest = 37,
+  CraftingTable = ItemId::pack("0:10:11:1"),
+  Chest = ItemId::pack("0:10:11:0"),
 };
 
 // Number of known BlockType values (excluding Unknown).

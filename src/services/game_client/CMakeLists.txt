@@ -13,12 +13,13 @@ add_custom_command(
         --gen-mutable
         -I ${FBS_DIR}
         -o ${FBS_GEN_DIR}
-        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/quest.fbs
+        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/machine_state.fbs
     DEPENDS flatbuffers::flatc
             ${FBS_DIR}/core.fbs
             ${FBS_DIR}/gateway.fbs
             ${FBS_DIR}/recipe.fbs
             ${FBS_DIR}/quest.fbs
+            ${FBS_DIR}/machine_state.fbs
     COMMENT "Generating FlatBuffers headers for game_client"
 )
 
@@ -255,4 +256,5 @@ add_executable(gameclient_static_assert_test
     tests/test_client.cpp
 )
 target_include_directories(gameclient_static_assert_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
+add_dependencies(gameclient_static_assert_test game_client_fbs)
 add_test(NAME gameclient_static_assert_test COMMAND gameclient_static_assert_test)

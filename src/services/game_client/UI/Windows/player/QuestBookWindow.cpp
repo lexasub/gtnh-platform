@@ -393,6 +393,8 @@ void QuestBookWindow::applyEraTransition(uint8_t completedEra, uint8_t nextEra) 
     if (nextIdx >= 0 && nextIdx != completedIdx) {
         newlyAvailableEra_ = nextIdx;
         spdlog::info("[Quest] Era '{}' now available", eraData_[nextIdx].label);
+        // Advance the player's current era → unlocks era-gated recipes (UX filter).
+        if (uiMgr_) uiMgr_->SetCurrentEra(nextEra);
     }
 }
 

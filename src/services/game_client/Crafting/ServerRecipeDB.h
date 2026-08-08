@@ -34,6 +34,7 @@ public:
     std::string machine_class;
     std::string recipe_id;
     uint32_t duration = 0;
+    uint8_t unlock_era = 0; // quest era required to see this recipe (UX filter)
     std::vector<ItemStack> inputs;
     std::vector<ItemStack> outputs;
     bool has_pattern = false;

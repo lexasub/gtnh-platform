@@ -121,9 +121,8 @@ void InteractionSystem::Update(const Camera& camera, const InputState& input,
                     currentBlockType, placedBlockId,
                     0, player_id);
                 world.MarkBlockActionSent(placePos);
-                if (placedBlockId != 0) { // TODO - consume wen simcored say us that need consume, because we have many cases withot consuming item
-                    consumeSelectedSlot();
-                }
+                // Consumption moved to BlockAckCallback — only consume after
+                // the server confirms ACCEPTED (avoiding the dupe on REJECTED/CONFLICT).
             }
         }
     }

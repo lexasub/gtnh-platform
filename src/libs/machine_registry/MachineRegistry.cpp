@@ -12,6 +12,7 @@ inline EnergyType ParseEnergy(const std::string& str) {
     if (str == "ELECTRICITY") return EnergyType::ELECTRICITY;
     if (str == "HEAT")        return EnergyType::HEAT;
     if (str == "STEAM")       return EnergyType::STEAM;
+    if (str == "ROTATION")    return EnergyType::ROTATION;
     return EnergyType::ELECTRICITY;
 }
 
@@ -306,6 +307,7 @@ const char* MachineRegistry::EnergyLabel(EnergyType et) {
         case EnergyType::ELECTRICITY: return "EU";
         case EnergyType::HEAT:        return "HU";
         case EnergyType::STEAM:       return "SU";
+        case EnergyType::ROTATION:    return "RU";
     }
     return "UNKNOWN";
 }
@@ -315,6 +317,7 @@ const char* MachineRegistry::EnergyTypeToString(EnergyType et) {
         case EnergyType::ELECTRICITY: return "ELECTRICITY";
         case EnergyType::HEAT:        return "HEAT";
         case EnergyType::STEAM:       return "STEAM";
+        case EnergyType::ROTATION:    return "ROTATION";
     }
     return "UNKNOWN";
 }

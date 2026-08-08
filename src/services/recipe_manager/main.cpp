@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
     signal(SIGTERM, signalHandler);
 
     std::string routerHost = "127.0.0.1";
-    uint16_t routerPort = 5555;
+    uint16_t routerPort = 4000; // MessageRouter (Go) listens on :4000
     std::string dataDir = getDataDir();
 
     for (int i = 1; i < argc; ++i) {

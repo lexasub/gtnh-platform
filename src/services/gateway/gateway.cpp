@@ -407,8 +407,6 @@ void IoUringGateway::on_router_publish(
         send_to_client_ctrl_raw(GatewayMsg::kRecipeMachineResp, payload, plen);
 else if (topic == "player.machine.slot.response")
     send_to_client_ctrl_raw(GatewayMsg::kSetMachineSlotResp, payload, plen);
-else if (topic == "player.chest.open.response")
-    send_to_client_ctrl_raw(GatewayMsg::kChestOpenResp, payload, plen);
     else if (topic == "player.tool.action.response")
         send_to_client_ctrl_raw(GatewayMsg::kToolActionResp, payload, plen);
     else if (topic == "player.position.load") {
@@ -522,12 +520,6 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
         publish("player.machine.slot", data, len);
         break;
     }
-    case GatewayMsg::kChestOpenReq: {
-        flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::ChestOpenReq>(nullptr)) { spdlog::error("Gateway: invalid ChestOpenReq on ctrl"); return; }
-        publish("player.chest.open", data, len);
-        break;
-    }
     case GatewayMsg::kToolAction: {
         flatbuffers::Verifier v(data, len);
         if (!v.VerifyBuffer<Protocol::ToolAction>(nullptr)) { spdlog::error("Gateway: invalid ToolAction on ctrl"); return; }
@@ -572,6 +564,12 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
             spdlog::error("Gateway: invalid StartScenarioReq on ctrl"); return;
         }
         publish("player.scenario.start", data, len);
+        break;
+    }
+    case GatewayMsg::kChestSaveReq: {
+        // Client → simcore: save chest inventory to EntityStateStore.
+        // Payload is a Protocol::MachineState flatbuffer (machine_state.fbs).
+        publish("player.chest.save", data, len);
         break;
     }
     // Server-driven recipe queries → RecipeManagerService (RecipeFrame payload).

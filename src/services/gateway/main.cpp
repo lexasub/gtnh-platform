@@ -61,8 +61,7 @@ int main(int argc, char* argv[]) {
         // on_router_publish() handles: world.chunk.loaded.compressed, world.blocks.changed,
         // entities.#, player.actions.ack, player.inventory.update, world.block_entity.update,
         // sim.craft.response, player.machine.slot.response, player.tool.action.response,
-        // player.position.load, player.chest.open.response, multiblock events, quest topics,
-        // meta_db.quest.get.response.
+        // player.position.load, multiblock events, quest topics, meta_db.quest.get.response.
         if (topic == "metadb.player.online") {
             gateway.publish_player_joined();
         } else if (topic == "recipe.completed")
@@ -125,7 +124,6 @@ int main(int argc, char* argv[]) {
     gateway.subscribe("world.block_entity.update");
     gateway.subscribe("recipe.completed");
     gateway.subscribe("player.position.load");
-    gateway.subscribe("player.chest.open.response");
     gateway.subscribe("quest.completed.notification");
     gateway.subscribe("quest.unlocked");
     gateway.subscribe("quest.progress.updated");

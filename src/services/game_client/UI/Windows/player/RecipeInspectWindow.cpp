@@ -40,6 +40,7 @@ void RecipeInspectWindow::rebuildFromServer() {
     auto *db = uiMgr_->GetRecipeDb();
     if (!db) return;
     auto itemRecipes = db->GetItemRecipesCopy(itemId_);
+    uint8_t playerEra = uiMgr_->GetCurrentEra();
 
     auto makeEntry = [](const ServerRecipeDB::RecipeInfo &ri) -> RecipeEntry {
         RecipeEntry e;
@@ -59,9 +60,11 @@ void RecipeInspectWindow::rebuildFromServer() {
     };
 
     for (const auto &ri : itemRecipes.craft) {
+        if (ri.unlock_era > playerEra) continue; // locked until quest era advances
         recipes_.push_back(makeEntry(ri));
     }
     for (const auto &ri : itemRecipes.use) {
+        if (ri.unlock_era > playerEra) continue;
         uses_.push_back(makeEntry(ri));
     }
 }
