@@ -1,0 +1,4 @@
+# source,result[,count[,meta]]
+# Breaking a block yields its mapped drop instead of the block itself.
+# Ids are packed item ids (see data/registry/items.csv).
+0:0:1,0:0:2

@@ -39,6 +39,8 @@
 #include "ECS/Systems/LCRSystem.h"
 #include "Actions/handTool/WrenchHandler.h"
 #include "World/WorldContainerInventory.h"
+#include "World/BlockDrops.h"
+#include "World/BlockTransforms.h"
 #include "Quest/QuestManager.h"
 #include "RecipeManager/RecipeManager.h"
 #include "ItemRegistry.h"
@@ -128,6 +130,19 @@ int main(int argc, char* argv[]) {
         } else {
             spdlog::warn("Failed to load items.csv");
         }
+    }
+
+    // ── Block drops (from drops.csv → broken block → drop) ───────────────
+    {
+        auto blockDrops = simcore::BlockDrops::Load("data/registry/drops.csv");
+        simcore::BlockDrops::setInstance(blockDrops.get());
+    }
+
+    // ── Block transforms (transforms.csv → placed X on Y → Z) ─────────────
+    {
+        auto blockTransforms =
+            simcore::BlockTransforms::Load("data/registry/transforms.csv");
+        simcore::BlockTransforms::setInstance(blockTransforms.get());
     }
 
     // ── Recipe manager ────────────────────────────────────────────────────

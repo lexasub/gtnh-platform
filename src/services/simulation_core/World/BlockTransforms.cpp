@@ -1,23 +1,57 @@
 #include "World/BlockTransforms.h"
-#include <optional>
 #include <common/ItemId.h>
+#include <fstream>
+#include <sstream>
+#include <spdlog/spdlog.h>
+#include <string>
+#include <vector>
 
 namespace simcore {
 
-    std::optional<TransformResult> applyBlockTransform(
-        uint16_t expected_block_id,
-        uint16_t new_block_id,
-        uint8_t /*new_meta*/)  // мета в текущой реализации не используется
-    {
-        // Правило: камень (1) на траве (2) → тропинка (3)
-        if (new_block_id == ItemId::pack("0:0:1") && expected_block_id == ItemId::pack("0:0:2")) {
-            return TransformResult{ItemId::pack("0:0:3"), 0};
-        }
+BlockTransforms* BlockTransforms::instance_ = nullptr;
 
-        // Другие трансформации можно добавить здесь
-        // ...
+std::unique_ptr<BlockTransforms> BlockTransforms::Load(const char* csv_path) {
+  auto transforms = std::unique_ptr<BlockTransforms>(new BlockTransforms());
+  std::ifstream file(csv_path);
+  if (!file.is_open()) {
+    spdlog::error("BlockTransforms: cannot open {}", csv_path);
+    return transforms;
+  }
 
-        return std::nullopt; // без изменений
+  std::string line;
+  while (std::getline(file, line)) {
+    if (line.empty() || line[0] == '#') continue;
+
+    std::vector<std::string> cols;
+    std::stringstream ss(line);
+    std::string cell;
+    while (std::getline(ss, cell, ',')) cols.push_back(cell);
+    if (cols.size() < 3) continue;
+
+    try {
+      TransformResult result{};
+      result.new_block_id = ItemId::pack(cols[2].c_str());
+      result.new_meta =
+          cols.size() > 3 ? static_cast<uint8_t>(std::stoi(cols[3])) : 0;
+      uint64_t key = (static_cast<uint64_t>(ItemId::pack(cols[0].c_str())) << 16) |
+                     ItemId::pack(cols[1].c_str());
+      transforms->rules_.emplace(key, result);
+    } catch (const std::exception&) {
+      spdlog::warn("BlockTransforms: skipping bad line: {}", line);
     }
+  }
+  spdlog::info("BlockTransforms: loaded {} transform rules from {}",
+               transforms->rules_.size(), csv_path);
+  return transforms;
+}
+
+std::optional<TransformResult> BlockTransforms::Apply(
+    uint16_t expected_block_id, uint16_t new_block_id) const {
+  uint64_t key =
+      (static_cast<uint64_t>(expected_block_id) << 16) | new_block_id;
+  auto it = rules_.find(key);
+  if (it == rules_.end()) return std::nullopt;
+  return it->second;
+}
 
 } // namespace simcore
