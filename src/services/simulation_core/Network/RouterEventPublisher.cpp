@@ -136,6 +136,15 @@ void RouterEventPublisher::publishBlockEntityUpdate(int32_t x, int32_t y, int32_
                 output_items.emplace_back(item_id, count, meta);
         }
     }
+    spdlog::debug("[Diagnostic] Building BlockEntityUpdate for ({},{},{}): {} raw bytes, {} slots (slots_in={}), {} input items, {} output items",
+                  x, y, z, inventory_data.size(),
+                  inventory_data.size() / kSlotSize, slots_in,
+                  input_items.size(), output_items.size());
+    if (!output_items.empty()) {
+        auto& first = output_items[0];
+        spdlog::debug("[Diagnostic] First output item: id={} count={} meta={}",
+                      first.item_id(), first.count(), first.meta());
+    }
 
     // Build hatches data (if provided)
     std::vector<flatbuffers::Offset<Protocol::HatchInfo>> hatch_offsets;

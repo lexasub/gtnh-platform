@@ -207,6 +207,8 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
         container.entity_type = (mb_id != 0) ? 2 : 1;
         container.slot_count = defaultMachineSlotCount(block_id);
         container.slots.resize(container.slot_count);
+        spdlog::debug("[Diagnostic] Created InventoryContainer for block_id={} at ({},{},{}): slot_count={} slots.size()={}",
+                      block_id, x, y, z, container.slot_count, container.slots.size());
         reg_.emplace_or_replace<InventoryContainer>(entity, std::move(container));
         EnergyType etype = EnergyType::ELECTRICITY;
         int capacity = 10000;

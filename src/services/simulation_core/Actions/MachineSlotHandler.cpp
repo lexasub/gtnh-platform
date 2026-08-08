@@ -65,11 +65,18 @@ void MachineSlotHandler::handle(const std::vector<uint8_t>& data) {
                  slot_idx, x, y, z, oldItem.item_id, item_id, count, ps);
     if (ps < 255) {
         auto inv = inventoryStore_->getSlots(req->player_id());
+        // ps may be a machine-slot source id (>= 200) from machine-to-machine
+        // drag — skip player inventory interaction when out of bounds.
+        if (ps >= inv.size()) {
+            spdlog::warn("[SimCore] MachineSlotHandler: player_slot {} >= inv.size() {} — "
+                         "treating as no-slot (machine-to-machine drag)", ps, inv.size());
+            goto skip_player_inv;
+        }
         spdlog::info("[SimCore] MachineSlotHandler: player {} slot {} was item {}",
                      req->player_id(), ps, inv[ps].item_id);
         if (item_id != 0) {
             // Placing item into machine — consume from player inventory
-            if (oldItem.item_id != 0 && ps < inv.size()) {
+            if (oldItem.item_id != 0) {
                 inv[ps] = {oldItem.item_id, oldItem.count, 0};
                 spdlog::info("[SimCore] MachineSlotHandler: swapped old machine item {} into player slot {}",
                              oldItem.item_id, ps);
@@ -85,6 +92,7 @@ void MachineSlotHandler::handle(const std::vector<uint8_t>& data) {
         }
         inventoryStore_->setSlots(req->player_id(), inv);
     }
+skip_player_inv:
     uint16_t machineId = 0;
     int slotsIn = static_cast<int>(container->slot_count);
     if (auto* mc = reg.try_get<MachineComponent>(entity)) {

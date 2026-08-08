@@ -276,13 +276,25 @@ int main(int argc, char* argv[]) {
                         auto* container = reg.try_get<simcore::InventoryContainer>(entity2);
                         if (!container) return;
 
+                        // Don't let stale EntityState reduce slot count below
+                        // MachineRegistry value (slot_count). The state may be
+                        // from an older code version that saved fewer slots.
+                        size_t prevSize = container->slots.size();
+                        uint16_t minSlots = std::max<uint16_t>(container->slot_count, 1);
                         container->slots.clear();
                         for (size_t i = 0; i < inv->slots()->size(); ++i) {
                             auto* s = inv->slots()->Get(i);
                             container->slots.emplace_back(s->item_id(),
                                 static_cast<uint8_t>(s->count()), s->meta());
                         }
-                        spdlog::debug("[SimCore] Restored saved state at ({},{},{})", x, y, z);
+                        // Pad with empty slots if restored state is too short
+                        while (container->slots.size() < minSlots) {
+                            container->slots.emplace_back(0, 0, 0);
+                        }
+                        spdlog::debug("[Diagnostic] Restored InventoryContainer at ({},{},{}): "
+                                      "prev_slots={} restored_slots={} slot_count={} min={} final={}",
+                                      x, y, z, prevSize, inv->slots()->size(),
+                                      container->slot_count, minSlots, container->slots.size());
                     });
                 });
         }

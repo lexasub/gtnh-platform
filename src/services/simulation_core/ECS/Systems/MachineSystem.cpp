@@ -341,8 +341,19 @@ void MachineSystem::tick(float /*dt*/) {
             progress.needs_output = true;
             progress.recipe_id.clear();
 
+            {
+                // Diagnostic: check output slots after placement
+                int diag_out = 0;
+                for (int di = slots_in; di < static_cast<int>(container.slots.size()); ++di) {
+                    if (container.slots[di].item_id != 0) ++diag_out;
+                }
+                spdlog::debug("[Diagnostic] Recipe {} completed at ({},{},{}): {} output slots have items ({} slots_in, {} total)",
+                              recipe->id, machine.x, machine.y, machine.z,
+                              diag_out, slots_in, static_cast<int>(container.slots.size()));
+            }
+
             spdlog::debug("Machine {} at {} completed recipe {} and produced items",
-                         recipe->id, static_cast<unsigned int>(ent), recipe->id);
+                          recipe->id, static_cast<unsigned int>(ent), recipe->id);
 
             // Push output items into adjacent pipe network
             pushOutputToPipe(static_cast<uint64_t>(ent), machine, container, slots_in);
@@ -384,7 +395,6 @@ void MachineSystem::pushOutputToPipe(uint64_t entity_id, const MachineComponent&
         if (container.slots[i].item_id != 0 && container.slots[i].count > 0) {
             item_ids.push_back(container.slots[i].item_id);
             item_counts.push_back(container.slots[i].count);
-            container.slots[i] = InventorySlot{};
         }
     }
 

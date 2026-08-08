@@ -65,8 +65,9 @@ void SimCoreMessageHandler::setup() {
 
     topicDispatcher_->on("sim.craft.request", std::make_unique<CraftRequestHandler>(
         d.routerClient, d.recipeManager, d.inventoryStore, d.questManager));
-    topicDispatcher_->on("recipe.completed", std::make_unique<RecipeCompletedHandler>(
-        d.engine));
+    // recipe.completed is NOT handled: MachineSystem is the sole owner of machine
+    // recipes. A RecipeCompletedHandler here would overwrite the whole container
+    // with result_slots, collapsing 2-slot machines to 1 and erasing the input.
 
     topicDispatcher_->on("player.machine.slot", std::make_unique<MachineSlotHandler>(
         d.engine, d.inventoryStore, d.entityStateClient, d.eventPublisher, d.routerClient, d.blockRepository));

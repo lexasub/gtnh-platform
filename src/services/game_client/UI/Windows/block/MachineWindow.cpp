@@ -328,13 +328,15 @@ void MachineWindow::Render(InventoryState* playerInv) {
                         dragMgr_->StartExternalDrag(DragManager::kMachineSlotBase + i, item);
                         dragMgr_->SetMachineDragContext(pos_, i);
                         dragMgr_->SyncTo(*playerInv);
+                        // Don't clear machine slot yet — UIManager callback sends
+                        // combined SetMachineSlotReq on drop to player inventory.
                     } else {
                         playerInv->dragItem = item;
                         playerInv->isDragging = true;
                         playerInv->dragSourceSlot = -(DragManager::kMachineSlotBase + i);
+                        netClient_->SendSetMachineSlot(playerInv->player_id, pos_,
+                            static_cast<uint16_t>(i), 0, 0, 0);
                     }
-                    netClient_->SendSetMachineSlot(playerInv->player_id, pos_,
-                        static_cast<uint16_t>(i), 0, 0, 0);
                     if (static_cast<size_t>(i) < pendingUpdate_.inputItems.size()) {
                         pendingUpdate_.inputItems[i] = ItemStack{0, 0, 0};
                     }
@@ -403,9 +405,9 @@ void MachineWindow::Render(InventoryState* playerInv) {
                         playerInv->dragItem = item;
                         playerInv->isDragging = true;
                         playerInv->dragSourceSlot = -(DragManager::kMachineOutputBase + i);
+                        netClient_->SendSetMachineSlot(playerInv->player_id, pos_,
+                            static_cast<uint16_t>(inCount + i), 0, 0, 0);
                     }
-                    netClient_->SendSetMachineSlot(playerInv->player_id, pos_,
-                        static_cast<uint16_t>(inCount + i), 0, 0, 0);
                     if (static_cast<size_t>(i) < pendingUpdate_.outputItems.size()) {
                         pendingUpdate_.outputItems[i] = ItemStack{0, 0, 0};
                     }
@@ -542,6 +544,27 @@ void MachineWindow::Render(InventoryState* playerInv) {
 }
 
 void MachineWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
+    if (msgType == GatewayMsg::kBlockEntityUpdate) {
+        // Diagnostic: log raw update
+        flatbuffers::Verifier v(reinterpret_cast<const uint8_t*>(data), 8192);
+        if (v.VerifyBuffer<Protocol::BlockEntityUpdate>(nullptr)) {
+            auto* upd = flatbuffers::GetRoot<Protocol::BlockEntityUpdate>(data);
+            auto* p = upd->pos();
+            if (p && p->x() == pos_.x && p->y() == pos_.y && p->z() == pos_.z) {
+                auto* out = upd->output_items();
+                size_t outSz = out ? out->size() : 0;
+                spdlog::info("[MachineWindow] BlockEntityUpdate at ({},{},{}): progress={} input={} output={}",
+                             pos_.x, pos_.y, pos_.z, upd->progress(),
+                             upd->input_items() ? upd->input_items()->size() : 0, outSz);
+                if (out && out->size() > 0) {
+                    auto* s = out->Get(0);
+                    spdlog::info("[MachineWindow] First output item: id={} count={} meta={}",
+                                 s->item_id(), s->count(), s->meta());
+                }
+            }
+        }
+    }
+
     if (msgType == GatewayMsg::kRecipeCompleted) {
         // Recipe completed notification — flash the progress bar
         flatbuffers::Verifier v(reinterpret_cast<const uint8_t*>(data), 8192);
