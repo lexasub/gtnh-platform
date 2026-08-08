@@ -17,6 +17,11 @@ public:
                        uint8_t action_type = 1  // RIGHT_MOUSE_CLICK
                        ) override;
 
+  void publishBlockDirective(uint8_t directive, uint16_t block_id,
+                             int32_t x, int32_t y, int32_t z,
+                             uint32_t request_id = 0,
+                             uint8_t action_type = 1) override;
+
   void publishBlockChangedEvent(int32_t x, int32_t y, int32_t z,
                                 uint16_t block_id, uint8_t meta,
                                 uint32_t request_id = 0,

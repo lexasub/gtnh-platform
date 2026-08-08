@@ -330,6 +330,9 @@ void NetClient::OnMessage(uint8_t msg_type,
         case GatewayMsg::kBlockAck:
             ProcessBlockAck(std::move(data));
             break;
+        case GatewayMsg::kBlockActionDirective:
+            ProcessBlockActionDirective(std::move(data));
+            break;
         case GatewayMsg::kInventoryUpdate:
             if (onInventoryUpdate_)
                 onInventoryUpdate_(data);
@@ -614,6 +617,34 @@ void NetClient::ProcessBlockAck(std::shared_ptr<std::vector<uint8_t>> data) {
                     static_cast<uint8_t>(ack->action()));
 }
 
+void NetClient::ProcessBlockActionDirective(
+    std::shared_ptr<std::vector<uint8_t>> data) {
+    auto payload = data->data();
+    auto size = data->size();
+    flatbuffers::Verifier verifier(payload, size);
+    if (!verifier.VerifyBuffer<Protocol::BlockActionDirective>(nullptr)) {
+        spdlog::warn("NetClient: invalid BlockActionDirective buffer");
+        return;
+    }
+
+    auto d = flatbuffers::GetRoot<Protocol::BlockActionDirective>(payload);
+    auto pos = d->pos();
+    if (!pos) {
+        spdlog::error("NetClient: BlockActionDirective has no pos");
+        return;
+    }
+
+    spdlog::debug("NetClient: BlockActionDirective dir={} id={} at ({},{},{}) rid={}",
+                  static_cast<int>(d->directive()), d->block_id(),
+                  pos->x(), pos->y(), pos->z(), d->request_id());
+
+    if (onBlockActionDirective_)
+        onBlockActionDirective_(BlockPos{pos->x(), pos->y(), pos->z()},
+                                static_cast<uint8_t>(d->directive()),
+                                d->block_id(), d->request_id(),
+                                static_cast<uint8_t>(d->action()));
+}
+
 // =========================================================================
 //  Outbound messages — all go through ctrl connection
 // =========================================================================
@@ -655,8 +686,8 @@ void NetClient::SendPlayerAction(uint64_t player_id,
 
 void NetClient::SendBlockAction(Protocol::PlayerActionType action,
                                   int32_t x, int32_t y, int32_t z,
-                                  uint16_t currentBlockID, uint16_t block_id,
-                                  uint8_t /*face*/, uint64_t player_id) {
+                                  uint16_t currentBlockID, uint16_t held_item,
+                                  uint8_t face, uint64_t player_id) {
     if (!ctrl_conn_ || !connected_ctrl_) return;
 
     uint32_t rid = next_request_id_.fetch_add(1, std::memory_order_relaxed);
@@ -664,7 +695,8 @@ void NetClient::SendBlockAction(Protocol::PlayerActionType action,
     flatbuffers::FlatBufferBuilder builder(64);
     auto pos = Protocol::Vec3i(x, y, z);
     auto act = Protocol::CreateSetBlockAction(builder, player_id, action, &pos,
-                                              currentBlockID, block_id, rid);
+                                              currentBlockID, held_item, rid,
+                                              face, held_item);
     builder.Finish(act);
 
     EnqueueWrite(GatewayMsg::kSetBlockAction, builder.GetBufferPointer(),

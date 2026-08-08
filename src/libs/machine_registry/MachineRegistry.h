@@ -33,6 +33,9 @@ struct MachineInfo {
   int capacity;
   int maxInput;
   int maxOutput;
+  // Left-click on this machine performs a machine interaction instead of
+  // breaking the block (e.g. rotare_generator: click to spin).
+  bool interact_on_left = false;
 };
 
 class MachineRegistry {

@@ -68,21 +68,27 @@ void GameClient::subscribeNetClient() {
         });
 
     netClient_->SetBlockAckCallback(
-        [this](BlockPos pos, uint8_t status, uint16_t block_id, uint8_t meta, uint32_t request_id, uint8_t action_type) {
+        [this](BlockPos pos, uint8_t status, uint16_t block_id, uint8_t meta, uint32_t request_id, [[maybe_unused]] uint8_t action_type) {
             if (status != static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED)) {
                 spdlog::warn("BlockAck CONFLICT at ({},{},{}) actual_id={} rid={}", pos.x, pos.y, pos.z, block_id, request_id);
-            } else if (action_type == static_cast<uint8_t>(Protocol::PlayerActionType_RIGHT_MOUSE_CLICK)
-                       && BlockUIFactory::CanOpen(block_id)) {
-                // Interaction (chest/machine/workbench open): open UI.
-                // Block placement consumption is server-authoritative —
-                // server deducts from inventory and pushes InventoryUpdate.
-                UIDefaults::TryOpenBlockUI(uiMgr_, block_id, pos);
             }
             // Apply + rebuild mesh on main thread so the next raycaster frame
             // sees the change immediately (BlockChangedEvent is skipped back
             // to the source player, so BlockAck is the only signal).
             meshMgr_.OnBlockUpdate(pos, block_id, meta, 0, world_);
             world_.ClearBlockActionPending(pos);
+        });
+
+    // Server-authoritative UI/effect directive — the client opens windows
+    // ONLY when the server says so (BlockDirective::OPEN_UI).
+    netClient_->SetBlockActionDirectiveCallback(
+        [this](BlockPos pos, uint8_t directive, uint16_t block_id, uint32_t request_id, [[maybe_unused]] uint8_t action_type) {
+            if (directive == static_cast<uint8_t>(Protocol::BlockDirective_OPEN_UI)) {
+                UIDefaults::TryOpenBlockUI(uiMgr_, block_id, pos);
+            } else if (directive == static_cast<uint8_t>(Protocol::BlockDirective_PLAY_ANIMATION)) {
+                spdlog::info("BlockActionDirective: effect={} at ({},{},{}) rid={}",
+                             block_id, pos.x, pos.y, pos.z, request_id);
+            }
         });
 
     netClient_->SetChunkCallback(
@@ -286,23 +292,23 @@ void GameClient::Update(float dt) {
         inputMgr_.SetMouseCaptured(true);
     }
 
-    // ── Right-click → open block UI (server-authoritative) ──────────────────
-    // Client sends RIGHT_MOUSE_CLICK, server decides if interaction is allowed.
-    // The window opens only when BlockAck(ACCEPTED) arrives.
+    // ── Right-click → server decides (open UI, place, or reject) ───────────
+    // Client sends raw intent (button + target + held item + face); the server
+    // answers with a BlockActionDirective (OPEN_UI) or a world-state BlockAck.
     bool rightClickHandled = false;
     if (inputMgr_.State().mouseRightPressed && !uiMgr_.AnyOpen()) {
         BlockPos target = interaction_.RaycastTarget(camera_);
-        if (target.x != std::numeric_limits<int32_t>::max()) {
-            uint16_t blockId = world_.GetBlockAt(target);
-            if (BlockUIFactory::CanOpen(blockId)) {
-                netClient_->SendBlockAction(
-                    Protocol::PlayerActionType::PlayerActionType_RIGHT_MOUSE_CLICK,
-                    target.x, target.y, target.z,
-                    blockId, static_cast<uint16_t>(0),
-                    0, invState_.player_id);
-                world_.MarkBlockActionSent(target);
-                rightClickHandled = true;
-            }
+        if (target.x != std::numeric_limits<int32_t>::max() &&
+            world_.GetBlockAt(target) != 0) {
+            netClient_->SendBlockAction(
+                Protocol::PlayerActionType::PlayerActionType_RIGHT_MOUSE_CLICK,
+                target.x, target.y, target.z,
+                world_.GetBlockAt(target),
+                interaction_.GetHeldItem(),
+                interaction_.TargetFace(camera_),
+                invState_.player_id);
+            world_.MarkBlockActionSent(target);
+            rightClickHandled = true;
         }
     }
 

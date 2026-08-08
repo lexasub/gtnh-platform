@@ -65,6 +65,7 @@ inline constexpr uint8_t kRecipeItemReq = 38;
 inline constexpr uint8_t kRecipeItemResp = 39;
 inline constexpr uint8_t kRecipeMachineReq = 40;
 inline constexpr uint8_t kRecipeMachineResp = 41;
+inline constexpr uint8_t kBlockActionDirective = 42;
 } // namespace GatewayMsg
 
 class NetClient : public std::enable_shared_from_this<NetClient> {
@@ -77,6 +78,9 @@ public:
                                               uint16_t block_id, uint8_t meta,
                                               uint32_t request_id,
                                               uint8_t action_type)>;
+  using BlockActionDirectiveCallback = std::function<void(
+      BlockPos pos, uint8_t directive, uint16_t block_id, uint32_t request_id,
+      uint8_t action_type)>;
   using InventoryUpdateCallback =
       std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
   using CraftResponseCallback =
@@ -128,6 +132,9 @@ public:
     onBlockUpdate_ = std::move(cb);
   }
   void SetBlockAckCallback(BlockAckCallback cb) { onBlockAck_ = std::move(cb); }
+  void SetBlockActionDirectiveCallback(BlockActionDirectiveCallback cb) {
+    onBlockActionDirective_ = std::move(cb);
+  }
   void SetInventoryUpdateCallback(InventoryUpdateCallback cb) {
     onInventoryUpdate_ = std::move(cb);
   }
@@ -178,7 +185,7 @@ public:
                         uint8_t count = 0);
   void SendBlockAction(Protocol::PlayerActionType action, int32_t x, int32_t y,
                        int32_t z, uint16_t currentBlockID,
-                       uint16_t block_id = 0, uint8_t face = 0,
+                       uint16_t held_item = 0, uint8_t face = 0,
                        uint64_t player_id = 0);
   void SendInventoryAction(uint64_t player_id, uint8_t action_type,
                            uint8_t source_slot, uint8_t target_slot,
@@ -253,6 +260,7 @@ private:
   bool ProcessKCompressedChunkData(std::shared_ptr<std::vector<uint8_t>> data);
   void ProcessBlockUpdate(std::shared_ptr<std::vector<uint8_t>> data);
   void ProcessBlockAck(std::shared_ptr<std::vector<uint8_t>> data);
+  void ProcessBlockActionDirective(std::shared_ptr<std::vector<uint8_t>> data);
   void OnChunkData(std::shared_ptr<ChunkView> chunk, const ChunkCoord &coord);
 
   // ---- Internal ----------------------------------------------------------
@@ -276,6 +284,7 @@ private:
   ChunkCallback onChunkReceived_;
   BlockUpdateCallback onBlockUpdate_;
   BlockAckCallback onBlockAck_;
+  BlockActionDirectiveCallback onBlockActionDirective_;
   InventoryUpdateCallback onInventoryUpdate_;
   BlockEntityUpdateCallback onBlockEntityUpdate_;
   RecipeCompletedCallback onRecipeCompleted_;

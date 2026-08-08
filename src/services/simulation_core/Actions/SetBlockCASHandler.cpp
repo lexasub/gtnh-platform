@@ -8,6 +8,7 @@
 #include "core_generated.h"
 #include "machine_state_generated.h"
 #include <common/ItemId.h>
+#include <data/registry/ToolIds.h>
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
 #include <chrono>
@@ -17,6 +18,27 @@ namespace simcore {
 
 #define TRACE_LOG(tid, svc, op, dur_us) \
     spdlog::info("[TRACE tid={}] {} {} {}us", (tid), (svc), (op), (dur_us))
+
+// Face index (0=DOWN..5=EAST) → adjacent cell offset, used for placement
+// when the client right-clicks an existing block.
+static void faceAdjacent(uint8_t face, int32_t& x, int32_t& y, int32_t& z) {
+    switch (face) {
+        case 0: --y; break; // DOWN
+        case 1: ++y; break; // UP
+        case 2: --z; break; // NORTH
+        case 3: ++z; break; // SOUTH
+        case 4: --x; break; // WEST
+        case 5: ++x; break; // EAST
+        default: break;
+    }
+}
+
+// Held item is a mining tool → the machine should be broken, not interacted.
+static bool isMiningTool(uint16_t item) {
+    return item == ITEM_DRILL_ULV || item == ITEM_DRILL_LV ||
+           item == ITEM_DRILL_MV || item == ITEM_DRILL_HV ||
+           item == ITEM_CHAINSAW_LV;
+}
 
 // Dry-run: add every multiblock content stack into `inv` (a copy of the
 // player's inventory). Mirrors PlayerInventoryStore::giveItem stacking
@@ -119,6 +141,8 @@ void SetBlockCASHandler::publishMachineState(int32_t x, int32_t y, int32_t z,
     publisher_->publishBlockEntityUpdate(x, y, z, machine_id, {}, 0.0f, energy, etype, capacity, slotsIn);
     publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED),
                                 x, y, z, machine_id, 0, "Machine interacted", request_id);
+    publisher_->publishBlockDirective(static_cast<uint8_t>(Protocol::BlockDirective_OPEN_UI),
+                                      machine_id, x, y, z, request_id);
 }
 
 void SetBlockCASHandler::publishChestState(int32_t x, int32_t y, int32_t z,
@@ -236,20 +260,58 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
                 static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED),
                 x, y, z, expected_block_id, 0, nullptr, request_id,
                 static_cast<uint8_t>(action_type));
+            publisher_->publishBlockDirective(
+                static_cast<uint8_t>(Protocol::BlockDirective_OPEN_UI),
+                expected_block_id, x, y, z, request_id,
+                static_cast<uint8_t>(action_type));
             publishChestState(x, y, z, expected_block_id, player_id, request_id);
             return;
         }
-        if (new_block_id == 0) {
-            spdlog::warn("SetBlockCASHandler: cannot place air at ({},{},{})", x, y, z);
+        if (action->held_item() == 0) {
+            spdlog::warn("SetBlockCASHandler: nothing in hand to place at ({},{},{})", x, y, z);
             publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_REJECTED),
-                                        x, y, z, 0, 0, "Cannot place air",
+                                        x, y, z, 0, 0, "Nothing in hand to place",
                                         request_id,
                                         static_cast<uint8_t>(action_type));
             return;
         }
     }
 
-    uint16_t final_block_id = (action_type == Protocol::PlayerActionType_LEFT_MOUSE_CLICK) ? 0 : new_block_id;
+    // ── Left-click machine interaction (e.g. rotare_generator: click to spin)
+    // Only machines flagged interact_on_left; mining tools in hand still break.
+    if (action_type == Protocol::PlayerActionType_LEFT_MOUSE_CLICK && engine_) {
+        auto* machineReg = engine_->getMachineRegistry();
+        auto* info = machineReg ? machineReg->Get(expected_block_id) : nullptr;
+        if (info && info->interact_on_left && !isMiningTool(action->held_item())) {
+            spdlog::info("SetBlockCASHandler: left-click spin machine {} at ({},{},{})",
+                         expected_block_id, x, y, z);
+            engine_->onMachineInteracted(x, y, z, expected_block_id, player_id);
+            publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED),
+                                        x, y, z, expected_block_id, 0,
+                                        "Machine spun", request_id,
+                                        static_cast<uint8_t>(action_type));
+            publisher_->publishBlockDirective(
+                static_cast<uint8_t>(Protocol::BlockDirective_PLAY_ANIMATION),
+                1 /* spin effect */, x, y, z, request_id,
+                static_cast<uint8_t>(action_type));
+            return;
+        }
+    }
+
+    // Right-click on an existing block places on the face-adjacent cell.
+    int32_t eff_x = x, eff_y = y, eff_z = z;
+    uint16_t eff_expected = expected_block_id;
+    if (action_type == Protocol::PlayerActionType_RIGHT_MOUSE_CLICK) {
+        faceAdjacent(action->face(), eff_x, eff_y, eff_z);
+        eff_expected = 0; // place against air on the adjacent cell
+    }
+
+    uint16_t final_block_id =
+        (action_type == Protocol::PlayerActionType_LEFT_MOUSE_CLICK)
+            ? 0
+            : (action_type == Protocol::PlayerActionType_RIGHT_MOUSE_CLICK)
+                  ? action->held_item()
+                  : new_block_id;
     uint8_t final_meta = 0;
 
     // ── Multiblock block-break guard (task 2.1) ─────────────────────────────
@@ -282,7 +344,7 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
         }
     }
 
-    auto transform = applyBlockTransform(expected_block_id, final_block_id, final_meta);
+    auto transform = applyBlockTransform(eff_expected, final_block_id, final_meta);
     if (transform.has_value()) {
         final_block_id = transform->new_block_id;
         final_meta = transform->new_meta;
@@ -290,34 +352,34 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
     }
 
     publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_ACCEPTED),
-        x, y, z, final_block_id, final_meta, nullptr, request_id,
+        eff_x, eff_y, eff_z, final_block_id, final_meta, nullptr, request_id,
         static_cast<uint8_t>(action_type));
 
     auto cas_t0 = std::chrono::steady_clock::now();
-    repo_->setBlockCAS(x, y, z, expected_block_id, final_block_id, final_meta,
-        [this, x, y, z, final_block_id, final_meta, expected_block_id, new_block_id, player_id, action_type, request_id, cas_t0](const CASResult& result) {
+    repo_->setBlockCAS(eff_x, eff_y, eff_z, eff_expected, final_block_id, final_meta,
+        [this, eff_x, eff_y, eff_z, eff_expected, final_block_id, final_meta, held_item = action->held_item(), player_id, action_type, request_id, cas_t0](const CASResult& result) {
             auto cas_dur = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - cas_t0).count();
             TRACE_LOG(request_id, "cas_cb", "complete", cas_dur);
-            auto processResult = [this, x, y, z, final_block_id, final_meta, expected_block_id, new_block_id, player_id, action_type, request_id](const CASResult& result) {
+            auto processResult = [this, eff_x, eff_y, eff_z, eff_expected, final_block_id, final_meta, held_item, player_id, action_type, request_id](const CASResult& result) {
                 if (result.status == 0) {
-                    spdlog::info("Block CAS OK at ({},{},{}) final_id={}", x, y, z, final_block_id);
+                    spdlog::info("Block CAS OK at ({},{},{}) final_id={}", eff_x, eff_y, eff_z, final_block_id);
 
                     // Break: give the broken block to the player
                     if (action_type == Protocol::PlayerActionType_LEFT_MOUSE_CLICK) {
-                        uint16_t broken_block = expected_block_id;
+                        uint16_t broken_block = eff_expected;
                         if (broken_block != 0 && onGiveItem_) {
                             spdlog::info("Giving block {} to player {}", broken_block, player_id);
                             onGiveItem_(player_id, broken_block, 1, -1);
                         }
                         if (onDrillUse_) {
-                            onDrillUse_(player_id, x, y, z, broken_block);
+                            onDrillUse_(player_id, eff_x, eff_y, eff_z, broken_block);
                         }
                     }
 
                     // Place: consume the placed block from the player's inventory
                     if (action_type == Protocol::PlayerActionType_RIGHT_MOUSE_CLICK) {
-                        uint16_t placed_block = new_block_id;
+                        uint16_t placed_block = held_item;
                         if (placed_block != 0 && inventoryStore_) {
                             auto slots = inventoryStore_->getSlots(player_id);
                             for (auto& s : slots) {
@@ -333,20 +395,20 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction *action)
                         }
                     }
 
-                    publisher_->publishBlockChangedEvent(x, y, z, final_block_id, final_meta, request_id, player_id);
+                    publisher_->publishBlockChangedEvent(eff_x, eff_y, eff_z, final_block_id, final_meta, request_id, player_id);
                     if (engine_) {
-                        engine_->onBlockChanged(static_cast<uint32_t>(x),
-                                                static_cast<uint32_t>(y),
-                                                static_cast<uint32_t>(z),
+                        engine_->onBlockChanged(static_cast<uint32_t>(eff_x),
+                                                static_cast<uint32_t>(eff_y),
+                                                static_cast<uint32_t>(eff_z),
                                                 final_block_id, final_meta, 0);
                     }
                     if (action_type == Protocol::PlayerActionType_RIGHT_MOUSE_CLICK && onBlockPlaced_) {
-                        onBlockPlaced_(player_id, x, y, z, final_block_id);
+                        onBlockPlaced_(player_id, eff_x, eff_y, eff_z, final_block_id);
                     }
                 } else { // CONFLICT
-                    spdlog::warn("Block CAS CONFLICT at ({},{},{}) actual_id={}, from_id={}, to_id={}", x, y, z, result.block_id, expected_block_id, final_block_id);
+                    spdlog::warn("Block CAS CONFLICT at ({},{},{}) actual_id={}, from_id={}, to_id={}", eff_x, eff_y, eff_z, result.block_id, eff_expected, final_block_id);
                     publisher_->publishBlockAck(static_cast<uint8_t>(Protocol::BlockAckStatus_CONFLICT),
-                                                x, y, z, result.block_id, result.meta, nullptr, request_id,
+                                                eff_x, eff_y, eff_z, result.block_id, result.meta, nullptr, request_id,
                                                 static_cast<uint8_t>(action_type));
                 }
             };

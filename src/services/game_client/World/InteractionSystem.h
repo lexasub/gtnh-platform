@@ -30,14 +30,17 @@ public:
   // state. Used by GameClient to check for block UI opening on right-click.
   BlockPos RaycastTarget(const Camera &camera) const;
 
+  // Face of the targeted block the player is looking at (0=DOWN..5=EAST).
+  uint8_t TargetFace(const Camera &camera) const;
+
+  // Item id in the currently selected hotbar slot (0 = empty).
+  uint16_t GetHeldItem() const;
+
   bool HasHighlight() const { return hasHighlight_; }
   BlockPos GetHighlightedBlock() const { return highlightedBlock_; }
 
 private:
   Ray buildRay(const Camera &camera) const;
-
-  uint16_t getSelectedBlockId() const;
-  void consumeSelectedSlot();
 
   renderlib::Raycaster raycaster_;
   InventoryState *inventory_ = nullptr;

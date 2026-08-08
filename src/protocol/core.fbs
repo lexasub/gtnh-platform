@@ -109,6 +109,10 @@ table SetBlockAction {
   expected_block_id:uint16;   // what client thinks is there now
   new_block_id:uint16;         // 0 = break
   request_id:uint32 = 0;       // echoed in BlockAck
+  face:uint8 = 0;              // targeted face (0=DOWN..5=EAST) — placement
+                               // adjacency when right-clicking an existing block
+  held_item:uint16 = 0;        // what the player holds (drill/wrench/block/empty)
+                               // — server decides action from item×target×button
 }
 
 // Server confirmation for a PlayerAction or SetBlockAction.
@@ -121,6 +125,25 @@ table BlockAck {
   reason:string;         // human-readable (for REJECTED, e.g. "no permission")
   request_id:uint32 = 0; // echoes the client's request_id from SetBlockAction
   action:PlayerActionType = RIGHT_MOUSE_CLICK; // action type that triggered this ACK
+}
+
+// Server → client: explicit instruction on how to react to a block action.
+// The client sends raw intent (button + target + held item); the server
+// decides whether to open a UI, play an effect, or do nothing special.
+// World-state changes are still reported via BlockAck/BlockChangedEvent —
+// this message is only about UI/effects.
+enum BlockDirective : uint8 {
+  NONE = 0,             // action done, nothing special for the client
+  OPEN_UI = 1,          // open the block's UI (block_id = UI type to open)
+  PLAY_ANIMATION = 2,   // client-side effect (block_id: 1 = spin)
+}
+
+table BlockActionDirective {
+  directive:BlockDirective = NONE;
+  block_id:uint16 = 0;      // UI type for OPEN_UI; effect id for PLAY_ANIMATION
+  pos:Vec3i (required);
+  request_id:uint32 = 0;    // correlates with SetBlockAction
+  action:PlayerActionType = RIGHT_MOUSE_CLICK; // echo of the triggering action
 }
 
 // ---------------------------------------------------------------------------

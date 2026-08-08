@@ -59,6 +59,30 @@ void RouterEventPublisher::publishBlockAck(uint8_t status,
     spdlog::debug("Published BlockAck: status={} at ({},{},{}) id={} request_id={}", status, x, y, z, block_id, request_id);
 }
 
+void RouterEventPublisher::publishBlockDirective(uint8_t directive,
+                                                 uint16_t block_id,
+                                                 int32_t x, int32_t y, int32_t z,
+                                                 uint32_t request_id,
+                                                 uint8_t action_type)
+{
+    auto t0 = std::chrono::steady_clock::now();
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto pos = Protocol::Vec3i(x, y, z);
+    auto d = Protocol::CreateBlockActionDirective(
+        builder, static_cast<Protocol::BlockDirective>(directive), block_id,
+        &pos, request_id,
+        static_cast<Protocol::PlayerActionType>(action_type));
+    builder.Finish(d);
+    std::vector<uint8_t> d_data(builder.GetBufferPointer(),
+                                builder.GetBufferPointer() + builder.GetSize());
+    router_->Publish("player.actions.directive", d_data);
+    auto dur = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+    TRACE_LOG(request_id, "simcore", "publish_directive", dur);
+    spdlog::debug("Published BlockActionDirective: dir={} at ({},{},{}) id={} request_id={}",
+                  directive, x, y, z, block_id, request_id);
+}
+
 void RouterEventPublisher::publishBlockChangedEvent(int32_t x, int32_t y, int32_t z,
                                                     uint16_t block_id, uint8_t meta,
                                                     uint32_t request_id,

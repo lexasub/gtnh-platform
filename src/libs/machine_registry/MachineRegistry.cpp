@@ -123,6 +123,9 @@ bool MachineRegistry::ParseYamlMachineVariant(const YAML::Node& v, const std::st
             info.slots_out = 0;
         }
 
+        // left-click interaction (rotare_generator: click to spin)
+        info.interact_on_left = v["interact_on_left"].as<bool>(false);
+
         // energy config
         if (v["energy"]) {
             info.capacity = v["energy"]["capacity"].as<int>(0);

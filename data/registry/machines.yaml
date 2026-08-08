@@ -183,6 +183,7 @@ machine_classes:
         tier: 0
         role: producer
         slots: { input: 0, output: 0 }
+        interact_on_left: true   # left-click spins the generator, does not break it
         energy:
           capacity: 5000
           max_output: 64

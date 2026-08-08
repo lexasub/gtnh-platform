@@ -390,6 +390,8 @@ void IoUringGateway::on_router_publish(
     // Ctrl topics → ctrl connection
     else if (topic == "player.actions.ack")
         send_to_client_ctrl_raw(GatewayMsg::kBlockAck, payload, plen);
+    else if (topic == "player.actions.directive")
+        send_to_client_ctrl_raw(GatewayMsg::kBlockActionDirective, payload, plen);
     else if (topic == "player.inventory.update")
         send_to_client_ctrl_raw(GatewayMsg::kInventoryUpdate, payload, plen);
     else if (topic == "world.block_entity.update")
