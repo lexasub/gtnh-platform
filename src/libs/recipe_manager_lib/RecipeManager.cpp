@@ -733,37 +733,31 @@ const Recipe* RecipeManager::getRecipeById(const std::string& id) const {
 
 const Recipe* RecipeManager::findRecipeByInputs(uint16_t machine_id, const std::vector<ItemStack>& inputs) const {
     auto classIt = classByBlockId_.find(machine_id);
-    if (classIt != classByBlockId_.end()) {
-        const std::string& machineClass = classIt->second;
-        int16_t machineTier = getMachineTier(machine_id);
-        uint8_t machineEnergyIn = getMachineEnergyIn(machine_id);
+    if (classIt == classByBlockId_.end()) return nullptr;
+    auto recipesIt = recipesByClass_.find(classIt->second);
+    if (recipesIt == recipesByClass_.end()) return nullptr;
+    const Recipe* best = nullptr;
+    int16_t bestMinTier = -1;
+    int16_t machineTier = getMachineTier(machine_id);
+    uint8_t machineEnergyIn = getMachineEnergyIn(machine_id);
 
-        auto recipesIt = recipesByClass_.find(machineClass);
-        if (recipesIt != recipesByClass_.end()) {
-            const Recipe* best = nullptr;
-            int16_t bestMinTier = -1;
-
-            for (const auto& recipeId : recipesIt->second) {
-                const auto& recipe = recipes_.at(recipeId);
-                if (recipe.min_tier <= machineTier && machineTier <= recipe.max_tier) {
-                    if (recipe.energy_type != ENERGY_TYPE_ANY && recipe.energy_type != machineEnergyIn) {
-                        continue;
-                    }
-                    if (recipe.matches(inputs)) {
-                        // Prefer higher min_tier (more specific to this tier)
-                        if (recipe.min_tier > bestMinTier) {
-                            bestMinTier = recipe.min_tier;
-                            best = &recipe;
-                        }
-                    }
+    for (const auto& recipeId : recipesIt->second) {
+        const auto& recipe = recipes_.at(recipeId);
+        if (recipe.min_tier <= machineTier && machineTier <= recipe.max_tier) {
+            if (recipe.energy_type != ENERGY_TYPE_ANY && recipe.energy_type != machineEnergyIn) {
+                continue;
+            }
+            if (recipe.matches(inputs)) {
+                // Prefer higher min_tier (more specific to this tier)
+                if (recipe.min_tier > bestMinTier) {
+                    bestMinTier = recipe.min_tier;
+                    best = &recipe;
                 }
             }
-
-            return best;
         }
     }
 
-    return nullptr;
+    return best;
 }
 
 std::unique_ptr<Protocol::Container> RecipeManager::craft(const std::string& recipeId, const Protocol::Container* container) {

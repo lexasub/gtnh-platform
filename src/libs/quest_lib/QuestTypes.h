@@ -18,6 +18,10 @@ enum class Era : uint8_t {
   APPRENTICE = 1,
   EXPERT = 2,
   ADMINISTRATOR = 3,
+  ENERGY_JUNIOR = 4,
+  ENERGY_MIDDLE = 5,
+  ENERGY_SENIOR = 6,
+  COUNT,
 };
 
 inline const char *EraLabel(Era e) {
@@ -30,6 +34,14 @@ inline const char *EraLabel(Era e) {
     return "Expert";
   case Era::ADMINISTRATOR:
     return "Administrator";
+  case Era::ENERGY_JUNIOR:
+    return "Energy Junior";
+  case Era::ENERGY_MIDDLE:
+    return "Energy Middle";
+  case Era::ENERGY_SENIOR:
+    return "Energy Senior";
+  case Era::COUNT:
+    break;
   }
   return "Unknown";
 }
@@ -43,6 +55,12 @@ inline Era EraFromString(const std::string &s) {
     return Era::EXPERT;
   if (s == "administrator")
     return Era::ADMINISTRATOR;
+  if (s == "energy_junior")
+    return Era::ENERGY_JUNIOR;
+  if (s == "energy_middle")
+    return Era::ENERGY_MIDDLE;
+  if (s == "energy_senior")
+    return Era::ENERGY_SENIOR;
   return Era::VAGRANT;
 }
 

@@ -226,7 +226,7 @@ std::vector<EraInfo> QuestData::BuildEraStructure() const {
         accum[static_cast<int>(qd.era)].sections[qd.section].push_back(qd.id);
     }
 
-    for (int e = 0; e <= static_cast<int>(Era::ADMINISTRATOR); ++e) {
+    for (int e = 0; e < static_cast<int>(Era::COUNT); ++e) {
         auto ea = accum.find(e);
         if (ea == accum.end()) continue;
         Era era = static_cast<Era>(e);

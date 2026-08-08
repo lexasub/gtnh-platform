@@ -65,7 +65,7 @@ void QuestManager::publishEraTransition(uint64_t playerId, quest::Era completedE
         return;
     }
     uint8_t completedVal = static_cast<uint8_t>(completedEra);
-    uint8_t nextVal = (completedVal < static_cast<uint8_t>(quest::Era::ADMINISTRATOR))
+    uint8_t nextVal = (completedVal + 1 < static_cast<uint8_t>(quest::Era::COUNT))
                           ? completedVal + 1
                           : completedVal;
     flatbuffers::FlatBufferBuilder builder(64);
@@ -100,7 +100,7 @@ void QuestManager::rebuildCompletedEras(
     if (questEraMap_.empty()) questEraMap_ = questData_->BuildQuestEraMap();
     auto& completed = completedEras_[playerId];
     completed.clear();
-    for (int e = 0; e <= static_cast<int>(quest::Era::ADMINISTRATOR); ++e) {
+    for (int e = 0; e < static_cast<int>(quest::Era::COUNT); ++e) {
         quest::Era era = static_cast<quest::Era>(e);
         if (questGraph_->IsEraComplete(era, playerProgress, questEraMap_))
             completed.insert(static_cast<uint8_t>(e));

@@ -374,7 +374,7 @@ void QuestBookWindow::applyQuestStatus(uint32_t questId, uint8_t status, uint8_t
 }
 
 int QuestBookWindow::eraIndexFor(uint8_t eraVal) const {
-    if (eraVal > static_cast<uint8_t>(quest::Era::ADMINISTRATOR)) return -1;
+    if (eraVal >= static_cast<uint8_t>(quest::Era::COUNT)) return -1;
     const char* name = quest::EraLabel(static_cast<quest::Era>(eraVal));
     for (size_t i = 0; i < eraData_.size(); ++i) {
         if (eraData_[i].name == name) return static_cast<int>(i);
