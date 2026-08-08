@@ -1,4 +1,4 @@
-#include "HeatTransferSystem.h"
+#include "AdjacencyTransferSystem.h"
 #include "../components/Block.h"
 #include "../components/HeatIntakeComponent.h"
 #include "../components/HeatSlowComponent.h"
@@ -15,14 +15,14 @@
 
 namespace simcore {
 
-HeatTransferSystem::HeatTransferSystem(entt::registry& reg,
-                                       MachineRegistry& machineRegistry,
-                                       std::shared_ptr<IEventPublisher> events)
+AdjacencyTransferSystem::AdjacencyTransferSystem(entt::registry& reg,
+                                                  MachineRegistry& machineRegistry,
+                                                  std::shared_ptr<IEventPublisher> events)
     : reg_(reg), machineRegistry_(machineRegistry), events_(std::move(events))
 {
 }
 
-void HeatTransferSystem::tick(float /*dt*/) {
+void AdjacencyTransferSystem::tick(float /*dt*/) {
     auto view = reg_.view<MachineComponent, EnergyStorage, Position>();
 
     // ═══════════════════════════════════════════════════════════════════
@@ -39,12 +39,12 @@ void HeatTransferSystem::tick(float /*dt*/) {
         auto& mc = view.get<MachineComponent>(ent);
         auto& energy = view.get<EnergyStorage>(ent);
         auto& pos = view.get<Position>(ent);
-        if (energy.type != EnergyType::HEAT) continue;
+        if (energy.type != EnergyType::HEAT && energy.type != EnergyType::ROTATION) continue;
         auto* info = machineRegistry_.Get(mc.machine_id);
         if (!info) continue;
         bool isProducer = info->role == MachineRole::PRODUCER //TODO fix read real info
                        || (info->energy_out.has_value()
-                        && info->energy_out.value() == EnergyType::HEAT);
+                        && info->energy_out.value() == energy.type);
         if (!isProducer) continue;
         if (energy.current <= 0) continue;
         producers.push_back({ent, pos.x, pos.y, pos.z, &energy});
@@ -71,7 +71,7 @@ void HeatTransferSystem::tick(float /*dt*/) {
             auto& mc = view.get<MachineComponent>(ent);
             auto& energy = view.get<EnergyStorage>(ent);
             auto& pos = view.get<Position>(ent);
-            if (energy.type != EnergyType::HEAT) continue;
+            if (energy.type != EnergyType::HEAT && energy.type != EnergyType::ROTATION) continue;
             auto* info = machineRegistry_.Get(mc.machine_id);
             if (!info || info->role != MachineRole::CONSUMER) continue;
             if (energy.current >= energy.capacity) continue;
@@ -107,9 +107,10 @@ void HeatTransferSystem::tick(float /*dt*/) {
                     hic->heat_stored = energy.current;
                 }
 
-                spdlog::debug("[HeatTransfer] {} → {} transferred {} heat ({},{},{})",
+                spdlog::debug("[AdjTransfer] {} → {} transferred {} {} ({},{},{})",
                              mc.machine_id, static_cast<uint32_t>(ent),
-                             transfer, pos.x, pos.y, pos.z);
+                             transfer, MachineRegistry::EnergyLabel(energy.type),
+                             pos.x, pos.y, pos.z);
 
                 if (needed <= 0) break;
             }

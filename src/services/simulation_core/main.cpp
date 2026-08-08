@@ -25,7 +25,7 @@
 #include "Storage/PlayerInventoryStore.h"
 #include "ECS/Systems/MachineSystem.h"
 #include "ECS/Systems/BatteryBufferSystem.h"
-#include "ECS/Systems/HeatTransferSystem.h"
+#include "ECS/Systems/AdjacencyTransferSystem.h"
 #include "ECS/Systems/CreativeGeneratorSystem.h"
 #include "ECS/Systems/TransformerSystem.h"
 #include "ECS/Systems/DrillSystem.h"
@@ -337,7 +337,7 @@ int main(int argc, char* argv[]) {
     // ── ECS Systems ───────────────────────────────────────────────────────
     if (machineRegistry) {
         simulationEngine->registerSystem(
-            std::make_unique<simcore::HeatTransferSystem>(simulationEngine->reg(), *machineRegistry, eventPublisher));
+            std::make_unique<simcore::AdjacencyTransferSystem>(simulationEngine->reg(), *machineRegistry, eventPublisher));
     }
     simcore::MachineSystem* machineSystemRaw = nullptr;
     {

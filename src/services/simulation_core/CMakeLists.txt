@@ -109,7 +109,7 @@ add_library(simcored
         ECS/Reactors/ItemFlowHandler.cpp
         ECS/Reactors/CableExplosionHandler.cpp
 
-        ECS/Systems/HeatTransferSystem.cpp
+        ECS/Systems/AdjacencyTransferSystem.cpp
         ECS/Systems/GeneratorSystem.cpp
         ECS/Systems/CreativeGeneratorSystem.cpp
         ECS/Systems/MachineSystem.cpp

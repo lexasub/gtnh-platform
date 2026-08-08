@@ -19,7 +19,7 @@
 #include "ECS/components/EnergyStorage.h"
 #include "ECS/components/Position.h"
 #include "ECS/Systems/GeneratorSystem.h"
-#include "ECS/Systems/HeatTransferSystem.h"
+#include "ECS/Systems/AdjacencyTransferSystem.h"
 #include "ECS/Systems/MachineSystem.h"
 #include "ECS/Systems/CreativeGeneratorSystem.h"
 #include "ECS/Systems/BoilerSystem.h"
@@ -70,6 +70,7 @@ struct MockEventPublisher : simcore::IEventPublisher {
     int block_ack_count = 0;
     int block_changed_count = 0;
     int block_entity_update_count = 0;
+    int block_directive_count = 0;
     int last_x = 0, last_y = 0, last_z = 0;
     uint16_t last_machine_id = 0;
     float last_progress = 0;
@@ -80,6 +81,10 @@ struct MockEventPublisher : simcore::IEventPublisher {
                          uint8_t = 1) override {
         block_ack_count++;
         last_x = x; last_y = y; last_z = z;
+    }
+    void publishBlockDirective(uint8_t, uint16_t, int32_t, int32_t, int32_t,
+                               uint32_t, uint8_t) override {
+        block_directive_count++;
     }
     void publishBlockChangedEvent(int32_t, int32_t, int32_t,
                                   uint16_t, uint8_t, uint32_t, uint64_t) override {
@@ -308,13 +313,13 @@ static void test_GeneratorSystem_full_storage_skips() {
     PASS();
 }
 
-static void test_HeatTransferSystem_adjacent_transfer() {
+static void test_AdjacencyTransferSystem_adjacent_transfer() {
     setupMachineRegistry();
     entt::registry reg;
     auto events = std::make_shared<MockEventPublisher>();
     auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(std::make_shared<simcore::IoUringRouterClient>());
     simcore::GeneratorSystem genSys(reg, events, pipeClient);
-    simcore::HeatTransferSystem heatSys(reg, *MachineRegistry::instance(), events);
+    simcore::AdjacencyTransferSystem adjSys(reg, *MachineRegistry::instance(), events);
 
     auto gen = reg.create();
     reg.emplace<simcore::MachineComponent>(gen, 46, 0, 0, 0, 0, 10);
@@ -332,7 +337,7 @@ static void test_HeatTransferSystem_adjacent_transfer() {
     reg.emplace<simcore::Position>(furn, 1, 0, 0);
 
     genSys.tick(0.05f);
-    heatSys.tick(0.05f);
+    adjSys.tick(0.05f);
 
     auto& genEnergy = reg.get<simcore::EnergyStorage>(gen);
     auto& furnEnergy = reg.get<simcore::EnergyStorage>(furn);
@@ -343,13 +348,13 @@ static void test_HeatTransferSystem_adjacent_transfer() {
     PASS();
 }
 
-static void test_HeatTransferSystem_non_adjacent_no_transfer() {
+static void test_AdjacencyTransferSystem_non_adjacent_no_transfer() {
     setupMachineRegistry();
     entt::registry reg;
     auto events = std::make_shared<MockEventPublisher>();
     auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(std::make_shared<simcore::IoUringRouterClient>());
     simcore::GeneratorSystem genSys(reg, events, pipeClient);
-    simcore::HeatTransferSystem heatSys(reg, *MachineRegistry::instance(), events);
+    simcore::AdjacencyTransferSystem adjSys(reg, *MachineRegistry::instance(), events);
 
     auto gen = reg.create();
     reg.emplace<simcore::MachineComponent>(gen, 46, 0, 0, 0, 0, 20);
@@ -362,7 +367,7 @@ static void test_HeatTransferSystem_non_adjacent_no_transfer() {
     reg.emplace<simcore::EnergyStorage>(furn, 10000, 0, 128, 128, 0, EnergyType::HEAT);
     reg.emplace<simcore::Position>(furn, 10, 0, 0);
 
-    heatSys.tick(0.05f);
+    adjSys.tick(0.05f);
 
     auto& furnEnergy = reg.get<simcore::EnergyStorage>(furn);
     CHECK_EQ(furnEnergy.current, 0, "non-adjacent furnace gets no heat");
@@ -387,7 +392,7 @@ static void test_HeatTransferSystem_yaml_generator_to_furnace() {
     auto events = std::make_shared<MockEventPublisher>();
     auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(std::make_shared<simcore::IoUringRouterClient>());
     simcore::GeneratorSystem genSys(engine.reg(), events, pipeClient);
-    simcore::HeatTransferSystem heatSys(engine.reg(), *MachineRegistry::instance(), events);
+    simcore::AdjacencyTransferSystem adjSys(engine.reg(), *MachineRegistry::instance(), events);
 
     engine.onBlockChanged(0, 0, 0, ItemId::pack("1110:00:2"), 0, 0); // heat_generator
     engine.onBlockChanged(1, 0, 0, ItemId::pack("1110:00:0"), 0, 0); // heat_furnace
@@ -423,7 +428,7 @@ static void test_HeatTransferSystem_yaml_generator_to_furnace() {
 
     for (int i = 0; i < 20; ++i) {
         genSys.tick(0.05f);
-        heatSys.tick(0.05f);
+        adjSys.tick(0.05f);
     }
 
     auto& fe = r.get<simcore::EnergyStorage>(furn);
@@ -504,10 +509,10 @@ static void test_SetBlockCASHandler_lazy_creates_pre_existing_machine() {
     auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(
         std::make_shared<simcore::IoUringRouterClient>());
     simcore::GeneratorSystem genSys(r, events, pipeClient);
-    simcore::HeatTransferSystem heatSys(r, *MachineRegistry::instance(), events);
+    simcore::AdjacencyTransferSystem adjSys(r, *MachineRegistry::instance(), events);
     for (int i = 0; i < 20; ++i) {
         genSys.tick(0.05f);
-        heatSys.tick(0.05f);
+        adjSys.tick(0.05f);
     }
 
     auto& fe = r.get<simcore::EnergyStorage>(furn);
@@ -843,8 +848,8 @@ void test_ecs_systems() {
     TEST(GeneratorSystem_producer_maxInput_zero);
     TEST(GeneratorSystem_no_fuel_no_energy);
     TEST(GeneratorSystem_full_storage_skips);
-    TEST(HeatTransferSystem_adjacent_transfer);
-    TEST(HeatTransferSystem_non_adjacent_no_transfer);
+    TEST(AdjacencyTransferSystem_adjacent_transfer);
+    TEST(AdjacencyTransferSystem_non_adjacent_no_transfer);
     TEST(MachineSystem_idle_no_recipe);
     TEST(CreativeGeneratorSystem_fills_energy);
     TEST(BatteryBufferSystem_charges_tool);

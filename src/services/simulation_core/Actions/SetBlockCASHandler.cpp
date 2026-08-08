@@ -192,7 +192,7 @@ void SetBlockCASHandler::handleMachineInteraction(int32_t x, int32_t y, int32_t 
     // (persisted in ChunkStore before a restart). ECS machine entities are
     // created ONLY on block-change events (onBlockChanged), so such machines
     // have no entity — and an entity-less machine is invisible to
-    // GeneratorSystem, MachineSystem, and HeatTransferSystem (heat can never
+    // GeneratorSystem, MachineSystem, and AdjacencyTransferSystem (heat can never
     // reach a furnace that has no entity). Lazily create it from ChunkStore,
     // mirroring MachineSlotHandler.
     if (findEntityAt(x, y, z) != entt::null) {

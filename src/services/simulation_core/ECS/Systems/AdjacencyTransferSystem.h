@@ -8,10 +8,10 @@
 
 namespace simcore {
 
-class HeatTransferSystem : public ISystem {
+class AdjacencyTransferSystem : public ISystem {
 public:
-  HeatTransferSystem(entt::registry &reg, MachineRegistry &machineRegistry,
-                     std::shared_ptr<IEventPublisher> events);
+  AdjacencyTransferSystem(entt::registry &reg, MachineRegistry &machineRegistry,
+                          std::shared_ptr<IEventPublisher> events);
 
   void tick(float dt) override;
 
