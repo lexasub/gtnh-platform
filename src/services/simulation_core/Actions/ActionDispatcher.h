@@ -1,25 +1,26 @@
 #pragma once
-#include <cstdint>
-#include <flatbuffers/verifier.h>
-#include <functional>
-#include <memory>
-#include <vector>
+#include "Actions/handlers/BreakBlockHandler.h"
+#include "Actions/handlers/ChestInteractHandler.h"
+#include "Actions/handlers/MachineInteractHandler.h"
+#include "Actions/handlers/PlaceBlockHandler.h"
+#include <tuple>
 
 namespace simcore {
 
-using ItemGiveCallback = std::function<void(
-    uint64_t player_id, uint16_t item_id, uint8_t count, int32_t target_slot)>;
+class ActionContext;
 
+// Routes a SetBlockAction to the first handler whose canHandle() matches.
+// Priority = tuple declaration order: machine → chest → break → place.
+// A false return means no handler claimed the action; the facade decides the
+// fallback (e.g. reject "nothing placeable in hand").
 class ActionDispatcher {
 public:
-  explicit ActionDispatcher(ItemGiveCallback onGiveItem = nullptr);
-
-  void dispatch(const std::vector<uint8_t> &data);
+  bool dispatch(ActionContext& ctx) const;
 
 private:
-  bool tryParseAsPlayerAction(const std::vector<uint8_t> &data,
-                              flatbuffers::Verifier &verifier);
-  ItemGiveCallback onGiveItem_;
+  std::tuple<MachineInteractHandler, ChestInteractHandler, BreakBlockHandler,
+             PlaceBlockHandler>
+      handlers_;
 };
 
 } // namespace simcore

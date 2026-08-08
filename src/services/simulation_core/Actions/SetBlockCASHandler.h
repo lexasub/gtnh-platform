@@ -1,11 +1,8 @@
 #pragma once
-#include "IActionHandler.h"
-#include <functional>
-#include <memory>
-#include <vector>
-
-#include <entt/entt.hpp>
+#include "Actions/ActionDispatcher.h"
+#include "Actions/Callbacks.h"
 #include "core_generated.h"
+#include <memory>
 
 namespace simcore {
 
@@ -15,15 +12,10 @@ class SimulationEngine;
 class PlayerInventoryStore;
 class EntityStateStoreClient;
 
-using ItemGiveCallback = std::function<void(
-    uint64_t player_id, uint16_t item_id, uint8_t count, int32_t target_slot)>;
-using DrillUseCallback = std::function<void(
-    uint64_t player_id, int32_t x, int32_t y, int32_t z, uint16_t block_id)>;
-using BlockPlacedCallback = std::function<void(
-    uint64_t player_id, int32_t x, int32_t y, int32_t z, uint16_t block_id)>;
-using PostCallback = std::function<void(std::function<void()>)>;
-
-class SetBlockCASHandler : public IActionHandler {
+// Thin facade: owns the deps, builds an ActionContext per incoming
+// SetBlockAction and routes it through ActionDispatcher (machine → chest →
+// break → place). All behavior lives in the handlers.
+class SetBlockCASHandler {
 public:
   SetBlockCASHandler(std::shared_ptr<IBlockRepository> repo,
                      std::shared_ptr<IEventPublisher> publisher,
@@ -34,27 +26,16 @@ public:
                      BlockPlacedCallback onBlockPlaced = nullptr,
                      PostCallback postToMain = nullptr);
 
-  void handle(const void *table) override;
+  // Public entry point used by SimCoreMessageHandler (and tests):
+  // table must be a Protocol::SetBlockAction.
+  void handle(const void* table);
 
   void setEntityStateStore(std::shared_ptr<EntityStateStoreClient> client) {
     entityStateClient_ = std::move(client);
   }
 
 private:
-  auto handle(const Protocol::SetBlockAction *action) -> void;
-
-  // ── Machine interaction helpers (right-click on a machine) ───────────────
-  // Machines may predate this simcore instance: the block persists in
-  // ChunkStore but no ECS entity exists (entities are created only on
-  // block-change events). An entity-less machine is invisible to the tick
-  // systems, so right-click lazily creates it and reports real energy state.
-  entt::entity findEntityAt(int32_t x, int32_t y, int32_t z) const;
-  void handleMachineInteraction(int32_t x, int32_t y, int32_t z,
-                                uint16_t machine_id, uint64_t player_id,
-                                uint32_t request_id);
-  void publishMachineState(int32_t x, int32_t y, int32_t z,
-                           uint16_t machine_id, uint64_t player_id,
-                           uint32_t request_id);
+  void handle(const Protocol::SetBlockAction* action);
 
   std::shared_ptr<IBlockRepository> repo_;
   std::shared_ptr<IEventPublisher> publisher_;
@@ -65,9 +46,7 @@ private:
   DrillUseCallback onDrillUse_;
   BlockPlacedCallback onBlockPlaced_;
   PostCallback postToMain_;
-
-  static constexpr uint16_t kChestEntityType = 3;
-  void publishChestState(int32_t x, int32_t y, int32_t z, uint16_t chest_id, uint64_t player_id, uint32_t request_id);
+  ActionDispatcher dispatcher_;
 };
 
 } // namespace simcore

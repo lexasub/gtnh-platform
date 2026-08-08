@@ -17,7 +17,7 @@ class PlayerInventoryStore;
 class EntityStateStoreClient;
 class ChunkStoreRepository;
 class TopicDispatcher;
-class ActionDispatcher;
+class PlayerActionDispatcher;
 class SetBlockCASHandler;
 class ChunkEventHandler;
 class WrenchHandler;
@@ -62,7 +62,7 @@ public:
 private:
   Deps deps_;
   std::shared_ptr<TopicDispatcher> topicDispatcher_;
-  std::shared_ptr<ActionDispatcher> dispatcher_;
+  std::shared_ptr<PlayerActionDispatcher> dispatcher_;
   std::shared_ptr<SetBlockCASHandler> casHandler_;
   std::shared_ptr<ChunkEventHandler> chunkHandler_;
 };

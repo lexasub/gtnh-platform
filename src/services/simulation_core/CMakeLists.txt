@@ -86,8 +86,15 @@ add_library(simcored
         Storage/InventoryActionHandler.cpp
         Storage/PlayerJoinedHandler.cpp
 
+        Actions/ActionContext.cpp
         Actions/ActionDispatcher.cpp
+        Actions/CasRunner.cpp
+        Actions/PlayerActionDispatcher.cpp
         Actions/SetBlockCASHandler.cpp
+        Actions/handlers/BreakBlockHandler.cpp
+        Actions/handlers/ChestInteractHandler.cpp
+        Actions/handlers/MachineInteractHandler.cpp
+        Actions/handlers/PlaceBlockHandler.cpp
         Actions/handTool/WrenchHandler.cpp
         Actions/handTool/ElectricDrillHandler.cpp
         Actions/MachineSlotHandler.cpp
@@ -95,6 +102,7 @@ add_library(simcored
         Actions/handTool/WrenchActionHandler.cpp
 
         World/ChunkEventHandler.cpp
+        World/BlockDrops.cpp
         World/BlockTransforms.cpp
         World/ChunkSnapshot.cpp
         World/WorldContainerInventory.cpp

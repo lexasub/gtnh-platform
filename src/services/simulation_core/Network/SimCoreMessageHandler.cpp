@@ -12,7 +12,7 @@
 #include "ECS/Systems/MachineSystem.h"
 #include "ECS/Systems/BatteryBufferSystem.h"
 #include "Actions/SetBlockCASHandler.h"
-#include "Actions/ActionDispatcher.h"
+#include "Actions/PlayerActionDispatcher.h"
 #include "Actions/MiningCalculator.h"
 #include "Actions/handTool/WrenchHandler.h"
 #include "Actions/handTool/WrenchActionHandler.h"
@@ -115,7 +115,7 @@ void SimCoreMessageHandler::setup() {
         },
         postToMainThread);
 
-    dispatcher_ = std::make_shared<ActionDispatcher>(
+    dispatcher_ = std::make_shared<PlayerActionDispatcher>(
         [inventoryStore = d.inventoryStore](uint64_t player_id, uint16_t item_id, uint8_t count, int32_t target_slot) {
             inventoryStore->giveItem(player_id, item_id, count, target_slot);
         });

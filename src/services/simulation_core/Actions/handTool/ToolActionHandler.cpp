@@ -10,6 +10,7 @@
 namespace simcore {
 ToolActionHandler::ToolActionHandler(std::shared_ptr<SimulationEngine> engine, std::shared_ptr<PlayerInventoryStore> inv, std::shared_ptr<IoUringRouterClient> r, std::shared_ptr<QuestManager> qm)
     : engine_(std::move(engine)), inventoryStore_(std::move(inv)), router_(std::move(r)), questManager_(std::move(qm)) {}
+
 void ToolActionHandler::handle(const std::vector<uint8_t>& data) {
     flatbuffers::Verifier v(data.data(), data.size());
     if (!v.VerifyBuffer<Protocol::ToolAction>(nullptr)) return;
