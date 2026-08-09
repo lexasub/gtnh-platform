@@ -33,6 +33,10 @@ void UIManager::SetNetClient(NetClient* nc) {
             // Craft-grid sources are client-side staging synced to the server
             // via craft requests — never an InventoryAction.
             if (src >= DragManager::kGridSlotBase) return;
+            // Chest slot sources: item already moved in local chestSlots_ vector
+            // by OnSlotActivated. Server is updated on window close via
+            // SendChestSaveReq — no per-slot InventoryAction needed.
+            if (src >= DragManager::kChestSlotBase) return;
             netClient_->SendInventoryAction(playerInv_->player_id, actionType, src, tgt, count);
         });
     }

@@ -86,6 +86,7 @@ void ChestWindow::Render(InventoryState* playerInv) {
         SlotGridComponent chestGrid(chestSlots_);
         chestGrid.SetStyle(style);
         chestGrid.SetRange(0, static_cast<int>(chestSlots_.size()), 9);
+        chestGrid.SetSlotIndexOffset(DragManager::kChestSlotBase);
         chestGrid.SetDragManager(dragMgr_);
         chestGrid.SetInventory(*playerInv);
         chestGrid.Render();

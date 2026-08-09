@@ -39,8 +39,10 @@ public:
   /// @param button     0=left, 1=right
   /// @param shift      shift held
   /// @param ctrl       ctrl held (same as shift: quick-move)
+  /// @param reportedSlotIndex  индекс для отправки в ActionCallback (по умолчанию = slotIndex)
   ActionResult OnSlotActivated(int slotIndex, std::vector<ItemStack> &slots,
-                               int button, bool shift, bool ctrl = false);
+                               int button, bool shift, bool ctrl = false,
+                               int reportedSlotIndex = -1);
 
   /// Отменить текущий драг (ESC). Возвращает предмет в sourceSlot.
   void CancelDrag(std::vector<ItemStack> &slots);
@@ -99,9 +101,10 @@ public:
   // Drag sources outside the player inventory (0..99) are identified by
   // disjoint ranges, so a source slot alone tells where the item came from.
   // Invariant: ranges stay disjoint AND < 256 (sourceSlot is uint8_t).
-  static constexpr int kGridSlotBase = 100;
-  static constexpr int kMachineSlotBase = 200;
-  static constexpr int kMachineOutputBase = 220;
+  static constexpr int kChestSlotBase = 50;  // 50-99: chest inventory slots
+  static constexpr int kGridSlotBase = 100;  // 100-199: crafting grid slots
+  static constexpr int kMachineSlotBase = 200; // 200-219: machine input slots
+  static constexpr int kMachineOutputBase = 220; // 220+: machine output slots
 
   // Вызывается после завершения операции (drop/merge/swap/drop-outside)
   using ActionCallback =
@@ -130,7 +133,8 @@ private:
   State state_ = State::Idle;
 
   ItemStack heldItem_;
-  int sourceSlot_ = -1;
+  int sourceSlot_ = -1;       // vector index (for CancelDrag)
+  int reportedSourceSlot_ = -1; // reported index (for ActionCallback)
   int hoverSlot_ = -1;
   ActionCallback cb_;
   MachineActionCallback machineCb_;

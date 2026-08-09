@@ -56,6 +56,12 @@ public:
   void SetSelectedSlot(int slot) { selectedSlot_ = slot; }
   int GetSelectedSlot() const { return selectedSlot_; }
 
+  // ── Slot index offset ──────────────────────────────────────────────────
+  // Added to each slot index before passing to DragManager / hover state.
+  // Used to disambiguate non-player-inventory sources (chest, machine, grid)
+  // so DragManager's ActionCallback can identify the source correctly.
+  void SetSlotIndexOffset(int offset) { slotIndexOffset_ = offset; }
+
   // ── Inventory integration ──────────────────────────────────────────────
   void SetInventory(InventoryState &inv);
 
@@ -82,6 +88,7 @@ private:
   int selectedSlot_ = -1;
   int hoveredSlot_ = -1;
   int lastRightDragSlot_ = -1;
+  int slotIndexOffset_ = 0;
   ClickCallback clickCb_;
   DragManager *dm_ = nullptr;
 };

@@ -9,9 +9,11 @@
 // ── Action handling ──────────────────────────────────────────────────────
 
 DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
-    std::vector<ItemStack>& slots, int button, bool shift, bool ctrl) {
+    std::vector<ItemStack>& slots, int button, bool shift, bool ctrl,
+    int reportedSlotIndex) {
     ActionResult r;
     if (slotIndex < 0 || static_cast<size_t>(slotIndex) >= slots.size()) return r;
+    if (reportedSlotIndex < 0) reportedSlotIndex = slotIndex;
 
 
     // Notify machine window about slot activation if drag completes (Holding→Idle).
@@ -29,10 +31,10 @@ DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
         // ── Shift/Ctrl-click: quick-move, no drag ────────────────────────
         if (shift || ctrl) {
             r.consumed = true;
-            r.sourceSlot = slotIndex;
+            r.sourceSlot = reportedSlotIndex;
             r.item = slot;
             r.count = slot.count;
-            if (cb_) cb_(kActionQuickMove, slotIndex, 255, slot.count);
+            if (cb_) cb_(kActionQuickMove, static_cast<uint8_t>(reportedSlotIndex), 255, slot.count);
             // Don't touch slots — caller/network will update
             return r;
         }
@@ -45,24 +47,26 @@ DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
             slot.count -= half;
             if (slot.count == 0) slot = ItemStack{};
             sourceSlot_ = slotIndex;
+            reportedSourceSlot_ = reportedSlotIndex;
             state_ = State::Holding;
             r.consumed = true;
             r.isDraggingAfter = true;
-            r.sourceSlot = slotIndex;
+            r.sourceSlot = reportedSlotIndex;
             r.item = heldItem_;
             r.count = half;
-            if (cb_) cb_(kActionSplit, slotIndex, 255, half);
+            if (cb_) cb_(kActionSplit, static_cast<uint8_t>(reportedSlotIndex), 255, half);
             return r;
         }
 
         // ── Left-click: normal pickup ─────────────────────────────────────
         heldItem_ = slot;
         sourceSlot_ = slotIndex;
+        reportedSourceSlot_ = reportedSlotIndex;
         slot = ItemStack{};
         state_ = State::Holding;
         r.consumed = true;
         r.isDraggingAfter = true;
-        r.sourceSlot = sourceSlot_;
+        r.sourceSlot = reportedSlotIndex;
         r.item = heldItem_;
         r.count = heldItem_.count;
         return r;
@@ -72,19 +76,20 @@ DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
     if (slotIndex < 0 || static_cast<size_t>(slotIndex) >= slots.size()) return r;
     auto& slot = slots[slotIndex];
     r.consumed = true;
-    r.sourceSlot = sourceSlot_;
+    r.sourceSlot = reportedSourceSlot_;
 
     // ── Shift while holding: quick-move ──────────────────────────────────
     if (shift) {
         r.item = heldItem_;
         r.count = heldItem_.count;
         r.targetSlot = slotIndex;
-        if (cb_) cb_(kActionQuickMove, sourceSlot_, slotIndex, heldItem_.count);
+        if (cb_) cb_(kActionQuickMove, static_cast<uint8_t>(reportedSourceSlot_), slotIndex, heldItem_.count);
         // Return item to source — server will do the actual move
         if (sourceSlot_ >= 0 && static_cast<size_t>(sourceSlot_) < slots.size()) {
             slots[sourceSlot_] = heldItem_;
         }
         heldItem_ = ItemStack{};
+        reportedSourceSlot_ = -1;
         sourceSlot_ = -1;
         state_ = State::Idle;
         return r;
@@ -96,6 +101,7 @@ DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
             // Clicking source: return all (same as left-click on source)
             slot = heldItem_;
             heldItem_ = ItemStack{};
+            reportedSourceSlot_ = -1;
             sourceSlot_ = -1;
             state_ = State::Idle;
             return r;
@@ -107,10 +113,11 @@ DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
             r.targetSlot = slotIndex;
             r.item = heldItem_;
             r.count = 1;
-            if (cb_) cb_(kActionMove, sourceSlot_, slotIndex, 1);
+            if (cb_) cb_(kActionMove, static_cast<uint8_t>(reportedSourceSlot_), slotIndex, 1);
             heldItem_.count -= 1;
             if (heldItem_.count == 0) {
                 heldItem_ = ItemStack{};
+                reportedSourceSlot_ = -1;
                 sourceSlot_ = -1;
                 state_ = State::Idle;
             }
@@ -124,10 +131,11 @@ DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
             r.targetSlot = slotIndex;
             r.item = heldItem_;
             r.count = 1;
-            if (cb_) cb_(kActionMove, sourceSlot_, slotIndex, 1);
+            if (cb_) cb_(kActionMove, static_cast<uint8_t>(reportedSourceSlot_), slotIndex, 1);
             heldItem_.count -= 1;
             if (heldItem_.count == 0) {
                 heldItem_ = ItemStack{};
+                reportedSourceSlot_ = -1;
                 sourceSlot_ = -1;
                 state_ = State::Idle;
             }
@@ -142,6 +150,7 @@ DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
     if (slotIndex == sourceSlot_) {
         slot = heldItem_;
         heldItem_ = ItemStack{};
+        reportedSourceSlot_ = -1;
         sourceSlot_ = -1;
         state_ = State::Idle;
         return r;
@@ -154,10 +163,11 @@ DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
         r.targetSlot = slotIndex;
         r.item = heldItem_;
         r.count = toAdd;
-        if (cb_) cb_(kActionMove, sourceSlot_, slotIndex, toAdd);
+        if (cb_) cb_(kActionMove, static_cast<uint8_t>(reportedSourceSlot_), slotIndex, toAdd);
         heldItem_.count -= toAdd;
         if (heldItem_.count == 0) {
             heldItem_ = ItemStack{};
+            reportedSourceSlot_ = -1;
             sourceSlot_ = -1;
             state_ = State::Idle;
         }
@@ -169,8 +179,9 @@ DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
         r.targetSlot = slotIndex;
         r.item = heldItem_;
         r.count = heldItem_.count;
-        if (cb_) cb_(kActionMove, sourceSlot_, slotIndex, heldItem_.count);
+        if (cb_) cb_(kActionMove, static_cast<uint8_t>(reportedSourceSlot_), slotIndex, heldItem_.count);
         heldItem_ = ItemStack{};
+        reportedSourceSlot_ = -1;
         sourceSlot_ = -1;
         state_ = State::Idle;
         return r;
@@ -184,8 +195,9 @@ DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
     r.targetSlot = slotIndex;
     r.item = heldItem_;
     r.count = heldItem_.count;
-    if (cb_) cb_(kActionMove, sourceSlot_, slotIndex, heldItem_.count);
+    if (cb_) cb_(kActionMove, static_cast<uint8_t>(reportedSourceSlot_), slotIndex, heldItem_.count);
     heldItem_ = ItemStack{};
+    reportedSourceSlot_ = -1;
     sourceSlot_ = -1;
     state_ = State::Idle;
     return r;
@@ -200,6 +212,7 @@ void DragManager::CancelDrag(std::vector<ItemStack>& slots) {
         // caller must return item to source manually.
     }
     heldItem_ = ItemStack{};
+    reportedSourceSlot_ = -1;
     sourceSlot_ = -1;
     hoverSlot_ = -1;
     state_ = State::Idle;
@@ -256,9 +269,10 @@ void DragManager::RenderPreview(const SlotStyle& style) {
 void DragManager::DropHeldItem() {
     if (state_ != State::Holding) return;
     if (cb_) {
-        cb_(kActionDrop, static_cast<uint8_t>(sourceSlot_), 255, heldItem_.count);
+        cb_(kActionDrop, static_cast<uint8_t>(reportedSourceSlot_), 255, heldItem_.count);
     }
     heldItem_ = ItemStack{};
+    reportedSourceSlot_ = -1;
     sourceSlot_ = -1;
     hoverSlot_ = -1;
     state_ = State::Idle;
@@ -267,12 +281,14 @@ void DragManager::DropHeldItem() {
 void DragManager::StartExternalDrag(int sourceSlot, const ItemStack& item) {
     heldItem_ = item;
     sourceSlot_ = sourceSlot;
+    reportedSourceSlot_ = sourceSlot;
     state_ = State::Holding;
 }
 
 void DragManager::Reset() {
     heldItem_ = ItemStack{};
     sourceSlot_ = -1;
+    reportedSourceSlot_ = -1;
     hoverSlot_ = -1;
     state_ = State::Idle;
     ClearMachineDragContext();
@@ -296,6 +312,7 @@ void DragManager::SyncFrom(const InventoryState& inv) {
     if (inv.isDragging) {
         heldItem_ = inv.dragItem;
         sourceSlot_ = inv.dragSourceSlot;
+        reportedSourceSlot_ = inv.dragSourceSlot;
         hoverSlot_ = inv.dragHoverSlot;
         state_ = State::Holding;
     } else {

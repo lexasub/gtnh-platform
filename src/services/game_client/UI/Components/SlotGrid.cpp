@@ -209,8 +209,11 @@ int SlotGridComponent::Render() {
         int col = (i - startIndex_) % cols_;
         if (col > 0) ImGui::SameLine();
 
+        // globalIdx = vector index (for slots_[], CancelDrag, hover)
+        // reportedIdx = globalIdx + offset (for DragManager source identification)
         int globalIdx = i;
-        bool selected = (globalIdx == selectedSlot_);
+        int reportedIdx = i + slotIndexOffset_;
+        bool selected = (reportedIdx == selectedSlot_);
         ImGui::PushID(globalIdx);
 
         ImVec2 cursor = ImGui::GetCursorScreenPos();
