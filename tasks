@@ -1,0 +1,19 @@
+iron ingot after macerator
+iron ingot descr - macerate, плавка
+iron pickaxe должен по 1 элементу # BASE manual tools (prefix 0:11110) -TODO in code default 1 for tools
+rotare macertor нет рецепта
+stone reciept
+macerator & generator swap
+bronze dust craft reciept
+bronze plate craft reciept
+
+
+при рестарте сервера содержимое в crafting table теряется
+при забирании из crafting table item может появится, а потом исчезнуть
+
+нельзя в рецептах по r проваливаться
+reciept boiler
+
+починить persist квестов - почему-то иногда не сохраняется прогресс квестов - поиграли, остановили сервер, перезапустились и квесты которые в тот раз зачел - не зачлись
+iron ingot check id in quest // craft?? or generated in some machine?
+нет нигде воды
