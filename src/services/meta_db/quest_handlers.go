@@ -184,6 +184,16 @@ func HandleQuestCompleted(topic string, payload []byte, m *MetaDB) {
 		}
 	}
 
+	// Persist the COMPLETED status so quest progress survives a server restart.
+	// quest_progress is otherwise only written via meta_db.quest.set, which
+	// nothing publishes — quest.completed is the single authoritative
+	// completion signal, so this is where the row must be upserted.
+	if err := SetQuestProgress(m.db, playerID, questID, uint8(Protocol.QuestStatusCOMPLETED), 100); err != nil {
+		log.Printf("[QUEST] HandleQuestCompleted: failed to persist quest progress for player=%d quest=%d: %v", playerID, questID, err)
+	} else {
+		log.Printf("[QUEST] HandleQuestCompleted: persisted quest_progress player=%d quest=%d status=COMPLETED", playerID, questID)
+	}
+
 	// Publish to quest.completed topic for Gateway with reward data
 	builder := flatbuffers.NewBuilder(64)
 	Protocol.QuestCompletedNotificationStart(builder)

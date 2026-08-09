@@ -46,7 +46,7 @@ bool QuestData::LoadCSV(const std::string& csvPath) {
 
         std::getline(ss, qd.section, ',');
 
-        std::getline(ss, cell, ',');
+        /*std::getline(ss, cell, ',');//moved from quests.csv to quests_graph.json (may be converted to csv)
         if (!cell.empty()) {
             std::stringstream ps(cell);
             std::string pid;
@@ -54,7 +54,7 @@ bool QuestData::LoadCSV(const std::string& csvPath) {
                 if (!pid.empty())
                     qd.prerequisites.push_back(parseUint(pid, uint32_t{0}));
             }
-        }
+        }*/
 
         std::getline(ss, cell, ',');
         qd.detectType = DetectFromString(cell);
@@ -125,7 +125,7 @@ bool QuestData::LoadGraph(const std::string& jsonPath) {
     for (const auto& entry : *questsIt) {
         if (!entry.is_object()) continue;
         uint32_t id = entry.value("id", uint32_t{0});
-        if (idIndex_.find(id) == idIndex_.end()) {
+        if (!idIndex_.contains(id)) {
             spdlog::warn("[QuestData] LoadGraph: quest {} in JSON not found in CSV, skipping", id);
             continue;
         }
@@ -142,8 +142,8 @@ bool QuestData::LoadGraph(const std::string& jsonPath) {
         auto csvPrereqs = GetPrerequisites(id);
         auto sortedJson = jsonPrereqs;
         auto sortedCsv = csvPrereqs;
-        std::sort(sortedJson.begin(), sortedJson.end());
-        std::sort(sortedCsv.begin(), sortedCsv.end());
+        std::ranges::sort(sortedJson);
+        std::ranges::sort(sortedCsv);
         if (sortedJson != sortedCsv) {
             spdlog::warn("[QuestData] LoadGraph: quest {} prereqs differ: JSON=[{}], CSV=[{}]",
                          id, joinPrereqs(jsonPrereqs), joinPrereqs(csvPrereqs));
@@ -162,7 +162,7 @@ bool QuestData::LoadGraph(const std::string& jsonPath) {
         ++nodeCount;
     }
 
-    graph_ = std::move(newGraph);
+    graph_.swap(newGraph);
     spdlog::info("[QuestData] LoadGraph: loaded {} quest nodes from {}", nodeCount, jsonPath);
     return true;
 }
@@ -261,7 +261,7 @@ std::vector<std::string> QuestData::SectionsForEra(Era era) const {
     std::vector<std::string> result;
     for (const auto& qd : quests_) {
         if (qd.era == era) {
-            if (std::find(result.begin(), result.end(), qd.section) == result.end())
+            if (std::ranges::find(result, qd.section) == result.end())
                 result.push_back(qd.section);
         }
     }

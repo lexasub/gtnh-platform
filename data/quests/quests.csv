@@ -1,164 +1,164 @@
-id,title,description,era,section,prereqs,detect_type,detect_target,reward_item,reward_count,cost_item,cost_count,cooldown,target_count
-1,First Steps,Punch a tree to get wood. The foundation of all early progress.,vagrant,basics,,inventory,0:10:11:2,,,,,8
-2,Basic Carpentry,Craft oak planks from your logs.,vagrant,basics,1,craft,0:10:00:0,,,,,16
-3,The Grid,Craft a crafting table.,vagrant,basics,2,craft,0:10:11:1,,,,,1
-4,Place Workbench,Place the crafting table in the world.,vagrant,basics,3,block_placed,0:10:11:1,,,,,1
-5,Sticks,Craft sticks for your first tools.,vagrant,basics,2,craft,0:11110:0,,,,,8
-6,Wooden Pickaxe,Craft a wooden pickaxe to mine stone.,vagrant,basics,4;5,craft,0:11110:3,,,,,1
-7,Cobblestone,Mine stone to get cobblestone.,vagrant,basics,6,inventory,0:0:2,,,,,16
-8,Stone Pickaxe,Upgrade to a stone pickaxe for faster mining.,vagrant,basics,7;5,craft,0:11110:4,,,,,1
-9,Iron Prospecting,Mine iron ore from the depths.,vagrant,basics,8,inventory,10:0,,,,,8
-10,Coal Prospecting,Mine coal ore to fuel your furnaces.,vagrant,basics,8,inventory,10:6,,,,,16
-11,Heat Furnace,Craft a heat furnace for basic smelting.,vagrant,stone_age,7,craft,1110:00:0,,,,,1
-12,Heat Macerator,Craft a heat macerator to manually crush ores.,vagrant,stone_age,13,craft,1110:00:1,,,,,1
-13,Heat Generator,Craft a heat generator to burn fuel for heat energy.,vagrant,stone_age,13,craft,1110:00:2,,,,,1
-14,Place Heat Furnace,Place the furnace in the world.,vagrant,stone_age,11,block_placed,1110:00:0,,,,,1
-15,Iron Ingot,Smelt iron ore into ingots.,vagrant,stone_age,12,craft,0:110:1,,,,,8
-16,Iron Pickaxe,Craft an iron pickaxe to mine advanced ores.,vagrant,basics,13;5,craft,0:11110:5,,,,,1
-17,Getting Organized,Craft a chest to store your growing hoard of items.,vagrant,basics,2,craft,0:10:11:0,,,,,1
-18,Place Chest,Place the chest in the world.,vagrant,basics,15,block_placed,0:10:11:0,,,,,1
-19,Water Supply,Craft an empty bucket and collect water.,vagrant,basics,13,inventory,0:11111:0,,,,,1
-20,Rotare Macerator,Craft a mechanical rotare macerator.,vagrant,stone_age,18,craft,1110:00:8,,,,,1
-21,Rotare Generator,Craft a rotare generator for basic mechanical power.,vagrant,stone_age,20,craft,1110:01:3,,,,,1
-22,Tin Prospecting,Mine tin ore for bronze alloys.,vagrant,steam_age,14,inventory,10:2,,,,,8
-23,Copper Prospecting,Mine copper ore for bronze and cables.,vagrant,steam_age,14,inventory,10:3,,,,,8
-24,Bronze Ingot,Alloy tin and copper into bronze ingots.,vagrant,steam_age,22;23,craft,0:110:6,,,,,8
-25,Bronze Plate,Compress bronze into plates for steam machines.,vagrant,steam_age,24,craft,0:1110:0:0:0,,,,,16
-26,Rod,Craft metal rods for machine components.,vagrant,steam_age,24,craft,0:1110:1:1:1,,,,,16
-27,Steam Solid Boiler,Craft a boiler to generate steam from coal.,vagrant,steam_age,25,craft,1110:01:0,,,,,1
-28,Place Steam Boiler,Place the boiler and start the steam age.,vagrant,steam_age,27,block_placed,1110:01:0,,,,,1
-29,Fluid Pipe,Craft fluid pipes to transport steam.,vagrant,steam_age,25,craft,1111:10:0,,,,,8
-30,Item Pipe,Craft item pipes for basic logistics.,vagrant,steam_age,25,craft,1111:10:1,,,,,8
-31,Steam Macerator,Craft a steam macerator to automate ore doubling.,vagrant,steam_age,28;29,craft,1110:00:3,,,,,1
-32,Steam Compressor,Craft a steam compressor for plate production.,vagrant,steam_age,28;29,craft,1110:00:4,,,,,1
-33,Steam Extractor,Craft a steam extractor for rubber and fluids.,vagrant,steam_age,28;29,craft,1110:00:5,,,,,1
-34,Steam Mixer,Craft a steam mixer to combine dusts and fluids.,vagrant,steam_age,28;29,craft,1110:00:6,,,,,1
-35,Bronze Alloy Smelter,Craft an alloy smelter to automate bronze production.,vagrant,steam_age,28;29,craft,1110:00:7,,,,,1
-36,Steam Heat Boiler,Craft a heat boiler to convert steam back to heat.,vagrant,steam_age,28,craft,1110:01:1,,,,,1
-37,ULV Transition,Craft a creative generator to bootstrap your first grid.,apprentice,ulv_transition,31,craft,1110:01:2,,,,,1
-38,Tin Cable,Craft tin cables to transmit ULV power.,apprentice,ulv_transition,24,craft,1111:01:0,,,,,16
-39,Drill ULV,Craft an ULV drill to automate mining.,apprentice,ulv_transition,37;38,craft,1111:00:0,,,,,1
-40,Wrench Mastery,Craft a wrench to configure machine sides.,apprentice,ulv_transition,25,craft,1111:00:5,,,,,1
-41,Dense Item Pipe,Craft dense pipes for high-throughput logistics.,apprentice,steam_automation,30,craft,1111:10:2,,,,,8
-42,Dense Fluid Pipe,Craft dense fluid pipes for massive steam transfer.,apprentice,steam_automation,29,craft,1111:10:3,,,,,8
-43,Copper Cable,Craft copper cables for LV power networks.,energy_junior,lv_power,23,craft,1111:01:1,,,,,16
-44,LV Hull,Craft an LV machine hull.,energy_junior,lv_machines,38;43,craft,1:1:0:1:0,,,,,1
-45,Battery Buffer LV,Craft an LV battery buffer to store energy.,energy_junior,lv_power,44,craft,1110:10:0,,,,,1
-46,Charger,Craft a charger to power your ULV/LV tools.,energy_junior,lv_power,44,craft,1110:10:3,,,,,1
-47,Drill LV,Craft an LV drill for faster mining.,energy_junior,lv_tools,44,craft,1111:00:1,,,,,1
-48,Chainsaw LV,Craft an LV chainsaw to clear forests.,energy_junior,lv_tools,44,craft,1111:00:4,,,,,1
-49,Electric Motor LV,Craft an LV electric motor.,energy_junior,lv_components,44,craft,0:1:1:0:0,,,,,4
-50,Electric Piston LV,Craft an LV electric piston.,energy_junior,lv_components,49,craft,0:1:1:0:1,,,,,2
-51,Fluid Pump LV,Craft an LV fluid pump.,energy_junior,lv_components,49,craft,0:1:1:0:2,,,,,2
-52,Conveyor Module LV,Craft an LV conveyor module.,energy_junior,lv_components,49,craft,0:1:1:0:3,,,,,2
-53,Emitter LV,Craft an LV emitter for sensors and circuits.,energy_junior,lv_components,44,craft,0:1:1:0:13,,,,,2
-54,Sensor LV,Craft an LV sensor for automation.,energy_junior,lv_components,44,craft,0:1:1:0:10,,,,,2
-55,Electric Furnace LV,Craft an LV electric furnace.,energy_junior,lv_machines,44,craft,1:0:0:0:9,,,,,1
-56,Macerator LV,Craft an LV macerator for ore processing.,energy_junior,lv_machines,44,craft,1:0:0:0:31,,,,,1
-57,Compressor LV,Craft an LV compressor.,energy_junior,lv_machines,44,craft,1:0:0:0:27,,,,,1
-58,Extractor LV,Craft an LV extractor.,energy_junior,lv_machines,44,craft,1:0:0:0:29,,,,,1
-59,Mixer LV,Craft an LV mixer for chemical processing.,energy_junior,lv_machines,44,craft,1:0:0:0:33,,,,,1
-60,Alloy Smelter LV,Craft an LV alloy smelter.,energy_junior,lv_machines,44,craft,1:0:0:0:25,,,,,1
-61,Wiremill LV,Craft an LV wiremill to draw wires efficiently.,energy_junior,lv_machines,44,craft,1:0:0:0:22,,,,,1
-62,Bender LV,Craft an LV bender for plates and foils.,energy_junior,lv_machines,44,craft,1:0:0:0:23,,,,,1
-63,Extruder LV,Craft an LV extruder for pipes and shapes.,energy_junior,lv_machines,44,craft,1:0:0:0:24,,,,,1
-64,Forge Hammer LV,Craft an LV forge hammer.,energy_junior,lv_machines,44,craft,1:0:0:0:40,,,,,1
-65,Ore Washer LV,Craft an ore washer to purify crushed ores.,energy_junior,lv_machines,56,craft,1:0:0:0:35,,,,,1
-66,Thermal Centrifuge LV,Craft a thermal centrifuge for ore tripling.,energy_junior,lv_machines,56,craft,1:0:0:0:36,,,,,1
-67,Circuit Board Empty,Craft an empty circuit board.,energy_junior,lv_circuits,61,craft,0:1:1:1:0,,,,,4
-68,Circuit Board Basic,Craft a basic coated circuit board.,energy_junior,lv_circuits,67,craft,0:1:1:1:1,,,,,4
-69,Electronic Circuit LV,Craft your first LV electronic circuit.,energy_junior,lv_circuits,68;49,craft,0:1:1:1:2,,,,,2
-70,Assembling Machine LV,Craft an LV assembling machine to automate crafting.,energy_junior,lv_machines,69,craft,1:0:1:1:10,,,,,1
-71,Side Configuration,Use the wrench to configure an LV machine for automation.,energy_junior,lv_automation,40;55,side_configured,1:0:0:0:9,,,,,1
-72,Gold Cable,Craft gold cables for MV power transmission.,energy_junior,mv_power,13,craft,1111:01:2,,,,,16
-73,MV Hull,Craft an MV machine hull.,energy_junior,mv_machines,69;72,craft,1:1:0:1:1,,,,,1
-74,Transformer LV-MV,Craft a transformer to step up LV to MV.,energy_junior,mv_power,73,craft,1:0:1:1:0,,,,,1
-75,Battery Buffer MV,Craft an MV battery buffer.,energy_junior,mv_power,73,craft,1110:10:1,,,,,1
-76,Drill MV,Craft an MV drill for extended mining operations.,energy_junior,mv_tools,73,craft,1111:00:2,,,,,1
-77,Chainsaw MV,Craft an MV chainsaw.,energy_junior,mv_tools,73,craft,1:1:0:0:6,,,,,1
-78,Electric Furnace MV,Craft an MV electric furnace.,energy_junior,mv_machines,73,craft,1:0:0:0:10,,,,,1
-79,Macerator MV,Craft an MV macerator.,energy_junior,mv_machines,73,craft,1:0:0:0:32,,,,,1
-80,Compressor MV,Craft an MV compressor.,energy_junior,mv_machines,73,craft,1:0:0:0:28,,,,,1
-81,Extractor MV,Craft an MV extractor.,energy_junior,mv_machines,73,craft,1:0:0:0:30,,,,,1
-82,Mixer MV,Craft an MV mixer.,energy_junior,mv_machines,73,craft,1:0:0:0:34,,,,,1
-83,Alloy Smelter MV,Craft an MV alloy smelter.,energy_junior,mv_machines,73,craft,1:0:0:0:26,,,,,1
-84,Resistor SMD,Craft SMD resistors for advanced circuits.,energy_junior,mv_components,70,craft,0:1:1:0:20,,,,,8
-85,Capacitor SMD,Craft SMD capacitors.,energy_junior,mv_components,70,craft,0:1:1:0:21,,,,,8
-86,Transistor SMD,Craft SMD transistors.,energy_junior,mv_components,70,craft,0:1:1:0:22,,,,,8
-87,Diode SMD,Craft SMD diodes.,energy_junior,mv_components,70,craft,0:1:1:0:23,,,,,8
-88,Integrated Circuit MV,Craft an MV integrated circuit.,energy_junior,mv_circuits,84;85;86;87,craft,0:1:1:1:3,,,,,2
-89,Assembling Machine MV,Craft an MV assembling machine.,energy_junior,mv_machines,88,craft,1:0:1:1:11,,,,,1
-90,Platinum Cable,Craft platinum cables for HV power transmission.,energy_junior,hv_power,13,craft,1111:01:5,,,,,16
-91,HV Hull,Craft an HV machine hull.,energy_junior,hv_machines,88;90,craft,1:1:0:1:2,,,,,1
-92,Transformer MV-HV,Craft a transformer to step up MV to HV.,energy_junior,hv_power,91,craft,1110:11:0,,,,,1
-93,Battery Buffer HV,Craft an HV battery buffer.,energy_junior,hv_power,91,craft,1110:10:2,,,,,1
-94,Drill HV,Craft an HV drill for maximum excavation power.,energy_junior,hv_tools,91,craft,1111:00:3,,,,,1
-95,Chainsaw HV,Craft an HV chainsaw.,energy_junior,hv_tools,91,craft,1:1:0:0:7,,,,,1
-96,Electric Furnace HV,Craft an HV electric furnace.,energy_junior,hv_machines,91,craft,1:0:0:0:11,,,,,1
-97,Advanced Circuit HV,Craft an HV advanced circuit.,energy_junior,hv_circuits,89;91,craft,0:1:1:1:4,,,,,2
-98,Assembling Machine HV,Craft an HV assembling machine.,energy_junior,hv_machines,97,craft,1:0:1:1:12,,,,,1
-99,Transformer HV-EV,Craft a transformer to step up HV to EV.,energy_middle,ev_transition,91,craft,1110:11:1,,,,,1
-100,Processor Circuit EV,Craft an EV processor circuit.,energy_middle,ev_circuits,98;99,craft,0:1:1:1:5,,,,,2
-101,Electrum Ingot,Smelt electrum for advanced components.,administrator,rare_materials,78,craft,0:110:4,,,,,4
-102,Uranium Ingot,Process uranium for nuclear tech.,administrator,rare_materials,94,craft,0:110:5,,,,,2
-103,Kanthal Ingot,Create kanthal for heating elements.,administrator,rare_materials,96,craft,0:0:1:0:6,,,,,4
-104,Nichrome Ingot,Create nichrome for high-heat coils.,administrator,rare_materials,103,craft,0:0:1:0:7,,,,,4
-105,Stainless Steel Ingot,Alloy stainless steel for chemical machines.,administrator,rare_materials,96,craft,0:0:1:0:8,,,,,8
-106,Titanium Ingot,Process titanium for aerospace and multiblocks.,administrator,rare_materials,105,craft,0:0:1:0:9,,,,,4
-107,Tungstensteel Ingot,Create tungstensteel for extreme durability.,administrator,rare_materials,106,craft,0:0:1:0:10,,,,,4
-108,Aluminium Ingot,Process aluminium for lightweight structures.,administrator,rare_materials,78,craft,0:0:1:0:11,,,,,8
-109,Chromium Ingot,Process chromium for stainless steel alloys.,administrator,rare_materials,96,craft,0:0:1:0:12,,,,,4
-110,Platinum Ingot,Process platinum for catalysts and HV cables.,administrator,rare_materials,96,craft,0:0:1:0:13,,,,,4
-111,Iridium Ingot,Process iridium for endgame components.,administrator,rare_materials,107,craft,0:0:1:0:14,,,,,2
-112,Osmium Ingot,Process osmium for superconductors.,administrator,rare_materials,107,craft,0:0:1:0:15,,,,,2
-113,Naquadah Ingot,Process naquadah for extreme voltage tech.,administrator,rare_materials,111,craft,0:0:1:0:16,,,,,1
-114,Circuit Assembler,Craft a circuit assembler to automate board population.,administrator,advanced_machines,98,craft,1:0:1:1:13,,,,,1
-115,Precision Laser Welder,Craft a laser welder for micro-components.,administrator,advanced_machines,98,craft,1:0:1:1:14,,,,,1
-116,Implosion Compressor,Craft an implosion compressor for dense materials.,administrator,advanced_machines,98,craft,1:0:1:1:15,,,,,1
-117,Hatch Input LV,Craft an LV input hatch for multiblock fluids.,energy_junior,multiblocks_junior,44,craft,1:1:1:0:0,,,,,1
-118,Hatch Output LV,Craft an LV output hatch for multiblock fluids.,energy_junior,multiblocks_junior,44,craft,1:1:1:0:10,,,,,1
-119,Hatch Bus Input LV,Craft an LV input bus for multiblock items.,energy_junior,multiblocks_junior,44,craft,1:1:1:0:20,,,,,1
-120,Hatch Bus Output LV,Craft an LV output bus for multiblock items.,energy_junior,multiblocks_junior,44,craft,1:1:1:0:30,,,,,1
-121,Hatch Energy Input LV,Craft an LV energy hatch to power multiblocks.,energy_junior,multiblocks_junior,44,craft,1:1:1:0:40,,,,,1
-122,Hatch Maintenance,Craft a maintenance hatch for multiblock repairs.,energy_junior,multiblocks_junior,44,craft,1:1:1:0:60,,,,,1
-123,Coke Oven,Build a Coke Oven multiblock for coal processing.,energy_junior,multiblocks_junior,117;118;119,craft,1:0:1:1:30,,,,,1
-124,Steam Turbine,Build a Steam Turbine multiblock for massive LV power.,energy_junior,multiblocks_junior,123,craft,1:0:0:1:14,,,,,1
-125,Multiblock LCR,Build a Large Chemical Reactor for complex chemistry.,energy_junior,multiblocks_junior,117;118;121,craft,1:0:1:1:16,,,,,1
-126,Advanced Database,Craft an advanced database for complex recipe lookups.,energy_junior,logistics,98,craft,1:0:1:1:24,,,,,1
-127,Transformer EV-IV,Craft a transformer to step up EV to IV.,energy_middle,ev_iv_transition,100,craft,1:0:1:1:3,,,,,1
-128,Battery Buffer EV,Craft an EV battery buffer.,energy_middle,ev_iv_transition,127,craft,1:0:1:0:4,,,,,1
-129,Battery Buffer IV,Craft an IV battery buffer for massive capacity.,energy_middle,ev_iv_transition,128,craft,1:0:1:0:5,,,,,1
-130,Wetware Circuit IV,Craft an IV wetware circuit.,energy_middle,iv_circuits,114;127,craft,0:1:1:1:6,,,,,2
-131,Vacuum Freezer,Build a Vacuum Freezer multiblock for superconductors.,energy_middle,multiblocks_middle,127,craft,1:0:1:1:17,,,,,1
-132,Industrial Smelter,Build an Industrial Smelter for massive alloy production.,energy_middle,multiblocks_middle,131,craft,1:0:1:1:18,,,,,1
-133,Industrial Grinder,Build an Industrial Grinder for perfect ore processing.,energy_middle,multiblocks_middle,131,craft,1:0:1:1:19,,,,,1
-134,Industrial Squeezer,Build an Industrial Squeezer for fluid extraction.,energy_middle,multiblocks_middle,131,craft,1:0:1:1:20,,,,,1
-135,Industrial Brewery,Build an Industrial Brewery for biomass and potions.,energy_middle,multiblocks_middle,131,craft,1:0:1:1:21,,,,,1
-136,Large Turbine,Build a Large Turbine for high-tier power generation.,energy_middle,multiblocks_middle,131,craft,1:0:1:1:22,,,,,1
-137,Multi Smelter,Build a Multi Smelter for batch ingot production.,energy_middle,multiblocks_middle,131,craft,1:0:1:1:23,,,,,1
-138,Cracker,Build a Cracker for oil processing.,energy_middle,multiblocks_middle,131,craft,1:0:1:1:25,,,,,1
-139,Distillation Tower,Build a Distillation Tower to separate complex fluids.,energy_middle,multiblocks_middle,138,craft,1:0:1:1:26,,,,,1
-140,Chemical Plant,Build a Chemical Plant for industrial synthesis.,energy_middle,multiblocks_middle,139,craft,1:0:1:1:28,,,,,1
-141,Pyrolyse Oven,Build a Pyrolyse Oven for carbon and tar processing.,energy_middle,multiblocks_middle,139,craft,1:0:1:1:29,,,,,1
-142,Large Combustion Reactor,Build a Large Combustion Reactor for extreme power.,energy_middle,multiblocks_middle,139,craft,1:0:1:1:31,,,,,1
-143,Transformer IV-LuV,Craft a transformer to step up IV to LuV.,energy_senior,luv_transition,130,craft,1:0:1:1:4,,,,,1
-144,Quantum Circuit LuV,Craft a LuV quantum circuit.,energy_senior,luv_circuits,143,craft,0:1:1:1:7,,,,,2
-145,Assembly Line,Build an Assembly Line multiblock for endgame components.,energy_senior,multiblocks_senior,144,craft,1:0:1:1:27,,,,,1
-146,Extreme Combustion Reactor,Build an ECR for limitless IV/LuV power.,energy_senior,multiblocks_senior,145,craft,1:0:1:1:32,,,,,1
-147,Naquadah Reactor,Build a Naquadah Reactor for endgame base load power.,energy_senior,multiblocks_senior,145,craft,1:0:0:1:13,,,,,1
-148,Multi Volume Hatch,Craft a multi-volume hatch for massive fluid storage.,energy_senior,multiblocks_senior,145,craft,1:0:1:1:33,,,,,1
-149,Carbon Fiber,Craft carbon fiber for lightweight armor and machines.,energy_senior,advanced_materials,145,craft,0:1:1:1:10,,,,,8
-150,Graphene,Craft graphene for advanced electronics.,energy_senior,advanced_materials,149,craft,0:1:1:1:11,,,,,4
-151,Neutronium,Craft neutronium for ultimate density structures.,energy_senior,advanced_materials,145,craft,0:1:1:1:12,,,,,1
-152,Naquadah Alloy,Craft naquadah alloy for ZPM/UV casings.,energy_senior,advanced_materials,145,craft,0:1:1:1:13,,,,,4
-153,HSS-E,Craft HSS-E for high-speed tooling.,energy_senior,advanced_materials,145,craft,0:1:1:1:14,,,,,4
-154,Polyethylene,Craft polyethylene for plastic casings and insulation.,energy_senior,advanced_materials,139,craft,0:1:1:1:15,,,,,16
-155,PCB,Craft printed circuit boards for advanced computing.,energy_senior,advanced_materials,154,craft,0:1:1:1:16,,,,,8
-156,Fiberglass,Craft fiberglass for high-tier circuit boards.,energy_senior,advanced_materials,154,craft,0:1:1:1:17,,,,,8
-157,Sulfuric Acid,Obtain a bucket of sulfuric acid for chemical processing.,energy_senior,fluids,139,inventory,0:11111:2,,,,,1
-158,Hydrogen,Obtain a bucket of hydrogen for fuel and chemistry.,energy_senior,fluids,139,inventory,0:11111:1,,,,,1
-159,Coolant,Obtain a bucket of coolant for reactor stabilization.,energy_senior,fluids,131,inventory,0:11111:4,,,,,1
-160,LuV Hull,Craft a LuV machine hull.,energy_senior,luv_machines,144,craft,1:1:0:1:5,,,,,1
-161,ZPM Hull,Craft a ZPM machine hull.,energy_senior,luv_machines,160,craft,1:1:0:1:6,,,,,1
-162,Jackhammer,Craft a jackhammer for rapid terrain destruction.,energy_senior,tools,160,craft,1:1:0:0:10,,,,,1
-163,Electric Soldering Iron,Craft a soldering iron for circuit repair.,energy_senior,tools,114,craft,1:1:0:0:11,,,,,1
+id,title,description,era,section,detect_type,detect_target,reward_item,reward_count,cost_item,cost_count,cooldown,target_count
+1,First Steps,Punch a tree to get wood. The foundation of all early progress.,vagrant,basics,inventory,0:10:11:2,,,,,8
+2,Basic Carpentry,Craft oak planks from your logs.,vagrant,basics,craft,0:10:00:0,,,,,16
+3,The Grid,Craft a crafting table.,vagrant,basics,craft,0:10:11:1,,,,,1
+4,Place Workbench,Place the crafting table in the world.,vagrant,basics,block_placed,0:10:11:1,,,,,1
+5,Sticks,Craft sticks for your first tools.,vagrant,basics,craft,0:11110:0,,,,,8
+6,Wooden Pickaxe,Craft a wooden pickaxe to mine stone.,vagrant,basics,craft,0:11110:3,,,,,1
+7,Cobblestone,Mine stone to get cobblestone.,vagrant,basics,inventory,0:0:2,,,,,16
+8,Stone Pickaxe,Upgrade to a stone pickaxe for faster mining.,vagrant,basics,craft,0:11110:4,,,,,1
+9,Iron Prospecting,Mine iron ore from the depths.,vagrant,basics,inventory,10:0,,,,,8
+10,Coal Prospecting,Mine coal ore to fuel your furnaces.,vagrant,basics,inventory,10:6,,,,,16
+11,Heat Generator,Craft a heat generator to burn fuel for heat energy.,vagrant,stone_age,craft,1110:00:2,,,,,1
+12,Heat Furnace,Craft a heat furnace for basic smelting.,vagrant,stone_age,craft,1110:00:0,,,,,1
+13,Heat Macerator,Craft a heat macerator to manually crush ores.,vagrant,stone_age,craft,1110:00:1,,,,,1
+14,Place Heat Furnace,Place the furnace in the world.,vagrant,stone_age,block_placed,1110:00:0,,,,,1
+15,Iron Ingot, Macerate iron ore - Smelt(in heat furnace) iron dust into ingots.,vagrant,stone_age,craft,0:110:1,,,,,8
+16,Iron Pickaxe,Craft an iron pickaxe to mine advanced ores.,vagrant,basics,craft,0:11110:5,,,,,1
+17,Getting Organized,Craft a chest to store your growing hoard of items.,vagrant,basics,craft,0:10:11:0,,,,,1
+18,Place Chest,Place the chest in the world.,vagrant,basics,block_placed,0:10:11:0,,,,,1
+19,Water Supply,Craft an empty bucket and collect water.,vagrant,basics,inventory,0:11111:0,,,,,1
+20,Rotare Generator,Craft a rotare generator for basic mechanical power.,vagrant,stone_age,craft,1110:01:3,,,,,1
+21,Rotare Macerator,Craft a mechanical rotare macerator.,vagrant,stone_age,craft,1110:00:8,,,,,1
+22,Tin Prospecting,Mine tin ore for bronze alloys.,vagrant,steam_age,inventory,10:2,,,,,8
+23,Copper Prospecting,Mine copper ore for bronze and cables.,vagrant,steam_age,inventory,10:3,,,,,8
+24,Bronze Ingot, Macerate copper - tin - mix in crafting table - then smelt,vagrant,steam_age,craft,0:110:6,,,,,8
+25,Bronze Plate,craft in crafting table (ingot+ingot).,vagrant,steam_age,craft,0:1110:0:0:0,,,,,16
+26,Rod,Craft metal rods for machine components.,vagrant,steam_age,craft,0:1110:1:1:1,,,,,16
+27,Steam Solid Boiler,Craft a boiler to generate steam from coal.,vagrant,steam_age,craft,1110:01:0,,,,,1
+28,Place Steam Boiler,Place the boiler and start the steam age.,vagrant,steam_age,block_placed,1110:01:0,,,,,1
+29,Fluid Pipe,Craft fluid pipes to transport steam.,vagrant,steam_age,craft,1111:10:0,,,,,8
+30,Item Pipe,Craft item pipes for basic logistics.,vagrant,steam_age,craft,1111:10:1,,,,,8
+31,Steam Macerator,Craft a steam macerator to automate ore doubling.,vagrant,steam_age,craft,1110:00:3,,,,,1
+32,Steam Compressor,Craft a steam compressor for plate production.,vagrant,steam_age,craft,1110:00:4,,,,,1
+33,Steam Extractor,Craft a steam extractor for rubber and fluids.,vagrant,steam_age,craft,1110:00:5,,,,,1
+34,Steam Mixer,Craft a steam mixer to combine dusts and fluids.,vagrant,steam_age,craft,1110:00:6,,,,,1
+35,Bronze Alloy Smelter,Craft an alloy smelter to automate bronze production.,vagrant,steam_age,craft,1110:00:7,,,,,1
+36,Steam Heat Boiler,Craft a heat boiler to convert steam back to heat.,vagrant,steam_age,craft,1110:01:1,,,,,1
+37,ULV Transition,Craft a creative generator to bootstrap your first grid.,apprentice,ulv_transition,craft,1110:01:2,,,,,1
+38,Tin Cable,Craft tin cables to transmit ULV power.,apprentice,ulv_transition,craft,1111:01:0,,,,,16
+39,Drill ULV,Craft an ULV drill to automate mining.,apprentice,ulv_transition,craft,1111:00:0,,,,,1
+40,Wrench Mastery,Craft a wrench to configure machine sides.,apprentice,ulv_transition,craft,1111:00:5,,,,,1
+41,Dense Item Pipe,Craft dense pipes for high-throughput logistics.,apprentice,steam_automation,craft,1111:10:2,,,,,8
+42,Dense Fluid Pipe,Craft dense fluid pipes for massive steam transfer.,apprentice,steam_automation,craft,1111:10:3,,,,,8
+43,Copper Cable,Craft copper cables for LV power networks.,energy_junior,lv_power,craft,1111:01:1,,,,,16
+44,LV Hull,Craft an LV machine hull.,energy_junior,lv_machines,craft,1:1:0:1:0,,,,,1
+45,Battery Buffer LV,Craft an LV battery buffer to store energy.,energy_junior,lv_power,craft,1110:10:0,,,,,1
+46,Charger,Craft a charger to power your ULV/LV tools.,energy_junior,lv_power,craft,1110:10:3,,,,,1
+47,Drill LV,Craft an LV drill for faster mining.,energy_junior,lv_tools,craft,1111:00:1,,,,,1
+48,Chainsaw LV,Craft an LV chainsaw to clear forests.,energy_junior,lv_tools,craft,1111:00:4,,,,,1
+49,Electric Motor LV,Craft an LV electric motor.,energy_junior,lv_components,craft,0:1:1:0:0,,,,,4
+50,Electric Piston LV,Craft an LV electric piston.,energy_junior,lv_components,craft,0:1:1:0:1,,,,,2
+51,Fluid Pump LV,Craft an LV fluid pump.,energy_junior,lv_components,craft,0:1:1:0:2,,,,,2
+52,Conveyor Module LV,Craft an LV conveyor module.,energy_junior,lv_components,craft,0:1:1:0:3,,,,,2
+53,Emitter LV,Craft an LV emitter for sensors and circuits.,energy_junior,lv_components,craft,0:1:1:0:13,,,,,2
+54,Sensor LV,Craft an LV sensor for automation.,energy_junior,lv_components,craft,0:1:1:0:10,,,,,2
+55,Electric Furnace LV,Craft an LV electric furnace.,energy_junior,lv_machines,craft,1:0:0:0:9,,,,,1
+56,Macerator LV,Craft an LV macerator for ore processing.,energy_junior,lv_machines,craft,1:0:0:0:31,,,,,1
+57,Compressor LV,Craft an LV compressor.,energy_junior,lv_machines,craft,1:0:0:0:27,,,,,1
+58,Extractor LV,Craft an LV extractor.,energy_junior,lv_machines,craft,1:0:0:0:29,,,,,1
+59,Mixer LV,Craft an LV mixer for chemical processing.,energy_junior,lv_machines,craft,1:0:0:0:33,,,,,1
+60,Alloy Smelter LV,Craft an LV alloy smelter.,energy_junior,lv_machines,craft,1:0:0:0:25,,,,,1
+61,Wiremill LV,Craft an LV wiremill to draw wires efficiently.,energy_junior,lv_machines,craft,1:0:0:0:22,,,,,1
+62,Bender LV,Craft an LV bender for plates and foils.,energy_junior,lv_machines,craft,1:0:0:0:23,,,,,1
+63,Extruder LV,Craft an LV extruder for pipes and shapes.,energy_junior,lv_machines,craft,1:0:0:0:24,,,,,1
+64,Forge Hammer LV,Craft an LV forge hammer.,energy_junior,lv_machines,craft,1:0:0:0:40,,,,,1
+65,Ore Washer LV,Craft an ore washer to purify crushed ores.,energy_junior,lv_machines,craft,1:0:0:0:35,,,,,1
+66,Thermal Centrifuge LV,Craft a thermal centrifuge for ore tripling.,energy_junior,lv_machines,craft,1:0:0:0:36,,,,,1
+67,Circuit Board Empty,Craft an empty circuit board.,energy_junior,lv_circuits,craft,0:1:1:1:0,,,,,4
+68,Circuit Board Basic,Craft a basic coated circuit board.,energy_junior,lv_circuits,craft,0:1:1:1:1,,,,,4
+69,Electronic Circuit LV,Craft your first LV electronic circuit.,energy_junior,lv_circuits,craft,0:1:1:1:2,,,,,2
+70,Assembling Machine LV,Craft an LV assembling machine to automate crafting.,energy_junior,lv_machines,craft,1:0:1:1:10,,,,,1
+71,Side Configuration,Use the wrench to configure an LV machine for automation.,energy_junior,lv_automation,side_configured,1:0:0:0:9,,,,,1
+72,Gold Cable,Craft gold cables for MV power transmission.,energy_junior,mv_power,craft,1111:01:2,,,,,16
+73,MV Hull,Craft an MV machine hull.,energy_junior,mv_machines,craft,1:1:0:1:1,,,,,1
+74,Transformer LV-MV,Craft a transformer to step up LV to MV.,energy_junior,mv_power,craft,1:0:1:1:0,,,,,1
+75,Battery Buffer MV,Craft an MV battery buffer.,energy_junior,mv_power,craft,1110:10:1,,,,,1
+76,Drill MV,Craft an MV drill for extended mining operations.,energy_junior,mv_tools,craft,1111:00:2,,,,,1
+77,Chainsaw MV,Craft an MV chainsaw.,energy_junior,mv_tools,craft,1:1:0:0:6,,,,,1
+78,Electric Furnace MV,Craft an MV electric furnace.,energy_junior,mv_machines,craft,1:0:0:0:10,,,,,1
+79,Macerator MV,Craft an MV macerator.,energy_junior,mv_machines,craft,1:0:0:0:32,,,,,1
+80,Compressor MV,Craft an MV compressor.,energy_junior,mv_machines,craft,1:0:0:0:28,,,,,1
+81,Extractor MV,Craft an MV extractor.,energy_junior,mv_machines,craft,1:0:0:0:30,,,,,1
+82,Mixer MV,Craft an MV mixer.,energy_junior,mv_machines,craft,1:0:0:0:34,,,,,1
+83,Alloy Smelter MV,Craft an MV alloy smelter.,energy_junior,mv_machines,craft,1:0:0:0:26,,,,,1
+84,Resistor SMD,Craft SMD resistors for advanced circuits.,energy_junior,mv_components,craft,0:1:1:0:20,,,,,8
+85,Capacitor SMD,Craft SMD capacitors.,energy_junior,mv_components,craft,0:1:1:0:21,,,,,8
+86,Transistor SMD,Craft SMD transistors.,energy_junior,mv_components,craft,0:1:1:0:22,,,,,8
+87,Diode SMD,Craft SMD diodes.,energy_junior,mv_components,craft,0:1:1:0:23,,,,,8
+88,Integrated Circuit MV,Craft an MV integrated circuit.,energy_junior,mv_circuits,craft,0:1:1:1:3,,,,,2
+89,Assembling Machine MV,Craft an MV assembling machine.,energy_junior,mv_machines,craft,1:0:1:1:11,,,,,1
+90,Platinum Cable,Craft platinum cables for HV power transmission.,energy_junior,hv_power,craft,1111:01:5,,,,,16
+91,HV Hull,Craft an HV machine hull.,energy_junior,hv_machines,craft,1:1:0:1:2,,,,,1
+92,Transformer MV-HV,Craft a transformer to step up MV to HV.,energy_junior,hv_power,craft,1110:11:0,,,,,1
+93,Battery Buffer HV,Craft an HV battery buffer.,energy_junior,hv_power,craft,1110:10:2,,,,,1
+94,Drill HV,Craft an HV drill for maximum excavation power.,energy_junior,hv_tools,craft,1111:00:3,,,,,1
+95,Chainsaw HV,Craft an HV chainsaw.,energy_junior,hv_tools,craft,1:1:0:0:7,,,,,1
+96,Electric Furnace HV,Craft an HV electric furnace.,energy_junior,hv_machines,craft,1:0:0:0:11,,,,,1
+97,Advanced Circuit HV,Craft an HV advanced circuit.,energy_junior,hv_circuits,craft,0:1:1:1:4,,,,,2
+98,Assembling Machine HV,Craft an HV assembling machine.,energy_junior,hv_machines,craft,1:0:1:1:12,,,,,1
+99,Transformer HV-EV,Craft a transformer to step up HV to EV.,energy_middle,ev_transition,craft,1110:11:1,,,,,1
+100,Processor Circuit EV,Craft an EV processor circuit.,energy_middle,ev_circuits,craft,0:1:1:1:5,,,,,2
+101,Electrum Ingot,Smelt electrum for advanced components.,administrator,rare_materials,craft,0:110:4,,,,,4
+102,Uranium Ingot,Process uranium for nuclear tech.,administrator,rare_materials,craft,0:110:5,,,,,2
+103,Kanthal Ingot,Create kanthal for heating elements.,administrator,rare_materials,craft,0:0:1:0:6,,,,,4
+104,Nichrome Ingot,Create nichrome for high-heat coils.,administrator,rare_materials,craft,0:0:1:0:7,,,,,4
+105,Stainless Steel Ingot,Alloy stainless steel for chemical machines.,administrator,rare_materials,craft,0:0:1:0:8,,,,,8
+106,Titanium Ingot,Process titanium for aerospace and multiblocks.,administrator,rare_materials,craft,0:0:1:0:9,,,,,4
+107,Tungstensteel Ingot,Create tungstensteel for extreme durability.,administrator,rare_materials,craft,0:0:1:0:10,,,,,4
+108,Aluminium Ingot,Process aluminium for lightweight structures.,administrator,rare_materials,craft,0:0:1:0:11,,,,,8
+109,Chromium Ingot,Process chromium for stainless steel alloys.,administrator,rare_materials,craft,0:0:1:0:12,,,,,4
+110,Platinum Ingot,Process platinum for catalysts and HV cables.,administrator,rare_materials,craft,0:0:1:0:13,,,,,4
+111,Iridium Ingot,Process iridium for endgame components.,administrator,rare_materials,craft,0:0:1:0:14,,,,,2
+112,Osmium Ingot,Process osmium for superconductors.,administrator,rare_materials,craft,0:0:1:0:15,,,,,2
+113,Naquadah Ingot,Process naquadah for extreme voltage tech.,administrator,rare_materials,craft,0:0:1:0:16,,,,,1
+114,Circuit Assembler,Craft a circuit assembler to automate board population.,administrator,advanced_machines,craft,1:0:1:1:13,,,,,1
+115,Precision Laser Welder,Craft a laser welder for micro-components.,administrator,advanced_machines,craft,1:0:1:1:14,,,,,1
+116,Implosion Compressor,Craft an implosion compressor for dense materials.,administrator,advanced_machines,craft,1:0:1:1:15,,,,,1
+117,Hatch Input LV,Craft an LV input hatch for multiblock fluids.,energy_junior,multiblocks_junior,craft,1:1:1:0:0,,,,,1
+118,Hatch Output LV,Craft an LV output hatch for multiblock fluids.,energy_junior,multiblocks_junior,craft,1:1:1:0:10,,,,,1
+119,Hatch Bus Input LV,Craft an LV input bus for multiblock items.,energy_junior,multiblocks_junior,craft,1:1:1:0:20,,,,,1
+120,Hatch Bus Output LV,Craft an LV output bus for multiblock items.,energy_junior,multiblocks_junior,craft,1:1:1:0:30,,,,,1
+121,Hatch Energy Input LV,Craft an LV energy hatch to power multiblocks.,energy_junior,multiblocks_junior,craft,1:1:1:0:40,,,,,1
+122,Hatch Maintenance,Craft a maintenance hatch for multiblock repairs.,energy_junior,multiblocks_junior,craft,1:1:1:0:60,,,,,1
+123,Coke Oven,Build a Coke Oven multiblock for coal processing.,energy_junior,multiblocks_junior,craft,1:0:1:1:30,,,,,1
+124,Steam Turbine,Build a Steam Turbine multiblock for massive LV power.,energy_junior,multiblocks_junior,craft,1:0:0:1:14,,,,,1
+125,Multiblock LCR,Build a Large Chemical Reactor for complex chemistry.,energy_junior,multiblocks_junior,craft,1:0:1:1:16,,,,,1
+126,Advanced Database,Craft an advanced database for complex recipe lookups.,energy_junior,logistics,craft,1:0:1:1:24,,,,,1
+127,Transformer EV-IV,Craft a transformer to step up EV to IV.,energy_middle,ev_iv_transition,craft,1:0:1:1:3,,,,,1
+128,Battery Buffer EV,Craft an EV battery buffer.,energy_middle,ev_iv_transition,craft,1:0:1:0:4,,,,,1
+129,Battery Buffer IV,Craft an IV battery buffer for massive capacity.,energy_middle,ev_iv_transition,craft,1:0:1:0:5,,,,,1
+130,Wetware Circuit IV,Craft an IV wetware circuit.,energy_middle,iv_circuits,craft,0:1:1:1:6,,,,,2
+131,Vacuum Freezer,Build a Vacuum Freezer multiblock for superconductors.,energy_middle,multiblocks_middle,craft,1:0:1:1:17,,,,,1
+132,Industrial Smelter,Build an Industrial Smelter for massive alloy production.,energy_middle,multiblocks_middle,craft,1:0:1:1:18,,,,,1
+133,Industrial Grinder,Build an Industrial Grinder for perfect ore processing.,energy_middle,multiblocks_middle,craft,1:0:1:1:19,,,,,1
+134,Industrial Squeezer,Build an Industrial Squeezer for fluid extraction.,energy_middle,multiblocks_middle,craft,1:0:1:1:20,,,,,1
+135,Industrial Brewery,Build an Industrial Brewery for biomass and potions.,energy_middle,multiblocks_middle,craft,1:0:1:1:21,,,,,1
+136,Large Turbine,Build a Large Turbine for high-tier power generation.,energy_middle,multiblocks_middle,craft,1:0:1:1:22,,,,,1
+137,Multi Smelter,Build a Multi Smelter for batch ingot production.,energy_middle,multiblocks_middle,craft,1:0:1:1:23,,,,,1
+138,Cracker,Build a Cracker for oil processing.,energy_middle,multiblocks_middle,craft,1:0:1:1:25,,,,,1
+139,Distillation Tower,Build a Distillation Tower to separate complex fluids.,energy_middle,multiblocks_middle,craft,1:0:1:1:26,,,,,1
+140,Chemical Plant,Build a Chemical Plant for industrial synthesis.,energy_middle,multiblocks_middle,craft,1:0:1:1:28,,,,,1
+141,Pyrolyse Oven,Build a Pyrolyse Oven for carbon and tar processing.,energy_middle,multiblocks_middle,craft,1:0:1:1:29,,,,,1
+142,Large Combustion Reactor,Build a Large Combustion Reactor for extreme power.,energy_middle,multiblocks_middle,craft,1:0:1:1:31,,,,,1
+143,Transformer IV-LuV,Craft a transformer to step up IV to LuV.,energy_senior,luv_transition,craft,1:0:1:1:4,,,,,1
+144,Quantum Circuit LuV,Craft a LuV quantum circuit.,energy_senior,luv_circuits,craft,0:1:1:1:7,,,,,2
+145,Assembly Line,Build an Assembly Line multiblock for endgame components.,energy_senior,multiblocks_senior,craft,1:0:1:1:27,,,,,1
+146,Extreme Combustion Reactor,Build an ECR for limitless IV/LuV power.,energy_senior,multiblocks_senior,craft,1:0:1:1:32,,,,,1
+147,Naquadah Reactor,Build a Naquadah Reactor for endgame base load power.,energy_senior,multiblocks_senior,craft,1:0:0:1:13,,,,,1
+148,Multi Volume Hatch,Craft a multi-volume hatch for massive fluid storage.,energy_senior,multiblocks_senior,craft,1:0:1:1:33,,,,,1
+149,Carbon Fiber,Craft carbon fiber for lightweight armor and machines.,energy_senior,advanced_materials,craft,0:1:1:1:10,,,,,8
+150,Graphene,Craft graphene for advanced electronics.,energy_senior,advanced_materials,craft,0:1:1:1:11,,,,,4
+151,Neutronium,Craft neutronium for ultimate density structures.,energy_senior,advanced_materials,craft,0:1:1:1:12,,,,,1
+152,Naquadah Alloy,Craft naquadah alloy for ZPM/UV casings.,energy_senior,advanced_materials,craft,0:1:1:1:13,,,,,4
+153,HSS-E,Craft HSS-E for high-speed tooling.,energy_senior,advanced_materials,craft,0:1:1:1:14,,,,,4
+154,Polyethylene,Craft polyethylene for plastic casings and insulation.,energy_senior,advanced_materials,craft,0:1:1:1:15,,,,,16
+155,PCB,Craft printed circuit boards for advanced computing.,energy_senior,advanced_materials,craft,0:1:1:1:16,,,,,8
+156,Fiberglass,Craft fiberglass for high-tier circuit boards.,energy_senior,advanced_materials,craft,0:1:1:1:17,,,,,8
+157,Sulfuric Acid,Obtain a bucket of sulfuric acid for chemical processing.,energy_senior,fluids,inventory,0:11111:2,,,,,1
+158,Hydrogen,Obtain a bucket of hydrogen for fuel and chemistry.,energy_senior,fluids,inventory,0:11111:1,,,,,1
+159,Coolant,Obtain a bucket of coolant for reactor stabilization.,energy_senior,fluids,inventory,0:11111:4,,,,,1
+160,LuV Hull,Craft a LuV machine hull.,energy_senior,luv_machines,craft,1:1:0:1:5,,,,,1
+161,ZPM Hull,Craft a ZPM machine hull.,energy_senior,luv_machines,craft,1:1:0:1:6,,,,,1
+162,Jackhammer,Craft a jackhammer for rapid terrain destruction.,energy_senior,tools,craft,1:1:0:0:10,,,,,1
+163,Electric Soldering Iron,Craft a soldering iron for circuit repair.,energy_senior,tools,craft,1:1:0:0:11,,,,,1

@@ -14,7 +14,7 @@
     { "id": 12, "prereqs": [11] },
     { "id": 13, "prereqs": [11] },
     { "id": 14, "prereqs": [11] },
-    { "id": 15, "prereqs": [2] },
+    { "id": 15, "prereqs": [12] },
     { "id": 16, "prereqs": [15] },
     { "id": 17, "prereqs": [13] },
     { "id": 18, "prereqs": [13] },
