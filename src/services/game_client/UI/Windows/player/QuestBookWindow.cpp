@@ -1,4 +1,5 @@
 #include "QuestBookWindow.h"
+#include "Crafting/ClientItemRegistry.h"
 #include "Network/NetClient.h"
 #include "RenderLib/Utils/TextureAtlas.h"
 #include "UI/UIManager.h"
@@ -13,6 +14,20 @@
 QuestBookWindow::QuestBookWindow(UIManager *mgr) : uiMgr_(mgr) {
     loadQuestData();
 }
+
+namespace {
+
+std::string itemLabel(uint16_t itemId, const std::string &spec) {
+    if (const ItemRegistry::ItemInfo *item = ItemRegistry::GetItem(itemId)) {
+        const std::string &id = spec.empty() ? std::to_string(itemId) : spec;
+        return item->name + " (" + id + ")";
+    }
+    if (!spec.empty())
+        return spec;
+    return "item " + std::to_string(itemId);
+}
+
+} // namespace
 
 void QuestBookWindow::SetOpen(bool open) {
     open_ = open;
@@ -247,7 +262,8 @@ void QuestBookWindow::renderQuestDetail(const InventoryState* playerInv) {
         }
     } else if (it->rewardItemId > 0 && !it->isExchange) {
         ImGui::Dummy(ImVec2(0, 4));
-        ImGui::Text("Reward: item %u x %u", it->rewardItemId, it->rewardCount);
+        ImGui::Text("Reward: %s x %u", itemLabel(it->rewardItemId, "").c_str(),
+                    it->rewardCount);
     }
 
     // Structured objectives from quest_requirements.json. Each requirement
@@ -263,9 +279,11 @@ void QuestBookWindow::renderQuestDetail(const InventoryState* playerInv) {
     if (it->isExchange) {
         ImGui::Dummy(ImVec2(0, 4));
         if (it->costItemId > 0) {
-            ImGui::Text("Cost: item %u x %u", it->costItemId, it->costCount);
+            ImGui::Text("Cost: %s x %u", itemLabel(it->costItemId, "").c_str(),
+                        it->costCount);
         }
-        ImGui::Text("Reward: item %u x %u", it->rewardItemId, it->rewardCount);
+        ImGui::Text("Reward: %s x %u", itemLabel(it->rewardItemId, "").c_str(),
+                    it->rewardCount);
         if (it->cooldownSecs > 0) {
             ImGui::Text("Cooldown: %us", it->cooldownSecs);
         }
@@ -421,15 +439,15 @@ void QuestBookWindow::renderRequirementRow(const quest::QuestRequirement& req,
     ImGui::Text("%s", detectionLabel(req.kind).c_str());
     ImGui::SameLine();
     if (itemId != 0) {
-        std::string spec = req.item + " x " + std::to_string(need);
+        std::string label = itemLabel(itemId, req.item);
         if (req.kind == quest::DetectionType::INVENTORY) {
             ImU32 col = satisfied ? IM_COL32(50, 200, 50, 255)
                                   : IM_COL32(255, 200, 50, 255);
             ImGui::PushStyleColor(ImGuiCol_Text, col);
-            ImGui::Text("item %u x %u  (have %d)", itemId, need, have);
+            ImGui::Text("%s x %u  (have %d)", label.c_str(), need, have);
             ImGui::PopStyleColor();
         } else {
-            ImGui::Text("item %u x %u", itemId, need);
+            ImGui::Text("%s x %u", label.c_str(), need);
         }
         ImGui::SameLine();
         auto dl = ImGui::GetWindowDrawList();
@@ -443,7 +461,7 @@ void QuestBookWindow::renderRequirementRow(const quest::QuestRequirement& req,
         dl->AddText(ImVec2(p.x, p.y + 24), IM_COL32(255, 255, 255, 255), cnt);
         ImGui::Dummy(ImVec2(28, 24));
         if (ImGui::IsItemHovered()) {
-            std::string tip = spec;
+            std::string tip = label;
             if (req.kind == quest::DetectionType::MACHINE && !req.machine.empty())
                 tip += "\nmachine: " + req.machine;
             if (req.consume) tip += "\nconsumed on completion";
@@ -461,7 +479,8 @@ void QuestBookWindow::renderRewardEntry(const quest::RewardEntry& e) {
         uint16_t itemId = ItemId::pack(e.item);
         uint16_t count = e.count > 0 ? e.count : 1;
         if (itemId != 0) {
-            ImGui::Text("item %u x %u", itemId, count);
+            std::string label = itemLabel(itemId, e.item);
+            ImGui::Text("%s x %u", label.c_str(), count);
             ImGui::SameLine();
             auto dl = ImGui::GetWindowDrawList();
             ImVec2 p = ImGui::GetCursorScreenPos();
@@ -474,7 +493,7 @@ void QuestBookWindow::renderRewardEntry(const quest::RewardEntry& e) {
             dl->AddText(ImVec2(p.x, p.y + 24), IM_COL32(255, 255, 255, 255), cnt);
             ImGui::Dummy(ImVec2(28, 24));
             if (ImGui::IsItemHovered())
-                ImGui::SetTooltip("%s", e.item.c_str());
+                ImGui::SetTooltip("%s", label.c_str());
         } else {
             ImGui::Text("item %s x %u", e.item.c_str(), count);
         }

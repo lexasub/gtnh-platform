@@ -303,6 +303,73 @@ recipes:
     min_tier: 0
     max_tier: 32767
 
+  # ── Steam machines ───────────────────────────────────────
+  # Bronze-tier upgrades built around a heat_furnace core.
+  # (No heat_* variants exist for these classes — heat_furnace is the hull.)
+
+  - name: steam_compressor
+    pattern:
+      - [bronze_plate, bronze_plate, bronze_plate]
+      - [cable_copper, heat_furnace, cable_copper]
+      - [bronze_plate, bronze_plate, bronze_plate]
+    inputs:
+      - { item: bronze_plate, count: 6 }
+      - { item: cable_copper, count: 2 }
+      - { item: heat_furnace, count: 1 }
+    outputs:
+      - { item: steam_compressor, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: steam_extractor
+    pattern:
+      - [bronze_plate, glass, bronze_plate]
+      - [cable_copper, heat_furnace, cable_copper]
+      - [bronze_plate, glass, bronze_plate]
+    inputs:
+      - { item: bronze_plate, count: 4 }
+      - { item: glass, count: 2 }
+      - { item: cable_copper, count: 2 }
+      - { item: heat_furnace, count: 1 }
+    outputs:
+      - { item: steam_extractor, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: steam_mixer
+    pattern:
+      - [glass, bronze_plate, glass]
+      - [cable_copper, heat_furnace, cable_copper]
+      - [glass, bronze_plate, glass]
+    inputs:
+      - { item: glass, count: 4 }
+      - { item: bronze_plate, count: 2 }
+      - { item: cable_copper, count: 2 }
+      - { item: heat_furnace, count: 1 }
+    outputs:
+      - { item: steam_mixer, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: bronze_alloy_smelter
+    pattern:
+      - [bronze_ingot, bronze_plate, bronze_ingot]
+      - [cable_copper, heat_furnace, cable_copper]
+      - [bronze_ingot, bronze_plate, bronze_ingot]
+    inputs:
+      - { item: bronze_ingot, count: 4 }
+      - { item: bronze_plate, count: 2 }
+      - { item: cable_copper, count: 2 }
+      - { item: heat_furnace, count: 1 }
+    outputs:
+      - { item: bronze_alloy_smelter, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
   # ── Boilers ──────────────────────────────────────────────
 
   - name: fluid_tank
