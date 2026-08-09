@@ -55,7 +55,7 @@ int,name,stack,meta
 0:11110:2,coal,,0
 0:11110:3,wooden_pickaxe,,0
 0:11110:4,stone_pickaxe,,0
-0:11110:5,iron_pickaxe,,0
+0:11110:5,iron_pickaxe,1,0
 0:11110:6,workbench_axe,,0
 0:11110:7,workbench_shovel,,0
 0:11110:8,workbench_sword,,0

@@ -119,6 +119,7 @@ Note: **ChestSync** is a protocol feature (ChestOpenReq/Resp) + client chest win
 
 **Option A — Conan (recommended, automated):**
 
+1) install tbb bgfx bx bimg (and may be lodepng) in system
 [Conan](https://conan.io/) handles most dependencies (Asio, EnTT, spdlog, FlatBuffers, LMDB++, GLM, etc.).
 
 ```bash
