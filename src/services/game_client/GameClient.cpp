@@ -137,6 +137,10 @@ void GameClient::subscribeNetClient() {
         [this](std::shared_ptr<std::vector<uint8_t>> data) {
             uiMgr_.HandleNetwork(GatewayMsg::kMultiblockEvent, data->data());
         });
+    netClient_->SetGridUpdateCallback(
+        [this](std::shared_ptr<std::vector<uint8_t>> data) {
+            uiMgr_.HandleNetwork(GatewayMsg::kGridUpdate, data->data());
+        });
     netClient_->SetQuestUpdateCallback(
         [this](uint8_t msgType, std::shared_ptr<std::vector<uint8_t>> data) {
             uiMgr_.HandleNetwork(msgType, data->data());

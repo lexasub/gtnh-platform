@@ -30,9 +30,13 @@ struct RecipeEntry {
 // Renders a single recipe entry with input slots, arrow, output slots,
 // duration, and separator. slotIdx is incremented for each slot rendered to
 // ensure unique PushID values.
+// When hoveredItemId is non-null, it is written with the item id of whichever
+// slot is under the mouse each frame (0 when no slot is hovered) — used by
+// RecipeInspectWindow for R/U drill-in.
 inline void
 RenderRecipeEntry(const RecipeEntry &entry, int &slotIdx,
-                  std::function<void(const ItemStack &)> onClick = nullptr) {
+                  std::function<void(const ItemStack &)> onClick = nullptr,
+                  uint16_t *hoveredItemId = nullptr) {
   // Title + machine group
   ImGui::Text("%s", entry.name.c_str());
   ImGui::SameLine();
@@ -52,8 +56,12 @@ RenderRecipeEntry(const RecipeEntry &entry, int &slotIdx,
         ImGui::PopID();
         if (col < 2)
           ImGui::SameLine();
-        if (stack.item_id != 0 && ImGui::IsItemHovered())
-          ImGui::SetTooltip("%s", ItemRegistry::GetName(stack.item_id).data());
+        if (ImGui::IsItemHovered()) {
+          if (hoveredItemId)
+            *hoveredItemId = stack.item_id;
+          if (stack.item_id != 0)
+            ImGui::SetTooltip("%s", ItemRegistry::GetName(stack.item_id).data());
+        }
       }
     }
   } else {
@@ -65,8 +73,12 @@ RenderRecipeEntry(const RecipeEntry &entry, int &slotIdx,
       }
       ImGui::PopID();
       ImGui::SameLine();
-      if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s", ItemRegistry::GetName(input.item_id).data());
+      if (ImGui::IsItemHovered()) {
+        if (hoveredItemId)
+          *hoveredItemId = input.item_id;
+        if (input.item_id != 0)
+          ImGui::SetTooltip("%s", ItemRegistry::GetName(input.item_id).data());
+      }
     }
   }
 
@@ -86,8 +98,12 @@ RenderRecipeEntry(const RecipeEntry &entry, int &slotIdx,
     }
     ImGui::PopID();
     ImGui::SameLine();
-    if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("%s", ItemRegistry::GetName(output.item_id).data());
+    if (ImGui::IsItemHovered()) {
+      if (hoveredItemId)
+        *hoveredItemId = output.item_id;
+      if (output.item_id != 0)
+        ImGui::SetTooltip("%s", ItemRegistry::GetName(output.item_id).data());
+    }
   }
 
   // Duration

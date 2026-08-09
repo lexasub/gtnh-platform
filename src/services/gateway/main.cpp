@@ -120,6 +120,8 @@ int main(int argc, char* argv[]) {
     gateway.subscribe("player.actions.directive");
     gateway.subscribe("player.inventory.update");
     gateway.subscribe("sim.craft.response");
+    gateway.subscribe("sim.workbench.state");
+    gateway.subscribe("sim.workbench.load");
     gateway.subscribe("player.machine.slot.response");
     gateway.subscribe("player.tool.action.response");
     gateway.subscribe("world.block_entity.update");

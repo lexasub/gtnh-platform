@@ -23,6 +23,8 @@
 #include "Scenario/GameScenario.h"
 #include "Crafting/CraftRequestHandler.h"
 #include "Crafting/RecipeCompletedHandler.h"
+#include "Network/WorkbenchOpenHandler.h"
+#include "Crafting/WorkbenchStateManager.h"
 #include "Quest/QuestManager.h"
 #include "Actions/MachineSlotHandler.h"
 #include "Actions/handTool/ToolActionHandler.h"
@@ -63,8 +65,11 @@ void SimCoreMessageHandler::setup() {
     topicDispatcher_->on("energy.cable.exploded", std::make_unique<CableExplosionHandler>(
         d.chunkClient));
 
-    topicDispatcher_->on("sim.craft.request", std::make_unique<CraftRequestHandler>(
-        d.routerClient, d.recipeManager, d.inventoryStore, d.questManager));
+    topicDispatcher_->on("sim.craft.request", std::make_unique<simulation_core::CraftRequestHandler>(
+        d.routerClient, d.recipeManager, d.inventoryStore, d.questManager,
+        d.wbStateManager));
+    topicDispatcher_->on("sim.workbench.load", std::make_unique<WorkbenchOpenHandler>(
+        d.wbStateManager, d.eventPublisher));
     // recipe.completed is NOT handled: MachineSystem is the sole owner of machine
     // recipes. A RecipeCompletedHandler here would overwrite the whole container
     // with result_slots, collapsing 2-slot machines to 1 and erasing the input.

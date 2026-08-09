@@ -341,6 +341,17 @@ void NetClient::OnMessage(uint8_t msg_type,
             if (onBlockEntityUpdate_)
                 onBlockEntityUpdate_(data);
             break;
+        case GatewayMsg::kGridUpdate: {
+            if (onGridUpdate_) {
+                flatbuffers::Verifier v(payload, plen);
+                if (!v.VerifyBuffer<Protocol::GridUpdate>(nullptr)) {
+                    spdlog::warn("NetClient: invalid GridUpdate");
+                    break;
+                }
+                onGridUpdate_(data);
+            }
+            break;
+        }
         case GatewayMsg::kMultiblockEvent: {
             flatbuffers::Verifier v(payload, plen);
             if (v.VerifyBuffer<Protocol::MultiblockCreatedEvent>(nullptr)) {
@@ -837,6 +848,16 @@ void NetClient::SendQuestBookOpen(uint64_t player_id) {
     EnqueueWrite(GatewayMsg::kQuestBookOpen, builder.GetBufferPointer(),
                  builder.GetSize());
     spdlog::debug("[Quest] SendQuestBookOpen: player={}", player_id);
+}
+
+void NetClient::SendWorkbenchOpenReq(const BlockPos &pos) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    Protocol::Vec3i p(pos.x, pos.y, pos.z);
+    EnqueueWrite(GatewayMsg::kWorkbenchOpenReq,
+                 reinterpret_cast<const uint8_t*>(&p),
+                 sizeof(p));
+    spdlog::debug("[Workbench] SendWorkbenchOpenReq: pos=({},{},{})",
+                  pos.x, pos.y, pos.z);
 }
 
 void NetClient::SendSetMachineSlot(uint64_t player_id, const BlockPos& pos,

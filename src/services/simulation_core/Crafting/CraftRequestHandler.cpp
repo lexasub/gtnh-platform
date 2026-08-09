@@ -3,19 +3,22 @@
 #include "../Storage/PlayerInventoryStore.h"
 #include "../Quest/QuestManager.h"
 #include "../RecipeManager/RecipeManager.h"
+#include "WorkbenchStateManager.h"
 #include "core_generated.h"
 #include "recipe_generated.h"
 #include <common/ItemId.h>
 #include <spdlog/spdlog.h>
 
-namespace simcore {
+namespace simulation_core {
 
-CraftRequestHandler::CraftRequestHandler(std::shared_ptr<IoUringRouterClient> router,
+CraftRequestHandler::CraftRequestHandler(std::shared_ptr<simcore::IoUringRouterClient> router,
                                          std::shared_ptr<RecipeManager::RecipeManager> recipeManager,
-                                         std::shared_ptr<PlayerInventoryStore> inventoryStore,
-                                         std::shared_ptr<QuestManager> questManager)
+                                         std::shared_ptr<simcore::PlayerInventoryStore> inventoryStore,
+                                         std::shared_ptr<simcore::QuestManager> questManager,
+                                         std::shared_ptr<WorkbenchStateManager> wbStateManager)
     : router_(std::move(router)), recipeManager_(std::move(recipeManager)),
-      inventoryStore_(std::move(inventoryStore)), questManager_(std::move(questManager))
+      inventoryStore_(std::move(inventoryStore)), questManager_(std::move(questManager)),
+      wbStateManager_(std::move(wbStateManager))
 {}
 
 void CraftRequestHandler::handle(const std::vector<uint8_t>& data) {
@@ -62,6 +65,12 @@ void CraftRequestHandler::handle(const std::vector<uint8_t>& data) {
     // player's inventory, not into an input-grid slot (craft() would place the
     // output into the first empty input slot, breaking consumption accounting).
     grid = recipe->consumeInputs(grid);
+
+    // Save the consumed grid state to EntityStateStore so it survives restart.
+    if (wbStateManager_ && req->pos()) {
+        auto pos = req->pos();
+        wbStateManager_->setGridState(pos->x(), pos->y(), pos->z(), grid);
+    }
 
     {
         auto inv = inventoryStore_->getSlots(playerId);

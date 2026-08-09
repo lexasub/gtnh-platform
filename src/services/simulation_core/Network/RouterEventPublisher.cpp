@@ -1,6 +1,7 @@
 #include "Network/RouterEventPublisher.h"
 #include "Network/clients/IoUringRouterClient.h"
 #include "core_generated.h"
+#include "RecipeManager/RecipeManager.h"
 #include "ECS/PatternLibrary.h"
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
@@ -269,6 +270,25 @@ void RouterEventPublisher::publishMultiblockDestroyed(uint64_t controller_id)
                                     builder.GetBufferPointer() + builder.GetSize());
     router_->Publish("sim.multiblock.destroyed", std::move(event_data));
     spdlog::debug("Published MultiblockDestroyedEvent: id={}", controller_id);
+}
+
+void RouterEventPublisher::publishGridUpdate(int32_t x, int32_t y, int32_t z,
+                                             const std::vector<RecipeManager::ItemStack> &grid)
+{
+    flatbuffers::FlatBufferBuilder builder(128);
+    auto pos = Protocol::Vec3i(x, y, z);
+    std::vector<Protocol::ItemStack> fbGrid;
+    fbGrid.reserve(grid.size());
+    for (auto& s : grid) {
+        fbGrid.emplace_back(s.item_id, s.count, s.metadata);
+    }
+    auto gridVec = builder.CreateVectorOfStructs<Protocol::ItemStack>(fbGrid);
+    auto update = Protocol::CreateGridUpdate(builder, &pos, gridVec);
+    builder.Finish(update);
+    std::vector<uint8_t> data(builder.GetBufferPointer(),
+                              builder.GetBufferPointer() + builder.GetSize());
+    router_->Publish("sim.workbench.state", std::move(data));
+    spdlog::debug("Published GridUpdate: at ({},{},{}) {} slots", x, y, z, grid.size());
 }
 
 } // namespace simcore

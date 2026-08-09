@@ -81,6 +81,7 @@ private:
   int cols_ = 10;
   int selectedSlot_ = -1;
   int hoveredSlot_ = -1;
+  int lastRightDragSlot_ = -1;
   ClickCallback clickCb_;
   DragManager *dm_ = nullptr;
 };

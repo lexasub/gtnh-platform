@@ -97,11 +97,12 @@ int RenderSlotGrid(std::vector<ItemStack>& slots,
                 bool shift = ImGui::GetIO().KeyShift;
                 (*clickCb)(globalIdx, button, shift);
             }
-            if (dragMgr) {
-                int button = ImGui::IsMouseClicked(ImGuiMouseButton_Right) ? 1 : 0;
-                bool shift = ImGui::GetIO().KeyShift;
-                dragMgr->OnSlotActivated(globalIdx, slots, button, shift);
-            }
+             if (dragMgr) {
+                 int button = ImGui::IsMouseClicked(ImGuiMouseButton_Right) ? 1 : 0;
+                 bool shift = ImGui::GetIO().KeyShift;
+                 bool ctrl = ImGui::GetIO().KeyCtrl;
+                 dragMgr->OnSlotActivated(globalIdx, slots, button, shift, ctrl);
+             }
         }
         ImGui::PopID();
     }
@@ -265,7 +266,8 @@ int SlotGridComponent::Render() {
         if (dm_ && ImGui::IsItemActivated()) {
             int button = ImGui::IsMouseClicked(ImGuiMouseButton_Right) ? 1 : 0;
             bool shift = ImGui::GetIO().KeyShift;
-            dm_->OnSlotActivated(globalIdx, slots_, button, shift);
+            bool ctrl = ImGui::GetIO().KeyCtrl;
+            dm_->OnSlotActivated(globalIdx, slots_, button, shift, ctrl);
             clicked = globalIdx;
         }
 
@@ -334,6 +336,18 @@ int SlotGridComponent::Render() {
 
     if (dm_ && dm_->IsDragging() && !inv_->dropEnabled) {
         dm_->CancelDrag(slots_);
+    }
+
+    // ── Right-drag distribute: RMB held + hover new slot → place 1 ────────
+    if (dm_ && dm_->IsDragging() && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+        int hover = dm_->GetHoverSlot();
+        if (hover != lastRightDragSlot_ && hover >= 0) {
+            dm_->OnRightDragDistribute(hover, slots_);
+            lastRightDragSlot_ = hover;
+        }
+    }
+    if (dm_ && !ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+        lastRightDragSlot_ = -1;
     }
 
     return clicked;

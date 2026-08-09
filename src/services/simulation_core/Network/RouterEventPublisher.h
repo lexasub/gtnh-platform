@@ -45,8 +45,11 @@ public:
                                         const std::array<uint8_t, 6> &side_config) override;
 
   void publishMultiblockCreated(uint64_t controller_id, int32_t x, int32_t y,
-                                int32_t z, uint16_t mb_type) override;
+                                 int32_t z, uint16_t mb_type) override;
   void publishMultiblockDestroyed(uint64_t controller_id) override;
+
+  void publishGridUpdate(int32_t x, int32_t y, int32_t z,
+                        const std::vector<RecipeManager::ItemStack> &grid) override;
 
 private:
   std::shared_ptr<IoUringRouterClient> router_;

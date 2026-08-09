@@ -67,7 +67,13 @@ void CraftingGrid::Clear() {
 }
 
 void CraftingGrid::SetSlots(const std::array<ItemStack, 9>& slots) {
+    // Suppress onGridChanged_ while bulk-loading server state; otherwise the
+    // change notification fires Recalc() → server preview request whose reply
+    // can arrive after OnCraftResponse has set the result and wipe it.
+    auto saved = slots_.getOnChange();  // save current callback
+    slots_.setOnChange(nullptr);        // suppress
     slots_.setAll(slots);
+    slots_.setOnChange(std::move(saved));  // restore
     result_ = ItemStack{};
 }
 

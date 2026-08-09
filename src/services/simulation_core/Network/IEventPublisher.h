@@ -1,5 +1,6 @@
 #pragma once
 #include "MachineRegistry.h"
+#include "RecipeTypes.h"
 #include <cstdint>
 #include <array>
 #include <vector>
@@ -63,9 +64,14 @@ public:
                                                 const std::array<uint8_t, 6> &side_config) = 0;
 
   virtual void publishMultiblockCreated(uint64_t controller_id, int32_t x,
-                                        int32_t y, int32_t z,
-                                        uint16_t mb_type) = 0;
+                                         int32_t y, int32_t z,
+                                         uint16_t mb_type) = 0;
   virtual void publishMultiblockDestroyed(uint64_t controller_id) = 0;
+
+  // Workbench grid state: published when a player opens a workbench (loads
+  // saved state) and after each craft (saves new state).
+  virtual void publishGridUpdate(int32_t x, int32_t y, int32_t z,
+                                const std::vector<RecipeManager::ItemStack> &grid) = 0;
 };
 
 } // namespace simcore

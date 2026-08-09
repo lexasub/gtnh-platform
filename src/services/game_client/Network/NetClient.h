@@ -66,6 +66,8 @@ inline constexpr uint8_t kRecipeItemResp = 39;
 inline constexpr uint8_t kRecipeMachineReq = 40;
 inline constexpr uint8_t kRecipeMachineResp = 41;
 inline constexpr uint8_t kBlockActionDirective = 42;
+inline constexpr uint8_t kGridUpdate = 43;
+inline constexpr uint8_t kWorkbenchOpenReq = 44;
 } // namespace GatewayMsg
 
 class NetClient : public std::enable_shared_from_this<NetClient> {
@@ -99,9 +101,14 @@ public:
       BlockPos, uint8_t, bool, const std::string &, const ItemStack &)>;
   using ToolActionRespCallback =
       std::function<void(bool, uint8_t, const std::vector<uint8_t> &)>;
-  using MultiblockEventCallback =
-      std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
-  using QuestUpdateCallback =
+    using MultiblockEventCallback =
+        std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
+    using GridUpdateCallback =
+        std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
+    void SetGridUpdateCallback(GridUpdateCallback cb) {
+        onGridUpdate_ = std::move(cb);
+    }
+    using QuestUpdateCallback =
       std::function<void(uint8_t, std::shared_ptr<std::vector<uint8_t>>)>;
   using GameModeChangeCallback = std::function<void(uint8_t new_mode)>;
   using StartScenarioRespCallback = std::function<void(
@@ -212,7 +219,8 @@ public:
   // server-side inventory check against INVENTORY-type quest objectives.
   void SendQuestBookOpen(uint64_t player_id);
   void SendGameModeChange(uint64_t player_id, uint8_t new_mode);
-  void SendStartScenarioReq(uint64_t player_id, uint8_t scenario_index);
+    void SendStartScenarioReq(uint64_t player_id, uint8_t scenario_index);
+    void SendWorkbenchOpenReq(const BlockPos &pos);
 
   // ── Server-driven recipe queries (payload = Protocol::RecipeFrame) ──
   void SendRecipeCheckReq(uint16_t machine_id,
@@ -295,9 +303,10 @@ private:
   CraftResponseCallback onCraftResponse_;
   SetMachineSlotRespCallback onSetMachineSlotResp_;
   ToolActionRespCallback onToolActionResp_;
-  MultiblockEventCallback onMultiblockEvent_;
-  QuestUpdateCallback onQuestUpdate_;
-  GameModeChangeCallback onGameModeChange_;
-  StartScenarioRespCallback onStartScenarioResp_;
-  ReconnectCallback onReconnect_;
+    MultiblockEventCallback onMultiblockEvent_;
+    QuestUpdateCallback onQuestUpdate_;
+    GameModeChangeCallback onGameModeChange_;
+    StartScenarioRespCallback onStartScenarioResp_;
+    GridUpdateCallback onGridUpdate_;
+    ReconnectCallback onReconnect_;
 };

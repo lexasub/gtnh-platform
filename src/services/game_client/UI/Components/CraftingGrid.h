@@ -42,7 +42,9 @@ public:
   // (e.g. after a craft result replaces the grid contents).
   void InvalidatePreview() { ++gen_; }
 
-  // Set all 9 grid slots from server response (consumed grid after crafting)
+  // Set all 9 grid slots from server response (consumed grid after crafting).
+  // Suppresses onGridChanged_ to prevent a stale async preview from wiping
+  // the result that OnCraftResponse is about to set.
   void SetSlots(const std::array<ItemStack, 9> &slots);
 
   // Handle slot activation (click) using DragManager for drag state

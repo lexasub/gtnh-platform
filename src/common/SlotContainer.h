@@ -75,6 +75,7 @@ public:
 
   // ── Event ───────────────────────────────────────────────────────────
   void setOnChange(ChangeFn fn) { on_change_ = std::move(fn); }
+  ChangeFn getOnChange() const { return on_change_; }
 
 private:
   std::array<T, N> slots_{};

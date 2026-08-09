@@ -61,7 +61,8 @@ void PlayerInventory::Render(InventoryState* /*playerInv*/) {
          ImGui::IsMouseClicked(ImGuiMouseButton_Right))) {
         int button = ImGui::IsMouseClicked(ImGuiMouseButton_Right) ? 1 : 0;
         bool shift = ImGui::GetIO().KeyShift;
-        dragMgr_->OnSlotActivated(hotbarHover, state_.slots, button, shift);
+        bool ctrl = ImGui::GetIO().KeyCtrl;
+        dragMgr_->OnSlotActivated(hotbarHover, state_.slots, button, shift, ctrl);
     }
 
     if (!state_.open) return;

@@ -31,6 +31,8 @@ class BatteryBufferSystem;
 
 namespace RecipeManager { class RecipeManager; }
 
+namespace simulation_core { class WorkbenchStateManager; }
+
 namespace simcore {
 
 class SimCoreMessageHandler {
@@ -52,6 +54,7 @@ public:
     std::shared_ptr<QuestManager> questManager;
     MachineSystem* machineSystem = nullptr;
     BatteryBufferSystem* batteryBuffer = nullptr;
+    std::shared_ptr<simulation_core::WorkbenchStateManager> wbStateManager;
   };
 
   explicit SimCoreMessageHandler(Deps deps);

@@ -73,6 +73,8 @@ inline constexpr uint8_t kRecipeItemResp = 39;
 inline constexpr uint8_t kRecipeMachineReq = 40;
 inline constexpr uint8_t kRecipeMachineResp = 41;
 inline constexpr uint8_t kBlockActionDirective = 42;
+inline constexpr uint8_t kGridUpdate = 43;
+inline constexpr uint8_t kWorkbenchOpenReq = 44;
 } // namespace GatewayMsg
 
 // ---------------------------------------------------------------------------

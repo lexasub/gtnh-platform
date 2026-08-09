@@ -76,6 +76,7 @@ add_library(simcored
         Network/ItemClient.cpp
         Network/TopicDispatcher.cpp
         Network/SimCoreMessageHandler.cpp
+        Network/WorkbenchOpenHandler.cpp
         Network/clients/EntityStateStoreClient.cpp
         Network/clients/IoUringRouterClient.cpp
         Network/clients/IoUringChunkClient.cpp
@@ -108,6 +109,7 @@ add_library(simcored
         World/WorldContainerInventory.cpp
 
         Crafting/CraftRequestHandler.cpp
+        Crafting/WorkbenchStateManager.cpp
         Crafting/RecipeCompletedHandler.cpp
         ECS/SimulationEngine.cpp
         ECS/PatternLibrary.cpp

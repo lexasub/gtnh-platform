@@ -21,6 +21,7 @@ public:
   void DoSelectHotbar(int slot);
   void DoScrollHotbar(float delta);
   void DoOpenRecipeInspect(uint16_t itemId);
+  [[nodiscard]] bool IsRecipeInspectOpen() const;
   void DoToggleQuestBook();
   void DoToggleConsole();
 

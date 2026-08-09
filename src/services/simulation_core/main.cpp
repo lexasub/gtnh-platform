@@ -437,6 +437,7 @@ int main(int argc, char* argv[]) {
     msgDeps.questManager = questManager;
     msgDeps.machineSystem = machineSystemRaw;
     msgDeps.batteryBuffer = batteryBufferRaw;
+    msgDeps.wbStateManager = wbStateManager;
     simcore::SimCoreMessageHandler messageHandler(std::move(msgDeps));
     messageHandler.setup();
     messageHandler.wireOnMessage(worldContainers);

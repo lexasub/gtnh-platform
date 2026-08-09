@@ -60,7 +60,7 @@ bool ItemRegistry::loadFromCSV(const std::string& csvPath) {
         }
 
         // Parse stack size (optional, default 64)
-        uint8_t stackSize = 64;
+        uint8_t stackSize = 64; //TODO - default for each subcategory is different
         if (!stackStr.empty()) {
             try {
                 stackSize = static_cast<uint8_t>(std::stoi(stackStr));
@@ -82,7 +82,7 @@ bool ItemRegistry::loadFromCSV(const std::string& csvPath) {
         ItemDefinition def(id, nameStr, idStr, stackSize, meta);
 
         // If same ID appears twice, log warning and use last one
-        if (itemsById_.count(id) > 0) {
+        if (itemsById_.contains(id)) {
             spdlog::warn("Item ID {} already exists (line {}), replacing: {}",
                          id, lineNum, nameStr);
         }
@@ -210,7 +210,7 @@ uint8_t ItemRegistry::getMaxStackSize(uint16_t id) const {
 }
 
 bool ItemRegistry::isValid(uint16_t id) const {
-    return itemsById_.count(id) > 0;
+    return itemsById_.contains(id);
 }
 
 size_t ItemRegistry::count() const {

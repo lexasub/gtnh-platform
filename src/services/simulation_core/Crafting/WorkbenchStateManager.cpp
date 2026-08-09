@@ -12,10 +12,15 @@ WorkbenchStateManager::WorkbenchStateManager(
 {
 }
 
+uint64_t WorkbenchStateManager::posKey(int32_t x, int32_t y, int32_t z) {
+    return (static_cast<uint64_t>(static_cast<uint32_t>(x)) << 0) |
+           (static_cast<uint64_t>(static_cast<uint32_t>(y)) << 32) |
+           (static_cast<uint64_t>(static_cast<uint16_t>(z)) << 48);
+}
+
 std::vector<uint8_t> WorkbenchStateManager::serializeGrid(
     const std::vector<RecipeManager::ItemStack>& grid) const
 {
-    // 45-byte format: 9 items x 5 bytes = [item_id:uint16, count:uint8, meta:uint16]
     std::vector<uint8_t> data(45, 0);
     size_t n = (std::min)(grid.size(), size_t{9});
     for (size_t i = 0; i < n; ++i) {
@@ -35,44 +40,30 @@ std::vector<RecipeManager::ItemStack> WorkbenchStateManager::deserializeGrid(
 {
     std::vector<RecipeManager::ItemStack> grid;
     grid.reserve(9);
-    size_t available = data.size() / 5;
-    size_t n = (std::min)(available, size_t{9});
+    size_t n = (std::min)(data.size() / 5, size_t{9});
     for (size_t i = 0; i < n; ++i) {
         size_t off = i * 5;
-        RecipeManager::ItemStack item;
-        item.item_id  = static_cast<uint16_t>(data[off + 0] | (static_cast<uint16_t>(data[off + 1]) << 8));
-        item.count    = data[off + 2];
-        item.metadata = static_cast<uint16_t>(data[off + 3] | (static_cast<uint16_t>(data[off + 4]) << 8));
-        grid.push_back(item);
+        grid.push_back({
+            static_cast<uint16_t>(data[off + 0] | (static_cast<uint16_t>(data[off + 1]) << 8)),
+            data[off + 2],
+            static_cast<uint16_t>(data[off + 3] | (static_cast<uint16_t>(data[off + 4]) << 8))
+        });
     }
     return grid;
 }
 
-std::vector<RecipeManager::ItemStack> WorkbenchStateManager::getGridState(
-    uint64_t entityId, int32_t x, int32_t y, int32_t z)
-{
-    (void)x; (void)y; (void)z;
-    auto it = grids_.find(entityId);
-    if (it != grids_.end()) {
-        return it->second;
-    }
-    return std::vector<RecipeManager::ItemStack>();
-}
-
 void WorkbenchStateManager::setGridState(
-    uint64_t entityId, int32_t x, int32_t y, int32_t z,
+    int32_t x, int32_t y, int32_t z,
     const std::vector<RecipeManager::ItemStack>& grid)
 {
-    (void)x; (void)y; (void)z;
-    grids_[entityId] = grid;
+    uint64_t key = posKey(x, y, z);
+    grids_[key] = grid;
 
     if (essClient_ && essClient_->IsConnected()) {
         auto serialized = serializeGrid(grid);
         essClient_->SaveEntityState(
-            dimension_, static_cast<int32_t>(entityId),
-            static_cast<int32_t>(entityId >> 16),
-            static_cast<int32_t>(entityId >> 32),
-            static_cast<uint16_t>(entityId & 0xFFFF),
+            dimension_, x, y, z,
+            2,  // entity_type = Workbench (core.fbs: 2=Workbench)
             serialized,
             [](bool success) {
                 if (!success) {
@@ -82,19 +73,40 @@ void WorkbenchStateManager::setGridState(
     }
 }
 
-void WorkbenchStateManager::removeGridState(
-    uint64_t entityId, int32_t x, int32_t y, int32_t z)
+void WorkbenchStateManager::getGridState(
+    int32_t x, int32_t y, int32_t z, LoadCallback callback)
 {
-    (void)x; (void)y; (void)z;
-    grids_.erase(entityId);
+    uint64_t key = posKey(x, y, z);
+    auto it = grids_.find(key);
+    if (it != grids_.end()) {
+        callback(it->second);
+        return;
+    }
+    // Cache miss: load from EntityStateStore.
+    if (essClient_ && essClient_->IsConnected()) {
+        essClient_->LoadEntityState(
+            dimension_, x, y, z, 2,
+            [this, key, callback](const simcore::EntityStateStoreClient::EntityStateData& state) {
+                if (state.state.empty()) {
+                    callback({});
+                    return;
+                }
+                auto grid = deserializeGrid(state.state);
+                grids_[key] = grid;
+                callback(grid);
+            });
+    } else {
+        callback({});
+    }
+}
+
+void WorkbenchStateManager::removeGridState(int32_t x, int32_t y, int32_t z) {
+    uint64_t key = posKey(x, y, z);
+    grids_.erase(key);
 
     if (essClient_ && essClient_->IsConnected()) {
         essClient_->SaveEntityState(
-            dimension_, static_cast<int32_t>(entityId),
-            static_cast<int32_t>(entityId >> 16),
-            static_cast<int32_t>(entityId >> 32),
-            static_cast<uint16_t>(entityId & 0xFFFF),
-            {},
+            dimension_, x, y, z, 2, {},
             [](bool success) {
                 if (!success) {
                     spdlog::warn("WorkbenchStateManager: failed to clear state");

@@ -34,6 +34,16 @@ CraftingWindow::CraftingWindow(BlockPos pos, NetClient* netClient, DragManager* 
     };
 }
 
+void CraftingWindow::SetOpen(bool open) {
+    if (open && !open_) {
+        // Request saved grid state from server when opening.
+        if (netClient_) {
+            netClient_->SendWorkbenchOpenReq(GetAnchorPos());
+        }
+    }
+    open_ = open;
+}
+
 void CraftingWindow::OnCraftResponse(bool success, uint16_t item_id, uint8_t count,
                                        uint16_t meta, const std::string& error,
                                        const std::array<ItemStack, 9>& grid) {
@@ -171,6 +181,38 @@ void CraftingWindow::Render(InventoryState* playerInv) {
 }
 
 void CraftingWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
+    if (msgType == GatewayMsg::kGridUpdate) {
+        if (!data) return;
+        flatbuffers::Verifier v(reinterpret_cast<const uint8_t*>(data), 4096);
+        if (!v.VerifyBuffer<Protocol::GridUpdate>(nullptr)) {
+            spdlog::warn("CraftingWindow: invalid GridUpdate buffer");
+            return;
+        }
+        auto* gu = flatbuffers::GetRoot<Protocol::GridUpdate>(data);
+        if (!gu || !gu->pos()) return;
+        // Only apply if position matches this window's workbench.
+        auto p = gu->pos();
+        if (p->x() != GetAnchorPos().x || p->y() != GetAnchorPos().y ||
+            p->z() != GetAnchorPos().z)
+            return;
+        std::array<ItemStack, 9> grid{};
+        if (gu->grid()) {
+            for (uint16_t i = 0; i < 9 && i < gu->grid()->size(); ++i) {
+                auto* gs = gu->grid()->Get(i);
+                if (gs) {
+                    grid[i] = ItemStack{
+                        static_cast<uint16_t>(gs->item_id()),
+                        static_cast<uint8_t>(gs->count()),
+                        static_cast<uint16_t>(gs->meta())};
+                }
+            }
+        }
+        grid_.SetSlots(grid);
+        spdlog::debug("[CraftingWindow] GridUpdate applied at ({},{},{})",
+                      p->x(), p->y(), p->z());
+        return;
+    }
+
     if (msgType != GatewayMsg::kCraftResponse) {
         return;
     }

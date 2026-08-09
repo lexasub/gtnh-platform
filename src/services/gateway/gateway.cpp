@@ -398,6 +398,8 @@ void IoUringGateway::on_router_publish(
         send_to_client_ctrl_raw(GatewayMsg::kBlockEntityUpdate, payload, plen);
     else if (topic == "sim.craft.response")
         send_to_client_ctrl_raw(GatewayMsg::kCraftResponse, payload, plen);
+    else if (topic == "sim.workbench.state")
+        send_to_client_ctrl_raw(GatewayMsg::kGridUpdate, payload, plen);
     // Server-driven recipe query replies (RecipeFrame payload, pass-through)
     else if (topic == "recipe.check.response")
         send_to_client_ctrl_raw(GatewayMsg::kRecipeCheckResp, payload, plen);
@@ -572,6 +574,12 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
         // Client → simcore: save chest inventory to EntityStateStore.
         // Payload is a Protocol::MachineState flatbuffer (machine_state.fbs).
         publish("player.chest.save", data, len);
+        break;
+    }
+    case GatewayMsg::kWorkbenchOpenReq: {
+        // Client → simcore: request saved workbench grid state from EntityStateStore.
+        // Payload is a Protocol::Vec3i (workbench position).
+        publish("sim.workbench.load", data, len);
         break;
     }
     // Server-driven recipe queries → RecipeManagerService (RecipeFrame payload).

@@ -27,7 +27,7 @@ public:
   void OnNetworkUpdate(uint8_t msgType, const void *data) override;
 
   bool IsOpen() const override { return open_; }
-  void SetOpen(bool open) override { open_ = open; }
+  void SetOpen(bool open) override;
 
   void OnCraftResponse(bool success, uint16_t item_id, uint8_t count,
                        uint16_t meta, const std::string &error,

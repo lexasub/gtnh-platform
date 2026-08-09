@@ -77,14 +77,18 @@ void RecipeInspectWindow::renderTabContent(const std::vector<RecipeEntry>& entri
 
     int slotIdx = 0;
     RenderPaginatedList(entries, page_, kPerPage,
-        [&slotIdx](const RecipeEntry& entry, int) {
-            RenderRecipeEntry(entry, slotIdx);
+        [this, &slotIdx](const RecipeEntry& entry, int) {
+            RenderRecipeEntry(entry, slotIdx, nullptr, &hoveredItem_);
         },
         "No entries");
 }
 
 void RecipeInspectWindow::Render([[maybe_unused]] InventoryState* playerInv) {
     if (!open_ || itemId_ == 0) return;
+
+    // Refresh the drill-in target each frame: only a slot hovered THIS frame
+    // may be drilled into (stale hovers must not survive R/U).
+    hoveredItem_ = 0;
 
     const auto& io = ImGui::GetIO();
     ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f),
@@ -117,4 +121,13 @@ void RecipeInspectWindow::Render([[maybe_unused]] InventoryState* playerInv) {
     if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         open_ = false;
     }
+}
+
+void RecipeInspectWindow::DrillInto(int tab) {
+    if (hoveredItem_ == 0) return;
+    if (hoveredItem_ != itemId_) {
+        SetItem(hoveredItem_); // resets to the Recipes tab + rebuilds
+    }
+    activeTab_ = tab; // 0 = Recipes, 1 = Uses
+    page_ = 0;
 }

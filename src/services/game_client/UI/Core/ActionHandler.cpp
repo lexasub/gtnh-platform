@@ -49,6 +49,14 @@ void ActionHandler::Init(ActionRegistry* reg, UIManager* mgr, NetClient* nc,
 }
 
 void ActionHandler::DoToggleItemList() {
+    // While the recipe inspect window is open, U (bound to this action via
+    // InputBinder) means "show uses of the hovered slot" — drill into the
+    // Uses tab. Otherwise U toggles the NEI item list.
+    if (IsRecipeInspectOpen()) {
+        if (auto* w = uiMgr_->FindByType<RecipeInspectWindow>())
+            w->DrillInto(1);
+        return;
+    }
     if (auto* rp = uiMgr_->FindPanel<NeiPanel>()) {
         rp->SetVisible(!rp->IsVisible());
     }
@@ -56,9 +64,24 @@ void ActionHandler::DoToggleItemList() {
 
 void ActionHandler::DoShowRecipeForHovered() {
     if (ImGui::GetIO().WantTextInput || playerInv_ == nullptr) return;
+    // While the recipe inspect window is open, R (bound to this action via
+    // InputBinder) means "drill into the craft recipe of the hovered slot" —
+    // the window knows which slot is under the mouse. Otherwise R opens the
+    // inspect window for the globally hovered inventory item.
+    if (IsRecipeInspectOpen()) {
+        if (auto* w = uiMgr_->FindByType<RecipeInspectWindow>())
+            w->DrillInto(0);
+        return;
+    }
     if (playerInv_->hoveredItemId != 0 && !playerInv_->isDragging) {
         DoOpenRecipeInspect(playerInv_->hoveredItemId);
     }
+}
+
+bool ActionHandler::IsRecipeInspectOpen() const {
+    if (!uiMgr_) return false;
+    auto* w = uiMgr_->FindByType<RecipeInspectWindow>();
+    return w && w->IsOpen();
 }
 
 void ActionHandler::DoCloseTop() {

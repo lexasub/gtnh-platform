@@ -9,7 +9,7 @@
 // ── Action handling ──────────────────────────────────────────────────────
 
 DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
-    std::vector<ItemStack>& slots, int button, bool shift) {
+    std::vector<ItemStack>& slots, int button, bool shift, bool ctrl) {
     ActionResult r;
     if (slotIndex < 0 || static_cast<size_t>(slotIndex) >= slots.size()) return r;
 
@@ -26,8 +26,8 @@ DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
         auto& slot = slots[slotIndex];
         if (slot.item_id == 0) return r;
 
-        // ── Shift-click: quick-move, no drag ─────────────────────────────
-        if (shift) {
+        // ── Shift/Ctrl-click: quick-move, no drag ────────────────────────
+        if (shift || ctrl) {
             r.consumed = true;
             r.sourceSlot = slotIndex;
             r.item = slot;
@@ -206,7 +206,26 @@ void DragManager::CancelDrag(std::vector<ItemStack>& slots) {
 }
 
 void DragManager::UpdateHover(int slotIndex) {
-    hoverSlot_ = slotIndex;
+  hoverSlot_ = slotIndex;
+}
+
+void DragManager::OnRightDragDistribute(int slotIndex, std::vector<ItemStack> &slots) {
+  if (state_ != State::Holding || heldItem_.count == 0) return;
+  if (slotIndex < 0 || slotIndex >= static_cast<int>(slots.size())) return;
+
+  auto &slot = slots[slotIndex];
+  if (slot.item_id == 0) {
+    slot = {heldItem_.item_id, 1, heldItem_.meta};
+    heldItem_.count--;
+  } else if (slot.item_id == heldItem_.item_id && slot.meta == heldItem_.meta && slot.count < 64) {
+    slot.count++;
+    heldItem_.count--;
+  }
+
+  if (heldItem_.count == 0) {
+    state_ = State::Idle;
+    heldItem_ = {};
+  }
 }
 
 void DragManager::RenderPreview(const SlotStyle& style) {

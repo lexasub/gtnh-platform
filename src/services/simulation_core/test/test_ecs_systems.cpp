@@ -116,8 +116,10 @@ struct MockEventPublisher : simcore::IEventPublisher {
                                           const std::array<uint8_t, 6>&) override {}
 
     void publishMultiblockCreated(uint64_t, int32_t, int32_t, int32_t,
-                                  uint16_t) override {}
+                                   uint16_t) override {}
     void publishMultiblockDestroyed(uint64_t) override {}
+    void publishGridUpdate(int32_t, int32_t, int32_t,
+                          const std::vector<RecipeManager::ItemStack>&) override {}
 };
 
 struct MockBlockRepository : simcore::IBlockRepository {

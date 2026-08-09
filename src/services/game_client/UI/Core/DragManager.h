@@ -38,14 +38,19 @@ public:
   /// @param slots      ссылка на вектор слотов (инвентарь/грид)
   /// @param button     0=left, 1=right
   /// @param shift      shift held
+  /// @param ctrl       ctrl held (same as shift: quick-move)
   ActionResult OnSlotActivated(int slotIndex, std::vector<ItemStack> &slots,
-                               int button, bool shift);
+                               int button, bool shift, bool ctrl = false);
 
   /// Отменить текущий драг (ESC). Возвращает предмет в sourceSlot.
   void CancelDrag(std::vector<ItemStack> &slots);
 
   /// Обновить слот под курсором (вызывать каждый кадр из Render)
   void UpdateHover(int slotIndex);
+
+  /// Правый клик по слоту во время драга (распределить по 1 предмету).
+  /// Вызывается при наведении на новый слот с зажатой ПКМ.
+  void OnRightDragDistribute(int slotIndex, std::vector<ItemStack> &slots);
 
   /// Состояние
   bool IsDragging() const { return state_ == State::Holding; }
