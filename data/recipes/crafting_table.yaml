@@ -209,6 +209,38 @@ recipes:
     min_tier: 0
     max_tier: 32767
 
+
+  # ── Dusts ─────────────────────────────────────────────────
+
+  - name: bronze_dust
+    pattern:
+      - [copper_dust, copper_dust, ~]
+      - [copper_dust, tin_dust, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: copper_dust, count: 3 }
+      - { item: tin_dust, count: 1 }
+    outputs:
+      - { item: bronze_dust, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Plate ─────────────────────────────────────────────────
+
+  - name: bronze_plate
+    pattern:
+      - [bronze_ingot, ~, ~]
+      - [bronze_ingot, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: bronze_ingot, count: 2 }
+    outputs:
+      - { item: bronze_plate, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
   # ── Macerators ────────────────────────────────────────────
   - name: heat_macerator
     pattern:
@@ -253,5 +285,66 @@ recipes:
     outputs:
       - { item: rotare_macerator, count: 1 }
     duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: rotare_generator
+    pattern:
+      - [stick, cobblestone, stick]
+      - [cobblestone, crafting_table, cobblestone]
+      - [cobblestone, stone, cobblestone]
+    inputs:
+      - { item: cobblestone, count: 5 }
+      - { item: crafting_table, count: 1 }
+      - { item: stick, count: 2 }
+    outputs:
+      - { item: rotare_generator, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Boilers ──────────────────────────────────────────────
+
+  - name: fluid_tank
+    pattern:
+      - [bronze_plate, glass, bronze_plate]
+      - [glass, ~, glass]
+      - [bronze_plate, glass, bronze_plate]
+    inputs:
+      - { item: bronze_plate, count: 4 }
+      - { item: glass, count: 4 }
+    outputs:
+      - { item: fluid_tank, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: steam_solid_boiler
+    pattern:
+      - [bronze_plate, bronze_plate, bronze_plate]
+      - [heat_generator, heat_furnace, heat_generator]
+      - [bronze_plate, bronze_plate, bronze_plate]
+    inputs:
+      - { item: bronze_plate, count: 6 }
+      - { item: heat_generator, count: 2 }
+      - { item: heat_furnace, count: 1 }
+    outputs:
+      - { item: steam_solid_boiler, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: steam_heat_boiler
+    pattern:
+      - [bronze_plate, bronze_plate, bronze_plate]
+      - [heat_generator, fluid_tank, heat_generator]
+      - [bronze_plate, bronze_plate, bronze_plate]
+    inputs:
+      - { item: bronze_plate, count: 6 }
+      - { item: heat_generator, count: 2 }
+      - { item: fluid_tank, count: 1 }
+    outputs:
+      - { item: steam_heat_boiler, count: 1 }
+    duration: 200
     min_tier: 0
     max_tier: 32767

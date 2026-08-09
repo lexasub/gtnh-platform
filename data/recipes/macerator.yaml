@@ -4,95 +4,39 @@
 # Unmarked recipes work on any energy type.
 class: macerator
 recipes:
-  - name: macerator_iron_ore
-    energy_in: HEAT
-    inputs:
-      - { item: 3, count: 1 }
-    outputs:
-      - { item: 9, count: 2 }
-    duration: 400
-    min_tier: 0
-    max_tier: 32767
-
-  - name: macerator_gold_ore
-    energy_in: HEAT
-    inputs:
-      - { item: 5, count: 1 }
-    outputs:
-      - { item: 9, count: 2 }
-    duration: 400
-    min_tier: 0
-    max_tier: 32767
-
-  - name: macerator_tin_ore
-    inputs:
-      - { item: 25, count: 1 }
-    outputs:
-      - { item: 9, count: 2 }
-    duration: 400
-    min_tier: 0
-    max_tier: 32767
-
-  - name: macerator_uranium_ore
-    inputs:
-      - { item: 27, count: 1 }
-    outputs:
-      - { item: 9, count: 2 }
-    duration: 500
-    min_tier: 0
-    max_tier: 32767
-
-  - name: macerator_electrum_ore
-    inputs:
-      - { item: 23, count: 1 }
-    outputs:
-      - { item: 9, count: 2 }
-    duration: 400
-    min_tier: 0
-    max_tier: 32767
-
   - name: macerator_quartz_ore
     inputs:
-      - { item: 19, count: 1 }
+      - { item: quartz_ore, count: 1 }
     outputs:
-      - { item: 20, count: 2 }
+      - { item: quartz, count: 2 }
     duration: 300
     min_tier: 0
     max_tier: 32767
 
   - name: macerator_cobblestone
     inputs:
-      - { item: 7, count: 1 }
+      - { item: cobblestone, count: 1 }
     outputs:
-      - { item: 11, count: 1 }
+      - { item: sand, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: macerator_stone
     inputs:
-      - { item: 8, count: 1 }
+      - { item: stone, count: 1 }
     outputs:
-      - { item: 11, count: 1 }
+      - { item: sand, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
 
   - name: macerator_glass
     inputs:
-      - { item: 12, count: 1 }
+      - { item: glass, count: 1 }
     outputs:
-      - { item: 11, count: 1 }
+      - { item: sand, count: 1 }
     duration: 100
-    min_tier: 0
-    max_tier: 32767
-
-  - name: macerator_coal
-    inputs:
-      - { item: 44, count: 1 }
-    outputs:
-      - { item: 9, count: 2 }
-    duration: 200
     min_tier: 0
     max_tier: 32767
 
@@ -200,9 +144,9 @@ recipes:
   - name: gtnh:steam_mac_copper
     energy_in: STEAM
     inputs:
-      - { item: 53, count: 1 }
+      - { item: coper_ore, count: 1 }
     outputs:
-      - { item: 9, count: 2 }
+      - { item: copper_dust, count: 2 }
     duration: 160
     min_tier: 0
     max_tier: 32767
@@ -210,9 +154,9 @@ recipes:
   - name: gtnh:steam_mac_gold
     energy_in: STEAM
     inputs:
-      - { item: 5, count: 1 }
+      - { item: gold_ore, count: 1 }
     outputs:
-      - { item: 9, count: 2 }
+      - { item: gold_dust, count: 2 }
     duration: 160
     min_tier: 0
     max_tier: 32767
@@ -220,9 +164,9 @@ recipes:
   - name: gtnh:steam_mac_iron
     energy_in: STEAM
     inputs:
-      - { item: 3, count: 1 }
+      - { item: iron_ore, count: 1 }
     outputs:
-      - { item: 9, count: 2 }
+      - { item: iron_dust, count: 2 }
     duration: 160
     min_tier: 0
     max_tier: 32767
@@ -231,9 +175,9 @@ recipes:
   - name: gtnh:rotare_mac_copper
     energy_in: ROTATION
     inputs:
-      - { item: 53, count: 1 }
+      - { item: coper_ore, count: 1 }
     outputs:
-      - { item: 9, count: 2 }
+      - { item: copper_dust, count: 2 }
     duration: 200
     min_tier: 0
     max_tier: 32767
@@ -241,9 +185,9 @@ recipes:
   - name: gtnh:rotare_mac_iron
     energy_in: ROTATION
     inputs:
-      - { item: 3, count: 1 }
+      - { item: iron_ore, count: 1 }
     outputs:
-      - { item: 9, count: 2 }
+      - { item: iron_dust, count: 2 }
     duration: 200
     min_tier: 0
     max_tier: 32767
@@ -251,9 +195,9 @@ recipes:
   - name: gtnh:rotare_mac_gold
     energy_in: ROTATION
     inputs:
-      - { item: 5, count: 1 }
+      - { item: gold_ore, count: 1 }
     outputs:
-      - { item: 9, count: 2 }
+      - { item: gold_dust, count: 2 }
     duration: 200
     min_tier: 0
     max_tier: 32767

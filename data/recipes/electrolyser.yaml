@@ -5,9 +5,9 @@ recipes:
 
   - name: gtnh:electrolyser_copper
     inputs:
-      - { item: 53, count: 1 }
+      - { item: bronze_ingot, count: 1 }
     outputs:
-      - { item: 54, count: 1 }
+      - { item: bronze_plate, count: 1 }
     duration: 250
     min_tier: 0
     max_tier: 32767
@@ -15,45 +15,45 @@ recipes:
 
   - name: gtnh:electrolyser_electrum
     inputs:
-      - { item: 23, count: 1 }
+      - { item: electrum_ore, count: 1 }
     outputs:
-      - { item: 24, count: 1 }
+      - { item: electrum_ingot, count: 1 }
     duration: 200
     min_tier: 0
     max_tier: 32767
 
   - name: gtnh:electrolyser_gold
     inputs:
-      - { item: 5, count: 1 }
+      - { item: gold_ore, count: 1 }
     outputs:
-      - { item: 6, count: 1 }
+      - { item: gold_ingot, count: 1 }
     duration: 300
     min_tier: 0
     max_tier: 32767
 
   - name: gtnh:electrolyser_iron
     inputs:
-      - { item: 3, count: 1 }
+      - { item: iron_ore, count: 1 }
     outputs:
-      - { item: 4, count: 1 }
+      - { item: iron_ingot, count: 1 }
     duration: 250
     min_tier: 0
     max_tier: 32767
 
   - name: gtnh:electrolyser_tin
     inputs:
-      - { item: 25, count: 1 }
+      - { item: tin_ore, count: 1 }
     outputs:
-      - { item: 26, count: 1 }
+      - { item: tin_ingot, count: 1 }
     duration: 200
     min_tier: 0
     max_tier: 32767
 
   - name: gtnh:electrolyser_uranium
     inputs:
-      - { item: 27, count: 1 }
+      - { item: uranium_ore, count: 1 }
     outputs:
-      - { item: 28, count: 1 }
+      - { item: uranium_ingot, count: 1 }
     duration: 200
     min_tier: 0
     max_tier: 32767

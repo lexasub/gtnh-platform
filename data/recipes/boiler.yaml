@@ -13,28 +13,28 @@ recipes:
   # ── Solid fuel → steam ─────────────────────────────────
   - name: boiler_coal
     inputs:
-      - { item: 44, count: 1 }   # coal
-      - { item: 16, count: 1 }   # water_bucket
+      - { item: coal, count: 1 }   # coal
+      - { item: water_bucket, count: 1 }   # water_bucket
     outputs:
-      - { item: 16, count: 1, consume: false }  # return empty bucket
+      - { item: water_bucket, count: 1, consume: false }  # return empty bucket
     duration: 100
     energy_output: 3200   # SU generated
 
   - name: boiler_oak_planks
     inputs:
-      - { item: 13, count: 1 }   # oak_planks
-      - { item: 16, count: 1 }   # water_bucket
+      - { item: oak_planks, count: 1 }   # oak_planks
+      - { item: water_bucket, count: 1 }   # water_bucket
     outputs:
-      - { item: 16, count: 1, consume: false }
+      - { item: water_bucket, count: 1, consume: false }
     duration: 50
     energy_output: 800    # SU generated
 
   # ── Steam → heat (converter) ────────────────────────────
   - name: boiler_steam_to_heat
     inputs:
-      - { item: 84, count: 1 }   # water
+      - { item: water, count: 1 }   # water
     outputs:
-      - { item: 85, count: 1 }   # steam
+      - { item: steam, count: 1 }   # steam
     duration: 20
     eu: 32                # consumes 32 SU/tick
     energy_output: 28     # produces 28 HU/tick

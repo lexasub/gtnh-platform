@@ -6,19 +6,9 @@ recipes:
   - name: gtnh:compress_bronze
     energy_in: STEAM
     inputs:
-      - { item: 55, count: 1 }
+      - { item: bronze_ingot, count: 1 }
     outputs:
-      - { item: 56, count: 1 }
-    duration: 200
-    min_tier: 0
-    max_tier: 32767
-
-  - name: gtnh:compress_iron
-    energy_in: STEAM
-    inputs:
-      - { item: 4, count: 1 }
-    outputs:
-      - { item: 4, count: 1 }
+      - { item: bronze_plate, count: 1 }
     duration: 200
     min_tier: 0
     max_tier: 32767

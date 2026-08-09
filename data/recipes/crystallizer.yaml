@@ -3,20 +3,11 @@
 class: crystallizer
 recipes:
 
-  - name: gtnh:crystallizer_obsidian
-    inputs:
-      - { item: 21, count: 1 }
-    outputs:
-      - { item: 21, count: 1 }
-    duration: 200
-    min_tier: 0
-    max_tier: 32767
-
   - name: gtnh:crystallizer_quartz
     inputs:
-      - { item: 19, count: 1 }
+      - { item: quartz_ore, count: 1 }
     outputs:
-      - { item: 20, count: 1 }
+      - { item: quartz, count: 1 }
     duration: 200
     min_tier: 0
     max_tier: 32767

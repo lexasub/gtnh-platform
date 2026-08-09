@@ -96,11 +96,12 @@ int,name,stack,meta
 1110:01:1,steam_heat_boiler,,0
 1110:01:2,creative_generator,,0
 1110:01:3,rotare_generator,,0
-# storage (111010) — batteries
+# storage (111010) — batteries, tanks
 1110:10:0,battery_buffer_lv,,0
 1110:10:1,battery_buffer_mv,,0
 1110:10:2,battery_buffer_hv,,0
 1110:10:3,charger,,0
+1110:10:4,fluid_tank,,0
 # conversion (111011) — voltage transformation
 1110:11:0,transformer_mv_hv,,0
 1110:11:1,transformer_hv_ev,,0

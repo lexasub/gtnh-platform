@@ -12,12 +12,12 @@ recipes:
   # ── Solid fuel → HEAT ───────────────────────────────────
   - name: generator_coal
     inputs:
-      - { item: 44, count: 1 }   # coal
+      - { item: coal, count: 1 }   # coal
     duration: 100
     energy_output: 4000   # HU generated
 
   - name: generator_oak_planks
     inputs:
-      - { item: 13, count: 1 }   # oak_planks
+      - { item: oak_planks, count: 1 }   # oak_planks
     duration: 50
     energy_output: 1000   # HU generated

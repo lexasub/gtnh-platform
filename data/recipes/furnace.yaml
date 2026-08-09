@@ -3,29 +3,13 @@
 class: furnace
 recipes:
 
-  - name: base:blasting_iron_ore
-    inputs:
-      - { item: 3, count: 1 }
-    outputs:
-      - { item: 4, count: 1 }
-    duration: 200
-    min_tier: 0
-    max_tier: 32767
-
-  - name: base:furnace_beef
-    inputs:
-      - { item: 1, count: 1 }
-    outputs:
-      - { item: 2, count: 1 }
-    duration: 200
-    min_tier: 0
-    max_tier: 32767
+  # - name: base:furnace_beef  # REMOVED (beef/cooked_beef not in registry)
 
   - name: base:furnace_gold_ore
     inputs:
-      - { item: 5, count: 1 }
+      - { item: gold_ore, count: 1 }
     outputs:
-      - { item: 6, count: 1 }
+      - { item: gold_ingot, count: 1 }
     duration: 200
     eu: 0.7
     min_tier: 0
@@ -33,9 +17,9 @@ recipes:
 
   - name: base:furnace_iron_ore
     inputs:
-      - { item: 3, count: 1 }
+      - { item: iron_ore, count: 1 }
     outputs:
-      - { item: 4, count: 1 }
+      - { item: iron_ingot, count: 1 }
     duration: 200
     eu: 0.7
     min_tier: 0
@@ -43,11 +27,22 @@ recipes:
 
   - name: base:smelting_cobblestone
     inputs:
-      - { item: 7, count: 1 }
+      - { item: 0:0:2, count: 1 }
     outputs:
-      - { item: 8, count: 1 }
+      - { item: 0:0:1, count: 1 }
     duration: 200
     eu: 0.1
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Sand → Glass ─────────────────────────────────────────
+  - name: gtnh:smelt_sand
+    inputs:
+      - { item: sand, count: 1 }
+    outputs:
+      - { item: glass, count: 1 }
+    duration: 200
+    eu: 0.5
     min_tier: 0
     max_tier: 32767
 
@@ -87,6 +82,16 @@ recipes:
       - { item: copper_dust, count: 1 }
     outputs:
       - { item: copper_ingot, count: 1 }
+    duration: 200
+    eu: 0.5
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_bronze_dust
+    inputs:
+      - { item: bronze_dust, count: 1 }
+    outputs:
+      - { item: bronze_ingot, count: 1 }
     duration: 200
     eu: 0.5
     min_tier: 0

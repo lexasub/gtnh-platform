@@ -5,20 +5,20 @@ recipes:
 
   - name: gtnh:alloy_bronze
     inputs:
-      - { item: 58, count: 3 }
-      - { item: 57, count: 1 }
+      - { item: copper_dust, count: 3 }
+      - { item: tin_dust, count: 1 }
     outputs:
-      - { item: 55, count: 4 }
+      - { item: bronze_dust, count: 4 }
     duration: 200
     min_tier: 0
     max_tier: 32767
 
   - name: gtnh:alloy_bronze_from_ingots
     inputs:
-      - { item: 54, count: 3 }
-      - { item: 26, count: 1 }
+      - { item: copper_ingot, count: 3 }
+      - { item: tin_ingot, count: 1 }
     outputs:
-      - { item: 55, count: 4 }
+      - { item: bronze_ingot, count: 4 }
     duration: 200
     min_tier: 0
     max_tier: 32767

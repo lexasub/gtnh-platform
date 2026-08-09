@@ -3,24 +3,13 @@
 class: mixer
 recipes:
 
-  - name: gtnh:mix_alloy
-    energy_in: STEAM
-    inputs:
-      - { item: 9, count: 2 }
-      - { item: 10, count: 1 }
-    outputs:
-      - { item: 29, count: 1 }
-    duration: 180
-    min_tier: 0
-    max_tier: 32767
-
   - name: gtnh:mix_bronze_dust
     energy_in: STEAM
     inputs:
-      - { item: 58, count: 3 }
-      - { item: 57, count: 1 }
+      - { item: copper_dust, count: 3 }
+      - { item: tin_dust, count: 1 }
     outputs:
-      - { item: 59, count: 4 }
+      - { item: bronze_dust, count: 4 }
     duration: 160
     min_tier: 0
     max_tier: 32767
