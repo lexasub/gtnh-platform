@@ -418,14 +418,43 @@ static void test_QuestManager_detection_inventory() {
            "quest.completed published once");
 
   // Prereq gate: quest 43 (iron ore, prereq 18 not completed) must not
-  // complete even with enough iron ore held.
+  // complete even with enough iron ore held. After a loaded snapshot the
+  // client knows its full state, so 43 is advertised LOCKED (not absent).
   std::vector<simcore::PersistSlot> iron;
   iron.push_back({ItemId::pack("10:0"), 32, 0});
   mgr.checkInventory(player, iron);
-  CHECK_EQ(lastAdvertisedStatus(pub, 43), -1,
-           "INVENTORY quest 43 not completed when prereq unmet");
+  CHECK_EQ(lastAdvertisedStatus(pub, 43),
+           static_cast<int>(quest::QuestStatus::LOCKED),
+           "INVENTORY quest 43 stays LOCKED when prereq unmet");
   CHECK_EQ(countTopic(pub, "quest.completed"), 1,
            "no extra quest.completed for unmet-prereq inventory quest");
+  PASS();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Rejoin (reconnect): onPlayerJoined must not wipe in-memory progress. A
+// player who completed quest 2 keeps it COMPLETED across a rejoin, and no
+// re-unlock/re-completion events are published.
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestManager_rejoin_preserves_progress() {
+  const uint64_t player = 61;
+  QuestFixture fx(player);
+
+  CHECK(fx.mgr.completeQuest(player, 2), "quest 2 completed before rejoin");
+  CHECK_EQ(lastAdvertisedStatus(fx.pub, 2),
+           static_cast<int>(quest::QuestStatus::COMPLETED),
+           "quest 2 COMPLETED before rejoin");
+
+  const int unlockedBefore = countTopic(fx.pub, "quest.unlocked");
+  const int completedBefore = countTopic(fx.pub, "quest.completed");
+  fx.mgr.onPlayerJoined(player);
+  CHECK_EQ(countTopic(fx.pub, "quest.unlocked"), unlockedBefore,
+           "rejoin publishes no new unlocks");
+  CHECK_EQ(countTopic(fx.pub, "quest.completed"), completedBefore,
+           "rejoin does not re-complete quests");
+  CHECK_EQ(lastAdvertisedStatus(fx.pub, 2),
+           static_cast<int>(quest::QuestStatus::COMPLETED),
+           "quest 2 stays COMPLETED after rejoin");
   PASS();
 }
 
@@ -442,4 +471,5 @@ void test_quest_manager() {
   TEST(QuestManager_detection_tool_charged);
   TEST(QuestManager_detection_side_configured);
   TEST(QuestManager_detection_inventory);
+  TEST(QuestManager_rejoin_preserves_progress);
 }

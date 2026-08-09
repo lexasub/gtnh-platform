@@ -16,7 +16,7 @@ struct DropInfo {
 // Callers fall back to the block itself when Get() returns nullptr.
 class BlockDrops {
 public:
-  static std::unique_ptr<BlockDrops> Load(const char* csv_path);
+  static BlockDrops* Load(const char* csv_path);
 
   static BlockDrops* instance() { return instance_; }
   static void setInstance(BlockDrops* drops) { instance_ = drops; }

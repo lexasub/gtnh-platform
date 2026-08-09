@@ -43,6 +43,31 @@ void QuestManager::publishQuestProgressUpdated(uint64_t playerId, uint32_t quest
                   playerId, questId, static_cast<uint8_t>(status), progress);
 }
 
+void QuestManager::publishQuestProgressSnapshot(uint64_t playerId) {
+    if (!publishCallback_) {
+        spdlog::warn("[QuestManager] publishQuestProgressSnapshot: no publish callback for player {}", playerId);
+        return;
+    }
+    auto it = progress_.find(playerId);
+    if (it == progress_.end() || it->second.empty()) {
+        return;
+    }
+    flatbuffers::FlatBufferBuilder builder(4096);
+    std::vector<flatbuffers::Offset<Protocol::QuestEntry>> entries;
+    entries.reserve(it->second.size());
+    for (const auto& [questId, status] : it->second) {
+        entries.push_back(Protocol::CreateQuestEntry(
+            builder, questId, static_cast<Protocol::QuestStatus>(status),
+            status == quest::QuestStatus::COMPLETED ? 100 : 0));
+    }
+    auto questsVec = builder.CreateVector(entries);
+    auto offset = Protocol::CreateQuestProgressUpdate(builder, playerId, questsVec);
+    builder.Finish(offset);
+    publishCallback_("quest.progress.updated", builder.GetBufferPointer(), builder.GetSize());
+    spdlog::info("[QuestManager] Published quest.progress.updated snapshot: player={}, {} entries",
+                 playerId, entries.size());
+}
+
 void QuestManager::publishQuestUnlocked(uint64_t playerId,
                                        const std::vector<uint32_t>& questIds) {
     if (!publishCallback_) {
@@ -205,11 +230,17 @@ void QuestManager::onPlayerJoined(uint64_t playerId) {
         std::lock_guard<std::mutex> lock(mutex_);
         auto& playerProgress = progress_[playerId];
 
-        // Seed root quests (no prereqs) as AVAILABLE so the client shows them
-        // as clickable/completable immediately. Dependent quests stay LOCKED
+        // Seed only quests missing from this player's state. On rejoin the
+        // in-memory progress must survive: overwriting it with LOCKED would
+        // wipe every quest that is not persisted (AVAILABLE/IN_PROGRESS).
+        // Root quests (no prereqs) become AVAILABLE so the client shows them
+        // as clickable/completable immediately; dependent quests stay LOCKED
         // until their prerequisites are completed.
         std::vector<uint32_t> autoUnlocked;
         for (const auto& questDef : questData_->AllQuests()) {
+            if (playerProgress.contains(questDef.id)) {
+                continue;
+            }
             if (questData_->GetPrerequisites(questDef.id).empty()) {
                 playerProgress[questDef.id] = quest::QuestStatus::AVAILABLE;
                 autoUnlocked.push_back(questDef.id);
@@ -529,6 +560,10 @@ void QuestManager::loadProgress(uint64_t playerId, const std::vector<uint8_t>& f
 
         spdlog::info("[QuestManager] Loaded {} quest entries for player {} from MetaDB",
                      loadedCount, playerId);
+
+        if (loadedCount > 0) {
+            publishQuestProgressSnapshot(playerId);
+        }
 
         rebuildCompletedEras(playerId, playerProgress);
     } catch (const std::exception& e) {

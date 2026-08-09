@@ -219,3 +219,47 @@ func TestHandleQuestCompletedGrantsRewardToInventory(t *testing.T) {
 		t.Fatalf("pending (redeemed=0) reward rows = %d, want 0 (auto-redeemed)", pending)
 	}
 }
+
+func TestHandleQuestCompletedPersistsQuestProgress(t *testing.T) {
+	m := newRewardTestMetaDB(t)
+	playerID := uint64(1006)
+	createTestPlayer(t, m, playerID)
+
+	questID := uint32(9002)
+
+	b := flatbuffers.NewBuilder(128)
+	Protocol.QuestCompletedStart(b)
+	Protocol.QuestCompletedAddPlayerId(b, playerID)
+	Protocol.QuestCompletedAddQuestId(b, questID)
+	Protocol.QuestCompletedAddTimestamp(b, uint64(time.Now().Unix()))
+	off := Protocol.QuestCompletedEnd(b)
+	b.Finish(off)
+
+	HandleQuestCompleted("quest.completed", b.FinishedBytes(), m)
+
+	var status, progress int
+	if err := m.db.QueryRow(
+		"SELECT status, progress_percent FROM quest_progress WHERE player_id = ? AND quest_id = ?",
+		playerID, questID,
+	).Scan(&status, &progress); err != nil {
+		t.Fatalf("query quest_progress: %v", err)
+	}
+	if status != int(Protocol.QuestStatusCOMPLETED) {
+		t.Fatalf("quest_progress status = %d, want %d (COMPLETED)", status, Protocol.QuestStatusCOMPLETED)
+	}
+	if progress != 100 {
+		t.Fatalf("quest_progress progress_percent = %d, want 100", progress)
+	}
+
+	progressLoaded, err := GetQuestProgress(m.db, playerID)
+	if err != nil {
+		t.Fatalf("GetQuestProgress: %v", err)
+	}
+	if len(progressLoaded) != 1 || progressLoaded[0].QuestID != questID {
+		t.Fatalf("GetQuestProgress = %+v, want single entry for quest %d", progressLoaded, questID)
+	}
+	if progressLoaded[0].Status != uint8(Protocol.QuestStatusCOMPLETED) {
+		t.Fatalf("GetQuestProgress status = %d, want COMPLETED", progressLoaded[0].Status)
+	}
+}
+

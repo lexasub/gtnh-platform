@@ -15,7 +15,7 @@ struct TransformResult {
 // data/registry/transforms.csv (expected,new,result_id[,result_meta]).
 class BlockTransforms {
 public:
-  static std::unique_ptr<BlockTransforms> Load(const char* csv_path);
+  static BlockTransforms* Load(const char* csv_path);
 
   static BlockTransforms* instance() { return instance_; }
   static void setInstance(BlockTransforms* transforms) { instance_ = transforms; }

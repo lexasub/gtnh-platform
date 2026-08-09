@@ -67,6 +67,7 @@ private:
   void publishQuestCompleted(uint64_t playerId, uint32_t questId);
   void publishQuestProgressUpdated(uint64_t playerId, uint32_t questId,
                                    quest::QuestStatus status, uint8_t progress);
+  void publishQuestProgressSnapshot(uint64_t playerId);
   void publishQuestUnlocked(uint64_t playerId,
                             const std::vector<uint32_t> &questIds);
   void publishEraTransition(uint64_t playerId, quest::Era completedEra);

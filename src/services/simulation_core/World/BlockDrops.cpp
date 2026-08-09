@@ -10,8 +10,8 @@ namespace simcore {
 
 BlockDrops* BlockDrops::instance_ = nullptr;
 
-std::unique_ptr<BlockDrops> BlockDrops::Load(const char* csv_path) {
-  auto drops = std::unique_ptr<BlockDrops>(new BlockDrops());
+BlockDrops* BlockDrops::Load(const char* csv_path) {
+  auto drops = new BlockDrops{};
   std::ifstream file(csv_path);
   if (!file.is_open()) {
     spdlog::error("BlockDrops: cannot open {}", csv_path);

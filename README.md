@@ -117,8 +117,17 @@ Note: **ChestSync** is a protocol feature (ChestOpenReq/Resp) + client chest win
 
 ## Build
 
-**NEVER rebuild from scratch.** Dependencies are pre-installed in `cmake-build-debug/` / `cmake-build-release/` (Conan toolchain inside — deleting them requires `conan install` + network).
+**Option A — Conan (recommended, automated):**
 
+[Conan](https://conan.io/) handles most dependencies (Asio, EnTT, spdlog, FlatBuffers, LMDB++, GLM, etc.).
+
+```bash
+pip install conan
+conan install -of build --build=missing #-s build_type=Debug
+cd build
+cmake -GNinja -DCMAKE_TOOLCHAIN_FILE=$PWD/conan_toolchain.cmake .. # -DCMAKE_BUILD_TYPE=DEBUG
+
+```
 **Go 1.22+** — for MessageRouter and MetaDB services.
 
 ```bash

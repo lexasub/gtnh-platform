@@ -10,8 +10,8 @@ namespace simcore {
 
 BlockTransforms* BlockTransforms::instance_ = nullptr;
 
-std::unique_ptr<BlockTransforms> BlockTransforms::Load(const char* csv_path) {
-  auto transforms = std::unique_ptr<BlockTransforms>(new BlockTransforms());
+BlockTransforms* BlockTransforms::Load(const char* csv_path) {
+  auto transforms = new BlockTransforms();
   std::ifstream file(csv_path);
   if (!file.is_open()) {
     spdlog::error("BlockTransforms: cannot open {}", csv_path);

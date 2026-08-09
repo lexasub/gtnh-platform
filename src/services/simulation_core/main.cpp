@@ -135,14 +135,14 @@ int main(int argc, char* argv[]) {
     // ── Block drops (from drops.csv → broken block → drop) ───────────────
     {
         auto blockDrops = simcore::BlockDrops::Load("data/registry/drops.csv");
-        simcore::BlockDrops::setInstance(blockDrops.get());
+        simcore::BlockDrops::setInstance(blockDrops);
     }
 
     // ── Block transforms (transforms.csv → placed X on Y → Z) ─────────────
     {
         auto blockTransforms =
             simcore::BlockTransforms::Load("data/registry/transforms.csv");
-        simcore::BlockTransforms::setInstance(blockTransforms.get());
+        simcore::BlockTransforms::setInstance(blockTransforms);
     }
 
     // ── Recipe manager ────────────────────────────────────────────────────
