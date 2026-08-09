@@ -202,19 +202,25 @@ bool QuestManager::completeQuestInternal(uint64_t playerId, uint32_t questId) {
     }
 
     // Unlock newly available dependents (their prerequisites are now met).
-    auto newlyAvailable = questGraph_->NewlyAvailable(playerProgress);
-    if (!newlyAvailable.empty()) {
-        std::vector<uint32_t> ids;
-        ids.reserve(newlyAvailable.size());
-        for (uint32_t nq : newlyAvailable) {
-            playerProgress[nq] = quest::QuestStatus::AVAILABLE;
-            publishQuestProgressUpdated(playerId, nq, quest::QuestStatus::AVAILABLE, 0);
-            ids.push_back(nq);
-        }
-        publishQuestUnlocked(playerId, ids);
-    }
+    unlockNewlyAvailable(playerId, playerProgress);
 
     return true;
+}
+
+void QuestManager::unlockNewlyAvailable(
+    uint64_t playerId,
+    std::unordered_map<uint32_t, quest::QuestStatus>& playerProgress) {
+    if (!questGraph_) return;
+    auto newlyAvailable = questGraph_->NewlyAvailable(playerProgress);
+    if (newlyAvailable.empty()) return;
+    std::vector<uint32_t> ids;
+    ids.reserve(newlyAvailable.size());
+    for (uint32_t nq : newlyAvailable) {
+        playerProgress[nq] = quest::QuestStatus::AVAILABLE;
+        publishQuestProgressUpdated(playerId, nq, quest::QuestStatus::AVAILABLE, 0);
+        ids.push_back(nq);
+    }
+    publishQuestUnlocked(playerId, ids);
 }
 
 void QuestManager::onPlayerJoined(uint64_t playerId) {
@@ -251,6 +257,13 @@ void QuestManager::onPlayerJoined(uint64_t playerId) {
         if (!autoUnlocked.empty()) {
             publishQuestUnlocked(playerId, autoUnlocked);
         }
+
+        // Reconciliation: on rejoin the in-memory state survives, but after a
+        // server restart (or a loadProgress racing ahead of onPlayerJoined) the
+        // map is re-seeded LOCKED. Unlock any LOCKED quest whose prerequisites
+        // are already satisfied so dependents of previously-completed quests
+        // are not stuck forever.
+        unlockNewlyAvailable(playerId, playerProgress);
 
         // Validate that playerId is valid (non-zero for most implementations)
         if (playerId == 0) {
@@ -563,6 +576,15 @@ void QuestManager::loadProgress(uint64_t playerId, const std::vector<uint8_t>& f
 
         if (loadedCount > 0) {
             publishQuestProgressSnapshot(playerId);
+        }
+
+        // Reconciliation: MetaDB may report quests COMPLETED outside the normal
+        // completion flow (forced/DB edit, or a quest that was completed while
+        // this server instance was down). Unlock any LOCKED quest whose
+        // prerequisites are now satisfied so its dependents are not stuck
+        // locked forever.
+        if (loadedCount > 0) {
+            unlockNewlyAvailable(playerId, playerProgress);
         }
 
         rebuildCompletedEras(playerId, playerProgress);

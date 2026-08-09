@@ -458,6 +458,54 @@ static void test_QuestManager_rejoin_preserves_progress() {
   PASS();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Reconciliation (regression): MetaDB may report quests COMPLETED outside the
+// normal completion flow (forced/DB edit). loadProgress must unlock any LOCKED
+// quest whose prerequisites are now satisfied — publishing AVAILABLE status +
+// quest.unlocked — otherwise dependents stay locked forever (the quest-11-
+//locked-while-quest-7-completed bug). Chain 1 → 2 → 3: loading {1: COMPLETED}
+// unlocks 2; loading {2: COMPLETED} then unlocks 3.
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestManager_loadProgress_reconciles_unlocks() {
+  const uint64_t player = 77;
+  quest::QuestData qd;
+  quest::QuestGraph graph;
+  RecordingPublisher pub;
+  simcore::QuestManager mgr(&qd, &graph, pub.callback());
+  buildManager(qd, graph);
+
+  // Seed all quests (root 1 AVAILABLE, rest LOCKED), then report quest 1
+  // COMPLETED straight from MetaDB — no detection, no completeQuest.
+  mgr.onPlayerJoined(player);
+  flatbuffers::FlatBufferBuilder b(128);
+  auto off = buildProgress(b, player,
+      {{1, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+  b.Finish(off);
+  mgr.loadProgress(player, std::vector<uint8_t>(b.GetBufferPointer(),
+                                                b.GetBufferPointer() + b.GetSize()));
+
+  // Quest 2 (prereq 1) must be unlocked by reconciliation.
+  CHECK_EQ(lastAdvertisedStatus(pub, 2),
+           static_cast<int>(quest::QuestStatus::AVAILABLE),
+           "reconciliation unlocks quest 2 after quest 1 forced COMPLETED");
+  // Quest 3 (prereq 2) stays LOCKED: 2 is AVAILABLE, not COMPLETED yet.
+  CHECK_EQ(lastAdvertisedStatus(pub, 3),
+           static_cast<int>(quest::QuestStatus::LOCKED),
+           "quest 3 stays LOCKED while quest 2 is only AVAILABLE");
+
+  // Quest 2 forced COMPLETED → reconciliation unlocks quest 3.
+  flatbuffers::FlatBufferBuilder b2(128);
+  auto off2 = buildProgress(b2, player,
+      {{2, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+  b2.Finish(off2);
+  mgr.loadProgress(player, std::vector<uint8_t>(b2.GetBufferPointer(),
+                                                b2.GetBufferPointer() + b2.GetSize()));
+  CHECK_EQ(lastAdvertisedStatus(pub, 3),
+           static_cast<int>(quest::QuestStatus::AVAILABLE),
+           "reconciliation unlocks quest 3 after quest 2 forced COMPLETED");
+  PASS();
+}
+
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
 void test_quest_manager() {
@@ -472,4 +520,5 @@ void test_quest_manager() {
   TEST(QuestManager_detection_side_configured);
   TEST(QuestManager_detection_inventory);
   TEST(QuestManager_rejoin_preserves_progress);
+  TEST(QuestManager_loadProgress_reconciles_unlocks);
 }

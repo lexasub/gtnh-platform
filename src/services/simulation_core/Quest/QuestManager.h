@@ -64,6 +64,15 @@ private:
   // Seeds missing quests as LOCKED so detection works even before onPlayerJoined.
   // Returns false (no state change) for already-COMPLETED quests.
   bool completeQuestInternal(uint64_t playerId, uint32_t questId);
+  // Transitions every LOCKED quest whose prerequisites are now satisfied to
+  // AVAILABLE (QuestGraph::NewlyAvailable) and publishes quest.progress.updated
+  // + quest.unlocked. Called after any change that can satisfy prerequisites:
+  // the completion cascade and progress reconciliation (loadProgress /
+  // onPlayerJoined), so quests forced COMPLETED in MetaDB unlock dependents
+  // that would otherwise stay locked forever.
+  void unlockNewlyAvailable(
+      uint64_t playerId,
+      std::unordered_map<uint32_t, quest::QuestStatus> &playerProgress);
   void publishQuestCompleted(uint64_t playerId, uint32_t questId);
   void publishQuestProgressUpdated(uint64_t playerId, uint32_t questId,
                                    quest::QuestStatus status, uint8_t progress);
