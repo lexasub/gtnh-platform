@@ -8,6 +8,7 @@ class EntityStateStoreClient;
 class IEventPublisher;
 class IoUringRouterClient;
 class ChunkStoreRepository;
+class QuestManager;
 class MachineSlotHandler : public ITopicHandler {
 public:
   MachineSlotHandler(std::shared_ptr<SimulationEngine> engine,
@@ -15,7 +16,8 @@ public:
                      std::shared_ptr<EntityStateStoreClient> ess,
                      std::shared_ptr<IEventPublisher> events,
                      std::shared_ptr<IoUringRouterClient> router,
-                     std::shared_ptr<ChunkStoreRepository> chunkStore);
+                     std::shared_ptr<ChunkStoreRepository> chunkStore,
+                     std::shared_ptr<QuestManager> questManager);
   void handle(const std::vector<uint8_t> &data) override;
 
 private:
@@ -25,5 +27,6 @@ private:
   std::shared_ptr<IEventPublisher> events_;
   std::shared_ptr<IoUringRouterClient> router_;
   std::shared_ptr<ChunkStoreRepository> chunkStore_;
+  std::shared_ptr<QuestManager> questManager_;
 };
 } // namespace simcore

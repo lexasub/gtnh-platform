@@ -1,0 +1,1795 @@
+{
+  "1": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "obtain",
+        "item": "0:10:11:2",
+        "count": 8,
+        "consume": false
+      }
+    ]
+  },
+  "2": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:10:00:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "3": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:10:11:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "4": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "place",
+        "item": "0:10:11:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "5": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:11110:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "6": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:11110:3",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "7": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "obtain",
+        "item": "0:0:2",
+        "count": 16,
+        "consume": false
+      }
+    ]
+  },
+  "8": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:11110:4",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "9": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "obtain",
+        "item": "10:0",
+        "count": 8,
+        "consume": false
+      }
+    ]
+  },
+  "10": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "obtain",
+        "item": "10:6",
+        "count": 16,
+        "consume": false
+      }
+    ]
+  },
+  "11": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:00:2",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "12": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:00:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "13": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:00:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "14": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "place",
+        "item": "1110:00:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "15": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:110:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "16": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:11110:5",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "17": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:10:11:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "18": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "place",
+        "item": "0:10:11:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "19": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "obtain",
+        "item": "0:11111:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "20": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:01:3",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "21": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:00:8",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "22": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "obtain",
+        "item": "10:2",
+        "count": 8,
+        "consume": false
+      }
+    ]
+  },
+  "23": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "obtain",
+        "item": "10:3",
+        "count": 8,
+        "consume": false
+      }
+    ]
+  },
+  "24": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:110:6",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "25": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1110:0:0:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "26": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1110:1:1:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "27": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:01:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "28": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:01:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "29": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:10:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "30": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:10:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "31": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:00:3",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "32": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:00:4",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "33": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:00:5",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "34": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:00:6",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "35": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:00:7",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "36": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "place",
+        "item": "1110:01:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "37": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:01:2",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "38": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:01:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "39": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:00:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "40": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:00:5",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "41": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:10:2",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "42": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:10:3",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "43": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:01:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "44": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:0:1:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "45": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:10:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "46": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:10:3",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "47": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:00:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "48": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:00:4",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "49": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:0:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "50": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:0:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "51": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:0:2",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "52": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:0:3",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "53": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:0:13",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "54": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:0:10",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "55": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:9",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "56": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:31",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "57": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:27",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "58": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:29",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "59": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:33",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "60": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:25",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "61": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:22",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "62": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:23",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "63": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:24",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "64": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:40",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "65": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:35",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "66": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:36",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "67": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "68": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "69": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:2",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "70": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:10",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "71": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "side_configured",
+        "item": "1:0:0:0:9",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "72": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:01:2",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "73": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:0:1:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "74": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "75": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:10:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "76": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:00:2",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "77": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:0:0:6",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "78": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:10",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "79": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:32",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "80": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:28",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "81": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:30",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "82": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:34",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "83": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:26",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "84": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:0:20",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "85": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:0:21",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "86": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:0:22",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "87": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:0:23",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "88": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:3",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "89": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:11",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "90": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:01:5",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "91": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:0:1:2",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "92": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:11:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "93": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:10:2",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "94": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1111:00:3",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "95": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:0:0:7",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "96": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:0:11",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "97": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:4",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "98": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:12",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "99": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1110:11:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "100": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:5",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "101": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:110:4",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "102": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:110:5",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "103": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:0:1:0:6",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "104": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:0:1:0:7",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "105": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:0:1:0:8",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "106": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:0:1:0:9",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "107": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:0:1:0:10",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "108": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:0:1:0:11",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "109": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:0:1:0:12",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "110": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:0:1:0:13",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "111": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:0:1:0:14",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "112": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:0:1:0:15",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "113": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:0:1:0:16",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "114": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:13",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "115": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:14",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "116": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:15",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "117": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:1:0:0",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "118": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:1:0:10",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "119": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:1:0:20",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "120": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:1:0:30",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "121": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:1:0:40",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "122": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:1:0:60",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "123": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:30",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "124": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:1:14",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "125": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:16",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "126": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:24",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "127": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:3",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "128": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:0:4",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "129": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:0:5",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "130": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:6",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "131": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:17",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "132": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:18",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "133": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:19",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "134": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:20",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "135": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:21",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "136": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:22",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "137": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:23",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "138": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:25",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "139": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:26",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "140": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:28",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "141": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:29",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "142": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:31",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "143": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:4",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "144": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:7",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "145": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:27",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "146": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:32",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "147": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:0:1:13",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "148": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:0:1:1:33",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "149": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:10",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "150": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:11",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "151": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:12",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "152": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:13",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "153": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:14",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "154": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:15",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "155": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:16",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "156": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "0:1:1:1:17",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "157": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "obtain",
+        "item": "0:11111:2",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "158": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "obtain",
+        "item": "0:11111:1",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "159": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "obtain",
+        "item": "0:11111:4",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "160": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:0:1:5",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "161": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:0:1:6",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "162": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:0:0:10",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  },
+  "163": {
+    "auto_complete": true,
+    "requirements": [
+      {
+        "kind": "craft",
+        "item": "1:1:0:0:11",
+        "count": 1,
+        "consume": false
+      }
+    ]
+  }
+}

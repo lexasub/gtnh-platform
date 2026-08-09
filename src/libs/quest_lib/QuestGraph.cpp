@@ -63,4 +63,19 @@ bool QuestGraph::IsEraComplete(
     return true;
 }
 
+std::vector<uint32_t> QuestGraph::LockedByPrereqs(
+    uint32_t questId,
+    const std::unordered_map<uint32_t, QuestStatus>& current) const {
+
+    std::vector<uint32_t> blocked;
+    auto it = prereqs_.find(questId);
+    if (it == prereqs_.end()) return blocked;
+    for (uint32_t prereq : it->second) {
+        auto statusIt = current.find(prereq);
+        if (statusIt == current.end() || statusIt->second != QuestStatus::COMPLETED)
+            blocked.push_back(prereq);
+    }
+    return blocked;
+}
+
 }

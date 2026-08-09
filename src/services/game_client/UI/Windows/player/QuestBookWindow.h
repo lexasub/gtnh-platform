@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Windows/IUIWindow.h"
+#include "quest_lib/QuestData.h"
+#include "quest_lib/QuestGraph.h"
 #include "quest_lib/QuestTypes.h"
 #include <cstdint>
 #include <imgui.h>
@@ -60,10 +62,24 @@ private:
     uint16_t targetCount;  // quantity required to complete the objective
     uint8_t status; // 0=locked, 1=available, 2=in_progress, 3=completed
     uint8_t progress;
+    // Structured objectives from quest_requirements.json (render requirement
+    // icons + lock reasons). autoComplete gates the Complete button.
+    std::vector<quest::QuestRequirement> requirements;
+    bool autoComplete = true;
+    quest::QuestReward reward; // from quest_rewards.json; empty if absent
   };
 
   std::vector<QuestEntry> quests_;
   bool dataLoaded_ = false;
+
+  // Retained QuestData/QuestGraph so requirement icons and the locked-by-
+  // pre-requisite reason can be resolved after loadQuestData() returns.
+  quest::QuestData questData_;
+  quest::QuestGraph questGraph_;
+
+  // For choice-of reward quests: index of the reward the player picked for the
+  // currently selected quest (only the picked entry is granted on Complete).
+  int selectedChoice_ = 0;
 
   // Exchange state for the currently selected quest. Cooldown is fetched
   // server-side on each quest detail open; the response arrives async.
@@ -92,6 +108,13 @@ private:
   void onExchangeClicked(uint64_t playerId);
   void onCooldownQuery(uint64_t playerId);
   int countItem(const InventoryState* inv, uint16_t itemId) const;
+
+  // Requirement/reward detail rendering (icons + lock reasons)
+  std::unordered_map<uint32_t, quest::QuestStatus> buildStatusMap() const;
+  void renderRequirementRow(const quest::QuestRequirement& req,
+                            const InventoryState* playerInv);
+  void renderRewardEntry(const quest::RewardEntry& e);
+  std::string detectionLabel(quest::DetectionType kind) const;
 
   // Color helpers
   ImU32 statusColor(uint8_t status) const;

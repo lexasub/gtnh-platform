@@ -31,6 +31,13 @@ public:
 
   void onPlayerJoined(uint64_t playerId);
   void checkCraftCompletion(uint64_t playerId, uint16_t itemId, uint8_t count);
+  // Detection handler for DetectionType::MACHINE. `machineId` is the packed
+  // block id of the machine (machine_id == machine block id); `itemId` is the
+  // packed item the machine produced; `count` is the quantity taken. Mirrors
+  // checkCraftCompletion: a MACHINE quest whose detectTarget matches the
+  // produced item completes when the machine type + prerequisites match.
+  void checkMachineOutput(uint64_t playerId, uint16_t machineId, uint16_t itemId,
+                          uint8_t count);
   void checkBlockAction(uint64_t playerId, int32_t x, int32_t y, int32_t z,
                         uint16_t blockId);
   // Detection handler for DetectionType::TOOL_CHARGED. `itemId` is the packed
@@ -64,6 +71,13 @@ private:
   // Seeds missing quests as LOCKED so detection works even before onPlayerJoined.
   // Returns false (no state change) for already-COMPLETED quests.
   bool completeQuestInternal(uint64_t playerId, uint32_t questId);
+  // Applies the autoComplete gate for a quest whose objective + prerequisites
+  // are both met. autoComplete → completeQuestInternal (instant COMPLETED +
+  // dependent unlock). !autoComplete → mark AVAILABLE + publish
+  // quest.progress.updated, but do NOT unlock dependents (they unlock on real
+  // COMPLETED via the manual Complete button). Returns whether state changed.
+  bool handleQuestMet(uint64_t playerId, const quest::QuestDef& questDef,
+                      const std::string& reason);
   // Transitions every LOCKED quest whose prerequisites are now satisfied to
   // AVAILABLE (QuestGraph::NewlyAvailable) and publishes quest.progress.updated
   // + quest.unlocked. Called after any change that can satisfy prerequisites:

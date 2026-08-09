@@ -35,7 +35,7 @@
     { "id": 33, "prereqs": [28, 29] },
     { "id": 34, "prereqs": [28, 29] },
     { "id": 35, "prereqs": [28, 29] },
-    { "id": 36, "prereqs": [28] },
+    { "id": 36, "prereqs": [27] },
     { "id": 37, "prereqs": [31] },
     { "id": 38, "prereqs": [24] },
     { "id": 39, "prereqs": [37, 38] },

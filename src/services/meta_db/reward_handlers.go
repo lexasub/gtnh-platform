@@ -443,6 +443,13 @@ type QuestDef struct {
 	CostItemID   uint16
 	CostCount    uint8
 	CooldownSecs uint16
+
+	// Merged from quest_requirements.json. TargetItemID/TargetCount/DetectType
+	// mirror the first requirement's objective; AutoComplete gates whether a
+	// detected quest auto-completes or waits for a manual Complete button.
+	AutoComplete bool
+	TargetItemID uint16
+	TargetCount  uint16
 }
 
 // GetQuestRewardsStats returns statistics about quest rewards for a player

@@ -1,4 +1,5 @@
 #include "MachineSlotHandler.h"
+#include "Quest/QuestManager.h"
 #include "ECS/SimulationEngine.h"
 #include "ECS/components/Position.h"
 #include "ECS/components/MachineComponent.h"
@@ -15,8 +16,8 @@
 namespace simcore {
 MachineSlotHandler::MachineSlotHandler(std::shared_ptr<SimulationEngine> e, std::shared_ptr<PlayerInventoryStore> inv,
     std::shared_ptr<EntityStateStoreClient> ess, std::shared_ptr<IEventPublisher> ev, std::shared_ptr<IoUringRouterClient> r,
-    std::shared_ptr<ChunkStoreRepository> csr)
-    : engine_(std::move(e)), inventoryStore_(std::move(inv)), entityState_(std::move(ess)), events_(std::move(ev)), router_(std::move(r)), chunkStore_(std::move(csr)) {}
+    std::shared_ptr<ChunkStoreRepository> csr, std::shared_ptr<QuestManager> qm)
+    : engine_(std::move(e)), inventoryStore_(std::move(inv)), entityState_(std::move(ess)), events_(std::move(ev)), router_(std::move(r)), chunkStore_(std::move(csr)), questManager_(std::move(qm)) {}
 void MachineSlotHandler::handle(const std::vector<uint8_t>& data) {
     flatbuffers::Verifier v(data.data(), data.size());
     if (!v.VerifyBuffer<Protocol::SetMachineSlotReq>(nullptr)) return;
@@ -61,6 +62,10 @@ void MachineSlotHandler::handle(const std::vector<uint8_t>& data) {
     }
     InventorySlot oldItem = container->slots[slot_idx];
     container->slots[slot_idx] = {item_id, count, 0};
+    uint16_t machineId = 0;
+    if (auto* mc = reg.try_get<MachineComponent>(entity)) {
+        machineId = mc->machine_id;
+    }
     spdlog::info("[SimCore] MachineSlotHandler: slot {} at ({},{},{}) {}→{} ({}x), ps={}",
                  slot_idx, x, y, z, oldItem.item_id, item_id, count, ps);
     if (ps < 255) {
@@ -89,11 +94,14 @@ void MachineSlotHandler::handle(const std::vector<uint8_t>& data) {
             inv[ps] = {oldItem.item_id, oldItem.count, 0};
             spdlog::info("[SimCore] MachineSlotHandler: gave machine item {} to player slot {}",
                          oldItem.item_id, ps);
+            if (questManager_ && machineId != 0) {
+                questManager_->checkMachineOutput(req->player_id(), machineId,
+                                                  oldItem.item_id, oldItem.count);
+            }
         }
         inventoryStore_->setSlots(req->player_id(), inv);
     }
 skip_player_inv:
-    uint16_t machineId = 0;
     int slotsIn = static_cast<int>(container->slot_count);
     if (auto* mc = reg.try_get<MachineComponent>(entity)) {
         machineId = mc->machine_id;

@@ -312,10 +312,8 @@ void QuestManager::checkCraftCompletion(uint64_t playerId, uint16_t itemId, uint
                 continue;
             }
 
-            if (completeQuestInternal(playerId, questDef.id)) {
-                spdlog::info("[QuestManager] Quest {} COMPLETED for player {} (crafted {} x{})",
-                           questDef.id, playerId, itemId, count);
-            }
+            handleQuestMet(playerId, questDef,
+                           "crafted " + itemIdStr + " x" + std::to_string(count));
         }
     } catch (const std::exception& e) {
         spdlog::error("[QuestManager] Exception in checkCraftCompletion for player {}: {}",
@@ -356,10 +354,9 @@ void QuestManager::checkBlockAction(uint64_t playerId, int32_t x, int32_t y, int
                 continue;
             }
 
-            if (completeQuestInternal(playerId, questDef.id)) {
-                spdlog::info("[QuestManager] Block quest {} COMPLETED for player {} at ({},{},{})",
-                           questDef.id, playerId, x, y, z);
-            }
+            handleQuestMet(playerId, questDef,
+                           "placed block " + blockIdStr + " at (" + std::to_string(x) + "," +
+                               std::to_string(y) + "," + std::to_string(z) + ")");
         }
     } catch (const std::exception& e) {
         spdlog::error("[QuestManager] Exception in checkBlockAction for player {}: {}",
@@ -398,10 +395,8 @@ void QuestManager::checkToolCharged(uint64_t playerId, uint16_t itemId) {
                 continue;
             }
 
-            if (completeQuestInternal(playerId, questDef.id)) {
-                spdlog::info("[QuestManager] Quest {} COMPLETED for player {} (tool charged {})",
-                           questDef.id, playerId, itemId);
-            }
+            handleQuestMet(playerId, questDef,
+                           "charged tool " + itemIdStr);
         }
     } catch (const std::exception& e) {
         spdlog::error("[QuestManager] Exception in checkToolCharged for player {}: {}",
@@ -441,14 +436,92 @@ void QuestManager::checkSideConfigured(uint64_t playerId, uint16_t machineId) {
                 continue;
             }
 
-            if (completeQuestInternal(playerId, questDef.id)) {
-                spdlog::info("[QuestManager] Quest {} COMPLETED for player {} (side configured machine {})",
-                           questDef.id, playerId, machineId);
-            }
+            handleQuestMet(playerId, questDef,
+                           "side-configured machine " + machineIdStr);
         }
     } catch (const std::exception& e) {
         spdlog::error("[QuestManager] Exception in checkSideConfigured for player {}: {}",
                      playerId, e.what());
+    }
+}
+
+bool QuestManager::handleQuestMet(uint64_t playerId, const quest::QuestDef& questDef,
+                                  const std::string& reason) {
+    auto& playerProgress = progress_[playerId];
+
+    if (questDef.autoComplete) {
+        if (completeQuestInternal(playerId, questDef.id)) {
+            spdlog::info("[QuestManager] Quest {} COMPLETED for player {} ({})",
+                         questDef.id, playerId, reason);
+            return true;
+        }
+        return false;
+    }
+
+    // autoComplete == false: objective + prereqs met, but do NOT complete.
+    // Transition only if still LOCKED; an already-COMPLETED quest stays done.
+    auto it = playerProgress.find(questDef.id);
+    if (it != playerProgress.end() && it->second == quest::QuestStatus::COMPLETED) {
+        return false;
+    }
+    if (it == playerProgress.end() ||
+        it->second == quest::QuestStatus::LOCKED) {
+        playerProgress[questDef.id] = quest::QuestStatus::AVAILABLE;
+        publishQuestProgressUpdated(playerId, questDef.id, quest::QuestStatus::AVAILABLE, 0);
+        // NO unlockNewlyAvailable — dependents unlock only on real COMPLETED.
+        spdlog::info("[QuestManager] Quest {} made AVAILABLE for player {} ({})",
+                     questDef.id, playerId, reason);
+        return true;
+    }
+    return false;
+}
+
+void QuestManager::checkMachineOutput(uint64_t playerId, uint16_t machineId,
+                                      uint16_t itemId, uint8_t count) {
+    if (!questData_ || !questGraph_) {
+        spdlog::error("[QuestManager] checkMachineOutput: questData_/questGraph_ null for player {}",
+                      playerId);
+        return;
+    }
+    if (count < 1) return;
+
+    // detect_target is a hierarchical item id from items.csv; resolve packed id → hierarchical.
+    std::string itemIdStr =
+        RecipeManager::ItemRegistry::instance().idToHierarchical(itemId);
+    std::string machineIdStr =
+        RecipeManager::ItemRegistry::instance().idToHierarchical(machineId);
+
+    spdlog::debug("[QuestManager] Checking machine output: player={}, machine={} (hier={}), "
+                  "item={} (hier={}), count={}",
+                  playerId, machineId, machineIdStr, itemId, itemIdStr, count);
+
+    try {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        for (const auto& questDef : questData_->AllQuests()) {
+            if (questDef.detectType != quest::DetectionType::MACHINE) continue;
+
+            // Machine quest objective: item must match, and (if declared) the
+            // machine type must match the machine's hierarchical block id.
+            if (questDef.detectTarget != itemIdStr) continue;
+            if (!questDef.requirements.empty()) {
+                const auto& req = questDef.requirements[0];
+                if (req.machine != machineIdStr) continue;
+            }
+
+            if (!questGraph_->CanComplete(questDef.id, progress_[playerId])) {
+                spdlog::debug("[QuestManager] Machine quest {} prerequisites not met for player {}",
+                              questDef.id, playerId);
+                continue;
+            }
+
+            handleQuestMet(playerId, questDef,
+                           "machine " + machineIdStr + " produced " + itemIdStr + " x" +
+                               std::to_string(count));
+        }
+    } catch (const std::exception& e) {
+        spdlog::error("[QuestManager] Exception in checkMachineOutput for player {}: {}",
+                      playerId, e.what());
     }
 }
 
@@ -496,11 +569,9 @@ void QuestManager::checkInventory(uint64_t playerId,
                 continue;
             }
 
-            if (completeQuestInternal(playerId, questDef.id)) {
-                spdlog::info("[QuestManager] Quest {} COMPLETED for player {} "
-                             "(has {} x{} of {})",
-                             questDef.id, playerId, have, need, questDef.detectTarget);
-            }
+            handleQuestMet(playerId, questDef,
+                           "holds " + std::to_string(have) + " x" + std::to_string(need) +
+                               " of " + questDef.detectTarget);
         }
     } catch (const std::exception& e) {
         spdlog::error("[QuestManager] Exception in checkInventory for player {}: {}",

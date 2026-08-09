@@ -75,7 +75,7 @@ void SimCoreMessageHandler::setup() {
     // with result_slots, collapsing 2-slot machines to 1 and erasing the input.
 
     topicDispatcher_->on("player.machine.slot", std::make_unique<MachineSlotHandler>(
-        d.engine, d.inventoryStore, d.entityStateClient, d.eventPublisher, d.routerClient, d.blockRepository));
+        d.engine, d.inventoryStore, d.entityStateClient, d.eventPublisher, d.routerClient, d.blockRepository, d.questManager));
     topicDispatcher_->on("player.tool.action", std::make_unique<ToolActionHandler>(
         d.engine, d.inventoryStore, d.routerClient, d.questManager));
 

@@ -408,6 +408,9 @@ int main(int argc, char* argv[]) {
     if (!questData->LoadGraph("data/quests/quest_graph.json")) {
         spdlog::warn("Failed to load quest_graph.json");
     }
+    if (!questData->LoadRequirementsJSON("data/quests/quest_requirements.json")) {
+        spdlog::warn("Failed to load quest_requirements.json");
+    }
     auto questGraph = std::make_shared<quest::QuestGraph>();
     std::unordered_map<uint32_t, std::vector<uint32_t>> prereqsMap;
     for (const auto& qd : questData->AllQuests()) {

@@ -34,6 +34,8 @@ bool QuestData::LoadCSV(const std::string& csvPath) {
             }
         };
 
+        // 9-column schema (detect/reward columns moved to JSON):
+        // id,title,description,era,section,cost_item,cost_count,cooldown,target_count
         std::getline(ss, cell, ',');
         qd.id = parseUint(cell, uint32_t{0});
 
@@ -46,27 +48,8 @@ bool QuestData::LoadCSV(const std::string& csvPath) {
 
         std::getline(ss, qd.section, ',');
 
-        /*std::getline(ss, cell, ',');//moved from quests.csv to quests_graph.json (may be converted to csv)
-        if (!cell.empty()) {
-            std::stringstream ps(cell);
-            std::string pid;
-            while (std::getline(ps, pid, ';')) {
-                if (!pid.empty())
-                    qd.prerequisites.push_back(parseUint(pid, uint32_t{0}));
-            }
-        }*/
-
-        std::getline(ss, cell, ',');
-        qd.detectType = DetectFromString(cell);
-
-        std::getline(ss, qd.detectTarget, ',');
-
-        std::getline(ss, cell, ',');
-        qd.rewardItemId = ItemId::pack(cell);
-
-        std::getline(ss, cell, ',');
-        qd.rewardCount = parseUint(cell, uint8_t{0});
-
+        // cost_item / cost_count / cooldown are kept for EXCHANGE quests; none
+        // of the current seeds set detectType EXCHANGE, so they stay 0.
         std::getline(ss, cell, ',');
         qd.costItemId = ItemId::pack(cell);
 
@@ -76,9 +59,6 @@ bool QuestData::LoadCSV(const std::string& csvPath) {
         std::getline(ss, cell, ',');
         qd.cooldownSecs = parseUint(cell, uint16_t{0});
 
-        // target_count is the last column; existing rows have no 14th field, so
-        // clear cell first to avoid a stale value when getline hits EOF.
-        cell.clear();
         std::getline(ss, cell, ',');
         qd.targetCount = parseUint(cell, uint16_t{0});
 
@@ -174,6 +154,149 @@ void QuestData::buildGraph() {
             graph_[prereq].push_back(qd.id);
         }
     }
+}
+
+bool QuestData::LoadRequirementsJSON(const std::string& jsonPath) {
+    std::ifstream file(jsonPath);
+    if (!file.is_open()) {
+        spdlog::error("[QuestData] LoadRequirementsJSON: cannot open {}", jsonPath);
+        return false;
+    }
+
+    nlohmann::json root;
+    try {
+        file >> root;
+    } catch (const std::exception& e) {
+        spdlog::error("[QuestData] LoadRequirementsJSON: JSON parse error in {}: {}",
+                      jsonPath, e.what());
+        return false;
+    }
+
+    if (!root.is_object()) {
+        spdlog::error("[QuestData] LoadRequirementsJSON: root not an object in {}", jsonPath);
+        return false;
+    }
+
+    auto parseKind = [](const std::string& k) {
+        if (k == "craft") return DetectionType::CRAFT;
+        if (k == "obtain") return DetectionType::INVENTORY;
+        if (k == "place") return DetectionType::BLOCK_PLACED;
+        if (k == "machine") return DetectionType::MACHINE;
+        if (k == "side_configured") return DetectionType::SIDE_CONFIGURED;
+        if (k == "exchange") return DetectionType::EXCHANGE;
+        return DetectionType::CRAFT;
+    };
+
+    int merged = 0;
+    for (auto it = root.begin(); it != root.end(); ++it) {
+        uint32_t id = 0;
+        try {
+            id = static_cast<uint32_t>(std::stoul(it.key()));
+        } catch (...) {
+            continue;
+        }
+        auto qit = idIndex_.find(id);
+        if (qit == idIndex_.end()) {
+            spdlog::warn("[QuestData] LoadRequirementsJSON: quest {} not loaded, skipping", id);
+            continue;
+        }
+
+        auto& qd = quests_[qit->second];
+        if (it.value().contains("auto_complete") && it.value()["auto_complete"].is_boolean()) {
+            qd.autoComplete = it.value()["auto_complete"].get<bool>();
+        }
+
+        auto reqsIt = it.value().find("requirements");
+        if (reqsIt == it.value().end() || !reqsIt->is_array()) continue;
+
+        qd.requirements.clear();
+        for (const auto& r : *reqsIt) {
+            QuestRequirement req;
+            req.kind = parseKind(r.value("kind", std::string{}));
+            req.item = r.value("item", std::string{});
+            req.count = static_cast<uint16_t>(r.value("count", uint32_t{0}));
+            req.consume = r.value("consume", false);
+            req.machine = r.value("machine", std::string{});
+            qd.requirements.push_back(std::move(req));
+        }
+
+        // Merge the primary requirement into the legacy detection fields so
+        // existing trigger handlers keep firing unchanged.
+        auto& primary = qd.requirements.front();
+        qd.detectType = primary.kind;
+        qd.detectTarget = primary.item;
+        qd.targetCount = primary.count;
+        ++merged;
+    }
+
+    spdlog::info("[QuestData] LoadRequirementsJSON: merged requirements for {} quests from {}",
+                 merged, jsonPath);
+    return true;
+}
+
+bool QuestData::LoadRewardsJSON(const std::string& jsonPath) {
+    std::ifstream file(jsonPath);
+    if (!file.is_open()) {
+        spdlog::error("[QuestData] LoadRewardsJSON: cannot open {}", jsonPath);
+        return false;
+    }
+
+    nlohmann::json root;
+    try {
+        file >> root;
+    } catch (const std::exception& e) {
+        spdlog::error("[QuestData] LoadRewardsJSON: JSON parse error in {}: {}", jsonPath, e.what());
+        return false;
+    }
+
+    if (!root.is_object()) {
+        spdlog::error("[QuestData] LoadRewardsJSON: root not an object in {}", jsonPath);
+        return false;
+    }
+
+    auto parseType = [](const std::string& t) {
+        if (t == "experience") return RewardType::EXPERIENCE;
+        if (t == "special") return RewardType::SPECIAL;
+        return RewardType::ITEM;
+    };
+
+    auto parseEntry = [&parseType](const nlohmann::json& e) {
+        RewardEntry entry;
+        entry.type = parseType(e.value("type", std::string{"item"}));
+        entry.item = e.value("item", std::string{});
+        entry.count = static_cast<uint16_t>(e.value("count", uint32_t{0}));
+        entry.value = static_cast<float>(e.value("value", 0.0));
+        return entry;
+    };
+
+    rewards_.clear();
+    int loaded = 0;
+    for (auto it = root.begin(); it != root.end(); ++it) {
+        uint32_t id = 0;
+        try {
+            id = static_cast<uint32_t>(std::stoul(it.key()));
+        } catch (...) {
+            continue;
+        }
+
+        QuestReward qr;
+        if (it.value().contains("rewards") && it.value()["rewards"].is_array()) {
+            for (const auto& e : it.value()["rewards"]) qr.rewards.push_back(parseEntry(e));
+        } else if (it.value().contains("choice_of") && it.value()["choice_of"].is_array()) {
+            for (const auto& e : it.value()["choice_of"]) qr.choiceOf.push_back(parseEntry(e));
+        }
+        rewards_[id] = std::move(qr);
+        ++loaded;
+    }
+
+    spdlog::info("[QuestData] LoadRewardsJSON: loaded rewards for {} quests from {}", loaded, jsonPath);
+    return true;
+}
+
+const QuestReward* QuestData::GetReward(uint32_t questId) const {
+    auto it = rewards_.find(questId);
+    if (it == rewards_.end()) return nullptr;
+    return &it->second;
 }
 
 const QuestDef* QuestData::GetQuest(uint32_t id) const {

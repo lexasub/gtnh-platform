@@ -71,6 +71,7 @@ enum class DetectionType : uint8_t {
   SIDE_CONFIGURED = 3,
   EXCHANGE = 4,
   INVENTORY = 5,
+  MACHINE = 6,
 };
 
 inline DetectionType DetectFromString(const std::string &s) {
@@ -86,8 +87,42 @@ inline DetectionType DetectFromString(const std::string &s) {
     return DetectionType::EXCHANGE;
   if (s == "inventory")
     return DetectionType::INVENTORY;
+  if (s == "machine")
+    return DetectionType::MACHINE;
   return DetectionType::CRAFT;
 }
+
+// A single quest objective requirement. Populated from quest_requirements.json;
+// also feeds QuestDef.detectType/detectTarget/targetCount so existing
+// trigger handlers (checkCraftCompletion et al.) keep firing unchanged.
+struct QuestRequirement {
+  DetectionType kind = DetectionType::CRAFT;
+  std::string item;    // hierarchical spec string, e.g. "0:10:11:2"
+  uint16_t count = 0;  // INVENTORY/MACHINE objective quantity; else informational
+  bool consume = false; // item taken on completion (default false)
+  std::string machine; // machine spec string; only for kind MACHINE
+};
+
+enum class RewardType : uint8_t {
+  ITEM = 0,
+  EXPERIENCE = 1,
+  SPECIAL = 2,
+};
+
+struct RewardEntry {
+  RewardType type = RewardType::ITEM;
+  std::string item;     // for ITEM
+  uint16_t count = 0;   // for ITEM
+  float value = 0.f;    // for EXPERIENCE (amount of XP)
+};
+
+// One quest's reward set: either all of `rewards` are granted, or the player
+// picks one of `choiceOf` (XOR enforced by the loader). Loaded from
+// quest_rewards.json.
+struct QuestReward {
+  std::vector<RewardEntry> rewards;
+  std::vector<RewardEntry> choiceOf;
+};
 
 struct QuestDef {
   uint32_t id = 0;
@@ -106,6 +141,13 @@ struct QuestDef {
   // DetectionType::INVENTORY objective: quantity of detectTarget the player
   // must hold in their inventory to complete (default 0 → treated as ≥1).
   uint16_t targetCount = 0;
+  // True: requirement met + prerequisites OK → complete immediately (default).
+  // False: requirement met → transition to AVAILABLE; player must press
+  // Complete (completeQuest) to finish. Populated from quest_requirements.json.
+  bool autoComplete = true;
+  // Structured objectives from quest_requirements.json. As a single source of
+  // truth it also populates detectType/detectTarget/targetCount above.
+  std::vector<QuestRequirement> requirements;
 };
 
 struct QuestProgress {

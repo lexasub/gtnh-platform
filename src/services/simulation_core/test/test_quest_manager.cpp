@@ -114,9 +114,17 @@ struct QuestFixture {
 // registry available so idToHierarchical() resolves packed → hierarchical
 // (required for detection-path matching). Idempotent via ItemRegistry's
 // loaded_ guard.
+//
+// Matches production main.cpp: the 9-column quests.csv no longer carries the
+// detection type/target — those live in quest_requirements.json (which also
+// sets per-quest autoComplete). Without LoadRequirementsJSON the QuestDefs
+// have no detect fields, so detection handlers (CRAFT/BLOCK_PLACED/INVENTORY/
+// MACHINE) have nothing to match and detection-completion tests would not fire.
 void buildManager(quest::QuestData& qd, quest::QuestGraph& graph) {
   qd.LoadCSV(DATA_DIR "/quests/quests.csv");
   qd.LoadGraph(DATA_DIR "/quests/quest_graph.json");
+  qd.LoadRequirementsJSON(DATA_DIR "/quests/quest_requirements.json");
+  qd.LoadRewardsJSON(DATA_DIR "/quests/quest_rewards.json");
   std::unordered_map<uint32_t, std::vector<uint32_t>> prereqs;
   for (const auto& q : qd.AllQuests()) prereqs[q.id] = q.prerequisites;
   graph.Init(qd.Graph(), prereqs);
