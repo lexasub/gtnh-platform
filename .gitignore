@@ -102,3 +102,22 @@ package-lock.json
 .dolt/
 .beads-credential-key
 .aider*
+
+# ── Local tooling / third-party checkouts ────────────────
+bgfx/
+third_party/
+graphify-out/
+src/graphify-out/
+src/ast_rag_config.json
+skills-lock.json
+
+# ── Temporary / scratch files ────────────────────────────
+test/
+tests/
+Testing/
+test_recipe.json
+try_fix.patch
+todo.md
+test.sh
+sudo_perf.sh
+.claude
