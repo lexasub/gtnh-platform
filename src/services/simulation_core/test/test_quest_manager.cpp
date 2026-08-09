@@ -208,15 +208,16 @@ static void test_QuestManager_completeQuest_rejects_exchange() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3.5: BuildQuestEraMap() excludes EXCHANGE quests — an exchange quest can
-// never reach COMPLETED, so counting it toward era completion would deadlock
-// the era forever. Quest 4 is the exchange quest in VAGRANT.
+// 3.5: BuildQuestEraMap() must cover every quest — the current data has no
+// EXCHANGE quests, so nothing may be excluded from era completion counting.
+// Quest 4 (Place Workbench, BLOCK_PLACED) is a normal progress quest.
 // ─────────────────────────────────────────────────────────────────────────────
-static void test_QuestData_eraMap_excludes_exchange() {
+static void test_QuestData_eraMap_covers_all_quests() {
   quest::QuestData qd;
   CHECK(qd.LoadCSV(DATA_DIR "/quests/quests.csv"), "LoadCSV ok");
   auto eraMap = qd.BuildQuestEraMap();
-  CHECK(eraMap.find(4) == eraMap.end(), "exchange quest 4 excluded from era map");
+  CHECK(eraMap.size() == 163, "era map covers all 163 quests");
+  CHECK(eraMap.find(4) != eraMap.end(), "block_placed quest 4 in era map");
   CHECK(eraMap.find(1) != eraMap.end(), "non-exchange quest 1 still in era map");
   PASS();
 }
@@ -239,9 +240,10 @@ static void test_QuestManager_completeQuest_unlocks_dependents() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Era transition: VAGRANT quests are 1,2,3,4,5,6,37,38,39. Seed all but quest
-// 3 COMPLETED; completing quest 3 closes the era → quest.era.transition is
-// published exactly once with completed_era=VAGRANT(0), next_era=APPRENTICE(1).
+// Era transition: complete every VAGRANT quest except quest 3; completing
+// quest 3 closes the era → quest.era.transition is published exactly once
+// with completed_era=VAGRANT(0), next_era=APPRENTICE(1). The seed set is
+// derived from GetEraQuests(VAGRANT) so the test tracks the quest data.
 // ─────────────────────────────────────────────────────────────────────────────
 static void test_QuestManager_eraTransition_published_once() {
   const uint64_t player = 55;
@@ -255,12 +257,18 @@ static void test_QuestManager_eraTransition_published_once() {
   for (const auto& q : qd.AllQuests()) prereqs[q.id] = q.prerequisites;
   graph.Init(qd.Graph(), prereqs);
 
+  std::vector<ProgressEntry> seed;
+  for (const auto* qdef : qd.GetEraQuests(quest::Era::VAGRANT)) {
+    if (qdef->id == 3) {
+      seed.push_back({3, static_cast<uint8_t>(quest::QuestStatus::AVAILABLE), 0});
+    } else {
+      seed.push_back({qdef->id, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100});
+    }
+  }
+
   mgr.onPlayerJoined(player);
-  flatbuffers::FlatBufferBuilder b(256);
-  auto off = buildProgress(b, player,
-      {{1, 3, 100}, {2, 3, 100}, {4, 3, 100}, {5, 3, 100},
-       {6, 3, 100}, {37, 3, 100}, {38, 3, 100}, {39, 3, 100},
-       {3, 1, 0}});
+  flatbuffers::FlatBufferBuilder b(512);
+  auto off = buildProgress(b, player, seed);
   b.Finish(off);
   mgr.loadProgress(player, std::vector<uint8_t>(b.GetBufferPointer(),
                                                 b.GetBufferPointer() + b.GetSize()));
@@ -305,11 +313,11 @@ static void test_QuestManager_detection_one_step_craft() {
   simcore::QuestManager mgr(&qd, &graph, pub.callback());
   buildManager(qd, graph);
 
-  // Quest 1 COMPLETED; quest 2 (craft iron_ingot, prereq 1) stays LOCKED.
+  // Quest 1 COMPLETED; quest 2 (craft oak_planks, prereq 1) stays LOCKED.
   seedProgress(mgr, player,
       {{1, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
 
-  mgr.checkCraftCompletion(player, ItemId::pack("0:110:1"), 1);
+  mgr.checkCraftCompletion(player, ItemId::pack("0:10:00:0"), 1);
   CHECK_EQ(lastAdvertisedStatus(pub, 2),
            static_cast<int>(quest::QuestStatus::COMPLETED),
            "LOCKED craft quest completes in one step via detection");
@@ -317,8 +325,8 @@ static void test_QuestManager_detection_one_step_craft() {
            "quest.completed published once");
 
   // Completing quest 2 cascades unlocks: quest 3 (prereq 2) → AVAILABLE.
-  CHECK_EQ(countTopic(pub, "quest.unlocked"), 2,
-           "quest.unlocked published (auto + detection cascade)");
+  CHECK_EQ(countTopic(pub, "quest.unlocked"), 3,
+           "quest.unlocked published (auto + seed reconciliation + cascade)");
   CHECK_EQ(lastAdvertisedStatus(pub, 3),
            static_cast<int>(quest::QuestStatus::AVAILABLE),
            "dependent quest 3 advertised AVAILABLE after detection");
@@ -326,10 +334,10 @@ static void test_QuestManager_detection_one_step_craft() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TOOL_CHARGED detection (task 2.1): checkToolCharged completes quest 40
-// (ULV drill, prereq 18) when the packed drill id matches detectTarget.
+// BLOCK_PLACED detection (task 2.1): checkBlockAction completes quest 14
+// (Place Heat Furnace, prereq 11) when the placed block matches detectTarget.
 // ─────────────────────────────────────────────────────────────────────────────
-static void test_QuestManager_detection_tool_charged() {
+static void test_QuestManager_detection_block_placed() {
   const uint64_t player = 31;
   quest::QuestData qd;
   quest::QuestGraph graph;
@@ -337,23 +345,24 @@ static void test_QuestManager_detection_tool_charged() {
   simcore::QuestManager mgr(&qd, &graph, pub.callback());
   buildManager(qd, graph);
 
-  // Quest 18 (ULV Drilling, prereq of 40) COMPLETED; quest 40 stays LOCKED.
+  // Quest 11 (Heat Furnace, prereq of 14) COMPLETED; quest 14 stays LOCKED.
   seedProgress(mgr, player,
-      {{18, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+      {{11, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
 
-  mgr.checkToolCharged(player, ItemId::pack("1111:00:0"));
-  CHECK_EQ(lastAdvertisedStatus(pub, 40),
+  mgr.checkBlockAction(player, 10, 20, 30, ItemId::pack("1110:00:0"));
+  CHECK_EQ(lastAdvertisedStatus(pub, 14),
            static_cast<int>(quest::QuestStatus::COMPLETED),
-           "TOOL_CHARGED quest 40 completes via checkToolCharged");
+           "BLOCK_PLACED quest 14 completes via checkBlockAction");
   CHECK_EQ(countTopic(pub, "quest.completed"), 1,
            "quest.completed published once");
   PASS();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SIDE_CONFIGURED detection (task 2.2): checkSideConfigured completes quest
-// 41 (heat furnace, prereq 22) when the packed machine id matches. A
-// machine_id of 0 (multiblock hatch path) is not a side-config target.
+// SIDE_CONFIGURED detection (task 2.2): quest 71 (Side Configuration, prereqs
+// 40+55) targets "1:0:0:0:9", which is absent from items.csv — so no packed
+// machine id can satisfy it. Test the reachable invariants: hatch wrenching
+// (machine_id == 0) and unrelated machines never complete a side-config quest.
 // ─────────────────────────────────────────────────────────────────────────────
 static void test_QuestManager_detection_side_configured() {
   const uint64_t player = 41;
@@ -363,29 +372,32 @@ static void test_QuestManager_detection_side_configured() {
   simcore::QuestManager mgr(&qd, &graph, pub.callback());
   buildManager(qd, graph);
 
-  // Quest 22 (Wrench Mastery, prereq of 41) COMPLETED; quest 41 stays LOCKED.
+  // Quest 40 (Wrench Mastery) and 55 (Electric Furnace LV), prereqs of 71,
+  // COMPLETED; quest 71 stays LOCKED.
   seedProgress(mgr, player,
-      {{22, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+      {{40, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100},
+       {55, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
 
   // Hatch wrenching (machine_id == 0) must not complete side-config quests.
   mgr.checkSideConfigured(player, 0);
   CHECK_EQ(countTopic(pub, "quest.completed"), 0,
            "machine_id 0 (hatch) does not complete side-config quest");
 
+  // Unrelated machine (heat furnace) does not match 71's detect target.
   mgr.checkSideConfigured(player, ItemId::pack("1110:00:0"));
-  CHECK_EQ(lastAdvertisedStatus(pub, 41),
-           static_cast<int>(quest::QuestStatus::COMPLETED),
-           "SIDE_CONFIGURED quest 41 completes via checkSideConfigured");
-  CHECK_EQ(countTopic(pub, "quest.completed"), 1,
-           "quest.completed published once");
+  CHECK_EQ(countTopic(pub, "quest.completed"), 0,
+           "unrelated machine does not complete side-config quest");
+  CHECK_EQ(lastAdvertisedStatus(pub, 71),
+           static_cast<int>(quest::QuestStatus::AVAILABLE),
+           "side-config quest 71 stays AVAILABLE (target not in items.csv)");
   PASS();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// INVENTORY detection (quest book open): checkInventory completes quest 42
-// (copper ore 10:3, prereq 7, target_count 8) only when the player holds the
-// target quantity. Below-target and unmet-prereq cases are no-ops. Multiple
-// slots holding the item aggregate.
+// INVENTORY detection (quest book open): checkInventory completes quest 23
+// (Copper Prospecting, copper ore 10:3, prereq 14) when the target item is
+// held — the CSV has no target_count column, so 1 suffices. Below-target and
+// unmet-prereq cases are no-ops. Multiple slots holding the item aggregate.
 // ─────────────────────────────────────────────────────────────────────────────
 static void test_QuestManager_detection_inventory() {
   const uint64_t player = 51;
@@ -395,37 +407,36 @@ static void test_QuestManager_detection_inventory() {
   simcore::QuestManager mgr(&qd, &graph, pub.callback());
   buildManager(qd, graph);
 
-  // Quest 7 (Bronze Age, prereq of 42) COMPLETED; quest 42 stays LOCKED.
+  // Quest 14 (Place Heat Furnace, prereq of 23) COMPLETED; quest 23 LOCKED.
   seedProgress(mgr, player,
-      {{7, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+      {{14, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
 
-  // Below target: 5 copper ore < 8 required → no completion.
+  // Below target: no copper ore held → no completion.
   std::vector<simcore::PersistSlot> below;
-  below.push_back({ItemId::pack("10:3"), 5, 0});
   mgr.checkInventory(player, below);
   CHECK_EQ(countTopic(pub, "quest.completed"), 0,
-           "below-target inventory does not complete quest 42");
+           "empty inventory does not complete quest 23");
 
-  // At target: slots aggregate (3 + 5 = 8) → quest 42 completes.
+  // At target: slots aggregate (3 + 5 = 8 copper ore) → quest 23 completes.
   std::vector<simcore::PersistSlot> met;
   met.push_back({ItemId::pack("10:3"), 3, 0});
   met.push_back({ItemId::pack("10:3"), 5, 0});
   mgr.checkInventory(player, met);
-  CHECK_EQ(lastAdvertisedStatus(pub, 42),
+  CHECK_EQ(lastAdvertisedStatus(pub, 23),
            static_cast<int>(quest::QuestStatus::COMPLETED),
-           "INVENTORY quest 42 completes when target quantity held");
+           "INVENTORY quest 23 completes when copper ore held");
   CHECK_EQ(countTopic(pub, "quest.completed"), 1,
            "quest.completed published once");
 
-  // Prereq gate: quest 43 (iron ore, prereq 18 not completed) must not
+  // Prereq gate: quest 9 (Iron Prospecting, prereq 8 not completed) must not
   // complete even with enough iron ore held. After a loaded snapshot the
-  // client knows its full state, so 43 is advertised LOCKED (not absent).
+  // client knows its full state, so 9 is advertised LOCKED (not absent).
   std::vector<simcore::PersistSlot> iron;
   iron.push_back({ItemId::pack("10:0"), 32, 0});
   mgr.checkInventory(player, iron);
-  CHECK_EQ(lastAdvertisedStatus(pub, 43),
+  CHECK_EQ(lastAdvertisedStatus(pub, 9),
            static_cast<int>(quest::QuestStatus::LOCKED),
-           "INVENTORY quest 43 stays LOCKED when prereq unmet");
+           "INVENTORY quest 9 stays LOCKED when prereq unmet");
   CHECK_EQ(countTopic(pub, "quest.completed"), 1,
            "no extra quest.completed for unmet-prereq inventory quest");
   PASS();
@@ -506,19 +517,63 @@ static void test_QuestManager_loadProgress_reconciles_unlocks() {
   PASS();
 }
 
+// quest_graph.json is the source of truth for prerequisites: LoadGraph must
+// overwrite the stale CSV prereq column (CSV quests 12/13 reference 13 as a
+// self-dependency, JSON says 12→[11], 13→[11]). Regression for "quest 12
+// stayed LOCKED although quest 11 was forced COMPLETED".
+static void test_QuestData_graph_json_overrides_csv_prereqs() {
+  quest::QuestData qd;
+  CHECK(qd.LoadCSV(DATA_DIR "/quests/quests.csv"), "LoadCSV ok");
+  CHECK(qd.LoadGraph(DATA_DIR "/quests/quest_graph.json"), "LoadGraph ok");
+
+  auto prereqs12 = qd.GetPrerequisites(12);
+  CHECK(prereqs12.size() == 1 && prereqs12[0] == 11,
+        "quest 12 prereqs come from JSON (11), not stale CSV (13)");
+  auto prereqs13 = qd.GetPrerequisites(13);
+  CHECK(prereqs13.size() == 1 && prereqs13[0] == 11,
+        "quest 13 prereqs come from JSON (11), not stale CSV self-loop (13)");
+  PASS();
+}
+
+// End-to-end: with JSON prereqs, forcing quest 11 COMPLETED via loadProgress
+// must unlock quest 12 (Heat Macerator) — the exact user-reported bug.
+static void test_QuestManager_loadProgress_unlocks_quest_12() {
+  const uint64_t player = 99;
+  quest::QuestData qd;
+  quest::QuestGraph graph;
+  RecordingPublisher pub;
+  simcore::QuestManager mgr(&qd, &graph, pub.callback());
+  buildManager(qd, graph);
+
+  mgr.onPlayerJoined(player);
+  flatbuffers::FlatBufferBuilder b(128);
+  auto off = buildProgress(b, player,
+      {{11, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+  b.Finish(off);
+  mgr.loadProgress(player, std::vector<uint8_t>(b.GetBufferPointer(),
+                                                b.GetBufferPointer() + b.GetSize()));
+
+  CHECK_EQ(lastAdvertisedStatus(pub, 12),
+           static_cast<int>(quest::QuestStatus::AVAILABLE),
+           "quest 12 (Heat Macerator) unlocks when quest 11 forced COMPLETED");
+  PASS();
+}
+
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
 void test_quest_manager() {
   TEST(QuestManager_completeQuest_valid_and_idempotent);
   TEST(QuestManager_completeQuest_rejects_invalid);
   TEST(QuestManager_completeQuest_rejects_exchange);
-  TEST(QuestData_eraMap_excludes_exchange);
+  TEST(QuestData_eraMap_covers_all_quests);
   TEST(QuestManager_completeQuest_unlocks_dependents);
   TEST(QuestManager_eraTransition_published_once);
   TEST(QuestManager_detection_one_step_craft);
-  TEST(QuestManager_detection_tool_charged);
+  TEST(QuestManager_detection_block_placed);
   TEST(QuestManager_detection_side_configured);
   TEST(QuestManager_detection_inventory);
   TEST(QuestManager_rejoin_preserves_progress);
   TEST(QuestManager_loadProgress_reconciles_unlocks);
+  TEST(QuestData_graph_json_overrides_csv_prereqs);
+  TEST(QuestManager_loadProgress_unlocks_quest_12);
 }

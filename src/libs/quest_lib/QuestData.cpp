@@ -149,6 +149,13 @@ bool QuestData::LoadGraph(const std::string& jsonPath) {
                          id, joinPrereqs(jsonPrereqs), joinPrereqs(csvPrereqs));
         }
 
+        // quest_graph.json is the source of truth for prerequisites — the CSV
+        // column is stale in places (e.g. quests 12/13 reference 13 as a
+        // self-dependency). Overwrite the CSV value so downstream consumers
+        // (QuestGraph::Init via prereqsMap, GetPrerequisites, ...) see the
+        // JSON-defined dependencies.
+        quests_[idIndex_[id]].prerequisites = jsonPrereqs;
+
         for (uint32_t prereq : jsonPrereqs) {
             newGraph[prereq].push_back(id);
         }
