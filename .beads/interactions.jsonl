@@ -46,3 +46,4 @@
 {"id":"int-9a3fdf70","kind":"field_change","created_at":"2026-08-09T15:38:01.896653655Z","actor":"lexasub","issue_id":"GTNH-p5q","extra":{"field":"status","new_value":"in_progress","old_value":"open"}}
 {"id":"int-6eebe5cf","kind":"field_change","created_at":"2026-08-09T16:58:03.38624605Z","actor":"lexasub","issue_id":"GTNH-p5q","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Closed"}}
 {"id":"int-7e637195","kind":"field_change","created_at":"2026-08-10T10:53:42.01354164Z","actor":"lexasub","issue_id":"GTNH-xty","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
+{"id":"int-5b5daf3d","kind":"field_change","created_at":"2026-08-10T18:43:23.368714211Z","actor":"lexasub","issue_id":"GTNH-mq9","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
