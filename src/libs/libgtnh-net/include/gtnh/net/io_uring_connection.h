@@ -91,6 +91,14 @@ public:
   // Fired after close completes (fd closed, write queue drained).
   std::move_only_function<void()> on_closed;
 
+  // Optional periodic heartbeat: the poll loop fires on_heartbeat every
+  // heartbeat_interval_ while the connection is running. Interval of 0
+  // (default) disables it. Lets long-idle services (e.g. chunkstore with no
+  // chunk.requests) stay alive on the router without a manual heartbeat()
+  // call site in every service.
+  std::chrono::milliseconds heartbeat_interval_{0};
+  std::move_only_function<void()> on_heartbeat;
+
 private:
   bool prep_read_header();
   bool prep_read_payload();
@@ -167,6 +175,8 @@ private:
   io_uring ring_write_{};
   std::thread poll_thread_;
   std::atomic<bool> running_{false};
+  std::chrono::steady_clock::time_point last_heartbeat_ =
+      std::chrono::steady_clock::now();
   std::atomic<bool> read_ring_inited_{false};
   std::atomic<bool> write_ring_inited_{false};
   std::mutex sq_mutex_;

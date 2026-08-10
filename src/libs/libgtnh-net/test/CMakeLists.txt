@@ -3,6 +3,7 @@ add_executable(gtnh_net_test
     test_frame.cpp
     test_context.cpp
     test_echo.cpp
+    test_heartbeat.cpp
     test_toctou.cpp
 )
 

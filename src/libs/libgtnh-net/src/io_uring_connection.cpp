@@ -245,6 +245,17 @@ void IoUringConnection::poll_loop(std::shared_ptr<std::promise<bool>> read_ready
 
         if (!running_.load(std::memory_order_acquire)) [[likely]] break;
 
+        // Periodic heartbeat — keeps idle connections alive past the router's
+        // idle-timeout even when nothing else is sent (e.g. chunkstore with no
+        // chunk.requests). Fires from the poll loop, so no extra thread.
+        if (heartbeat_interval_.count() > 0) {
+            auto now_hb = std::chrono::steady_clock::now();
+            if (now_hb - last_heartbeat_ >= heartbeat_interval_) {
+                last_heartbeat_ = now_hb;
+                if (on_heartbeat) on_heartbeat();
+            }
+        }
+
         {
             struct pollfd pfds[2] = {
                 {fd(), POLLIN, 0},

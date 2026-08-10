@@ -38,6 +38,14 @@ bool RouterClient::connect(const char* host, uint16_t port,
         spdlog::warn("RouterClient: connection closed");
     };
 
+    // Auto-heartbeat from the poll loop so the router's idle-timeout never
+    // kills this connection while the service is simply idle (e.g. chunkstore
+    // with no chunk.requests). No per-service heartbeat() call site needed.
+    conn_->heartbeat_interval_ = std::chrono::seconds(20);
+    conn_->on_heartbeat = [this]() {
+        if (connected_) heartbeat();
+    };
+
     if (!conn_->start_reading()) {
         spdlog::error("RouterClient: failed to start reading");
         conn_->close();

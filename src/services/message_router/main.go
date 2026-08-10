@@ -146,6 +146,11 @@ func handleConn(r *Router, conn net.Conn) {
 				offset = newOffset
 			}
 			r.RegisterService(name, topics, cl)
+			// Registered services may legitimately stay silent (e.g. chunkstore
+			// with no pending chunk.requests). Clear the read deadline so the
+			// idle killer doesn't drop a healthy backend; a dead one still
+			// surfaces as TCP RST/EOF and closes the conn.
+			conn.SetReadDeadline(time.Time{})
 
 		case MsgHeartbeat:
 

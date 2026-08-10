@@ -251,7 +251,13 @@ func (r *Router) Unsubscribe(pattern string, cl *client) {
 func (r *Router) UnsubscribeAll(cl *client) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.unsubscribeAllLocked(cl)
+}
 
+// unsubscribeAllLocked removes cl from all subscriber sets and the service
+// registry. Caller must hold r.mu. Separate from UnsubscribeAll so cleanupOnce
+// (which already holds the lock) does not deadlock on a non-reentrant mutex.
+func (r *Router) unsubscribeAllLocked(cl *client) {
 	for pattern, subs := range r.subs {
 		delete(subs, cl)
 		if len(subs) == 0 {
@@ -403,11 +409,17 @@ func (r *Router) cleanupOnce() {
 				continue
 			}
 			seen[cl] = struct{}{}
+			// Never idle-kill a registered service: it may legitimately be
+			// silent (e.g. chunkstore with no chunk.requests). A dead service
+			// is detected via TCP RST/EOF by handleConn, not by a timer.
+			if _, isService := r.connServices[cl]; isService {
+				continue
+			}
 			lastSeen := time.Unix(0, cl.lastSeen.Load())
 			if now.Sub(lastSeen) > idleTimeout {
 				log.Printf("[router] idle timeout: conn=%s lastSeen=%s",
 					cl.conn.RemoteAddr(), lastSeen.Format(time.RFC3339))
-				r.UnsubscribeAll(cl)
+				r.unsubscribeAllLocked(cl)
 				cl.Close()
 			}
 		}

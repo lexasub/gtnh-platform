@@ -6,6 +6,7 @@ int g_tests = 0, g_passed = 0, g_failed = 0;
 void test_frame();
 void test_context();
 void test_echo();
+void test_heartbeat();
 void test_toctou();
 
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
@@ -27,6 +28,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
     TEST(frame);
     TEST(context);
     TEST(echo);
+    TEST(heartbeat);
     // TEST(toctou) — TOCTOU stress (200 close/reconnect iters) lives in
     // toctou_test standalone, disabled on CI (io_uring accept loop stalls
     // on GH runners). Kept out of the fast suite.
