@@ -176,7 +176,7 @@ void CraftingWindow::Render(InventoryState* playerInv) {
     ImGui::Separator();
 
     ImGui::PushID("player_inv");
-    RenderPlayerInventoryGrid(*playerInv, 0, static_cast<int>(playerInv->slots.size()), 9, -1, false, dragMgr_, /*authoritative*/ true);
+    RenderPlayerInventoryGrid(*playerInv, 0, static_cast<int>(playerInv->slots.size()), 9, -1, false, dragMgr_, /*authoritative*/ true, binder_);
     ImGui::PopID();
 
     ImGui::End();

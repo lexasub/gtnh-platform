@@ -3,6 +3,8 @@
 #include "Crafting/ServerRecipeDB.h"
 #include "Crafting/ClientItemRegistry.h"
 #include "Components/SlotGrid.h"
+#include "UI/Core/InputBinder.h"
+#include "RenderLib/UI/ImGuiKeyMap.h"
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <algorithm>
@@ -118,7 +120,8 @@ void RecipeInspectWindow::Render([[maybe_unused]] InventoryState* playerInv) {
 
     ImGui::End();
 
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    if (ImGui::IsKeyPressed(renderlib::GLFWKeyToImGuiKey(
+            uiMgr_ ? uiMgr_->GetBinder().GetKey("close_ui") : -1))) {
         open_ = false;
     }
 }

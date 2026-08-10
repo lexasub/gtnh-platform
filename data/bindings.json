@@ -27,7 +27,8 @@
         { "key": "7",  "action": "hotbar_6",        "type": "pressed", "ctx": "global" },
         { "key": "8",  "action": "hotbar_7",        "type": "pressed", "ctx": "global" },
         { "key": "9",  "action": "hotbar_8",        "type": "pressed", "ctx": "global" },
-        { "key": "0",  "action": "hotbar_9",        "type": "pressed", "ctx": "global" }
+        { "key": "0",  "action": "hotbar_9",        "type": "pressed", "ctx": "global" },
+        { "key": "Q",  "action": "drop_item",       "type": "pressed", "ctx": "global" }
     ]
 }
 

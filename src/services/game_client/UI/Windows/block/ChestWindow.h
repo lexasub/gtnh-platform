@@ -6,6 +6,7 @@
 #include "Common/Inventory.h"
 
 class DragManager;
+class InputBinder;
 class NetClient;
 
 // Chest window — server-authoritative container session (Phase B).
@@ -16,6 +17,7 @@ public:
   ChestWindow(BlockPos pos);
 
   void SetDragManager(DragManager *dm) { dragMgr_ = dm; }
+  void SetBinder(const InputBinder *binder) { binder_ = binder; }
   void SetNetClient(NetClient *nc) { netClient_ = nc; }
   void SetPlayerId(uint64_t pid) { player_id_ = pid; }
 
@@ -36,5 +38,6 @@ private:
   std::vector<ItemStack> chestSlots_;
   uint64_t player_id_ = 0;
   DragManager *dragMgr_ = nullptr;
+  const InputBinder *binder_ = nullptr;
   NetClient *netClient_ = nullptr;
 };

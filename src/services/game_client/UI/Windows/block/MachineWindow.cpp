@@ -302,6 +302,7 @@ void MachineWindow::Render(InventoryState* playerInv) {
             inGrid.SetStyle(style);
             inGrid.SetRange(0, inCount, inCount);
             inGrid.SetDragManager(dragMgr_);
+            inGrid.SetBinder(binder_);
             inGrid.SetInventory(*playerInv);
             inGrid.SetAuthoritative(true);
             inGrid.SetContainerId(1);
@@ -327,6 +328,7 @@ void MachineWindow::Render(InventoryState* playerInv) {
             outGrid.SetStyle(style);
             outGrid.SetRange(inCount, outCount, outCount);
             outGrid.SetDragManager(dragMgr_);
+            outGrid.SetBinder(binder_);
             outGrid.SetInventory(*playerInv);
             outGrid.SetAuthoritative(true);
             outGrid.SetContainerId(1);
@@ -372,7 +374,8 @@ void MachineWindow::Render(InventoryState* playerInv) {
 
     ImGui::PushID("machine_player_inv");
     RenderPlayerInventoryGrid(*playerInv, 0, static_cast<int>(playerInv->slots.size()),
-                              9, playerInv->selectedSlot, false, dragMgr_, /*authoritative*/ true);
+                              9, playerInv->selectedSlot, false, dragMgr_, /*authoritative*/ true,
+                              binder_);
     ImGui::PopID();
 
     RenderOutOfSyncWarning();

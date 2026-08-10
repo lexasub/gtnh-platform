@@ -10,6 +10,7 @@
 #include "machine_registry/MachineRegistry.h"
 
 class NetClient;
+class InputBinder;
 
 // ── MachineWindow — data-driven machine UI ──────────────────────────────────
 // Renders input slots, output slots, progress, and energy for a machine
@@ -47,6 +48,7 @@ public:
   MachineWindow(BlockPos pos, uint16_t machineType = 0);
   void SetNetClient(class NetClient *nc) { netClient_ = nc; }
   void SetDragManager(DragManager *dm) { dragMgr_ = dm; }
+  void SetBinder(const InputBinder *binder) { binder_ = binder; }
   void SetPlayerId(uint64_t pid) { player_id_ = pid; }
 
   std::string_view Name() const override { return "Machine"; }
@@ -69,6 +71,7 @@ private:
   uint16_t machineType_ = 0;
   EnergyType energyType_ = EnergyType::ELECTRICITY;
   DragManager *dragMgr_ = nullptr;
+  const InputBinder *binder_ = nullptr;
 
   // ── Server-authoritative container session (Phase C) ──────────────────
   // machineSlots_ stays unloaded until the container_id=1 InventoryUpdate

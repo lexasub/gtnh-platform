@@ -84,7 +84,7 @@ void PlayerInventory::Render(InventoryState* /*playerInv*/) {
                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar);
 
     // ── Inventory grid (rows 1-4, skipping hotbar) ────────────────────────
-    int clicked = RenderPlayerInventoryGrid(state_, kHotbarSlots, kTotalSlots - kHotbarSlots, kInventoryCols, state_.selectedSlot, true, dragMgr_, true);
+    int clicked = RenderPlayerInventoryGrid(state_, kHotbarSlots, kTotalSlots - kHotbarSlots, kInventoryCols, state_.selectedSlot, true, dragMgr_, true, binder_);
     if (clicked >= 0) {
         if (!dragMgr_->IsDragging()) state_.selectedSlot = clicked;
         spdlog::info("PlayerInv: clicked slot={} dragging={}", clicked, dragMgr_->IsDragging());
@@ -93,7 +93,7 @@ void PlayerInventory::Render(InventoryState* /*playerInv*/) {
   ImGui::Separator();
 
   // ── Hotbar row ────────────────────────────────────────────────────────
-  int hotbarClicked = RenderPlayerInventoryGrid(state_, 0, kHotbarSlots, kInventoryCols, state_.selectedSlot, true, dragMgr_, true);
+  int hotbarClicked = RenderPlayerInventoryGrid(state_, 0, kHotbarSlots, kInventoryCols, state_.selectedSlot, true, dragMgr_, true, binder_);
   if (hotbarClicked >= 0) {
       if (!dragMgr_->IsDragging()) state_.selectedSlot = hotbarClicked;
       spdlog::info("PlayerInv(hotbar): clicked slot={} dragging={}", hotbarClicked, dragMgr_->IsDragging());

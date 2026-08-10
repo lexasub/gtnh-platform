@@ -7,6 +7,8 @@
 #include "UI/Core/DragManager.h"
 #include <imgui.h>
 
+class InputBinder;
+
 // ── RenderPlayerInventoryGrid — boilerplate player inventory grid ──────────
 // Creates a SlotGridComponent with resolution-aware styling and renders the
 // given range of slots.  Slot size scales with display height (baseline 1080p)
@@ -17,7 +19,8 @@ inline int RenderPlayerInventoryGrid(InventoryState &inv, int startIndex,
                                      int count, int columns, int selectedSlot,
                                      bool /*enableDragPreview*/ = false,
                                      DragManager *dragMgr = nullptr,
-                                     bool authoritative = false) {
+                                     bool authoritative = false,
+                                     const InputBinder *binder = nullptr) {
   // Scale slot size to display resolution (baseline 1080p, ~40 px slots)
   float displayH = ImGui::GetIO().DisplaySize.y;
   float scale = std::max(0.7f, std::min(1.5f, displayH / 1080.0f));
@@ -41,6 +44,7 @@ inline int RenderPlayerInventoryGrid(InventoryState &inv, int startIndex,
   grid.SetAuthoritative(authoritative);
   if (dragMgr)
     grid.SetDragManager(dragMgr);
+  grid.SetBinder(binder);
 
   // Use SlotGridComponent's Render() method which handles drag internally via grid.SetDragManager()
   return grid.Render();

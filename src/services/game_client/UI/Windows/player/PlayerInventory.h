@@ -7,6 +7,7 @@
 #include "Components/SlotGrid.h"
 #include "UI/Core/DragManager.h"
 #include "Windows/IUIWindow.h"
+class InputBinder;
 class NetClient;
 class PlayerInventory : public IUIWindow {
 public:
@@ -25,9 +26,11 @@ public:
   bool WantsKeyboardCapture() const override { return state_.open; }
 
   void SetDragManager(DragManager &dm) { dragMgr_ = &dm; }
+  void SetBinder(const InputBinder *binder) { binder_ = binder; }
 
 private:
   InventoryState &state_;
   NetClient *netClient_ = nullptr;
   DragManager *dragMgr_ = nullptr;
+  const InputBinder *binder_ = nullptr;
 };

@@ -15,6 +15,7 @@ BlockUIFactory::Registry& BlockUIFactory::GetRegistry() {
         auto registerCraftingTable = [&r](uint16_t blockId) {
             r[blockId] = [](UIManager& mgr, BlockPos pos) -> IUIWindow* {
                 auto* win = FindOrCreate<CraftingWindow>(mgr, pos, mgr.GetNetClient(), &mgr.GetDragManager(), mgr.GetRecipeDb());
+                if (win) win->SetBinder(&mgr.GetBinder());
                 if (auto* nc = mgr.GetNetClient()) {
                     nc->SetCraftResponseCallback(
                         [win](bool s, uint16_t id, uint8_t cnt, uint16_t m, const std::string& e, const std::array<ItemStack, 9>& grid) {
@@ -42,6 +43,7 @@ BlockUIFactory::Registry& BlockUIFactory::GetRegistry() {
                 auto* win = FindOrCreate<ChestWindow>(mgr, pos);
                 if (win) {
                     win->SetDragManager(&mgr.GetDragManager());
+                    win->SetBinder(&mgr.GetBinder());
                     win->SetNetClient(mgr.GetNetClient());
                     // Server-authoritative chest.open needs the player id; use
                     // the factory value (lastPlayerInv_ is null on first open).
@@ -90,6 +92,7 @@ IUIWindow* BlockUIFactory::FindOrCreateMachine(UIManager& mgr, BlockPos pos, uin
     if (win) {
         win->SetNetClient(mgr.GetNetClient());
         win->SetDragManager(&mgr.GetDragManager());
+        win->SetBinder(&mgr.GetBinder());
         // Server-authoritative machine.open needs the player id; use the
         // factory value (lastPlayerInv_ is null on first open).
         if (auto* pinv = mgr.GetPlayerInventory()) {

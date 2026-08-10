@@ -9,6 +9,7 @@ struct ImVec2;
 
 struct InventoryState;
 class DragManager;
+class InputBinder;
 #include "Common/Inventory.h"
 
 // ── Slot style configuration ────────────────────────────────────────────────
@@ -68,6 +69,11 @@ public:
   // ── Drag & drop ─────────────────────────────────────────────────────────
   void SetDragManager(DragManager *dm) { dm_ = dm; }
 
+  // ── Input bindings ─────────────────────────────────────────────────────
+  // Source of truth for slot hotkeys (cancel drag, drop item). Keys are
+  // resolved from the mapping on each Render — rebinding applies immediately.
+  void SetBinder(const InputBinder *binder) { binder_ = binder; }
+
   // ── Authoritative click mode ────────────────────────────────────────────
   // When true, slot clicks are translated to server-authoritative clicks
   // (DragManager::OnPlayerSlotClick) instead of local optimistic mutation.
@@ -105,4 +111,5 @@ private:
   uint8_t containerId_ = 0;
   ClickCallback clickCb_;
   DragManager *dm_ = nullptr;
+  const InputBinder *binder_ = nullptr;
 };

@@ -85,6 +85,7 @@ void ChestWindow::Render(InventoryState* playerInv) {
         chestGrid.SetRange(0, static_cast<int>(chestSlots_.size()), 9);
         chestGrid.SetSlotIndexOffset(DragManager::kChestSlotBase);
         chestGrid.SetDragManager(dragMgr_);
+        chestGrid.SetBinder(binder_);
         chestGrid.SetInventory(*playerInv);
         chestGrid.SetAuthoritative(true);
         chestGrid.SetContainerId(1);
@@ -102,7 +103,8 @@ void ChestWindow::Render(InventoryState* playerInv) {
     // of the old inline SlotGridComponent (which never called SetInventory).
     ImGui::PushID("chest_player_inv");
     RenderPlayerInventoryGrid(*playerInv, 0, static_cast<int>(playerInv->slots.size()),
-                              9, playerInv->selectedSlot, false, dragMgr_, /*authoritative*/ true);
+                              9, playerInv->selectedSlot, false, dragMgr_, /*authoritative*/ true,
+                              binder_);
     ImGui::PopID();
 
     // ─── Cursor preview (server-owned hand stack) ────────────────────

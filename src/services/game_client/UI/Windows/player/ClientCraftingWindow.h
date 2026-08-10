@@ -18,6 +18,8 @@ struct CraftResponse;
 
 struct ImDrawList;
 
+class InputBinder;
+
 class CraftingWindow : public BlockAttachedWindow {
 public:
   CraftingWindow(BlockPos pos, NetClient *netClient, DragManager *dragMgr,
@@ -31,6 +33,7 @@ public:
   bool IsOpen() const override { return open_; }
   void SetOpen(bool open) override;
   void SetPlayerId(uint64_t pid) { player_id_ = pid; }
+  void SetBinder(const InputBinder *binder) { binder_ = binder; gridComp_.SetBinder(binder); }
 
   void OnCraftResponse(bool success, uint16_t item_id, uint8_t count,
                        uint16_t meta, const std::string &error,
@@ -50,5 +53,6 @@ private:
 
   NetClient *netClient_;
   ServerRecipeDB *recipeDb_;
+  const InputBinder *binder_ = nullptr;
   uint64_t player_id_ = 0;
 };

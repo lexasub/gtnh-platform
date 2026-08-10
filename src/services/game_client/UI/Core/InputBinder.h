@@ -59,6 +59,12 @@ public:
   int GetHeldKey(const std::string &actionName) const;
   bool IsHeld(const std::string &actionName, const InputState &state) const;
 
+  // ── Pressed-binding lookup ────────────────────────────────────────────
+  // Returns the GLFW key code bound to a pressed action (active contexts
+  // top-down, then "global"), or -1 when unbound. Lets UI code render/query
+  // the same key the binder would dispatch instead of hardcoding ImGuiKey_*.
+  int GetKey(const std::string &actionName) const;
+
   // ── Config ───────────────────────────────────────────────────────────
   // Load from JSON file: { "bindings": [ { "key":"R", "action":"show_recipe",
   // "mods":0, "type":"pressed", "ctx":"global" } ] }

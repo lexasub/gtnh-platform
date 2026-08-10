@@ -44,6 +44,28 @@ void InputBinder::registerDefaults() {
     for (int i = 0; i < 9; ++i)
         Bind(GLFW_KEY_1 + i, "hotbar_" + std::to_string(i));
     Bind(GLFW_KEY_0, "hotbar_9");
+    Bind(GLFW_KEY_Q, "drop_item");
+}
+
+int InputBinder::GetKey(const std::string& actionName) const {
+    auto findIn = [&](const Context& c) {
+        for (const auto& b : c.bindings)
+            if (b.action == actionName) return b.key;
+        return -1;
+    };
+    // Active contexts top-down (highest priority first), then global — same
+    // precedence as Process()/dispatchBindings().
+    for (auto it = active_.rbegin(); it != active_.rend(); ++it) {
+        int key = findIn(contexts_[*it]);
+        if (key >= 0) return key;
+    }
+    for (const auto& c : contexts_) {
+        if (c.name == "global") {
+            int key = findIn(c);
+            if (key >= 0) return key;
+        }
+    }
+    return -1;
 }
 
 void InputBinder::Bind(int key, int mods, std::string actionName,

@@ -1,8 +1,10 @@
 #include "Components/SlotGrid.h"
 #include "UI/Core/DragManager.h"
+#include "UI/Core/InputBinder.h"
 #include "Common/Inventory.h"
 #include "Crafting/ClientItemRegistry.h"
 #include "RenderLib/Utils/TextureAtlas.h"
+#include "RenderLib/UI/ImGuiKeyMap.h"
 #include <data/registry/ToolIds.h>
 #include <imgui.h>
 #include <cstdio>
@@ -344,21 +346,26 @@ int SlotGridComponent::Render() {
         if (dm_ && dm_->IsDragging()) {
             dm_->RenderPreview(s);
         }
-        // ── ESC cancels drag (returns item to source) ──────────────────────
-        if (dm_ && dm_->IsDragging() && ImGui::IsKeyPressed(ImGuiKey_Escape)) { //TODO concrete button via uidefaults
+        // ── Cancel-drag key (bound to close_ui / ESC by default) ──────────
+        ImGuiKey cancelKey = renderlib::GLFWKeyToImGuiKey(
+            binder_ ? binder_->GetKey("close_ui") : -1);
+        if (dm_ && dm_->IsDragging() && ImGui::IsKeyPressed(cancelKey)) {
             dm_->CancelDrag(slots_);
         }
-        // ── Q while dragging → drop (destroy) held item ───────────────────
-        if (dm_ && dm_->IsDragging() && ImGui::IsKeyPressed(ImGuiKey_Q)) {//TODO concrete button via uidefaults
+        // ── Drop key (bound to drop_item / Q by default) while dragging ───
+        ImGuiKey dropKey = renderlib::GLFWKeyToImGuiKey(
+            binder_ ? binder_->GetKey("drop_item") : -1);
+        if (dm_ && dm_->IsDragging() && ImGui::IsKeyPressed(dropKey)) {
             dm_->DropHeldItem();
         }
     }
 
-    // ── Q while hovering an item (not dragging) → drop that slot ────────
+    // ── Drop key while hovering an item (not dragging) → drop that slot ──
     // Authoritative: send DROP — the server discards the cursor stack if
     // held, else the hovered slot. Legacy: mutate locally + notify server.
     if (dm_ && !dm_->IsDragging() && inv_ && inv_->hoveredSlot >= 0
-        && ImGui::IsKeyPressed(ImGuiKey_Q))//TODO concrete button via uidefaults
+        && ImGui::IsKeyPressed(renderlib::GLFWKeyToImGuiKey(
+            binder_ ? binder_->GetKey("drop_item") : -1)))
     {
         if (authoritative_) {
             if (containerId_) dm_->OnContainerDrop(inv_->hoveredSlot, containerId_);
