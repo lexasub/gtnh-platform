@@ -106,6 +106,7 @@ add_library(simcored
         Actions/MachineSlotHandler.cpp
         Actions/handTool/ToolActionHandler.cpp
         Actions/handTool/WrenchActionHandler.cpp
+        Actions/handTool/PipeWrenchResponseHandler.cpp
 
         World/ChunkEventHandler.cpp
         World/BlockDrops.cpp

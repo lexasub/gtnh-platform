@@ -11,6 +11,32 @@ namespace HeatConstants {
 constexpr int32_t MAX_HEAT_PER_TICK = 1000; // Maximum heat flow per tick
 } // namespace HeatConstants
 
+// Position key for world coords → single uint64 map key (same layout as
+// PipeNetworkService::posKey; shared so evaluator and service agree).
+inline uint64_t pipePosKey(int32_t x, int32_t y, int32_t z) {
+    return (static_cast<uint64_t>(static_cast<int64_t>(x)) << 42)
+         | (static_cast<uint64_t>(static_cast<int64_t>(y) & 0xFFFFF) << 20)
+         | (static_cast<uint64_t>(static_cast<int64_t>(z) & 0xFFFFF));
+}
+
+// Wrench-on-pipe guidance (mirrors Protocol::PipeWrenchGuidance; kept local so
+// the evaluator stays testable without FlatBuffers headers).
+enum class WrenchGuidance : uint8_t {
+    NOT_A_PIPE = 0,
+    CONNECT_PIPES = 1,
+    CONNECT_TO_MACHINE = 2,
+    CONNECTED = 3,
+};
+
+// Pure connectivity evaluation for a wrench event — no graph mutation.
+//   pipe_nodes:    pos_key → node id (registered pipe blocks)
+//   machine_nodes: pos_key → node id (registered machine nodes)
+// Fills *out_node_id with the pipe node at (x,y,z) when present (0 otherwise).
+WrenchGuidance evaluatePipeWrench(
+    const std::unordered_map<uint64_t, uint64_t>& pipe_nodes,
+    const std::unordered_map<uint64_t, uint64_t>& machine_nodes,
+    int32_t x, int32_t y, int32_t z, uint64_t* out_node_id);
+
 struct ItemSlot {
   uint16_t item_id;
   uint8_t count;

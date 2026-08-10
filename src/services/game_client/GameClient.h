@@ -68,4 +68,9 @@ private:
   int width_ = 1280, height_ = 720;
   glm::vec3 prevCameraPos_{256.0f, 80.0f, 224.0f};
   std::atomic<bool> shuttingDown_{false};
+
+  // Wrench guidance toast pending delivery to the render-thread HUD overlay
+  // (set on ToolActionResp, drained into FrameExt once per message).
+  std::string pendingHudToast_;
+  float pendingHudToastLifetime_ = 0.0f;
 };

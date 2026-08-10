@@ -4,16 +4,12 @@
 
 #include "common/ItemId.h"
 
-// Pipe block IDs: fluid=61, item=62, dense_item=64, dense_fluid=65
-// Cable block IDs: tin=80, copper=81, gold=82, alu=83, tungsten=84, platinum=85
-
 inline bool isPipeBlock(uint16_t blockId) {
-  //TODO - may be bit check
-  return blockId >= ItemId::pack("1111:10:0") && blockId < ItemId::pack("1111:11:0");
+  return ItemId::isPipe(blockId);
 }
 
 inline bool isCableBlock(uint16_t blockId) {
-  return blockId >= ItemId::pack("1111:01:0") && blockId < ItemId::pack("1111:10:0");
+  return ItemId::isCable(blockId);
 }
 
 inline PipeType blockIdToPipeType(uint16_t blockId) {

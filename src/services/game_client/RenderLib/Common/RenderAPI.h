@@ -76,6 +76,16 @@ struct FrameExt {
   uint16_t highlightedBlockId =
       0; // block ID at highlighted position, 0 if none
   bool hasHighlight = false;
+  // Wrench guidance toast (server → client via ToolActionResp.message).
+  // hudToastLifetime > 0 on the frame a new message is delivered; the overlay
+  // re-arms its own fade timer from these fields.
+  std::string hudToastText;
+  float hudToastLifetime = 0.0f;
+  // GT-style wrench overlay: drawn when the player holds a wrench and targets a
+  // wrenchable block. wrenchConnectable[i] = side i (0=+X,1=-X,2=+Y,3=-Y,4=+Z,5=-Z)
+  // has an adjacent pipe/cable the block can connect to.
+  bool showWrenchOverlay = false;
+  bool wrenchConnectable[6] = {false, false, false, false, false, false};
   size_t chunkCount = 0;
   size_t meshCount = 0;
 };

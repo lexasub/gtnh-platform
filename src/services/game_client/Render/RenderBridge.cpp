@@ -74,6 +74,10 @@ renderlib::FrameRenderData RenderBridge::BuildFrameData(
                                  highlightedBlock.z},
             .highlightedBlockId = highlightedBlockId,
             .hasHighlight     = hasHighlight,
+            .hudToastText     = {},
+            .hudToastLifetime = 0.0f,
+            .showWrenchOverlay = false,
+            .wrenchConnectable = {false, false, false, false, false, false},
             .chunkCount       = chunkCount,
             .meshCount        = meshCount
         }
@@ -125,6 +129,34 @@ void RenderBridge::ImGuiOverlay(const renderlib::FrameRenderData& frame) {
                           ImVec2(center.x + barThick, center.y + barLen + gap), col);
     }
 
+    // Wrench guidance toast (GT-style HUD message from the server).
+    {
+        static std::string sToastText;
+        static float sToastTimer = 0.0f;
+        if (frame.ext.hudToastLifetime > 0.0f && !frame.ext.hudToastText.empty()) {
+            sToastText = frame.ext.hudToastText;
+            sToastTimer = frame.ext.hudToastLifetime;
+        }
+        if (sToastTimer > 0.0f && !sToastText.empty()) {
+            sToastTimer -= ImGui::GetIO().DeltaTime;
+            if (sToastTimer < 0.0f) sToastTimer = 0.0f;
+            const float alpha = std::min(1.0f, sToastTimer * 2.0f);
+            ImGui::SetNextWindowPos(
+                ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f,
+                       ImGui::GetIO().DisplaySize.y * 0.82f),
+                ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+            ImGui::SetNextWindowBgAlpha(0.55f * alpha);
+            ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration |
+                                     ImGuiWindowFlags_NoInputs |
+                                     ImGuiWindowFlags_AlwaysAutoResize |
+                                     ImGuiWindowFlags_NoSavedSettings;
+            ImGui::Begin("WrenchToast", nullptr, flags);
+            ImGui::TextColored(ImVec4(0.8f, 0.9f, 1.0f, alpha), "%s",
+                               sToastText.c_str());
+            ImGui::End();
+        }
+    }
+
     // ---- Block highlight wireframe ----
     if (!frame.ext.hasHighlight) {
         // ---- Game UI windows (inventory, workbench, machines, etc.) ----
@@ -168,6 +200,51 @@ void RenderBridge::ImGuiOverlay(const renderlib::FrameRenderData& frame) {
     for (auto& e : edges) {
         dl->AddLine(screen[e[0]], screen[e[1]],
                     IM_COL32(255, 255, 255, 220), 2.5f);
+    }
+
+    // ---- GT-style wrench overlay (corner crosses + connectable direction bars) ----
+    if (frame.ext.showWrenchOverlay) {
+        // Small + at each projected corner.
+        const float cs = 4.0f;
+        for (int i = 0; i < 8; ++i) {
+            if (screen[i].x < -50.0f) continue;
+            dl->AddLine(ImVec2(screen[i].x - cs, screen[i].y),
+                        ImVec2(screen[i].x + cs, screen[i].y),
+                        IM_COL32(255, 170, 0, 230), 1.5f);
+            dl->AddLine(ImVec2(screen[i].x, screen[i].y - cs),
+                        ImVec2(screen[i].x, screen[i].y + cs),
+                        IM_COL32(255, 170, 0, 230), 1.5f);
+        }
+        // Direction bars from block center to each face center.
+        ImVec2 center(0, 0);
+        for (int i = 0; i < 8; ++i) center = ImVec2(center.x + screen[i].x, center.y + screen[i].y);
+        center = ImVec2(center.x / 8.0f, center.y / 8.0f);
+        const int faceCorners[6][4] = {
+            {1, 3, 5, 7}, // +X
+            {0, 2, 4, 6}, // -X
+            {2, 3, 6, 7}, // +Y
+            {0, 1, 4, 5}, // -Y
+            {4, 5, 6, 7}, // +Z
+            {0, 1, 2, 3}  // -Z
+        };
+        for (int f = 0; f < 6; ++f) {
+            ImVec2 fc(0, 0);
+            for (int k = 0; k < 4; ++k) fc = ImVec2(fc.x + screen[faceCorners[f][k]].x,
+                                                    fc.y + screen[faceCorners[f][k]].y);
+            fc = ImVec2(fc.x / 4.0f, fc.y / 4.0f);
+            bool ok = frame.ext.wrenchConnectable[f];
+            uint32_t col = ok ? IM_COL32(255, 170, 0, 255)
+                              : IM_COL32(110, 110, 110, 150);
+            ImVec2 dir = ImVec2(fc.x - center.x, fc.y - center.y);
+            float len = std::sqrt(dir.x * dir.x + dir.y * dir.y);
+            if (len < 1.0f) continue;
+            dir = ImVec2(dir.x / len, dir.y / len);
+            ImVec2 start(center.x + dir.x * 9.0f, center.y + dir.y * 9.0f);
+            ImVec2 end(fc.x - dir.x * 5.0f, fc.y - dir.y * 5.0f);
+            dl->AddLine(start, end, col, ok ? 3.0f : 2.0f);
+            dl->AddRectFilled(ImVec2(fc.x - 3.0f, fc.y - 3.0f),
+                              ImVec2(fc.x + 3.0f, fc.y + 3.0f), col);
+        }
     }
 
     // ---- Block name label (above highlighted block) ----

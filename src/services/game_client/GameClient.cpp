@@ -16,6 +16,8 @@
 #include "Common/BlockType.h"
 #include "core_generated.h"
 #include "machine_registry/MachineRegistry.h"
+#include "common/ItemId.h"
+#include "data/registry/ToolIds.h"
 #include <limits>
 
 GameClient::GameClient()
@@ -152,18 +154,25 @@ void GameClient::subscribeNetClient() {
         });
 
     netClient_->SetToolActionRespCallback(
-        [this](bool success, uint8_t newRole, [[maybe_unused]] const std::vector<uint8_t>& allRoles) {
+        [this](bool success, uint8_t newRole, [[maybe_unused]] const std::vector<uint8_t>& allRoles,
+               const std::string& message) {
             if (!success) {
                 spdlog::warn("[ToolAction] failed new_role={}", newRole);
                 return;
             }
             // Rebuild mesh at the last targeted position to reflect face texture changes
             BlockPos pos = interaction_.GetHighlightedBlock();
-            if (pos.x == std::numeric_limits<int32_t>::max()) return;
-            uint16_t blockId = world_.GetBlockAt(pos);
-            asio::post(worldContext_, [this, pos, blockId]() {
-                meshMgr_.OnBlockUpdate(pos, blockId, 0, 0, world_);
-            });
+            if (pos.x != std::numeric_limits<int32_t>::max()) {
+                uint16_t blockId = world_.GetBlockAt(pos);
+                asio::post(worldContext_, [this, pos, blockId]() {
+                    meshMgr_.OnBlockUpdate(pos, blockId, 0, 0, world_);
+                });
+            }
+            // Server-driven wrench guidance (pipe connect state) → HUD toast
+            if (!message.empty()) {
+                pendingHudToast_ = message;
+                pendingHudToastLifetime_ = 4.0f;
+            }
         });
 
     netClient_->SetReconnectCallback([this]() {
@@ -287,9 +296,9 @@ void GameClient::Update(float dt) {
     // block future queries for the same item / machine / grid.
     recipeDb_.PollTimeouts();
 
-    // Flight only in CREATIVE and SPECTATOR; SURVIVAL/ADVENTURE walk only
-    camera_.SetFlightEnabled(invState_.gameMode == GameMode::CREATIVE ||
-                             invState_.gameMode == GameMode::SPECTATOR);
+    // Flight only in CREATIVE and SPECTATOR (permission matrix); SURVIVAL and
+    // ADVENTURE walk with gravity + collision.
+    camera_.SetFlightEnabled(GameModePerm::CanFly(invState_.gameMode));
 
     if (inputMgr_.IsMouseCaptured()) {
         camera_.Update(dt, inputMgr_.State());
@@ -401,6 +410,29 @@ void GameClient::Run() {
             inputMgr_.IsMouseCaptured(), interaction_.HasHighlight(),
             interaction_.GetHighlightedBlock(), highlightedBlockId,
             world_.ChunkCount(), meshMgr_.MeshCount());
+
+        frd.ext.hudToastText = std::move(pendingHudToast_);
+        frd.ext.hudToastLifetime = pendingHudToastLifetime_;
+        pendingHudToast_.clear();
+        pendingHudToastLifetime_ = 0.0f;
+
+        // GT-style wrench overlay: show when holding a wrench and targeting a
+        // block whose neighbours include a connectable pipe/cable.
+        const BlockPos hb = interaction_.GetHighlightedBlock();
+        const bool holdingWrench = (interaction_.GetHeldItem() == ITEM_WRENCH);
+        frd.ext.showWrenchOverlay =
+            holdingWrench && interaction_.HasHighlight() && highlightedBlockId != 0;
+        if (frd.ext.showWrenchOverlay) {
+            const int dx[6] = {1, -1, 0, 0, 0, 0};
+            const int dy[6] = {0, 0, 1, -1, 0, 0};
+            const int dz[6] = {0, 0, 0, 0, 1, -1};
+            for (int i = 0; i < 6; ++i) {
+                uint16_t n = world_.GetBlockAt(
+                    BlockPos{hb.x + dx[i], hb.y + dy[i], hb.z + dz[i]});
+                frd.ext.wrenchConnectable[i] =
+                    n != 0 && (ItemId::isPipe(n) || ItemId::isCable(n));
+            }
+        }
 
         renderBridge_.SubmitFrame(frd);
         renderBridge_.WaitForFrame();

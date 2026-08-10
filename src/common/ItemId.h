@@ -171,6 +171,29 @@ constexpr int toolType(uint16_t id) {
 // NOLINTBEGIN
 // Category-specific helpers can go here:
 //   isOre(id), materialFamily(id), machineTier(id), etc.
+
+// ---------------------------------------------------------------------------
+// INFRA sub-range classification (prefix-free sub-prefixes under 1111):
+//   tools   1111:00  (drills, wrench, ...)
+//   cables  1111:01  (packed 0xF400..0xF405)
+//   pipes   1111:10  (packed 0xF800..0xF803)
+//   fluids  1111:11  (packed 0xFC00..)
+// All checks are constexpr range comparisons — zero cost, single source of
+// truth for structural block classification (shared by SimCore, PipeNetwork,
+// and the client).
+// ---------------------------------------------------------------------------
+constexpr bool isPipe(uint16_t id) {
+  return id >= ItemId::pack("1111:10:0") && id < ItemId::pack("1111:11:0");
+}
+
+constexpr bool isCable(uint16_t id) {
+  return id >= ItemId::pack("1111:01:0") && id < ItemId::pack("1111:10:0");
+}
+
+constexpr bool isFluid(uint16_t id) {
+  // Highest INFRA sub-prefix (111111) — everything >= 0xFC00 is a fluid item.
+  return id >= ItemId::pack("1111:11:0");
+}
 // NOLINTEND
 
 } // namespace ItemId

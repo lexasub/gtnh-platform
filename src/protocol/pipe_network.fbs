@@ -1,26 +1,39 @@
-// protocol/pipe_network.fbs
-// PipeNetwork service protocol — energy & fluid & item routing via MessageRouter pub/sub
-// Topics:
-//   Subscribe: energy.node.update    — node state registration/updates
-//   Subscribe: energy.check.request  — check available energy
-//   Publish:   energy.check.response — response to check
-//   Subscribe: energy.consume.request  — consume energy request
-//   Publish:   energy.consume.response — consume response
-//   Publish:   energy.flow           — energy flow events
-//   Subscribe: fluid.node.update     — fluid node state registration/updates
-//   Subscribe: fluid.check.request   — check available fluid
-//   Publish:   fluid.check.response  — response to fluid check
-//   Subscribe: fluid.consume.request — consume fluid request
-//   Publish:   fluid.consume.response— consume fluid response
-//   Publish:   fluid.flow            — fluid flow events
-//   Subscribe: item.node.update      — item node state registration/updates
-//   Subscribe: item.transfer.request — request item transfer
-//   Publish:   item.transfer.response— item transfer response
-//   Publish:   item.flow             — item flow events
 
 include "core.fbs";
-
 namespace Protocol;
+
+// ---------------------------------------------------------------------------
+// Pipe wrench guidance: wrench-on-pipe detect + evaluate + guide
+// "pipe.wrench.action" (SimCore → PipeNetwork) → "pipe.wrench.response"
+// PipeNetwork only evaluates and reports — no graph mutation in this flow.
+// ---------------------------------------------------------------------------
+enum PipeWrenchGuidance : uint8 {
+  NOT_A_PIPE = 0,          // no pipe node at the target position
+  CONNECT_PIPES = 1,       // isolated pipe — no pipe/machine neighbor
+  CONNECT_TO_MACHINE = 2,  // pipe(s) present, but no adjacent machine
+  CONNECTED = 3,           // pipe attached to a machine (network active)
+}
+
+// SimCore → PipeNetwork: request to evaluate connection state of the pipe at pos.
+// face is the wrench-targeted side, so connectivity on that side can drive guidance.
+table PipeWrenchAction {
+  player_id: uint64;
+  pos: Vec3i (required);
+  face: uint8;
+}
+
+// PipeNetwork → SimCore: machine-readable connection report.
+// node_id is 0 when no pipe node exists at pos; otherwise the pipe node id.
+// component_size is the connected-network node count (0 when not connected /
+// not computed) — lets SimCore report "connected to a network (N segments)".
+// Guidance only — no graph mutation in this change.
+table PipeWrenchResp {
+  player_id: uint64;
+  pos: Vec3i (required);
+  guidance: PipeWrenchGuidance;
+  node_id: uint64;
+  component_size: uint32 = 0;
+}
 
 // ---------------------------------------------------------------------------
 // Energy node update: SimulationCore → PipeNetwork

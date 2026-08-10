@@ -9,6 +9,33 @@
 
 namespace pipenet {
 
+WrenchGuidance evaluatePipeWrench(
+    const std::unordered_map<uint64_t, uint64_t>& pipe_nodes,
+    const std::unordered_map<uint64_t, uint64_t>& machine_nodes,
+    int32_t x, int32_t y, int32_t z, uint64_t* out_node_id) {
+    if (out_node_id) *out_node_id = 0;
+
+    auto it = pipe_nodes.find(pipePosKey(x, y, z));
+    if (it == pipe_nodes.end()) return WrenchGuidance::NOT_A_PIPE;
+    if (out_node_id) *out_node_id = it->second;
+
+    static const int dx[6] = {0, 0, 0, 0, -1, 1};
+    static const int dy[6] = {-1, 1, 0, 0, 0, 0};
+    static const int dz[6] = {0, 0, -1, 1, 0, 0};
+
+    bool pipe_neighbor = false;
+    bool machine_neighbor = false;
+    for (int f = 0; f < 6; ++f) {
+        uint64_t adj = pipePosKey(x + dx[f], y + dy[f], z + dz[f]);
+        if (pipe_nodes.count(adj) > 0) pipe_neighbor = true;
+        else if (machine_nodes.count(adj) > 0) machine_neighbor = true;
+    }
+
+    if (machine_neighbor) return WrenchGuidance::CONNECTED;
+    if (pipe_neighbor) return WrenchGuidance::CONNECT_TO_MACHINE;
+    return WrenchGuidance::CONNECT_PIPES;
+}
+
 PipeNetworkManager::PipeNetworkManager() = default;
 PipeNetworkManager::~PipeNetworkManager() = default;
 

@@ -511,6 +511,7 @@ table ToolActionResp {
     mined_block_id: uint16;
     new_side_role: uint8;
     all_roles: [uint8];
+    message: string;             // optional human-readable guidance (e.g. pipe wrench help)
 }
 
 table MachineAction {

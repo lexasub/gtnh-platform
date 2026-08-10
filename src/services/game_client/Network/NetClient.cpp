@@ -435,7 +435,9 @@ void NetClient::OnMessage(uint8_t msg_type,
                 if (auto* r = resp->all_roles()) {
                     roles.assign(r->begin(), r->end());
                 }
-                onToolActionResp_(resp->success(), resp->new_side_role(), roles);
+                onToolActionResp_(resp->success(), resp->new_side_role(), roles,
+                                 resp->message() ? resp->message()->str()
+                                                : std::string{});
             }
             return;
         }

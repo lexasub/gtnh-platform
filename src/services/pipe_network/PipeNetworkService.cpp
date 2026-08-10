@@ -128,6 +128,7 @@ void PipeNetworkService::Start() {
     router_.Subscribe("item.transfer.request");
     router_.Subscribe("world.blocks.changed");
     router_.Subscribe("world.machine.config.updated");
+    router_.Subscribe("pipe.wrench.action");
 
     loadPersistentState();
     running_ = true;
@@ -254,6 +255,8 @@ void PipeNetworkService::onRouterMessage(const std::string& topic, const std::ve
         handleBlockChanged(data);
     } else if (topic == "world.machine.config.updated") {
         handleMachineConfigUpdated(data);
+    } else if (topic == "pipe.wrench.action") {
+        handlePipeWrenchAction(data);
     }
 }
 
@@ -284,6 +287,7 @@ void PipeNetworkService::handleBlockChanged(const std::vector<uint8_t>& data) {
             pipe_nodes_.erase(it);
             spdlog::debug("[PipeNet] pipe node at ({},{},{}) removed", x, y, z);
         }
+        machine_nodes_.erase(key);
         return;
     }
 
@@ -326,9 +330,47 @@ bool PipeNetworkService::isCableBlock(uint16_t block_id) {
 }
 
 uint64_t PipeNetworkService::posKey(int32_t x, int32_t y, int32_t z) {
-    return (static_cast<uint64_t>(static_cast<int64_t>(x)) << 42)
-         | (static_cast<uint64_t>(static_cast<int64_t>(y) & 0xFFFFF) << 20)
-         | (static_cast<uint64_t>(static_cast<int64_t>(z) & 0xFFFFF));
+    return pipenet::pipePosKey(x, y, z);
+}
+
+void PipeNetworkService::handlePipeWrenchAction(const std::vector<uint8_t>& data) {
+    flatbuffers::Verifier verifier(data.data(), data.size());
+    if (!verifier.VerifyBuffer<Protocol::PipeWrenchAction>()) {
+        spdlog::warn("[PipeNet] invalid PipeWrenchAction");
+        return;
+    }
+
+    const auto* req = flatbuffers::GetRoot<Protocol::PipeWrenchAction>(data.data());
+    if (!req || !req->pos()) {
+        spdlog::warn("[PipeNet] PipeWrenchAction missing pos");
+        return;
+    }
+
+    int32_t x = req->pos()->x();
+    int32_t y = req->pos()->y();
+    int32_t z = req->pos()->z();
+
+    uint64_t node_id = 0;
+    auto guidance = pipenet::evaluatePipeWrench(
+        pipe_nodes_, machine_nodes_, x, y, z, &node_id);
+
+    uint32_t component_size = 0;
+    if (node_id != 0) {
+        auto component = network_manager_.discoverNetwork(node_id);
+        component_size = static_cast<uint32_t>(component.size());
+    }
+
+    flatbuffers::FlatBufferBuilder fbb;
+    Protocol::Vec3i pos(x, y, z);
+    auto resp = Protocol::CreatePipeWrenchResp(
+        fbb, req->player_id(), &pos,
+        static_cast<Protocol::PipeWrenchGuidance>(guidance), node_id, component_size);
+    fbb.Finish(resp);
+    router_.Publish("pipe.wrench.response",
+        {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+
+    spdlog::debug("[PipeNet] wrench on ({},{},{}) -> guidance {} node {} component {}",
+                  x, y, z, static_cast<int>(guidance), node_id, component_size);
 }
 
 void PipeNetworkService::handleNodeUpdate(const std::vector<uint8_t>& data) {
@@ -349,6 +391,7 @@ void PipeNetworkService::handleNodeUpdate(const std::vector<uint8_t>& data) {
         }
         mgr_id = protocol_id;
         protocol_to_mgr_[protocol_id] = mgr_id;
+        machine_nodes_[posKey(x, y, z)] = mgr_id;
         spdlog::debug("Registered energy node {} at ({},{},{})", protocol_id, x, y, z);
     } else {
         mgr_id = it->second;
@@ -465,6 +508,7 @@ void PipeNetworkService::handleFluidNodeUpdate(const std::vector<uint8_t>& data)
         }
         mgr_id = protocol_id;
         protocol_to_mgr_[protocol_id] = mgr_id;
+        machine_nodes_[posKey(x, y, z)] = mgr_id;
         spdlog::debug("Registered fluid node {} at ({},{},{})", protocol_id, x, y, z);
     } else {
         mgr_id = it->second;
@@ -569,6 +613,7 @@ void PipeNetworkService::handleItemNodeUpdate(const std::vector<uint8_t>& data) 
         }
         mgr_id = protocol_id;
         protocol_to_mgr_[protocol_id] = mgr_id;
+        machine_nodes_[posKey(x, y, z)] = mgr_id;
         spdlog::debug("Registered item node {} at ({},{},{})", protocol_id, x, y, z);
     } else {
         mgr_id = it->second;

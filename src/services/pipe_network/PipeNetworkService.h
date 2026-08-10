@@ -51,8 +51,10 @@ private:
   pipenet::PipeNetworkManager network_manager_;
   std::unordered_map<uint64_t, NodeState> node_states_;
   std::unordered_map<uint64_t, uint64_t> protocol_to_mgr_;
-  // pos_key → PipeNetworkManager node_id
+  // pos_key → PipeNetworkManager node_id (pipe blocks, from world.blocks.changed)
   std::unordered_map<uint64_t, uint64_t> pipe_nodes_;
+  // pos_key → node_id (registered machine nodes, from *.node.update)
+  std::unordered_map<uint64_t, uint64_t> machine_nodes_;
   CableGraph cable_graph_;
 
   void scheduleTick();
@@ -83,6 +85,9 @@ private:
 
   // Machine config handler (side_config sync from wrench)
   void handleMachineConfigUpdated(const std::vector<uint8_t> &data);
+
+  // Pipe wrench handler (evaluate + report connection state)
+  void handlePipeWrenchAction(const std::vector<uint8_t> &data);
 
   void loadPersistentState();
 };

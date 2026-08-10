@@ -16,6 +16,7 @@
 #include "Actions/MiningCalculator.h"
 #include "Actions/handTool/WrenchHandler.h"
 #include "Actions/handTool/WrenchActionHandler.h"
+#include "Actions/handTool/PipeWrenchResponseHandler.h"
 #include "World/ChunkEventHandler.h"
 #include "World/WorldContainerInventory.h"
 #include "Storage/ChunkStoreRepository.h"
@@ -148,9 +149,13 @@ void SimCoreMessageHandler::setup() {
 
     chunkHandler_ = std::make_shared<ChunkEventHandler>(d.engine);
 
-    auto wrenchActionHandler = std::make_unique<WrenchActionHandler>(d.wrenchHandler, d.questManager);
+    auto wrenchActionHandler = std::make_unique<WrenchActionHandler>(
+        d.wrenchHandler, d.questManager, d.blockRepository);
     wrenchActionHandler->setRouter(d.routerClient);
     topicDispatcher_->on("player.wrench.action", std::move(wrenchActionHandler));
+
+    auto pipeWrenchResponseHandler = std::make_unique<PipeWrenchResponseHandler>(d.routerClient);
+    topicDispatcher_->on("pipe.wrench.response", std::move(pipeWrenchResponseHandler));
 }
 
 void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContainers) {

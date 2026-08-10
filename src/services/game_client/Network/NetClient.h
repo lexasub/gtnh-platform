@@ -98,8 +98,8 @@ public:
   // raw-buffer callbacks.
   using RecipeQueryCallback =
       std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
-  using ToolActionRespCallback =
-      std::function<void(bool, uint8_t, const std::vector<uint8_t> &)>;
+  using ToolActionRespCallback = std::function<void(
+      bool, uint8_t, const std::vector<uint8_t> &, const std::string &)>;
     using MultiblockEventCallback =
         std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
     using GridUpdateCallback =

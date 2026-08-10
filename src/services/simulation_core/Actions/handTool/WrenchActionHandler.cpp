@@ -2,12 +2,17 @@
 #include "WrenchHandler.h"
 #include "Quest/QuestManager.h"
 #include "Network/clients/IoUringRouterClient.h"
+#include "Storage/IBlockRepository.h"
+#include <common/ItemId.h>
 #include "core_generated.h"
+#include "pipe_network_generated.h"
 #include <spdlog/spdlog.h>
 namespace simcore {
 WrenchActionHandler::WrenchActionHandler(std::shared_ptr<WrenchHandler> wrenchHandler,
-                                         std::shared_ptr<QuestManager> questManager)
-    : wrenchHandler_(std::move(wrenchHandler)), questManager_(std::move(questManager)) {}
+                                         std::shared_ptr<QuestManager> questManager,
+                                         std::shared_ptr<IBlockRepository> blockRepository)
+    : wrenchHandler_(std::move(wrenchHandler)), questManager_(std::move(questManager)),
+      blockRepository_(std::move(blockRepository)) {}
 
 uint64_t WrenchActionHandler::cooldownKey(uint64_t playerId, int32_t x, int32_t y, int32_t z, uint8_t face) {
     // Pack playerId (48 bits) + pos (16 bits each) + face (4 bits) into uint64
@@ -43,14 +48,50 @@ void WrenchActionHandler::handle(const std::vector<uint8_t>& data) {
 
     // SIDE_CONFIGURED detection: a machine face was cycled successfully.
     // Hatches carry machine_id == 0 and are not side-config quest targets.
-    if (r.success && r.machine_id != 0 && questManager_) {
-        questManager_->checkSideConfigured(action->player_id(), r.machine_id);
+    if (r.success) {
+        if (r.machine_id != 0 && questManager_) {
+            questManager_->checkSideConfigured(action->player_id(), r.machine_id);
+        }
+        flatbuffers::FlatBufferBuilder fbb(128);
+        auto err = r.error.empty() ? 0 : fbb.CreateString(r.error);
+        auto roles = fbb.CreateVector(r.allRoles, 6);
+        auto resp = Protocol::CreateToolActionResp(fbb, r.success, err, 0, 0, r.newRole, roles, 0);
+        fbb.Finish(resp);
+        std::vector<uint8_t> respData(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+        router_->Publish("player.tool.action.response", std::move(respData));
+        return;
+    }
+
+    // cycleFace already did the ECS machine lookup. For a pipe target, defer the
+    // response: PipeWrenchResponseHandler answers on `pipe.wrench.response`.
+    if (r.error == "no_machine_at_position" && blockRepository_) {
+        const uint64_t pid = action->player_id();
+        const int32_t x = p->x(), y = p->y(), z = p->z();
+        const uint8_t face = action->face();
+        blockRepository_->getBlock(x, y, z, [this, pid, x, y, z, face](const BlockData& bd) {
+            if (ItemId::isPipe(bd.block_id)) {
+                flatbuffers::FlatBufferBuilder fbb(64);
+                Protocol::Vec3i pos(x, y, z);
+                auto a = Protocol::CreatePipeWrenchAction(fbb, pid, &pos, face);
+                fbb.Finish(a);
+                std::vector<uint8_t> buf(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+                router_->Publish("pipe.wrench.action", std::move(buf));
+                return;
+            }
+            flatbuffers::FlatBufferBuilder fbb(128);
+            auto err = fbb.CreateString("not_a_machine");
+            auto resp = Protocol::CreateToolActionResp(fbb, false, err, 0, 0, 0, 0, 0);
+            fbb.Finish(resp);
+            std::vector<uint8_t> respData(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+            router_->Publish("player.tool.action.response", std::move(respData));
+        });
+        return;
     }
 
     flatbuffers::FlatBufferBuilder fbb(128);
     auto err = r.error.empty() ? 0 : fbb.CreateString(r.error);
     auto roles = fbb.CreateVector(r.allRoles, 6);
-    auto resp = Protocol::CreateToolActionResp(fbb, r.success, err, 0, 0, r.newRole, roles);
+    auto resp = Protocol::CreateToolActionResp(fbb, r.success, err, 0, 0, r.newRole, roles, 0);
     fbb.Finish(resp);
     std::vector<uint8_t> respData(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
 

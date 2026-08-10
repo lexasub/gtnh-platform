@@ -122,6 +122,73 @@ static void test_add_node_with_id() {
 }
 
 // =========================================================================
+//  Pipe wrench guidance tests (evaluatePipeWrench)
+// =========================================================================
+
+static void test_wrench_isolated_pipe() {
+    std::unordered_map<uint64_t, uint64_t> pipes;
+    std::unordered_map<uint64_t, uint64_t> machines;
+    uint64_t nid = 0;
+    pipes[pipenet::pipePosKey(0, 0, 0)] = 1;
+
+    auto g = pipenet::evaluatePipeWrench(pipes, machines, 0, 0, 0, &nid);
+    CHECK(g == pipenet::WrenchGuidance::CONNECT_PIPES, "isolated pipe -> CONNECT_PIPES");
+    CHECK_EQ(nid, uint64_t(1), "node id returned for pipe position");
+    PASS();
+}
+
+static void test_wrench_pipe_to_pipe() {
+    std::unordered_map<uint64_t, uint64_t> pipes;
+    std::unordered_map<uint64_t, uint64_t> machines;
+    pipes[pipenet::pipePosKey(0, 0, 0)] = 1;
+    pipes[pipenet::pipePosKey(1, 0, 0)] = 2;
+
+    uint64_t nid = 0;
+    auto g = pipenet::evaluatePipeWrench(pipes, machines, 0, 0, 0, &nid);
+    CHECK(g == pipenet::WrenchGuidance::CONNECT_TO_MACHINE,
+          "pipe next to pipe -> CONNECT_TO_MACHINE");
+    PASS();
+}
+
+static void test_wrench_pipe_adjacent_machine() {
+    std::unordered_map<uint64_t, uint64_t> pipes;
+    std::unordered_map<uint64_t, uint64_t> machines;
+    pipes[pipenet::pipePosKey(0, 0, 0)] = 1;
+    machines[pipenet::pipePosKey(1, 0, 0)] = 900;
+
+    uint64_t nid = 0;
+    auto g = pipenet::evaluatePipeWrench(pipes, machines, 0, 0, 0, &nid);
+    CHECK(g == pipenet::WrenchGuidance::CONNECTED, "pipe adjacent machine -> CONNECTED");
+    PASS();
+}
+
+static void test_wrench_non_pipe_position() {
+    std::unordered_map<uint64_t, uint64_t> pipes;
+    std::unordered_map<uint64_t, uint64_t> machines;
+    pipes[pipenet::pipePosKey(5, 5, 5)] = 1;
+
+    uint64_t nid = 77;
+    auto g = pipenet::evaluatePipeWrench(pipes, machines, 0, 0, 0, &nid);
+    CHECK(g == pipenet::WrenchGuidance::NOT_A_PIPE, "no pipe at pos -> NOT_A_PIPE");
+    CHECK_EQ(nid, uint64_t(0), "node id cleared to 0 for non-pipe");
+    PASS();
+}
+
+static void test_wrench_guidance_no_mutation() {
+    std::unordered_map<uint64_t, uint64_t> pipes;
+    std::unordered_map<uint64_t, uint64_t> machines;
+    pipes[pipenet::pipePosKey(0, 0, 0)] = 1;
+    pipes[pipenet::pipePosKey(1, 0, 0)] = 2;
+
+    auto before = pipes;
+    uint64_t nid = 0;
+    pipenet::evaluatePipeWrench(pipes, machines, 0, 0, 0, &nid);
+    CHECK(pipes == before, "pipe map unchanged after evaluation");
+    CHECK(machines.empty(), "machine map unchanged after evaluation");
+    PASS();
+}
+
+// =========================================================================
 //  Item network tests
 // =========================================================================
 
@@ -1143,6 +1210,13 @@ int main(int, char**) {
     TEST(disconnected_graphs);
     TEST(rebuild_networks);
     TEST(add_node_with_id);
+
+    // Pipe wrench guidance
+    TEST(wrench_isolated_pipe);
+    TEST(wrench_pipe_to_pipe);
+    TEST(wrench_pipe_adjacent_machine);
+    TEST(wrench_non_pipe_position);
+    TEST(wrench_guidance_no_mutation);
 
     // Item network
     TEST(item_network_simple);

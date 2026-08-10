@@ -1,5 +1,6 @@
 #pragma once
 #include "../../Network/ITopicHandler.h"
+#include "Storage/IBlockRepository.h"
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -15,7 +16,8 @@ class QuestManager;
 class WrenchActionHandler : public ITopicHandler {
 public:
   explicit WrenchActionHandler(std::shared_ptr<WrenchHandler> wrenchHandler,
-                               std::shared_ptr<QuestManager> questManager);
+                               std::shared_ptr<QuestManager> questManager,
+                               std::shared_ptr<IBlockRepository> blockRepository);
 
   void handle(const std::vector<uint8_t>& data) override;
   void setRouter(std::shared_ptr<IoUringRouterClient> router) { router_ = std::move(router); }
@@ -29,6 +31,7 @@ private:
   std::shared_ptr<WrenchHandler> wrenchHandler_;
   std::shared_ptr<IoUringRouterClient> router_;
   std::shared_ptr<QuestManager> questManager_;
+  std::shared_ptr<IBlockRepository> blockRepository_;
 };
 
 } // namespace simcore

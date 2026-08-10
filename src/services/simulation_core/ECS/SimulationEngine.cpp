@@ -8,11 +8,7 @@
 #include <algorithm>
 
 constexpr bool isInfraBlock(uint16_t id) {
-    return id == ItemId::pack("1111:10:0") || id == ItemId::pack("1111:10:1")
-        || id == ItemId::pack("1111:10:2") || id == ItemId::pack("1111:10:3")
-        || id == ItemId::pack("1111:01:0") || id == ItemId::pack("1111:01:1")
-        || id == ItemId::pack("1111:01:2") || id == ItemId::pack("1111:01:3")
-        || id == ItemId::pack("1111:01:4") || id == ItemId::pack("1111:01:5")
+    return ItemId::isPipe(id) || ItemId::isCable(id)
         || id == ItemId::pack("1110:11:0")|| id == ItemId::pack("1110:11:1");
 }
 
