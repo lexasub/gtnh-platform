@@ -1,9 +1,11 @@
 #include "PlayerInventory.h"
 #include "Network/NetClient.h"
+#include "RenderLib/Utils/TextureAtlas.h"
 #include "core_generated.h"
 #include "gateway_generated.h"
 #include <imgui.h>
 #include <spdlog/spdlog.h>
+#include <cstdio>
 
 static int g_invFrame = 0;
 
@@ -40,6 +42,11 @@ void PlayerInventory::OnNetworkUpdate(uint8_t msgType, const void *data) {
                 state_.slots[i] = {s->item_id(), s->count(), s->meta()};
             }
         }
+        // Server-owned cursor stack (authoritative click model).
+        state_.cursor = ItemStack{0, 0, 0};
+        if (auto* cur = update->cursor()) {
+            state_.cursor = {cur->item_id(), cur->count(), cur->meta()};
+        }
         return;
     }
     IUIWindow::OnNetworkUpdate(msgType, data);
@@ -62,7 +69,8 @@ void PlayerInventory::Render(InventoryState* /*playerInv*/) {
         int button = ImGui::IsMouseClicked(ImGuiMouseButton_Right) ? 1 : 0;
         bool shift = ImGui::GetIO().KeyShift;
         bool ctrl = ImGui::GetIO().KeyCtrl;
-        dragMgr_->OnSlotActivated(hotbarHover, state_.slots, button, shift, ctrl);
+        // Authoritative click path — the server owns the cursor.
+        dragMgr_->OnPlayerSlotClick(hotbarHover, button, shift, ctrl);
     }
 
     if (!state_.open) return;
@@ -76,7 +84,7 @@ void PlayerInventory::Render(InventoryState* /*playerInv*/) {
                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar);
 
     // ── Inventory grid (rows 1-4, skipping hotbar) ────────────────────────
-    int clicked = RenderPlayerInventoryGrid(state_, kHotbarSlots, kTotalSlots - kHotbarSlots, kInventoryCols, state_.selectedSlot, true, dragMgr_);
+    int clicked = RenderPlayerInventoryGrid(state_, kHotbarSlots, kTotalSlots - kHotbarSlots, kInventoryCols, state_.selectedSlot, true, dragMgr_, true);
     if (clicked >= 0) {
         if (!dragMgr_->IsDragging()) state_.selectedSlot = clicked;
         spdlog::info("PlayerInv: clicked slot={} dragging={}", clicked, dragMgr_->IsDragging());
@@ -85,10 +93,30 @@ void PlayerInventory::Render(InventoryState* /*playerInv*/) {
   ImGui::Separator();
 
   // ── Hotbar row ────────────────────────────────────────────────────────
-  int hotbarClicked = RenderPlayerInventoryGrid(state_, 0, kHotbarSlots, kInventoryCols, state_.selectedSlot, true, dragMgr_);
+  int hotbarClicked = RenderPlayerInventoryGrid(state_, 0, kHotbarSlots, kInventoryCols, state_.selectedSlot, true, dragMgr_, true);
   if (hotbarClicked >= 0) {
       if (!dragMgr_->IsDragging()) state_.selectedSlot = hotbarClicked;
       spdlog::info("PlayerInv(hotbar): clicked slot={} dragging={}", hotbarClicked, dragMgr_->IsDragging());
   }
+
+  // ── Cursor preview (server-owned hand stack) ──────────────────────────
+  if (state_.cursor.item_id != 0) {
+      ImDrawList* dl = ImGui::GetForegroundDrawList();
+      ImVec2 mouse = ImGui::GetIO().MousePos;
+      auto uv = renderlib::TextureAtlas::GetItemUV(state_.cursor.item_id);
+      dl->AddImage(
+          renderlib::TextureAtlas::GetTextureHandle().idx,
+          ImVec2(mouse.x + 4, mouse.y + 4),
+          ImVec2(mouse.x + 40 - 4, mouse.y + 40 - 4),
+          ImVec2(uv.u0, uv.v0),
+          ImVec2(uv.u1, uv.v1));
+      if (state_.cursor.count > 1) {
+          char buf[8];
+          std::snprintf(buf, sizeof(buf), "%d", state_.cursor.count);
+          dl->AddText(ImVec2(mouse.x + 4, mouse.y + 4),
+                      IM_COL32(255, 255, 255, 255), buf);
+      }
+  }
+
   ImGui::End();
 }

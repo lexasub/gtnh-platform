@@ -1,6 +1,7 @@
 #include "ChestWindow.h"
 #include "Common/Inventory.h"
 #include "Components/SlotGrid.h"
+#include "Components/PlayerInventoryGrid.h"
 #include "UI/Core/DragManager.h"
 #include "Network/NetClient.h"
 #include "RenderLib/Utils/TextureAtlas.h"
@@ -16,53 +17,49 @@ ChestWindow::ChestWindow(BlockPos pos)
 
 void ChestWindow::SetOpen(bool open) {
     if (open && !open_) {
-        // Slots are unloaded until BlockEntityUpdate arrives — saving before that wipes server state.
+        // Slots are unloaded until the container_id=1 snapshot arrives —
+        // clicks are gated server-side (OH3), and dataLoaded_ guards close.
         chestSlots_.assign(27, ItemStack{});
         dataLoaded_ = false;
+        if (netClient_ && player_id_ != 0) {
+            netClient_->SendChestOpenReq(player_id_, pos_);
+        }
     }
-    if (!open && open_ && netClient_ && lastPlayerInv_) {
-        if (dataLoaded_) {
-            netClient_->SendChestSaveReq(pos_, chestSlots_, lastPlayerInv_->slots,
-                                         lastPlayerInv_->player_id);
-        } else {
-            spdlog::warn("[Chest] Close before BlockEntityUpdate at ({},{},{}) — skipped save",
-                         pos_.x, pos_.y, pos_.z);
+    if (!open && open_) {
+        if (netClient_ && player_id_ != 0) {
+            netClient_->SendChestCloseReq(player_id_, pos_);
         }
         dataLoaded_ = false;
     }
     open_ = open;
 }
 
-void ChestWindow::SaveState(InventoryState* playerInv) {
-    if (netClient_ && playerInv && dataLoaded_) {
-        netClient_->SendChestSaveReq(pos_, chestSlots_, playerInv->slots, playerInv->player_id);
-    }
-}
-
 void ChestWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
-    if (msgType != GatewayMsg::kBlockEntityUpdate) return;
-    if (!data) return;
-
-    flatbuffers::Verifier v(reinterpret_cast<const uint8_t*>(data), 8192);
-    if (!v.VerifyBuffer<Protocol::BlockEntityUpdate>(nullptr)) return;
-
-    auto* update = flatbuffers::GetRoot<Protocol::BlockEntityUpdate>(data);
-    auto* updatePos = update->pos();
-    if (!updatePos || updatePos->x() != pos_.x || updatePos->y() != pos_.y || updatePos->z() != pos_.z) return;
-
-    if (auto* inItems = update->input_items()) {
+    if (msgType == GatewayMsg::kInventoryUpdate) {
+        if (!data) return;
+        flatbuffers::Verifier v(reinterpret_cast<const uint8_t*>(data), 8192);
+        if (!v.VerifyBuffer<Protocol::InventoryUpdate>(nullptr)) return;
+        auto* update = flatbuffers::GetRoot<Protocol::InventoryUpdate>(data);
+        if (update->container_id() != 1) return; // ignore player-only (container_id=0) snapshots
+        auto* cp = update->container_pos();
+        if (!cp || cp->x() != pos_.x || cp->y() != pos_.y || cp->z() != pos_.z) return;
+        auto* cs = update->container_slots();
+        if (!cs) return;
         chestSlots_.assign(27, ItemStack{});
-        size_t n = std::min(static_cast<size_t>(inItems->size()), chestSlots_.size());
+        size_t n = std::min(static_cast<size_t>(cs->size()), chestSlots_.size());
         for (size_t i = 0; i < n; ++i) {
-            auto* s = inItems->Get(i);
-            if (s) chestSlots_[i] = {static_cast<uint16_t>(s->item_id()), s->count(), static_cast<uint16_t>(s->meta())};
+            auto* s = cs->Get(i);
+            if (s) chestSlots_[i] = {s->item_id(), s->count(), s->meta()};
         }
         dataLoaded_ = true;
+        return;
     }
+
+    // Machines still come through BlockEntityUpdate; chests no longer do.
+    IUIWindow::OnNetworkUpdate(msgType, data);
 }
 
 void ChestWindow::Render(InventoryState* playerInv) {
-    lastPlayerInv_ = playerInv;
     if (!open_) return;
 
     ImGuiIO& io = ImGui::GetIO();
@@ -72,7 +69,7 @@ void ChestWindow::Render(InventoryState* playerInv) {
     ImGui::SetNextWindowSize(ImVec2(400, 300), ImGuiCond_FirstUseEver);
     ImGui::Begin("Chest", nullptr);
 
-    // ─── Chest storage ───────────────────────────────────────────────
+    // ─── Chest storage (container_id=1, authoritative clicks) ────────────
     ImGui::Text("Chest Storage");
     ImGui::Separator();
 
@@ -89,6 +86,8 @@ void ChestWindow::Render(InventoryState* playerInv) {
         chestGrid.SetSlotIndexOffset(DragManager::kChestSlotBase);
         chestGrid.SetDragManager(dragMgr_);
         chestGrid.SetInventory(*playerInv);
+        chestGrid.SetAuthoritative(true);
+        chestGrid.SetContainerId(1);
         chestGrid.Render();
     }
 
@@ -99,24 +98,30 @@ void ChestWindow::Render(InventoryState* playerInv) {
     ImGui::Text("Player Inventory");
     ImGui::Separator();
 
-    {
-        SlotStyle style;
-        style.size = 40;
-        style.padding = 2;
-        style.showNumbers = true;
-        style.drawBackground = true;
+    // Authoritative player grid (container_id=0) — fixes the null-inv_ deref
+    // of the old inline SlotGridComponent (which never called SetInventory).
+    ImGui::PushID("chest_player_inv");
+    RenderPlayerInventoryGrid(*playerInv, 0, static_cast<int>(playerInv->slots.size()),
+                              9, playerInv->selectedSlot, false, dragMgr_, /*authoritative*/ true);
+    ImGui::PopID();
 
-        SlotGridComponent invGrid(playerInv->slots);
-        invGrid.SetStyle(style);
-        invGrid.SetRange(0, static_cast<int>(playerInv->slots.size()), 9);
-        invGrid.SetDragManager(dragMgr_);
-        invGrid.Render();
-    }
-
-    // ─── Drag preview (rendered by DragManager) ──────────────────────
-    if (dragMgr_ && dragMgr_->IsDragging()) {
-        SlotStyle style;
-        dragMgr_->RenderPreview(style);
+    // ─── Cursor preview (server-owned hand stack) ────────────────────
+    if (playerInv->cursor.item_id != 0) {
+        ImDrawList* dl = ImGui::GetForegroundDrawList();
+        ImVec2 mouse = ImGui::GetIO().MousePos;
+        auto uv = renderlib::TextureAtlas::GetItemUV(playerInv->cursor.item_id);
+        dl->AddImage(
+            renderlib::TextureAtlas::GetTextureHandle().idx,
+            ImVec2(mouse.x + 4, mouse.y + 4),
+            ImVec2(mouse.x + 40 - 4, mouse.y + 40 - 4),
+            ImVec2(uv.u0, uv.v0),
+            ImVec2(uv.u1, uv.v1));
+        if (playerInv->cursor.count > 1) {
+            char buf[8];
+            std::snprintf(buf, sizeof(buf), "%d", playerInv->cursor.count);
+            dl->AddText(ImVec2(mouse.x + 4, mouse.y + 4),
+                        IM_COL32(255, 255, 255, 255), buf);
+        }
     }
 
     ImGui::End();

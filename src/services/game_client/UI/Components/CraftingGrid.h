@@ -1,14 +1,12 @@
 #pragma once
 
 #include "Common/Inventory.h"
-#include "UI/Core/DragManager.h"
 #include "common/SlotContainer.h"
 #include <array>
 #include <cstdint>
 #include <functional>
 
 class CraftingGrid {
-  static constexpr int kGridFlag = DragManager::kGridSlotBase;
   SlotContainer<9, ItemStack> slots_{};
   ItemStack result_{};
   uint32_t gen_ = 0; // bumped on every Recalc; guards stale server previews
@@ -46,12 +44,6 @@ public:
   // Suppresses onGridChanged_ to prevent a stale async preview from wiping
   // the result that OnCraftResponse is about to set.
   void SetSlots(const std::array<ItemStack, 9> &slots);
-
-  // Handle slot activation (click) using DragManager for drag state
-  void HandleActivate(int gridIdx, InventoryState &inv, DragManager &dm);
-
-  // Handle cancel drag using DragManager
-  void HandleCancel(DragManager &dm);
 
   // Clear all slots + result
   void Clear();

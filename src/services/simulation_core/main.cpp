@@ -45,6 +45,8 @@
 #include "RecipeManager/RecipeManager.h"
 #include "ItemRegistry.h"
 #include "Crafting/WorkbenchStateManager.h"
+#include "Storage/ContainerSession.h"
+#include "Storage/ChestStateManager.h"
 #include "MachineRegistry.h"
 #include "Common/MainThreadQueue.h"
 #include "core_generated.h"
@@ -350,6 +352,13 @@ int main(int argc, char* argv[]) {
         };
 
     // ── ECS Systems ───────────────────────────────────────────────────────
+
+    // Per-player open-container session (Phase B: chest). Persists to
+    // EntityStateStore via ChestStateManager (MachineState blob, type 3).
+    auto chestSessions = std::make_shared<simcore::ContainerSessionRegistry>();
+    auto chestStateManager = std::make_shared<simcore::ChestStateManager>(
+        entityStateClient, 0);
+
     if (machineRegistry) {
         simulationEngine->registerSystem(
             std::make_unique<simcore::AdjacencyTransferSystem>(simulationEngine->reg(), *machineRegistry, eventPublisher));
@@ -357,7 +366,8 @@ int main(int argc, char* argv[]) {
     simcore::MachineSystem* machineSystemRaw = nullptr;
     {
         auto ms = std::make_unique<simcore::MachineSystem>(
-            simulationEngine->reg(), recipeManager, eventPublisher, pipeEnergyClient, itemClient);
+            simulationEngine->reg(), recipeManager, eventPublisher, pipeEnergyClient, itemClient,
+            chestSessions, inventoryStore, routerClient);
         machineSystemRaw = ms.get();
         simulationEngine->registerSystem(std::move(ms));
     }
@@ -441,6 +451,8 @@ int main(int argc, char* argv[]) {
     msgDeps.machineSystem = machineSystemRaw;
     msgDeps.batteryBuffer = batteryBufferRaw;
     msgDeps.wbStateManager = wbStateManager;
+    msgDeps.chestSessions = chestSessions;
+    msgDeps.chestStateManager = chestStateManager;
     simcore::SimCoreMessageHandler messageHandler(std::move(msgDeps));
     messageHandler.setup();
     messageHandler.wireOnMessage(worldContainers);
@@ -456,7 +468,10 @@ int main(int argc, char* argv[]) {
     routerClient->Subscribe("fluid.consume.response");
     routerClient->Subscribe("item.flow");
     routerClient->Subscribe("item.transfer.response");
-    routerClient->Subscribe("player.chest.save");
+    routerClient->Subscribe("player.chest.open");
+    routerClient->Subscribe("player.chest.close");
+    routerClient->Subscribe("player.machine.open");
+    routerClient->Subscribe("player.machine.close");
     routerClient->Subscribe("player.gamemode.change");
     routerClient->Subscribe("player.scenario.start");
     routerClient->Subscribe("player.inventory.load");

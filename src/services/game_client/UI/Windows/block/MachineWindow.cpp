@@ -2,6 +2,7 @@
 #include "Components/SlotGrid.h"
 #include "Components/PlayerInventoryGrid.h"
 #include "Network/NetClient.h"
+#include "RenderLib/Utils/TextureAtlas.h"
 #include "core_generated.h"
 #include "recipe_generated.h"
 #include <imgui.h>
@@ -129,6 +130,25 @@ MachineWindow::MachineWindow(BlockPos pos, uint16_t machineType)
     : BlockAttachedWindow(pos)
     , machineType_(machineType) {}
 
+void MachineWindow::SetOpen(bool open) {
+    if (open && !open_) {
+        // Slots are unloaded until the container_id=1 InventoryUpdate snapshot
+        // arrives (Phase C); dataLoaded_ guards rendering of server slots.
+        machineSlots_.clear();
+        dataLoaded_ = false;
+        if (netClient_ && player_id_ != 0) {
+            netClient_->SendMachineOpenReq(player_id_, pos_.x, pos_.y, pos_.z);
+        }
+    }
+    if (!open && open_) {
+        if (netClient_ && player_id_ != 0) {
+            netClient_->SendMachineCloseReq(player_id_, pos_.x, pos_.y, pos_.z);
+        }
+        dataLoaded_ = false;
+    }
+    open_ = open;
+}
+
 EnergyType MachineWindow::GetEnergyType() const {
     return energyType_;
 }
@@ -154,20 +174,6 @@ MachineWindow::ProgressStyle MachineWindow::ResolveProgressStyle(const MachineIn
     return ProgressStyle::GENERIC;
 }
 
-void MachineWindow::onMachineSlotAck(uint32_t /*x*/, uint32_t /*y*/, uint32_t /*z*/, uint8_t slotIdx, bool success) {
-    if (!success) {
-        lastErrorSlot_ = slotIdx;
-        errorTimer_ = 500.0f; // 500ms error display
-    } else {
-        // On success: no-op (optimistic update already applied)
-    }
-    // Send to DragManager for unified drag state management
-    if (dragMgr_) {
-        dragMgr_->OnMachineSlotAck(slotIdx, success);
-    }
-}
-
-// ── Progress rendering dispatcher ──────────────────────────────────────────
 void MachineWindow::RenderProgress(const MachineInfo* info, float prog) {
     if (!info) {
         ImGui::ProgressBar(prog, ImVec2(80, 24), "");
@@ -291,63 +297,15 @@ void MachineWindow::Render(InventoryState* playerInv) {
         int inCount = info ? info->slots_in : 3;
         int outCount = info ? info->slots_out : 3;
 
-        for (int i = 0; i < inCount; ++i) {
-            ImGui::PushID(DragManager::kMachineSlotBase + i);
-            ItemStack item = (hasPendingUpdate_ && static_cast<size_t>(i) < pendingUpdate_.inputItems.size())
-                ? pendingUpdate_.inputItems[i]
-                : ItemStack{0, 0, 0};
-            bool clicked = RenderSlot(item, false, ImGui::GetWindowDrawList(), style);
-            if (clicked && netClient_) {
-                if (playerInv->isDragging) {
-                    spdlog::info("[MachineWindow] Drag-drop: srcSlot={} item={}x{} -> machine slot {} at ({},{},{})",
-                                 playerInv->dragSourceSlot, playerInv->dragItem.item_id, playerInv->dragItem.count,
-                                 i, pos_.x, pos_.y, pos_.z);
-                    uint8_t srcSlot = (playerInv->dragSourceSlot >= 0)
-                        ? static_cast<uint8_t>(playerInv->dragSourceSlot) : 255;
-                    netClient_->SendSetMachineSlot(playerInv->player_id, pos_,
-                        static_cast<uint16_t>(i),
-                        playerInv->dragItem.item_id,
-                        playerInv->dragItem.count,
-                        playerInv->dragItem.meta,
-                        srcSlot);
-                    if (static_cast<size_t>(i) < pendingUpdate_.inputItems.size()) {
-                        pendingUpdate_.inputItems[i] = playerInv->dragItem;
-                    } else {
-                        pendingUpdate_.inputItems.resize(i + 1);
-                        pendingUpdate_.inputItems[i] = playerInv->dragItem;
-                    }
-                    hasPendingUpdate_ = true;
-                    if (dragMgr_) {
-                        dragMgr_->Reset();
-                        dragMgr_->SyncTo(*playerInv);
-                    }
-                } else if (item.item_id != 0) {
-                    spdlog::info("[MachineWindow] Pick up from machine slot {} at ({},{},{})", i, pos_.x, pos_.y, pos_.z);
-                    // Pick up item from machine input slot into cursor
-                    if (dragMgr_) {
-                        dragMgr_->StartExternalDrag(DragManager::kMachineSlotBase + i, item);
-                        dragMgr_->SetMachineDragContext(pos_, i);
-                        dragMgr_->SyncTo(*playerInv);
-                        // Don't clear machine slot yet — UIManager callback sends
-                        // combined SetMachineSlotReq on drop to player inventory.
-                    } else {
-                        playerInv->dragItem = item;
-                        playerInv->isDragging = true;
-                        playerInv->dragSourceSlot = -(DragManager::kMachineSlotBase + i);
-                        netClient_->SendSetMachineSlot(playerInv->player_id, pos_,
-                            static_cast<uint16_t>(i), 0, 0, 0);
-                    }
-                    if (static_cast<size_t>(i) < pendingUpdate_.inputItems.size()) {
-                        pendingUpdate_.inputItems[i] = ItemStack{0, 0, 0};
-                    }
-                    hasPendingUpdate_ = true;
-                } else {
-                    spdlog::info("[MachineWindow] Clicked empty slot {} at ({},{},{}) isDragging={}",
-                                 i, pos_.x, pos_.y, pos_.z, playerInv->isDragging);
-                }
-            }
-            ImGui::SameLine();
-            ImGui::PopID();
+        if (dataLoaded_) {
+            SlotGridComponent inGrid(machineSlots_);
+            inGrid.SetStyle(style);
+            inGrid.SetRange(0, inCount, inCount);
+            inGrid.SetDragManager(dragMgr_);
+            inGrid.SetInventory(*playerInv);
+            inGrid.SetAuthoritative(true);
+            inGrid.SetContainerId(1);
+            inGrid.Render();
         }
 
         float prog = hasPendingUpdate_ ? pendingUpdate_.progress : 0.0f;
@@ -364,58 +322,15 @@ void MachineWindow::Render(InventoryState* playerInv) {
         RenderProgress(info, prog);
         ImGui::SameLine();
 
-        for (int i = 0; i < outCount; ++i) {
-            ImGui::PushID(DragManager::kMachineOutputBase + i);
-            ItemStack item = (hasPendingUpdate_ && static_cast<size_t>(i) < pendingUpdate_.outputItems.size())
-                ? pendingUpdate_.outputItems[i]
-                : ItemStack{0, 0, 0};
-            bool clicked = RenderSlot(item, false, ImGui::GetWindowDrawList(), style);
-            if (clicked && netClient_) {
-                if (playerInv->isDragging) {
-                    spdlog::info("[MachineWindow] Drag-drop output: srcSlot={} item={}x{} -> out slot {} at ({},{},{})",
-                                 playerInv->dragSourceSlot, playerInv->dragItem.item_id, playerInv->dragItem.count,
-                                 i, pos_.x, pos_.y, pos_.z);
-                    uint8_t srcSlot = (playerInv->dragSourceSlot >= 0)
-                        ? static_cast<uint8_t>(playerInv->dragSourceSlot) : 255;
-                    netClient_->SendSetMachineSlot(playerInv->player_id, pos_,
-                        static_cast<uint16_t>(inCount + i),
-                        playerInv->dragItem.item_id,
-                        playerInv->dragItem.count,
-                        playerInv->dragItem.meta,
-                        srcSlot);
-                    if (static_cast<size_t>(i) < pendingUpdate_.outputItems.size()) {
-                        pendingUpdate_.outputItems[i] = playerInv->dragItem;
-                    } else {
-                        pendingUpdate_.outputItems.resize(i + 1);
-                        pendingUpdate_.outputItems[i] = playerInv->dragItem;
-                    }
-                    hasPendingUpdate_ = true;
-                    if (dragMgr_) {
-                        dragMgr_->Reset();
-                        dragMgr_->SyncTo(*playerInv);
-                    }
-                } else if (item.item_id != 0) {
-                    spdlog::info("[MachineWindow] Pick up from output slot {} at ({},{},{})", i, pos_.x, pos_.y, pos_.z);
-                    // Pick up output item into cursor
-                    if (dragMgr_) {
-                        dragMgr_->StartExternalDrag(DragManager::kMachineOutputBase + i, item);
-                        dragMgr_->SetMachineDragContext(pos_, inCount + i);
-                        dragMgr_->SyncTo(*playerInv);
-                    } else {
-                        playerInv->dragItem = item;
-                        playerInv->isDragging = true;
-                        playerInv->dragSourceSlot = -(DragManager::kMachineOutputBase + i);
-                        netClient_->SendSetMachineSlot(playerInv->player_id, pos_,
-                            static_cast<uint16_t>(inCount + i), 0, 0, 0);
-                    }
-                    if (static_cast<size_t>(i) < pendingUpdate_.outputItems.size()) {
-                        pendingUpdate_.outputItems[i] = ItemStack{0, 0, 0};
-                    }
-                    hasPendingUpdate_ = true;
-                }
-            }
-            ImGui::SameLine();
-            ImGui::PopID();
+        if (dataLoaded_) {
+            SlotGridComponent outGrid(machineSlots_);
+            outGrid.SetStyle(style);
+            outGrid.SetRange(inCount, outCount, outCount);
+            outGrid.SetDragManager(dragMgr_);
+            outGrid.SetInventory(*playerInv);
+            outGrid.SetAuthoritative(true);
+            outGrid.SetContainerId(1);
+            outGrid.Render();
         }
 
         ImGui::Separator();
@@ -455,95 +370,65 @@ void MachineWindow::Render(InventoryState* playerInv) {
 
     ImGui::Separator();
 
-    // ── Update slot error states ──────────────────────────────────────────
-    for (auto& error : slotErrors_) {
-        error.flashTimer -= 0.016f;
-    }
-    slotErrors_.erase(std::remove_if(slotErrors_.begin(), slotErrors_.end(),
-        [](const SlotErrorState& e) { return e.flashTimer <= 0.0f; }),
-        slotErrors_.end());
-
-    // ── Drag preview через DragManager ──────────────────────────────────
-    if (dragMgr_ && dragMgr_->IsDragging()) {
-        dragMgr_->RenderPreview(style);
-
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-            // Cancel drag — restore item to source
-            if (dragMgr_->HasMachineDragContext()) {
-                // Drag originated from a machine slot → restore via server
-                BlockPos mp = dragMgr_->GetMachineDragPos();
-                int ms = dragMgr_->GetMachineDragSlotIdx();
-                const ItemStack& held = dragMgr_->GetHeldItem();
-                netClient_->SendSetMachineSlot(playerInv->player_id, mp,
-                    static_cast<uint16_t>(ms),
-                    held.item_id, held.count, held.meta, 255);
-                // Restore pending update
-                if (ms < static_cast<int>(pendingUpdate_.inputItems.size())) {
-                    pendingUpdate_.inputItems[ms] = held;
-                }
-                hasPendingUpdate_ = true;
-            }
-            // CancelDrag returns item to inventory slot if source was inventory
-            dragMgr_->CancelDrag(playerInv->slots);
-            dragMgr_->SyncTo(*playerInv);
-        }
-    } else if (!dragMgr_ && playerInv->isDragging) {
-        // Fallback: manual preview without DragManager
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        uint32_t itemColor = IM_COL32(
-            playerInv->dragItem.item_id * 50 % 256,
-            playerInv->dragItem.item_id * 80 % 256,
-            playerInv->dragItem.item_id * 30 % 256, 255);
-        ImVec2 mousePos = ImGui::GetIO().MousePos;
-        dl->AddRectFilled(ImVec2(mousePos.x + 4, mousePos.y + 4),
-                          ImVec2(mousePos.x + 40 - 4, mousePos.y + 40 - 4),
-                          itemColor, 2.0f);
-        if (playerInv->dragItem.count > 1) {
-            char buf[4];
-            std::snprintf(buf, sizeof(buf), "%d", playerInv->dragItem.count);
-            dl->AddText(ImVec2(mousePos.x + 4, mousePos.y + 4),
-                        IM_COL32(255, 255, 255, 255), buf);
-        }
-
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-            // Cancel drag - restore item to source slot
-            int absSlot = std::abs(playerInv->dragSourceSlot);
-            if (absSlot >= DragManager::kMachineSlotBase) {
-                int inCount = 3;
-                if (auto* info = MachineRegistry::instance()->Get(machineType_)) {
-                    inCount = info->slots_in;
-                }
-                int machineSlot = (absSlot >= DragManager::kMachineOutputBase)
-                    ? inCount + (absSlot - DragManager::kMachineOutputBase)
-                    : (absSlot - DragManager::kMachineSlotBase);
-                netClient_->SendSetMachineSlot(playerInv->player_id, pos_,
-                    static_cast<uint16_t>(machineSlot),
-                    playerInv->dragItem.item_id,
-                    playerInv->dragItem.count,
-                    playerInv->dragItem.meta,
-                    255);
-            }
-            playerInv->isDragging = false;
-            playerInv->dragItem = ItemStack{};
-            playerInv->dragSourceSlot = -1;
-        }
-    }
-
-    ImGui::PushID("player_inv");
-    {
-        int clicked = RenderPlayerInventoryGrid(*playerInv, 0, static_cast<int>(playerInv->slots.size()), 9, -1, false, dragMgr_);
-        if (clicked >= 0) {
-            spdlog::info("MachineWindow: clicked slot={} dragging={}", clicked, playerInv->isDragging);
-        }
-    }
+    ImGui::PushID("machine_player_inv");
+    RenderPlayerInventoryGrid(*playerInv, 0, static_cast<int>(playerInv->slots.size()),
+                              9, playerInv->selectedSlot, false, dragMgr_, /*authoritative*/ true);
     ImGui::PopID();
 
     RenderOutOfSyncWarning();
+
+    // ── Cursor preview (server-owned hand stack) ────────────────────
+    if (playerInv->cursor.item_id != 0) {
+        ImDrawList* dl = ImGui::GetForegroundDrawList();
+        ImVec2 mouse = ImGui::GetIO().MousePos;
+        auto uv = renderlib::TextureAtlas::GetItemUV(playerInv->cursor.item_id);
+        dl->AddImage(
+            renderlib::TextureAtlas::GetTextureHandle().idx,
+            ImVec2(mouse.x + 4, mouse.y + 4),
+            ImVec2(mouse.x + 40 - 4, mouse.y + 40 - 4),
+            ImVec2(uv.u0, uv.v0),
+            ImVec2(uv.u1, uv.v1));
+        if (playerInv->cursor.count > 1) {
+            char buf[8];
+            std::snprintf(buf, sizeof(buf), "%d", playerInv->cursor.count);
+            dl->AddText(ImVec2(mouse.x + 4, mouse.y + 4),
+                        IM_COL32(255, 255, 255, 255), buf);
+        }
+    }
 
     ImGui::End();
 }
 
 void MachineWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
+    if (msgType == GatewayMsg::kInventoryUpdate) {
+        if (!data) return;
+        flatbuffers::Verifier v(reinterpret_cast<const uint8_t*>(data), 8192);
+        if (!v.VerifyBuffer<Protocol::InventoryUpdate>(nullptr)) return;
+        auto* update = flatbuffers::GetRoot<Protocol::InventoryUpdate>(data);
+        // container_id 0 = player, 1 = this machine; pos must match the open block
+        if (update->container_id() != 1) return;
+        auto* cp = update->container_pos();
+        if (!cp || cp->x() != pos_.x || cp->y() != pos_.y || cp->z() != pos_.z) return;
+        auto* cs = update->container_slots();
+        int inCount = 3, outCount = 3;
+        if (auto* info = MachineRegistry::instance()->Get(machineType_)) {
+            inCount = info->slots_in;
+            outCount = info->slots_out;
+        }
+        machineSlots_.assign(static_cast<size_t>(inCount + outCount), ItemStack{});
+        size_t n = std::min(static_cast<size_t>(cs ? cs->size() : 0), machineSlots_.size());
+        for (size_t i = 0; i < n; ++i) {
+            auto* s = cs->Get(i);
+            if (s) {
+                machineSlots_[i] = {static_cast<uint16_t>(s->item_id()),
+                                    static_cast<uint8_t>(s->count()),
+                                    static_cast<uint16_t>(s->meta())};
+            }
+        }
+        dataLoaded_ = true;
+        return;
+    }
+
     if (msgType == GatewayMsg::kBlockEntityUpdate) {
         // Diagnostic: log raw update
         flatbuffers::Verifier v(reinterpret_cast<const uint8_t*>(data), 8192);

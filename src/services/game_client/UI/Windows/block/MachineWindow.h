@@ -47,6 +47,7 @@ public:
   MachineWindow(BlockPos pos, uint16_t machineType = 0);
   void SetNetClient(class NetClient *nc) { netClient_ = nc; }
   void SetDragManager(DragManager *dm) { dragMgr_ = dm; }
+  void SetPlayerId(uint64_t pid) { player_id_ = pid; }
 
   std::string_view Name() const override { return "Machine"; }
 
@@ -54,14 +55,7 @@ public:
   void OnNetworkUpdate(uint8_t msgType, const void *data) override;
 
   bool IsOpen() const override { return open_; }
-  void SetOpen(bool open) override { open_ = open; }
-
-  // ── SetMachineSlotResp callback ────────────────────────────────────────
-  using SetMachineSlotRespCallback = std::function<void(
-      BlockPos, uint8_t, bool, const std::string &, const ItemStack &)>;
-  void SetSetMachineSlotRespCallback(SetMachineSlotRespCallback cb) {
-    onSetMachineSlotResp_ = std::move(cb);
-  }
+  void SetOpen(bool open) override;
 
   // ── Machine type (runtime-resolved via MachineRegistry) ──────────────
   uint16_t GetMachineType() const { return machineType_; }
@@ -70,33 +64,24 @@ public:
   EnergyType GetEnergyType() const;
   void SetEnergyType(EnergyType et);
 
-  // ── Public API ──────────────────────────────────────────────────────
-  void onMachineSlotAck(uint32_t x, uint32_t y, uint32_t z, uint8_t slotIdx,
-                        bool success);
-
 private:
   bool open_ = false;
   uint16_t machineType_ = 0;
   EnergyType energyType_ = EnergyType::ELECTRICITY;
   DragManager *dragMgr_ = nullptr;
 
+  // ── Server-authoritative container session (Phase C) ──────────────────
+  // machineSlots_ stays unloaded until the container_id=1 InventoryUpdate
+  // snapshot arrives; dataLoaded_ gates rendering of server slots.
+  uint64_t player_id_ = 0;
+  bool dataLoaded_ = false;
+  std::vector<ItemStack> machineSlots_;
+
   // ── Network state ────────────────────────────────────────────────────
   BlockEntityUpdateData pendingUpdate_;
   bool hasPendingUpdate_ = false;
   std::vector<HatchRenderData> pendingHatches_; // multiblock hatches (task 3.1)
   class NetClient *netClient_ = nullptr;
-  SetMachineSlotRespCallback onSetMachineSlotResp_;
-
-  struct SlotErrorState {
-    int slotIndex = -1;
-    float flashTimer = 0.0f;
-    std::string errorMessage;
-  };
-  std::vector<SlotErrorState> slotErrors_;
-
-  // ── Machine slot response handling ────────────────────────────────────
-  uint32_t lastErrorSlot_ = UINT32_MAX;
-  float errorTimer_ = 0.0f;
 
   // ── Recipe completed flash ────────────────────────────────────────────
   float recipeDoneFlash_ = 0.0f;

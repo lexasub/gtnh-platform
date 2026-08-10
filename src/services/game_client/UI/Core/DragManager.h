@@ -70,19 +70,6 @@ public:
   /// Принудительно сбросить состояние (при InventoryUpdate с сервера)
   void Reset();
 
-  void SetMachineDragContext(BlockPos pos, int slotIdx) {
-    machineDragPos_ = pos;
-    machineDragSlotIdx_ = slotIdx;
-    hasMachineDrag_ = true;
-  }
-  bool HasMachineDragContext() const { return hasMachineDrag_; }
-  BlockPos GetMachineDragPos() const { return machineDragPos_; }
-  int GetMachineDragSlotIdx() const { return machineDragSlotIdx_; }
-  void ClearMachineDragContext() {
-    hasMachineDrag_ = false;
-    machineDragSlotIdx_ = -1;
-  }
-
   /// Начать внешний drag (из CraftingGrid или другого не-инвентарного
   /// источника).
   /// @param sourceSlot  глобальный индекс источника (например kGridFlag + idx)
@@ -103,14 +90,56 @@ public:
   // Invariant: ranges stay disjoint AND < 256 (sourceSlot is uint8_t).
   static constexpr int kChestSlotBase = 50;  // 50-99: chest inventory slots
   static constexpr int kGridSlotBase = 100;  // 100-199: crafting grid slots
-  static constexpr int kMachineSlotBase = 200; // 200-219: machine input slots
-  static constexpr int kMachineOutputBase = 220; // 220+: machine output slots
+  // Player inventory size (hotbar 10 + main 30), server side kInventorySlots.
+  static constexpr int kPlayerSlots = 40;
 
   // Вызывается после завершения операции (drop/merge/swap/drop-outside)
   using ActionCallback =
       std::function<void(uint8_t actionType, uint8_t sourceSlot,
                          uint8_t targetSlot, uint8_t count)>;
   void SetActionCallback(ActionCallback cb) { cb_ = std::move(cb); }
+
+  // ── Authoritative click path (server-owned cursor) ──────────────────────
+  // Server-authoritative click descriptor (mirrors Protocol::InventoryAction).
+  struct ClickInfo {
+    uint8_t actionType = 0; // 0=CLICK 1=QUICK_MOVE 2=DROP 3=DRAG_PLACE 4=PICKUP_ALL
+    uint8_t button = 0;     // 0=LMB 1=RMB
+    uint8_t mods = 0;       // bit0=shift bit1=ctrl
+    uint8_t containerId = 0; // 0=player inventory
+    uint16_t slot = 0;
+    uint8_t count = 0;
+  };
+  // Authoritative click-protocol action types (matches Protocol::InventoryAction).
+  static constexpr uint8_t kClickActionClick = 0;
+  static constexpr uint8_t kClickActionQuickMove = 1;
+  static constexpr uint8_t kClickActionDrop = 2;
+  static constexpr uint8_t kClickActionDragPlace = 3;
+  static constexpr uint8_t kClickActionPickupAll = 4;
+  static constexpr uint8_t kModShiftBit = 0x01;
+  static constexpr uint8_t kModCtrlBit = 0x02;
+
+  using ClickCallback = std::function<void(const ClickInfo &info)>;
+  void SetClickCallback(ClickCallback cb) { clickCb_ = std::move(cb); }
+
+  /// Player-inventory click (no local mutation — the server owns the cursor).
+  /// Translates the gesture to a CLICK / QUICK_MOVE descriptor and fires
+  /// clickCb_. Used by authoritative (player) grids; container grids keep the
+  /// legacy mutation path via OnSlotActivated until they are converted.
+  void OnPlayerSlotClick(int slotIndex, int button, bool shift, bool ctrl);
+
+  /// Drop: server discards the cursor stack if held, else the hovered slot.
+  /// (Q key)
+  void OnPlayerDrop(int slotIndex);
+
+  /// Container-aware authoritative clicks (container_id != 0). No local
+  /// mutation; the server owns the cursor + container session.
+  void OnContainerSlotClick(int slotIndex, uint8_t containerId, int button,
+                            bool shift, bool ctrl);
+  void OnContainerDrop(int slotIndex, uint8_t containerId);
+  void OnContainerDragPlace(int slotIndex, uint8_t containerId);
+
+  /// RMB drag-distribute: place 1 from the server cursor into a slot.
+  void OnPlayerDragPlace(int slotIndex);
 
   // ── Machine action callback ─────────────────────────────────────────
   using MachineActionCallback =
@@ -123,11 +152,6 @@ public:
   void SyncTo(InventoryState &inv) const;
   void SyncFrom(const InventoryState &inv);
 
-  /// Notify DragManager when machine slot operations succeed/fail from server
-  void OnMachineSlotAck(uint8_t slotIdx, bool success);
-  using MachineSlotAckCallback = std::function<void(uint8_t slotIdx, bool success)>;
-  void SetMachineSlotAckCallback(MachineSlotAckCallback cb) { machineSlotAckCb_ = std::move(cb); }
-
 private:
   enum class State { Idle, Holding };
   State state_ = State::Idle;
@@ -137,10 +161,6 @@ private:
   int reportedSourceSlot_ = -1; // reported index (for ActionCallback)
   int hoverSlot_ = -1;
   ActionCallback cb_;
+  ClickCallback clickCb_;
   MachineActionCallback machineCb_;
-  MachineSlotAckCallback machineSlotAckCb_;
-
-  BlockPos machineDragPos_{};
-  int machineDragSlotIdx_ = -1;
-  bool hasMachineDrag_ = false;
 };

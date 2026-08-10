@@ -26,6 +26,10 @@ class IoUringChunkClient;
 class QuestManager;
 class MachineSystem;
 class BatteryBufferSystem;
+class ContainerSessionRegistry;
+class ChestStateManager;
+class MachineOpenHandler;
+class MachineCloseHandler;
 
 } // namespace simcore
 
@@ -55,6 +59,8 @@ public:
     MachineSystem* machineSystem = nullptr;
     BatteryBufferSystem* batteryBuffer = nullptr;
     std::shared_ptr<simulation_core::WorkbenchStateManager> wbStateManager;
+    std::shared_ptr<ContainerSessionRegistry> chestSessions;
+    std::shared_ptr<ChestStateManager> chestStateManager;
   };
 
   explicit SimCoreMessageHandler(Deps deps);

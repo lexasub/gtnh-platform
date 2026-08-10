@@ -1,5 +1,19 @@
 ## ADDED Requirements
 
+### Requirement: Machine Window Shows Live Container Slots
+An open machine window SHALL render as `container_id=1` backed by the machine's live ECS inventory, so slot mutations from simulation (item flow, machine crafting) are visible without re-opening the window.
+
+#### Scenario: Machine container is live
+- **GIVEN** a machine window is open as `container_id=1`
+- **WHEN** SimulationCore writes an item into the machine's ECS `InventoryContainer` (item flow, recipe output)
+- **THEN** the client window SHALL reflect the updated slots (via `player.inventory.update` snapshot or per-slot update) without re-opening
+
+#### Scenario: Window close persists
+- **GIVEN** the player closes the machine window
+- **WHEN** `kMachineCloseReq=46` reaches SimulationCore
+- **THEN** the session's live slots SHALL be persisted to EntityStateStore keyed by `machine_id`
+- **AND** the per-player session SHALL be deregistered
+
 ### Requirement: Server-Authoritative Inventory Manipulation
 The system SHALL implement Minecraft-style item manipulation as server-authoritative click semantics covering the player inventory and open containers (chest, machine, workbench grid): pick-up, place, merge, swap, half-split, place-one, drag-distribute, quick-move, double-click pick-up-all and drop.
 

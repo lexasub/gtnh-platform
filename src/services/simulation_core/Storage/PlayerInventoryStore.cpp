@@ -30,6 +30,42 @@ void PlayerInventoryStore::setSlots(uint64_t player_id,
     }
 }
 
+PersistSlot PlayerInventoryStore::getCursor(uint64_t player_id) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = cursors_.find(player_id);
+    return it != cursors_.end() ? it->second : PersistSlot{};
+}
+
+void PlayerInventoryStore::setCursor(uint64_t player_id, const PersistSlot& cursor) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        cursors_[player_id] = cursor;
+    }
+    if (postMutation_) {
+        postMutation_(player_id, getSlots(player_id));
+    }
+}
+
+void PlayerInventoryStore::setSlotsAndCursor(
+    uint64_t player_id,
+    const std::array<PersistSlot, kInventorySlots>& slots,
+    const PersistSlot& cursor) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        inventories_[player_id] = slots;
+        cursors_[player_id] = cursor;
+    }
+    if (onChange_) {
+        for (uint16_t i = 0; i < kInventorySlots; ++i) {
+            const auto& s = slots[i];
+            onChange_(player_id, i, s.item_id, s.count, s.meta);
+        }
+    }
+    if (postMutation_) {
+        postMutation_(player_id, slots);
+    }
+}
+
 void PlayerInventoryStore::initPlayer(uint64_t player_id) {
     std::lock_guard<std::mutex> lock(mutex_);
     inventories_.try_emplace(player_id);
@@ -119,20 +155,30 @@ flatbuffers::Offset<Protocol::InventoryUpdate> PlayerInventoryStore::buildUpdate
     flatbuffers::FlatBufferBuilder& builder, uint64_t player_id) const
 {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto it = inventories_.find(player_id);
-    if (it == inventories_.end()) {
-        auto vec = builder.CreateVector(std::vector<flatbuffers::Offset<Protocol::InventorySlot>>{});
-        return Protocol::CreateInventoryUpdate(builder, player_id, vec);
-    }
 
-    const auto& slots = it->second;
+    auto it = inventories_.find(player_id);
     std::vector<flatbuffers::Offset<Protocol::InventorySlot>> fbSlots;
-    fbSlots.reserve(kInventorySlots);
-    for (auto& s : slots) {
-        fbSlots.push_back(Protocol::CreateInventorySlot(builder, s.item_id, s.count, s.meta));
+    if (it != inventories_.end()) {
+        fbSlots.reserve(kInventorySlots);
+        for (const auto& s : it->second) {
+            fbSlots.push_back(Protocol::CreateInventorySlot(builder, s.item_id, s.count, s.meta));
+        }
     }
-    auto vec = builder.CreateVector(fbSlots);
-    return Protocol::CreateInventoryUpdate(builder, player_id, vec);
+    auto slotsVec = builder.CreateVector(fbSlots);
+
+    // Server-owned cursor stack.
+    auto cit = cursors_.find(player_id);
+    Protocol::ItemStack cursorStruct(cit != cursors_.end() ? cit->second.item_id : 0,
+                                     cit != cursors_.end() ? cit->second.count : 0,
+                                     cit != cursors_.end() ? cit->second.meta : 0);
+
+    // Open-container fields — filled by the container session (Phase B+);
+    // empty by default so player-only snapshots are complete.
+    Protocol::Vec3i noPos(0, 0, 0);
+    auto emptyVec = builder.CreateVector(std::vector<flatbuffers::Offset<Protocol::InventorySlot>>{});
+
+    return Protocol::CreateInventoryUpdate(builder, player_id, slotsVec, &cursorStruct,
+                                           0 /* container_id */, &noPos, emptyVec);
 }
 
 }

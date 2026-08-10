@@ -5,10 +5,12 @@
 #include "../../../Network/NetClient.h"
 #include "../BlockAttachedWindow.h"
 #include "Components/CraftingGrid.h"
+#include "Components/SlotGrid.h"
 #include "Components/ToastNotification.h"
 #include "Core/DragManager.h"
 #include <array>
 #include <string>
+#include <vector>
 
 namespace Protocol {
 struct CraftResponse;
@@ -28,6 +30,7 @@ public:
 
   bool IsOpen() const override { return open_; }
   void SetOpen(bool open) override;
+  void SetPlayerId(uint64_t pid) { player_id_ = pid; }
 
   void OnCraftResponse(bool success, uint16_t item_id, uint8_t count,
                        uint16_t meta, const std::string &error,
@@ -39,10 +42,13 @@ public:
 
 private:
   CraftingGrid grid_;
+  std::vector<ItemStack> gridSlots_;
+  SlotGridComponent gridComp_;
   DragManager *dragMgr_;
   ToastMessage craftToast_;
   bool open_ = false;
 
   NetClient *netClient_;
   ServerRecipeDB *recipeDb_;
+  uint64_t player_id_ = 0;
 };

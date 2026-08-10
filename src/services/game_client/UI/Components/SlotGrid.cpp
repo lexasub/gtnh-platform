@@ -204,6 +204,12 @@ int SlotGridComponent::Render() {
     int clicked = -1;
     int end = std::min(startIndex_ + count_, static_cast<int>(slots_.size()));
     SlotStyle s = NormalizedStyle(style_);
+
+    // Hover state is written only while the mouse is over a slot below; it is
+    // cleared once per frame in UIManager::RenderAll.  Do NOT reset it here:
+    // with multiple grids per window (machine in/out + player), a later grid
+    // would wipe the hover of an earlier one (RMB drag-distribute, Q-drop).
+
     //TODO refactor if hall
     for (int i = startIndex_; i < end; ++i) {
         int col = (i - startIndex_) % cols_;
@@ -224,9 +230,12 @@ int SlotGridComponent::Render() {
         // ── Track hover ─────────────────────────────────────────────────────
         if (ImGui::IsItemHovered()) {
             hoveredSlot_ = globalIdx;
-            inv_->dragHoverSlot = globalIdx;
-            inv_->hoveredSlot = static_cast<int16_t>(globalIdx);
-            inv_->hoveredItemId = slots_[globalIdx].item_id;
+            if (inv_) {
+                inv_->dragHoverSlot = globalIdx;
+                inv_->hoveredSlot = static_cast<int16_t>(globalIdx);
+                inv_->hoveredItemId = slots_[globalIdx].item_id;
+            }
+            if (dm_) dm_->UpdateHover(globalIdx); // feeds RMB drag-distribute
 
             uint16_t id = slots_[globalIdx].item_id;
             if (id != 0) {
@@ -265,12 +274,33 @@ int SlotGridComponent::Render() {
             }
         }
 
-        // ── Drag state machine ──────────────────────────────────────────────
-        if (dm_ && ImGui::IsItemActivated()) {
-            int button = ImGui::IsMouseClicked(ImGuiMouseButton_Right) ? 1 : 0;
+        // ── Drag / click state machine ─────────────────────────────────────
+        // LMB activates the button (IsItemActivated); RMB does not, so it is
+        // caught via IsItemClicked(Right). Without this, button=1 clicks were
+        // unreachable and RMB did nothing (authoritative and legacy paths).
+        bool rmbClick = dm_ && ImGui::IsItemClicked(ImGuiMouseButton_Right);
+        if ((dm_ && ImGui::IsItemActivated()) || rmbClick) {
+            int button = rmbClick ? 1 : 0;
             bool shift = ImGui::GetIO().KeyShift;
             bool ctrl = ImGui::GetIO().KeyCtrl;
-            dm_->OnSlotActivated(globalIdx, slots_, button, shift, ctrl);
+            if (authoritative_) {
+                if (containerId_) {
+                    spdlog::debug("[SlotGrid] OnContainerSlotClick idx={} cid={}", globalIdx, containerId_);
+                    dm_->OnContainerSlotClick(globalIdx, containerId_, button, shift, ctrl);
+                } else {
+                    spdlog::debug("[SlotGrid] OnPlayerSlotClick idx={}", globalIdx);
+                    dm_->OnPlayerSlotClick(globalIdx, button, shift, ctrl);
+                }
+            } else {
+                // Legacy optimistic path — pass reportedIdx so DragManager's
+                // action callback reports the offset slot id (chest/player grid).
+                dm_->OnSlotActivated(globalIdx, slots_, button, shift, ctrl, reportedIdx);
+            }
+            // An RMB click also satisfies the RMB-drag-distribute guard below
+            // (IsMouseDown + hover != lastRightDragSlot_, still -1 this frame),
+            // which would otherwise send a second action (+1) in the same frame.
+            // Claim the slot so the distribute block skips it.
+            if (rmbClick) lastRightDragSlot_ = globalIdx;
             clicked = globalIdx;
         }
 
@@ -309,43 +339,59 @@ int SlotGridComponent::Render() {
         ImGui::PopID();
     }
 
-    if (dm_ && dm_->IsDragging()) {
-        dm_->RenderPreview(s);
-    }
-
-    // ── ESC cancels drag (returns item to source) ────────────────────────
-    if (dm_ && dm_->IsDragging() && ImGui::IsKeyPressed(ImGuiKey_Escape)) { //TODO concrete button via uidefaults
-        dm_->CancelDrag(slots_);
-    }
-
-    // ── Q while dragging → drop (destroy) held item ─────────────────────
-    if (dm_ && dm_->IsDragging() && ImGui::IsKeyPressed(ImGuiKey_Q)) {//TODO concrete button via uidefaults
-        dm_->DropHeldItem();
-    }
-
-    // ── Q while hovering an item (not dragging) → drop that slot ────────
-    // Uses DragManager's callback (wired to SendInventoryAction) to notify server.
-    if (dm_ && !dm_->IsDragging() && inv_ && inv_->hoveredSlot >= 0
-        && ImGui::IsKeyPressed(ImGuiKey_Q))//TODO concrete button via uidefaults
-    {
-        auto& slot = slots_[inv_->hoveredSlot];
-        if (slot.item_id != 0) {
-            ItemStack dropped = slot;
-            slot = ItemStack{};
-            dm_->StartExternalDrag(inv_->hoveredSlot, dropped);
+    // ── Legacy optimistic DnD (authoritative grids use the server cursor) ─
+    if (!authoritative_) {
+        if (dm_ && dm_->IsDragging()) {
+            dm_->RenderPreview(s);
+        }
+        // ── ESC cancels drag (returns item to source) ──────────────────────
+        if (dm_ && dm_->IsDragging() && ImGui::IsKeyPressed(ImGuiKey_Escape)) { //TODO concrete button via uidefaults
+            dm_->CancelDrag(slots_);
+        }
+        // ── Q while dragging → drop (destroy) held item ───────────────────
+        if (dm_ && dm_->IsDragging() && ImGui::IsKeyPressed(ImGuiKey_Q)) {//TODO concrete button via uidefaults
             dm_->DropHeldItem();
         }
     }
 
-    if (dm_ && dm_->IsDragging() && !inv_->dropEnabled) {
+    // ── Q while hovering an item (not dragging) → drop that slot ────────
+    // Authoritative: send DROP — the server discards the cursor stack if
+    // held, else the hovered slot. Legacy: mutate locally + notify server.
+    if (dm_ && !dm_->IsDragging() && inv_ && inv_->hoveredSlot >= 0
+        && ImGui::IsKeyPressed(ImGuiKey_Q))//TODO concrete button via uidefaults
+    {
+        if (authoritative_) {
+            if (containerId_) dm_->OnContainerDrop(inv_->hoveredSlot, containerId_);
+            else dm_->OnPlayerDrop(inv_->hoveredSlot);
+        } else {
+            auto& slot = slots_[inv_->hoveredSlot];
+            if (slot.item_id != 0) {
+                ItemStack dropped = slot;
+                slot = ItemStack{};
+                dm_->StartExternalDrag(inv_->hoveredSlot, dropped);
+                dm_->DropHeldItem();
+            }
+        }
+    }
+
+    if (!authoritative_ && dm_ && dm_->IsDragging() && !inv_->dropEnabled) {
         dm_->CancelDrag(slots_);
     }
 
     // ── Right-drag distribute: RMB held + hover new slot → place 1 ────────
-    if (dm_ && dm_->IsDragging() && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+    // Authoritative: send DRAG_PLACE per visited slot while the server cursor
+    // is non-empty. Legacy: mutate locally via OnRightDragDistribute.
+    if (dm_ && ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
         int hover = dm_->GetHoverSlot();
         if (hover != lastRightDragSlot_ && hover >= 0) {
-            dm_->OnRightDragDistribute(hover, slots_);
+            if (authoritative_) {
+                if (inv_ && inv_->cursor.item_id != 0) {
+                    if (containerId_) dm_->OnContainerDragPlace(hover, containerId_);
+                    else dm_->OnPlayerDragPlace(hover);
+                }
+            } else if (dm_->IsDragging()) {
+                dm_->OnRightDragDistribute(hover, slots_);
+            }
             lastRightDragSlot_ = hover;
         }
     }

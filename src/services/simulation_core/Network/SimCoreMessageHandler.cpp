@@ -24,7 +24,13 @@
 #include "Crafting/CraftRequestHandler.h"
 #include "Crafting/RecipeCompletedHandler.h"
 #include "Network/WorkbenchOpenHandler.h"
+#include "Network/ChestOpenHandler.h"
+#include "Network/ChestCloseHandler.h"
+#include "Network/MachineOpenHandler.h"
+#include "Network/MachineCloseHandler.h"
 #include "Crafting/WorkbenchStateManager.h"
+#include "Storage/ContainerSession.h"
+#include "Storage/ChestStateManager.h"
 #include "Quest/QuestManager.h"
 #include "Actions/MachineSlotHandler.h"
 #include "Actions/handTool/ToolActionHandler.h"
@@ -60,16 +66,29 @@ void SimCoreMessageHandler::setup() {
     topicDispatcher_->on("fluid.flow", std::make_unique<FluidFlowHandler>(
         d.engine->reg(), d.fluidClient));
     topicDispatcher_->on("item.flow", std::make_unique<ItemFlowHandler>(
-        d.engine->reg(), d.itemClient, d.routerClient, d.entityStateClient));
+        d.engine->reg(), d.itemClient, d.routerClient, d.entityStateClient,
+        d.chestSessions, d.inventoryStore));
 
     topicDispatcher_->on("energy.cable.exploded", std::make_unique<CableExplosionHandler>(
         d.chunkClient));
 
     topicDispatcher_->on("sim.craft.request", std::make_unique<simulation_core::CraftRequestHandler>(
         d.routerClient, d.recipeManager, d.inventoryStore, d.questManager,
-        d.wbStateManager));
+        d.wbStateManager, d.mainQueue, d.eventPublisher));
     topicDispatcher_->on("sim.workbench.load", std::make_unique<WorkbenchOpenHandler>(
-        d.wbStateManager, d.eventPublisher));
+        d.chestSessions, d.inventoryStore, d.routerClient, d.wbStateManager, d.eventPublisher));
+
+    // Chest open/close — per-player container session (Phase B).
+    topicDispatcher_->on("player.chest.open", std::make_unique<ChestOpenHandler>(
+        d.chestSessions, d.chestStateManager, d.inventoryStore, d.routerClient));
+    topicDispatcher_->on("player.chest.close", std::make_unique<ChestCloseHandler>(
+        d.chestSessions, d.chestStateManager));
+    // Machine open/close — per-player live-ECS container session (Phase C).
+    topicDispatcher_->on("player.machine.open", std::make_unique<MachineOpenHandler>(
+        d.chestSessions, d.chestStateManager, d.inventoryStore, d.routerClient,
+        d.engine, d.blockRepository, d.mainQueue));
+    topicDispatcher_->on("player.machine.close", std::make_unique<MachineCloseHandler>(
+        d.chestSessions, d.chestStateManager));
     // recipe.completed is NOT handled: MachineSystem is the sole owner of machine
     // recipes. A RecipeCompletedHandler here would overwrite the whole container
     // with result_slots, collapsing 2-slot machines to 1 and erasing the input.
@@ -82,7 +101,7 @@ void SimCoreMessageHandler::setup() {
     topicDispatcher_->on("player.inventory.load", std::make_unique<InventoryLoadHandler>(
         d.inventoryStore, d.routerClient));
     topicDispatcher_->on("player.inventory.actions", std::make_unique<InventoryActionHandler>(
-        d.inventoryStore, d.routerClient));
+        d.inventoryStore, d.routerClient, d.chestSessions, d.chestStateManager, d.questManager, d.wbStateManager));
     topicDispatcher_->on("player.joined", std::make_unique<PlayerJoinedHandler>(
         d.inventoryStore, d.routerClient, d.questManager));
 
@@ -173,54 +192,6 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                 if (!v.VerifyBuffer<Protocol::SetBlockAction>()) return;
                 auto* action = flatbuffers::GetRoot<Protocol::SetBlockAction>(data.data());
                 casHandler.handle((void*)action);
-            } else if (topic == "player.chest.save") {
-                // Payload: [12: pos xyz][4: player_id][4: chest_cnt][N*5: chest slots][4: player_cnt][M*5: player slots]
-                if (data.size() >= 20 && entityStateClient) {
-                    const uint8_t* p = data.data();
-                    int32_t cx, cy, cz; uint32_t pid, chestCnt, playerCnt;
-                    std::memcpy(&cx, p, 4); p += 4;
-                    std::memcpy(&cy, p, 4); p += 4;
-                    std::memcpy(&cz, p, 4); p += 4;
-                    std::memcpy(&pid, p, 4); p += 4;
-                    std::memcpy(&chestCnt, p, 4); p += 4;
-                    size_t chestDataSz = chestCnt * 5;
-                    if (p + chestDataSz + 4 > data.data() + data.size()) return;
-                    // Save chest to EntityStateStore as MachineState
-                    flatbuffers::FlatBufferBuilder fbb(256);
-                    std::vector<flatbuffers::Offset<Protocol::MachineInventorySlot>> offs;
-                    const uint8_t* cp = p;
-                    for (uint32_t i = 0; i < chestCnt; ++i) {
-                        uint16_t id; uint8_t cnt; uint16_t mt;
-                        std::memcpy(&id, cp, 2); cp += 2;
-                        cnt = *cp++;
-                        std::memcpy(&mt, cp, 2); cp += 2;
-                        offs.push_back(Protocol::CreateMachineInventorySlot(fbb, id, cnt, mt));
-                    }
-                    auto inv = Protocol::CreateMachineInventory(fbb, static_cast<uint8_t>(chestCnt), fbb.CreateVector(offs));
-                    auto st = Protocol::CreateMachineState(fbb, 1, 0, 0, inv, 0);
-                    fbb.Finish(st);
-                    std::vector<uint8_t> blob(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
-                    entityStateClient->SaveEntityState(0, cx, cy, cz, 3, blob,
-                                                       [cx, cy, cz](bool ok) {
-                        spdlog::info("[SimCore] Chest save at ({},{},{}) — {}", cx, cy, cz, ok ? "OK" : "FAIL");
-                    });
-                    // Apply player inventory
-                    p = cp;
-                    std::memcpy(&playerCnt, p, 4); p += 4;
-                    auto invStore = inventoryStore;  // copy shared_ptr for lambda
-                    if (invStore && playerCnt > 0) {
-                        std::array<PersistSlot, kInventorySlots> slots{};
-                        size_t n = std::min(static_cast<size_t>(playerCnt), slots.size());
-                        for (size_t i = 0; i < n && p + 5 <= data.data() + data.size(); ++i) {
-                            uint16_t id; uint8_t cnt; uint16_t mt;
-                            std::memcpy(&id, p, 2); p += 2;
-                            cnt = *p++;
-                            std::memcpy(&mt, p, 2); p += 2;
-                            slots[i] = {id, cnt, mt};
-                        }
-                        invStore->setSlots(pid, slots);
-                    }
-                }
             } else if (topic == "player.actions") {
                 dispatcher.dispatch(data);
             } else if (topic == "world.blocks.changed") {

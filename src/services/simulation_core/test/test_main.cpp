@@ -8,6 +8,8 @@ void test_ecs_systems();
 void test_recipe_manager();
 void test_quest_manager();
 void test_game_scenario();
+void test_inventory_click();
+void test_container_click();
 #include <cstdint>
 #include <cstdio>
 #include <cstddef>
@@ -187,6 +189,8 @@ int main(int argc, char** argv) {
     test_recipe_manager();
     test_quest_manager();
     test_game_scenario();
+    test_inventory_click();
+    test_container_click();
 
     printf("\n=== Results: %d tests, %d passed, %d failed ===\n",
            g_tests, g_passed, g_failed);

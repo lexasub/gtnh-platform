@@ -68,6 +68,18 @@ public:
   // ── Drag & drop ─────────────────────────────────────────────────────────
   void SetDragManager(DragManager *dm) { dm_ = dm; }
 
+  // ── Authoritative click mode ────────────────────────────────────────────
+  // When true, slot clicks are translated to server-authoritative clicks
+  // (DragManager::OnPlayerSlotClick) instead of local optimistic mutation.
+  // Used by the player inventory; containers stay in mutation mode until
+  // they are converted to container sessions.
+  void SetAuthoritative(bool authoritative) { authoritative_ = authoritative; }
+
+  // Container id for authoritative clicks: 0 = player inventory (default),
+  // 1 = the open container (chest). Clicks route to the matching
+  // DragManager container-aware click path.
+  void SetContainerId(uint8_t id) { containerId_ = id; }
+
   // ── Click callback ──────────────────────────────────────────────────────
   using ClickCallback = std::function<bool(int slot, int button, bool shift)>;
   void SetClickCallback(ClickCallback cb) { clickCb_ = std::move(cb); }
@@ -89,6 +101,8 @@ private:
   int hoveredSlot_ = -1;
   int lastRightDragSlot_ = -1;
   int slotIndexOffset_ = 0;
+  bool authoritative_ = false;
+  uint8_t containerId_ = 0;
   ClickCallback clickCb_;
   DragManager *dm_ = nullptr;
 };

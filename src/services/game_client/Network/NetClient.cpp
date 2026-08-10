@@ -439,37 +439,6 @@ void NetClient::OnMessage(uint8_t msg_type,
             }
             return;
         }
-        case GatewayMsg::kSetMachineSlotResp: {
-            flatbuffers::Verifier v(payload, plen);
-            if (!v.VerifyBuffer<Protocol::SetMachineSlotResp>(nullptr)) {
-                spdlog::warn("NetClient: invalid SetMachineSlotResp buffer");
-                return;
-            }
-            auto resp = flatbuffers::GetRoot<Protocol::SetMachineSlotResp>(payload);
-            spdlog::info("SetMachineSlotResp: success={} slot={} pos({} {} {})",
-                         resp->success(),
-                         resp->slot_idx(),
-                         resp->pos() ? resp->pos()->x() : 0,
-                         resp->pos() ? resp->pos()->y() : 0,
-                         resp->pos() ? resp->pos()->z() : 0);
-            if (!onSetMachineSlotResp_) {
-                return;
-            }
-            BlockPos pos;
-            if (resp->pos()) {
-                pos.x = resp->pos()->x();
-                pos.y = resp->pos()->y();
-                pos.z = resp->pos()->z();
-            }
-            onSetMachineSlotResp_(
-                pos,
-                resp->slot_idx(),
-                resp->success(),
-                resp->error() ? resp->error()->c_str() : "",
-                resp->item() ? ItemStack{resp->item()->item_id(), resp->item()->count(), resp->item()->meta()} : ItemStack{0, 0, 0}
-            );
-            return;
-        }
         case GatewayMsg::kQuestProgressUpdate:
         case GatewayMsg::kQuestUnlockNotification:
         case GatewayMsg::kQuestCompletedNotification:
@@ -850,63 +819,60 @@ void NetClient::SendQuestBookOpen(uint64_t player_id) {
     spdlog::debug("[Quest] SendQuestBookOpen: player={}", player_id);
 }
 
-void NetClient::SendWorkbenchOpenReq(const BlockPos &pos) {
-    if (!ctrl_conn_ || !connected_ctrl_) return;
-    Protocol::Vec3i p(pos.x, pos.y, pos.z);
-    EnqueueWrite(GatewayMsg::kWorkbenchOpenReq,
-                 reinterpret_cast<const uint8_t*>(&p),
-                 sizeof(p));
-    spdlog::debug("[Workbench] SendWorkbenchOpenReq: pos=({},{},{})",
-                  pos.x, pos.y, pos.z);
-}
-
-void NetClient::SendSetMachineSlot(uint64_t player_id, const BlockPos& pos,
-                                    uint16_t slot_index, uint16_t item_id,
-                                    uint8_t count, uint16_t meta,
-                                    uint8_t player_slot) {
+void NetClient::SendWorkbenchOpenReq(uint64_t player_id, const BlockPos &pos) {
     if (!ctrl_conn_ || !connected_ctrl_) return;
     flatbuffers::FlatBufferBuilder builder(64);
     auto posVec = Protocol::Vec3i(pos.x, pos.y, pos.z);
-    auto req = Protocol::CreateSetMachineSlotReq(builder, player_id, &posVec,
-                                                  slot_index, item_id, count, meta,
-                                                  player_slot);
+    auto req = Protocol::CreateContainerOpenReq(builder, player_id, &posVec);
     builder.Finish(req);
-    EnqueueWrite(GatewayMsg::kSetMachineSlot, builder.GetBufferPointer(), builder.GetSize());
+    EnqueueWrite(GatewayMsg::kWorkbenchOpenReq, builder.GetBufferPointer(),
+                 builder.GetSize());
+    spdlog::debug("[Workbench] SendWorkbenchOpenReq: pos=({},{},{}) player={}",
+                  pos.x, pos.y, pos.z, player_id);
 }
 
-void NetClient::SendChestSaveReq(const BlockPos& pos, const std::vector<ItemStack>& chestSlots,
-                                const std::vector<ItemStack>& playerSlots, uint64_t player_id) {
+void NetClient::SendChestOpenReq(uint64_t player_id, const BlockPos& pos) {
     if (!ctrl_conn_ || !connected_ctrl_) return;
-    // Payload:
-    // [12: pos x/y/z][4: player_id]
-    // [4: chest_slot_count][chest_slots: 5 bytes each (u16 id + u8 cnt + u16 meta)]
-    // [4: player_slot_count][player_slots: 5 bytes each]
-    constexpr size_t kSlotSz = 5;
-    size_t chestSize = chestSlots.size() * kSlotSz;
-    size_t playerSize = playerSlots.size() * kSlotSz;
-    std::vector<uint8_t> payload(16 + 4 + chestSize + 4 + playerSize);
-    int32_t vx = pos.x, vy = pos.y, vz = pos.z;
-    uint32_t pid = static_cast<uint32_t>(player_id);
-    uint32_t chestCnt = static_cast<uint32_t>(chestSlots.size());
-    uint32_t playerCnt = static_cast<uint32_t>(playerSlots.size());
-    uint8_t* p = payload.data();
-    std::memcpy(p, &vx, 4); p += 4;
-    std::memcpy(p, &vy, 4); p += 4;
-    std::memcpy(p, &vz, 4); p += 4;
-    std::memcpy(p, &pid, 4); p += 4;
-    std::memcpy(p, &chestCnt, 4); p += 4;
-    for (const auto& s : chestSlots) {
-        std::memcpy(p, &s.item_id, 2); p += 2;
-        *p++ = s.count;
-        std::memcpy(p, &s.meta, 2); p += 2;
-    }
-    std::memcpy(p, &playerCnt, 4); p += 4;
-    for (const auto& s : playerSlots) {
-        std::memcpy(p, &s.item_id, 2); p += 2;
-        *p++ = s.count;
-        std::memcpy(p, &s.meta, 2); p += 2;
-    }
-    EnqueueWrite(GatewayMsg::kChestSaveReq, payload.data(), payload.size());
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto posVec = Protocol::Vec3i(pos.x, pos.y, pos.z);
+    auto req = Protocol::CreateContainerOpenReq(builder, player_id, &posVec);
+    builder.Finish(req);
+    EnqueueWrite(GatewayMsg::kChestOpenReq, builder.GetBufferPointer(), builder.GetSize());
+    spdlog::debug("[Chest] SendChestOpenReq: pos=({},{},{}) player={}",
+                  pos.x, pos.y, pos.z, player_id);
+}
+
+void NetClient::SendChestCloseReq(uint64_t player_id, const BlockPos& pos) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto posVec = Protocol::Vec3i(pos.x, pos.y, pos.z);
+    auto req = Protocol::CreateContainerOpenReq(builder, player_id, &posVec);
+    builder.Finish(req);
+    EnqueueWrite(GatewayMsg::kChestCloseReq, builder.GetBufferPointer(), builder.GetSize());
+    spdlog::debug("[Chest] SendChestCloseReq: pos=({},{},{}) player={}",
+                  pos.x, pos.y, pos.z, player_id);
+}
+
+void NetClient::SendMachineOpenReq(uint64_t player_id, int32_t x, int32_t y, int32_t z) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto posVec = Protocol::Vec3i(x, y, z);
+    auto req = Protocol::CreateContainerOpenReq(builder, player_id, &posVec);
+    builder.Finish(req);
+    EnqueueWrite(GatewayMsg::kMachineOpenReq, builder.GetBufferPointer(), builder.GetSize());
+    spdlog::debug("[Machine] SendMachineOpenReq: pos=({},{},{}) player={}",
+                  x, y, z, player_id);
+}
+
+void NetClient::SendMachineCloseReq(uint64_t player_id, int32_t x, int32_t y, int32_t z) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto posVec = Protocol::Vec3i(x, y, z);
+    auto req = Protocol::CreateContainerOpenReq(builder, player_id, &posVec);
+    builder.Finish(req);
+    EnqueueWrite(GatewayMsg::kMachineCloseReq, builder.GetBufferPointer(), builder.GetSize());
+    spdlog::debug("[Machine] SendMachineCloseReq: pos=({},{},{}) player={}",
+                  x, y, z, player_id);
 }
 
 void NetClient::SendToolAction(uint64_t player_id, Protocol::ToolActionType action,
@@ -921,12 +887,15 @@ void NetClient::SendToolAction(uint64_t player_id, Protocol::ToolActionType acti
 }
 
 void NetClient::SendInventoryAction(uint64_t player_id, uint8_t action_type,
-                                    uint8_t source_slot, uint8_t target_slot, uint8_t count) {
+                                    uint8_t button, uint8_t mods,
+                                    uint8_t container_id, uint16_t slot, uint8_t count) {
     if (!ctrl_conn_ || !connected_ctrl_) return;
     flatbuffers::FlatBufferBuilder fbb(64);
     auto act = Protocol::CreateInventoryAction(fbb, player_id, action_type,
-                                                source_slot, target_slot, count, 0);
+                                               button, mods, container_id, slot, count);
     fbb.Finish(act);
+    spdlog::debug("[NetClient] SendInventoryAction pid={} act={} btn={} mods={} cid={} slot={} cnt={}",
+                  player_id, action_type, button, mods, container_id, slot, count);
     EnqueueWrite(GatewayMsg::kInventoryAction, fbb.GetBufferPointer(), fbb.GetSize());
 }
 

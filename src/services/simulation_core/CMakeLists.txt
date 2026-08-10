@@ -77,6 +77,10 @@ add_library(simcored
         Network/TopicDispatcher.cpp
         Network/SimCoreMessageHandler.cpp
         Network/WorkbenchOpenHandler.cpp
+        Network/ChestOpenHandler.cpp
+        Network/ChestCloseHandler.cpp
+        Network/MachineOpenHandler.cpp
+        Network/MachineCloseHandler.cpp
         Network/clients/EntityStateStoreClient.cpp
         Network/clients/IoUringRouterClient.cpp
         Network/clients/IoUringChunkClient.cpp
@@ -85,6 +89,7 @@ add_library(simcored
         Storage/PlayerInventoryStore.cpp
         Storage/InventoryLoadHandler.cpp
         Storage/InventoryActionHandler.cpp
+        Storage/ChestStateManager.cpp
         Storage/PlayerJoinedHandler.cpp
 
         Actions/ActionContext.cpp
@@ -196,6 +201,8 @@ add_executable(simcored_test
     test/test_recipe_manager.cpp
     test/test_quest_manager.cpp
     test/test_game_scenario.cpp
+    test/test_inventory_click.cpp
+    test/test_container_click.cpp
 )
 target_compile_definitions(simcored_test PRIVATE
     DATA_DIR="${CMAKE_SOURCE_DIR}/data"

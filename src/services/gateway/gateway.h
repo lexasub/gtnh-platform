@@ -19,7 +19,7 @@
 //
 // Types (client → gateway):
 //   1 = PlayerAction (FlatBuffer: Protocol::PlayerAction)
-//   6 = InventoryAction (FlatBuffer: Protocol::InventoryAction)
+//   7 = InventoryAction (FlatBuffer: Protocol::InventoryAction)
 //  11 = SetBlockAction (FlatBuffer: Protocol::SetBlockAction)
 //  13 = ToolAction (FlatBuffer: Protocol::ToolAction)
 //
@@ -47,7 +47,10 @@ inline constexpr uint8_t kToolActionResp = 14;
 inline constexpr uint8_t kSetMachineSlot = 15;
 inline constexpr uint8_t kSetMachineSlotResp = 16;
 inline constexpr uint8_t kRecipeCompleted = 17;
-inline constexpr uint8_t kChestSaveReq = 18;
+inline constexpr uint8_t kMachineOpenReq = 18; // was kChestSaveReq (dead, removed)
+inline constexpr uint8_t kChestOpenReq = 19;
+inline constexpr uint8_t kChestCloseReq = 45;
+inline constexpr uint8_t kMachineCloseReq = 46;
 inline constexpr uint8_t kQuestProgressUpdate = 20;
 inline constexpr uint8_t kQuestUnlockNotification = 21;
 inline constexpr uint8_t kQuestCompletedNotification = 22;

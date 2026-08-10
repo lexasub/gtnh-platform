@@ -42,6 +42,10 @@ struct InventoryState {
   int dragSourceSlot = -1;
   int dragHoverSlot = -1; // Slot under cursor while dragging
 
+  // Server-owned cursor stack (authoritative click model). Rendered as the
+  // drag preview; replaced wholesale from each InventoryUpdate snapshot.
+  ItemStack cursor;
+
   // Hotbar selection
   int selectedSlot = -1;
 

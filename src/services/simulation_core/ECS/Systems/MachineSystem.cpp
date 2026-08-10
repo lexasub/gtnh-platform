@@ -7,6 +7,10 @@
 #include "../components/OverheatComponent.h"
 #include "../components/HeatSlowComponent.h"
 #include "../components/HeatIntakeComponent.h"
+#include "Storage/ContainerSession.h"
+#include "Storage/ChestStateManager.h"
+#include "Storage/PlayerInventoryStore.h"
+#include "Network/clients/IoUringRouterClient.h"
 
 namespace simcore {
 
@@ -28,9 +32,13 @@ MachineSystem::MachineSystem(entt::registry& reg,
                               std::shared_ptr<RecipeManager::RecipeManager> recipes,
                               std::shared_ptr<IEventPublisher> events,
                               std::shared_ptr<PipeEnergyClient> pipeClient,
-                              std::shared_ptr<ItemClient> itemClient)
+                              std::shared_ptr<ItemClient> itemClient,
+                              std::shared_ptr<ContainerSessionRegistry> sessions,
+                              std::shared_ptr<PlayerInventoryStore> invStore,
+                              std::shared_ptr<IoUringRouterClient> router)
     : reg_(reg), recipes_(recipes), events_(events), pipeClient_(pipeClient),
-      itemClient_(std::move(itemClient))
+      itemClient_(std::move(itemClient)), sessions_(std::move(sessions)),
+      invStore_(std::move(invStore)), router_(std::move(router))
 {
 }
 
@@ -153,6 +161,9 @@ void MachineSystem::tick(float /*dt*/) {
                         }
                     }
                 }
+
+                // Notify open windows that inventory changed after consume
+                publishInventoryIfOpen(machine);
 
                 progress.recipe_id = recipe->id;
                 progress.remaining_ticks = recipe->duration;
@@ -357,6 +368,9 @@ void MachineSystem::tick(float /*dt*/) {
 
             // Push output items into adjacent pipe network
             pushOutputToPipe(static_cast<uint64_t>(ent), machine, container, slots_in);
+
+            // Notify open windows that inventory changed after recipe completion
+            publishInventoryIfOpen(machine);
         }
 
         // Publish progress so the client can render the progress bar & energy.
@@ -414,6 +428,16 @@ void MachineSystem::pushOutputToPipe(uint64_t entity_id, const MachineComponent&
 
     spdlog::debug("MachineSystem: pushed {} item types to pipe network from machine at ({},{},{})",
                   item_ids.size(), machine.x, machine.y, machine.z);
+}
+
+void MachineSystem::publishInventoryIfOpen(const MachineComponent& mc) {
+    if (!sessions_ || !router_ || !invStore_) return;
+    int32_t x = static_cast<int32_t>(mc.x);
+    int32_t y = static_cast<int32_t>(mc.y);
+    int32_t z = static_cast<int32_t>(mc.z);
+    sessions_->forEachOpenAt(x, y, z, [&](uint64_t pid, ContainerSession& s) {
+        PublishFullInventory(router_, *invStore_, s, pid, x, y, z);
+    });
 }
 
 void MachineSystem::onConsumeResponse(uint64_t node_id, int32_t consumed, int32_t /*remaining*/) {

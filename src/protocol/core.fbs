@@ -232,12 +232,16 @@ table InventorySlot {
   meta:uint16;         // damage/state (0 = new/untouched)
 }
 
-// InventoryUpdate: batch push to client. Gateway → Client on login,
-// chest open/close, and server-side changes (mob drops, trading, etc.).
-// Uses slot-based diffing — only changed slots are serialized.
+// InventoryUpdate: server→client full snapshot after any inventory/container
+// mutation. Drives the player inventory, the server-owned cursor stack, and
+// the open container window. Published on "player.inventory.update".
 table InventoryUpdate {
   player_id:uint64;
-  slots:[InventorySlot];  // 0-255 (player hotbar: 8, armor: 4, chest: 27)
+  slots:[InventorySlot];       // 40 player slots (hotbar + main)
+  cursor: ItemStack;           // server-owned hand stack (0 = empty)
+  container_id:uint8;          // 0 = none, 1 = open container
+  container_pos: Vec3i;        // block position of the open container
+  container_slots:[InventorySlot]; // slots of the open container
 }
 
 // Inventory represents a container with a fixed number of slots.
@@ -252,14 +256,26 @@ table InventoryType {
   slot_count:uint16;   // number of slots in this inventory type
 }
 
-// InventoryAction: client→server inventory operations
+// InventoryAction: client→server container-click. The server computes the
+// whole operation from (container_id, slot, button, mods, action_type)
+// against its authoritative state (player slots + cursor + open container),
+// not from pre-computed source/target slot contents.
 table InventoryAction {
   player_id:uint64;
-  action_type:uint8;       // 0=MOVE, 1=SPLIT, 2=DROP, 3=CRAFT
-  source_slot:uint8;       // source slot index
-  target_slot:uint8;       // target slot index (0xFF = none/drop)
-  count:uint8;             // item count for split/drop
-  meta:uint16;             // item metadata/damage (default 0)
+  action_type:uint8;       // 0=CLICK 1=QUICK_MOVE 2=DROP 3=DRAG_PLACE 4=PICKUP_ALL
+  button:uint8;            // 0=LMB 1=RMB
+  mods:uint8;              // bit0=shift bit1=ctrl
+  container_id:uint8;      // 0=player inventory, 1=open container
+  slot:uint16;             // slot index inside container_id
+  count:uint8;             // used by DRAG_PLACE (1) and validation
+}
+
+// ContainerOpenReq: client→server, sent when a container window (chest) opens.
+// Establishes a per-player container session (container_id=1); the server loads
+// the saved state and publishes a full InventoryUpdate snapshot back.
+table ContainerOpenReq {
+  player_id:uint64;
+  pos:Vec3i (required);        // container block position
 }
 
 // EntityState represents the state of a world-bound entity (machine, workbench, etc.)

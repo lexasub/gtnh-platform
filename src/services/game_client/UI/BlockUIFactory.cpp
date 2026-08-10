@@ -21,6 +21,11 @@ BlockUIFactory::Registry& BlockUIFactory::GetRegistry() {
                             win->OnCraftResponse(s, id, cnt, m, e, grid);
                         });
                 }
+                // Server-authoritative workbench.open needs the player id; use
+                // the factory value (lastPlayerInv_ is null on first open).
+                if (auto* pinv = mgr.GetPlayerInventory()) {
+                    win->SetPlayerId(pinv->player_id);
+                }
                 return win;
             };
         };
@@ -38,6 +43,11 @@ BlockUIFactory::Registry& BlockUIFactory::GetRegistry() {
                 if (win) {
                     win->SetDragManager(&mgr.GetDragManager());
                     win->SetNetClient(mgr.GetNetClient());
+                    // Server-authoritative chest.open needs the player id; use
+                    // the factory value (lastPlayerInv_ is null on first open).
+                    if (auto* pinv = mgr.GetPlayerInventory()) {
+                        win->SetPlayerId(pinv->player_id);
+                    }
                 }
                 return win;
             };
@@ -80,15 +90,10 @@ IUIWindow* BlockUIFactory::FindOrCreateMachine(UIManager& mgr, BlockPos pos, uin
     if (win) {
         win->SetNetClient(mgr.GetNetClient());
         win->SetDragManager(&mgr.GetDragManager());
-        if (auto* nc = mgr.GetNetClient()) {
-            nc->SetSetMachineSlotRespCallback(
-                [&mgr](BlockPos p, uint8_t slotIdx, bool success, const std::string&, const ItemStack&) {
-                    auto* existing = mgr.FindOpenAtBlock(p);
-                    if (auto* mw = dynamic_cast<MachineWindow*>(existing)) {
-                        mw->onMachineSlotAck(p.x, p.y, p.z, slotIdx, success);
-                    }
-                }
-            );
+        // Server-authoritative machine.open needs the player id; use the
+        // factory value (lastPlayerInv_ is null on first open).
+        if (auto* pinv = mgr.GetPlayerInventory()) {
+            win->SetPlayerId(pinv->player_id);
         }
     }
     return win;

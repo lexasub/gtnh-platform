@@ -39,10 +39,11 @@ inline constexpr uint8_t kSetBlockAction = 11;
 inline constexpr uint8_t kCompressedChunkData = 12;
 inline constexpr uint8_t kToolAction = 13;
 inline constexpr uint8_t kToolActionResp = 14;
-inline constexpr uint8_t kSetMachineSlot = 15;
-inline constexpr uint8_t kSetMachineSlotResp = 16;
 inline constexpr uint8_t kRecipeCompleted = 17;
-inline constexpr uint8_t kChestSaveReq = 18;
+inline constexpr uint8_t kMachineOpenReq = 18; // was kChestSaveReq (dead, removed)
+inline constexpr uint8_t kChestOpenReq = 19;
+inline constexpr uint8_t kChestCloseReq = 45;
+inline constexpr uint8_t kMachineCloseReq = 46;
 inline constexpr uint8_t kQuestProgressUpdate = 20;
 inline constexpr uint8_t kQuestUnlockNotification = 21;
 inline constexpr uint8_t kQuestCompletedNotification = 22;
@@ -97,8 +98,6 @@ public:
   // raw-buffer callbacks.
   using RecipeQueryCallback =
       std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
-  using SetMachineSlotRespCallback = std::function<void(
-      BlockPos, uint8_t, bool, const std::string &, const ItemStack &)>;
   using ToolActionRespCallback =
       std::function<void(bool, uint8_t, const std::vector<uint8_t> &)>;
     using MultiblockEventCallback =
@@ -166,9 +165,6 @@ public:
   void SetCraftResponseCallback(CraftResponseCallback cb) {
     onCraftResponse_ = std::move(cb);
   }
-  void SetSetMachineSlotRespCallback(SetMachineSlotRespCallback cb) {
-    onSetMachineSlotResp_ = std::move(cb);
-  }
   void SetToolActionRespCallback(ToolActionRespCallback cb) {
     onToolActionResp_ = std::move(cb);
   }
@@ -195,15 +191,16 @@ public:
                        uint16_t held_item = 0, uint8_t face = 0,
                        uint64_t player_id = 0);
   void SendInventoryAction(uint64_t player_id, uint8_t action_type,
-                           uint8_t source_slot, uint8_t target_slot,
-                           uint8_t count);
+                           uint8_t button, uint8_t mods,
+                           uint8_t container_id, uint16_t slot, uint8_t count);
   void SendCraftRequest(uint64_t player_id, const BlockPos &pos,
                         const std::array<ItemStack, 9> &slots);
-  void SendSetMachineSlot(uint64_t player_id, const BlockPos &pos,
-                          uint16_t slot_index, uint16_t item_id, uint8_t count,
-                          uint16_t meta, uint8_t player_slot = 255);
-  void SendChestSaveReq(const BlockPos &pos, const std::vector<ItemStack> &chestSlots,
-                        const std::vector<ItemStack> &playerSlots, uint64_t player_id);
+  // Server-authoritative container session (Phase B): open/close a chest window.
+  void SendChestOpenReq(uint64_t player_id, const BlockPos &pos);
+  void SendChestCloseReq(uint64_t player_id, const BlockPos &pos);
+  // Server-authoritative container session (Phase C): open/close a machine window.
+  void SendMachineOpenReq(uint64_t player_id, int32_t x, int32_t y, int32_t z);
+  void SendMachineCloseReq(uint64_t player_id, int32_t x, int32_t y, int32_t z);
   void SendToolAction(uint64_t player_id, Protocol::ToolActionType action,
                       int32_t x, int32_t y, int32_t z, uint8_t face,
                       uint16_t item_id = 0);
@@ -220,7 +217,7 @@ public:
   void SendQuestBookOpen(uint64_t player_id);
   void SendGameModeChange(uint64_t player_id, uint8_t new_mode);
     void SendStartScenarioReq(uint64_t player_id, uint8_t scenario_index);
-    void SendWorkbenchOpenReq(const BlockPos &pos);
+    void SendWorkbenchOpenReq(uint64_t player_id, const BlockPos &pos);
 
   // ── Server-driven recipe queries (payload = Protocol::RecipeFrame) ──
   void SendRecipeCheckReq(uint16_t machine_id,
@@ -301,7 +298,6 @@ private:
   RecipeQueryCallback onRecipesForItemResp_;
   RecipeQueryCallback onRecipesForMachineResp_;
   CraftResponseCallback onCraftResponse_;
-  SetMachineSlotRespCallback onSetMachineSlotResp_;
   ToolActionRespCallback onToolActionResp_;
     MultiblockEventCallback onMultiblockEvent_;
     QuestUpdateCallback onQuestUpdate_;

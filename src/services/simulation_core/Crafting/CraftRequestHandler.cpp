@@ -1,4 +1,6 @@
 #include "CraftRequestHandler.h"
+#include "../Common/MainThreadQueue.h"
+#include "../Network/IEventPublisher.h"
 #include "../Network/clients/IoUringRouterClient.h"
 #include "../Storage/PlayerInventoryStore.h"
 #include "../Quest/QuestManager.h"
@@ -15,10 +17,13 @@ CraftRequestHandler::CraftRequestHandler(std::shared_ptr<simcore::IoUringRouterC
                                          std::shared_ptr<RecipeManager::RecipeManager> recipeManager,
                                          std::shared_ptr<simcore::PlayerInventoryStore> inventoryStore,
                                          std::shared_ptr<simcore::QuestManager> questManager,
-                                         std::shared_ptr<WorkbenchStateManager> wbStateManager)
+                                         std::shared_ptr<WorkbenchStateManager> wbStateManager,
+                                         simcore::MainThreadQueue* mainQueue,
+                                         std::shared_ptr<simcore::IEventPublisher> eventPublisher)
     : router_(std::move(router)), recipeManager_(std::move(recipeManager)),
       inventoryStore_(std::move(inventoryStore)), questManager_(std::move(questManager)),
-      wbStateManager_(std::move(wbStateManager))
+      wbStateManager_(std::move(wbStateManager)),
+      mainQueue_(mainQueue), eventPublisher_(std::move(eventPublisher))
 {}
 
 void CraftRequestHandler::handle(const std::vector<uint8_t>& data) {
@@ -28,23 +33,43 @@ void CraftRequestHandler::handle(const std::vector<uint8_t>& data) {
         return;
     }
     auto req = flatbuffers::GetRoot<Protocol::CraftRequest>(data.data());
-    auto slots = req->slots();
-    if (!slots) {
-        spdlog::warn("[CraftRequest] missing slots field");
+    uint64_t playerId = req->player_id();
+    if (!req->pos()) {
+        spdlog::warn("[CraftRequest] missing pos field");
         return;
     }
-    uint64_t playerId = req->player_id();
+    int32_t x = req->pos()->x(), y = req->pos()->y(), z = req->pos()->z();
 
-    uint16_t n = std::min<uint16_t>(slots->size(), 9);
-    std::vector<RecipeManager::ItemStack> grid;
-    grid.reserve(n);
-    for (uint16_t i = 0; i < n; ++i) {
-        auto* s = slots->Get(i);
-        grid.push_back(s ? RecipeManager::ItemStack{
-            static_cast<uint16_t>(s->item_id()),
-            static_cast<uint8_t>(s->count()),
-            s->meta()
-        } : RecipeManager::ItemStack{0, 0, 0});
+    // Server-authoritative: ignore client-supplied slots. Read grid from
+    // WorkbenchStateManager (cache-first, ESS async on miss).
+    if (!wbStateManager_) {
+        spdlog::warn("[CraftRequest] no WorkbenchStateManager — cannot craft");
+        return;
+    }
+    wbStateManager_->getGridState(x, y, z,
+        [this, playerId, x, y, z](const std::vector<RecipeManager::ItemStack>& grid) {
+            // Callback may fire on ESS io thread (cache miss) or immediately
+            // (cache hit). Ensure doCraft runs on the main queue.
+            if (mainQueue_) {
+                mainQueue_->push([this, playerId, x, y, z, grid]() {
+                    doCraft(playerId, x, y, z, grid);
+                });
+            } else {
+                doCraft(playerId, x, y, z, grid);
+            }
+        });
+}
+
+void CraftRequestHandler::doCraft(uint64_t playerId, int32_t x, int32_t y, int32_t z,
+                                  const std::vector<RecipeManager::ItemStack>& grid) {
+    if (grid.empty()) {
+        flatbuffers::FlatBufferBuilder err(64);
+        auto errStr = err.CreateString("Workbench grid is empty");
+        auto resp = Protocol::CreateCraftResponse(err, false, nullptr, errStr);
+        err.Finish(resp);
+        router_->Publish("sim.craft.response",
+            {err.GetBufferPointer(), err.GetBufferPointer() + err.GetSize()});
+        return;
     }
 
     // crafting_table block_id from machines.yaml ("0:10:11:1" → packed).
@@ -61,22 +86,24 @@ void CraftRequestHandler::handle(const std::vector<uint8_t>& data) {
     }
 
     auto originalGrid = grid;
-    // Consume inputs only — the crafted result goes to the result slot and the
-    // player's inventory, not into an input-grid slot (craft() would place the
-    // output into the first empty input slot, breaking consumption accounting).
-    grid = recipe->consumeInputs(grid);
+    auto newGrid = recipe->consumeInputs(grid);
 
-    // Save the consumed grid state to EntityStateStore so it survives restart.
-    if (wbStateManager_ && req->pos()) {
-        auto pos = req->pos();
-        wbStateManager_->setGridState(pos->x(), pos->y(), pos->z(), grid);
+    // Persist consumed grid to ESS + cache.
+    if (wbStateManager_) {
+        wbStateManager_->setGridState(x, y, z, newGrid);
     }
 
+    // Publish updated grid to client (server-authoritative snapshot).
+    if (eventPublisher_) {
+        eventPublisher_->publishGridUpdate(x, y, z, newGrid);
+    }
+
+    // Deduct consumed items from player inventory.
     {
         auto inv = inventoryStore_->getSlots(playerId);
         for (size_t i = 0; i < 9 && i < originalGrid.size(); ++i) {
             auto& orig = originalGrid[i];
-            auto& cons = grid[i];
+            auto& cons = newGrid[i];
             if (orig.item_id == 0) continue;
             int consumedCount = static_cast<int>(orig.count) - static_cast<int>(cons.count);
             if (consumedCount <= 0) continue;
@@ -100,12 +127,13 @@ void CraftRequestHandler::handle(const std::vector<uint8_t>& data) {
         result = {out.item_id, out.count, out.metadata};
     }
 
+    // Send CraftResponse with updated grid so client can redraw.
     {
         flatbuffers::FlatBufferBuilder fb(256);
         Protocol::ItemStack fbResult(result.item_id, result.count, result.metadata);
         std::vector<Protocol::ItemStack> fbGrid;
         fbGrid.reserve(9);
-        for (auto& gs : grid)
+        for (auto& gs : newGrid)
             fbGrid.push_back(Protocol::ItemStack(gs.item_id, gs.count, gs.metadata));
         auto gridVec = fb.CreateVectorOfStructs<Protocol::ItemStack>(fbGrid);
         auto resp = Protocol::CreateCraftResponse(fb, true, &fbResult,

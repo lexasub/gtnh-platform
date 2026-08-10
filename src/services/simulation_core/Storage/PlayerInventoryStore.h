@@ -59,6 +59,21 @@ public:
   void setSlots(uint64_t player_id,
                 const std::array<PersistSlot, kInventorySlots> &slots);
 
+  // ── Cursor (server-owned hand) ──────────────────────────────────────────
+
+  /// Return the player's cursor stack (0 = empty). Thread-safe.
+  PersistSlot getCursor(uint64_t player_id) const;
+
+  /// Replace the player's cursor stack; publishes if changed.
+  void setCursor(uint64_t player_id, const PersistSlot &cursor);
+
+  /// Atomically replace player slots AND cursor, firing onChange per slot and
+  /// ONE postMutation (publish). Used by the container-click handler so a
+  /// click that touches both publishes a single snapshot.
+  void setSlotsAndCursor(uint64_t player_id,
+                         const std::array<PersistSlot, kInventorySlots> &slots,
+                         const PersistSlot &cursor);
+
   /// Ensure the player has an in-memory entry (empty if none).
   void initPlayer(uint64_t player_id);
 
@@ -96,6 +111,7 @@ private:
   PostMutationCallback postMutation_;
   std::unordered_map<uint64_t, std::array<PersistSlot, kInventorySlots>>
       inventories_;
+  std::unordered_map<uint64_t, PersistSlot> cursors_;
   std::unordered_map<uint64_t, uint8_t> playerModes_;
 };
 

@@ -19,6 +19,21 @@
 - **WHEN** the client sends `action_type=DROP`
 - **THEN** the server SHALL discard the cursor stack or the hovered slot's stack as specified
 
+### Requirement: Machine Window Open/Close
+The Gateway SHALL route machine-window open/close requests to SimulationCore as container sessions: `kMachineOpenReq=18` and `kMachineCloseReq=46` (reusing `Protocol::ContainerOpenReq` — no new table), published as `player.machine.open` / `player.machine.close`. The open acknowledgement rides the existing `player.inventory.update` → `kInventoryUpdate` relay.
+
+#### Scenario: Machine window opens
+- **GIVEN** the player interacts with a machine block
+- **WHEN** the client sends `ContainerOpenReq` with `kMachineOpenReq=18`
+- **THEN** the Gateway SHALL publish `player.machine.open` to SimulationCore unchanged
+- **AND** SimulationCore SHALL restore the machine's saved slots from EntityStateStore, register a `container_id=1` session and acknowledge via a full `player.inventory.update` snapshot
+
+#### Scenario: Machine window closes
+- **GIVEN** the player closes an open machine window
+- **WHEN** the client sends `ContainerOpenReq` with `kMachineCloseReq=46`
+- **THEN** the Gateway SHALL publish `player.machine.close` to SimulationCore unchanged
+- **AND** SimulationCore SHALL persist the session's live slots (blob keyed by `machine_id`) and deregister the per-player session
+
 ### Requirement: Server-Authoritative Inventory Snapshot
 `Protocol::InventoryUpdate` SHALL carry the server-owned cursor stack and the open-container slots (`cursor`, `container_id`, `container_pos`, `container_slots`) in addition to the 40 player slots, so a single snapshot drives the player inventory, the cursor and the open container window.
 

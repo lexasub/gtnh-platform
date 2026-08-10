@@ -230,7 +230,7 @@ Can run 2 instances (one per dimension) without interference.
 
 ---
 
-**Generated**: 2026-08-07 | **Branch**: main
+**Generated**: 2026-08-10 | **Branch**: main
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:7510c1e2 -->
 ## Beads Issue Tracker
@@ -292,3 +292,13 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## Agent Toolchain
+
+Rules that apply to ALL AI agents (Claude Code, OpenCode, Hermes, Cursor, ...) working in this repo.
+
+- **Project skills** live in `.claude/skills/` — every agent should load `gtnh-platform` (SKILL.md) first: it's the operating manual (truth hierarchy, task lifecycle, parallel-agent discipline, verification, session close). Claude Code and OpenCode pick these up automatically; Hermes via `skills.external_dirs`.
+- **ICM persistent memory — MANDATORY**: `icm recall "<query>"` before starting work; `icm store -t <topic> -c "..." -i <importance>` when: error resolved, architecture decision made, user preference discovered, significant task completed, or ~20 tool calls without a store. Do NOT store trivia already documented in this file.
+- **Code navigation**: codegraph MCP daemon is running (`.codegraph/`, SQLite+WASM, zero infra) — use `codegraph_explore "<query>"` for symbol/relationship questions before raw grep. Knowledge graph: `graphify query "<question>"` (see graphify section).
+- **Parallel agents**: OpenCode agents in `.claude/worktrees/` may commit to `main` during your session. Always check fresh `git status` / `git log --oneline -5` / `git reflog -5` before answering anything about repo state. Run `git pull --rebase` before touching shared zones: `src/protocol/`, `data/registry/`, `data/recipes/`, `CMakeLists.txt`, `conanfile.txt`.
+- **Task tracking**: use `bd` (beads) for ALL task tracking — never markdown TODO lists (see Beads section above).

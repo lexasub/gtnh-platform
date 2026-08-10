@@ -509,6 +509,8 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
     case GatewayMsg::kInventoryAction: {
         flatbuffers::Verifier v(data, len);
         if (!v.VerifyBuffer<Protocol::InventoryAction>(nullptr)) { spdlog::error("Gateway: invalid InventoryAction on ctrl"); return; }
+        auto* act = flatbuffers::GetRoot<Protocol::InventoryAction>(data);
+        spdlog::debug("[Gateway] InventoryAction pid={} act={} cid={} slot={}", act->player_id(), act->action_type(), act->container_id(), act->slot());
         publish("player.inventory.actions", data, len);
         break;
     }
@@ -570,15 +572,59 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
         publish("player.scenario.start", data, len);
         break;
     }
-    case GatewayMsg::kChestSaveReq: {
-        // Client → simcore: save chest inventory to EntityStateStore.
-        // Payload is a Protocol::MachineState flatbuffer (machine_state.fbs).
-        publish("player.chest.save", data, len);
+    case GatewayMsg::kMachineOpenReq: {
+        // Client → simcore: open a machine window → register a per-player
+        // container session backed by the live ECS InventoryContainer.
+        // Payload: Protocol::ContainerOpenReq (player_id + pos).
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::ContainerOpenReq>(nullptr)) {
+            spdlog::error("Gateway: invalid ContainerOpenReq on ctrl");
+            return;
+        }
+        publish("player.machine.open", data, len);
+        break;
+    }
+    case GatewayMsg::kChestOpenReq: {
+        // Client → simcore: open a chest window → register a per-player
+        // container session. Payload: Protocol::ContainerOpenReq.
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::ContainerOpenReq>(nullptr)) {
+            spdlog::error("Gateway: invalid ContainerOpenReq on ctrl");
+            return;
+        }
+        publish("player.chest.open", data, len);
+        break;
+    }
+    case GatewayMsg::kChestCloseReq: {
+        // Client → simcore: close a chest window → persist + deregister the
+        // container session. Payload: Protocol::ContainerOpenReq (player_id+pos).
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::ContainerOpenReq>(nullptr)) {
+            spdlog::error("Gateway: invalid ChestCloseReq on ctrl");
+            return;
+        }
+        publish("player.chest.close", data, len);
+        break;
+    }
+    case GatewayMsg::kMachineCloseReq: {
+        // Client → simcore: close a machine window → persist + deregister the
+        // container session. Payload: Protocol::ContainerOpenReq (player_id+pos).
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::ContainerOpenReq>(nullptr)) {
+            spdlog::error("Gateway: invalid MachineCloseReq on ctrl");
+            return;
+        }
+        publish("player.machine.close", data, len);
         break;
     }
     case GatewayMsg::kWorkbenchOpenReq: {
-        // Client → simcore: request saved workbench grid state from EntityStateStore.
-        // Payload is a Protocol::Vec3i (workbench position).
+        // Client → simcore: request saved workbench grid state from EntityStateStore
+        // and open a per-player container session. Payload: Protocol::ContainerOpenReq.
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::ContainerOpenReq>(nullptr)) {
+            spdlog::error("Gateway: invalid WorkbenchOpenReq on ctrl");
+            return;
+        }
         publish("sim.workbench.load", data, len);
         break;
     }

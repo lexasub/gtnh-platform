@@ -15,15 +15,6 @@ DragManager::ActionResult DragManager::OnSlotActivated(int slotIndex,
     if (slotIndex < 0 || static_cast<size_t>(slotIndex) >= slots.size()) return r;
     if (reportedSlotIndex < 0) reportedSlotIndex = slotIndex;
 
-
-    // Notify machine window about slot activation if drag completes (Holding→Idle).
-    // Only fire while actually holding an item — not during initial pickup (Idle state).
-    if (hasMachineDrag_ && machineCb_ && state_ == State::Holding) {
-        spdlog::info("DragManager: Machine slot {} activated, sending SET_MACHINE_SLOT_REQ", slotIndex);
-        machineCb_(kActionMove, static_cast<uint8_t>(machineDragSlotIdx_),
-                   static_cast<uint8_t>(slotIndex), 0, machineDragPos_);
-    }
-
     if (state_ == State::Idle) {
         auto& slot = slots[slotIndex];
         if (slot.item_id == 0) return r;
@@ -278,6 +269,68 @@ void DragManager::DropHeldItem() {
     state_ = State::Idle;
 }
 
+// ── Authoritative click path (server owns the cursor) ─────────────────────
+// No local slot mutation — the gesture is translated to a click descriptor
+// and the server publishes the authoritative snapshot back to the client.
+
+void DragManager::OnPlayerSlotClick(int slotIndex, int button, bool shift, bool ctrl) {
+    if (slotIndex < 0 || slotIndex >= kPlayerSlots) return;
+    ClickInfo info;
+    info.actionType = (shift || ctrl) ? kClickActionQuickMove : kClickActionClick;
+    info.button = static_cast<uint8_t>(button);
+    info.mods = static_cast<uint8_t>((shift ? kModShiftBit : 0) | (ctrl ? kModCtrlBit : 0));
+    info.containerId = 0; // player inventory
+    info.slot = static_cast<uint16_t>(slotIndex);
+    if (clickCb_) clickCb_(info);
+}
+
+void DragManager::OnPlayerDrop(int slotIndex) {
+    if (slotIndex < 0 || slotIndex >= kPlayerSlots) return;
+    ClickInfo info;
+    info.actionType = kClickActionDrop;
+    info.containerId = 0;
+    info.slot = static_cast<uint16_t>(slotIndex);
+    if (clickCb_) clickCb_(info);
+}
+
+void DragManager::OnPlayerDragPlace(int slotIndex) {
+    if (slotIndex < 0 || slotIndex >= kPlayerSlots) return;
+    ClickInfo info;
+    info.actionType = kClickActionDragPlace;
+    info.containerId = 0;
+    info.count = 1;
+    info.slot = static_cast<uint16_t>(slotIndex);
+    if (clickCb_) clickCb_(info);
+}
+
+void DragManager::OnContainerSlotClick(int slotIndex, uint8_t containerId,
+                                       int button, bool shift, bool ctrl) {
+    ClickInfo info;
+    info.actionType = (shift || ctrl) ? kClickActionQuickMove : kClickActionClick;
+    info.button = static_cast<uint8_t>(button);
+    info.mods = static_cast<uint8_t>((shift ? kModShiftBit : 0) | (ctrl ? kModCtrlBit : 0));
+    info.containerId = containerId;
+    info.slot = static_cast<uint16_t>(slotIndex);
+    if (clickCb_) clickCb_(info);
+}
+
+void DragManager::OnContainerDrop(int slotIndex, uint8_t containerId) {
+    ClickInfo info;
+    info.actionType = kClickActionDrop;
+    info.containerId = containerId;
+    info.slot = static_cast<uint16_t>(slotIndex);
+    if (clickCb_) clickCb_(info);
+}
+
+void DragManager::OnContainerDragPlace(int slotIndex, uint8_t containerId) {
+    ClickInfo info;
+    info.actionType = kClickActionDragPlace;
+    info.containerId = containerId;
+    info.count = 1;
+    info.slot = static_cast<uint16_t>(slotIndex);
+    if (clickCb_) clickCb_(info);
+}
+
 void DragManager::StartExternalDrag(int sourceSlot, const ItemStack& item) {
     heldItem_ = item;
     sourceSlot_ = sourceSlot;
@@ -291,7 +344,6 @@ void DragManager::Reset() {
     reportedSourceSlot_ = -1;
     hoverSlot_ = -1;
     state_ = State::Idle;
-    ClearMachineDragContext();
 }
 
 void DragManager::SyncTo(InventoryState& inv) const {
@@ -299,13 +351,6 @@ void DragManager::SyncTo(InventoryState& inv) const {
     inv.dragItem = GetHeldItem();
     inv.dragSourceSlot = GetSourceSlot();
     inv.dragHoverSlot = GetHoverSlot();
-}
-
-void DragManager::OnMachineSlotAck(uint8_t slotIdx, bool success) {
-    spdlog::info("DragManager: Machine slot {} ack success={}", slotIdx, success);
-    if (machineSlotAckCb_) {
-        machineSlotAckCb_(slotIdx, success);
-    }
 }
 
 void DragManager::SyncFrom(const InventoryState& inv) {

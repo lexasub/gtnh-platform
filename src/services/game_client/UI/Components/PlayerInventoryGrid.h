@@ -16,7 +16,8 @@
 inline int RenderPlayerInventoryGrid(InventoryState &inv, int startIndex,
                                      int count, int columns, int selectedSlot,
                                      bool /*enableDragPreview*/ = false,
-                                     DragManager *dragMgr = nullptr) {
+                                     DragManager *dragMgr = nullptr,
+                                     bool authoritative = false) {
   // Scale slot size to display resolution (baseline 1080p, ~40 px slots)
   float displayH = ImGui::GetIO().DisplaySize.y;
   float scale = std::max(0.7f, std::min(1.5f, displayH / 1080.0f));
@@ -37,6 +38,7 @@ inline int RenderPlayerInventoryGrid(InventoryState &inv, int startIndex,
   grid.SetRange(startIndex, count, columns);
   grid.SetSelectedSlot(selectedSlot);
   grid.SetInventory(inv);
+  grid.SetAuthoritative(authoritative);
   if (dragMgr)
     grid.SetDragManager(dragMgr);
 

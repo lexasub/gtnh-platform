@@ -16,28 +16,25 @@
 void UIManager::SetNetClient(NetClient* nc) {
     netClient_ = nc;
     if (netClient_ && playerInv_) {
-        dragMgr_.SetActionCallback([this](uint8_t actionType, uint8_t src, uint8_t tgt, uint8_t count) {
+        // ── Legacy mutation callback (container grids) ─────────────────────
+        // Machine slots are now authoritative grids (container_id=1, Phase C):
+        // clicks go through SetClickCallback below, and SetMachineSlotReq is
+        // retired. Craft-grid and chest slot sources are client-side staging
+        // synced via their own protocols (craft request, chest close-save) —
+        // never a legacy InventoryAction; player-inventory moves go through
+        // the authoritative click callback below.
+        dragMgr_.SetActionCallback([this](uint8_t /*actionType*/, uint8_t src, uint8_t /*tgt*/, uint8_t /*count*/) {
             if (!netClient_ || !playerInv_) return;
-            // Machine drag: item already landed in the player grid (tgt);
-            // server only clears the machine slot. src is a machine-slot
-            // source id, never a player inventory index.
-            if (dragMgr_.HasMachineDragContext() && src >= DragManager::kMachineSlotBase) {
-                BlockPos pos = dragMgr_.GetMachineDragPos();
-                int machineSlot = dragMgr_.GetMachineDragSlotIdx();
-                uint8_t playerSlot = (actionType == DragManager::kActionDrop) ? 255 : tgt;
-                netClient_->SendSetMachineSlot(playerInv_->player_id, pos,
-                    static_cast<uint16_t>(machineSlot), 0, 0, 0, playerSlot);
-                dragMgr_.ClearMachineDragContext();
-                return;
-            }
-            // Craft-grid sources are client-side staging synced to the server
-            // via craft requests — never an InventoryAction.
             if (src >= DragManager::kGridSlotBase) return;
-            // Chest slot sources: item already moved in local chestSlots_ vector
-            // by OnSlotActivated. Server is updated on window close via
-            // SendChestSaveReq — no per-slot InventoryAction needed.
             if (src >= DragManager::kChestSlotBase) return;
-            netClient_->SendInventoryAction(playerInv_->player_id, actionType, src, tgt, count);
+        });
+
+        // ── Authoritative click path (server owns the cursor) ──────────────
+        dragMgr_.SetClickCallback([this](const DragManager::ClickInfo& info) {
+            if (!netClient_ || !playerInv_) return;
+            netClient_->SendInventoryAction(playerInv_->player_id, info.actionType,
+                                            info.button, info.mods, info.containerId,
+                                            info.slot, info.count);
         });
     }
 }
@@ -63,8 +60,12 @@ void UIManager::ProcessInput(const InputState& input) {
 void UIManager::RenderAll() {
     if (!playerInv_) return;
 
-    // Clear hover tracking at start of each frame
+    // Clear hover tracking at start of each frame (single reset point — grids
+    // only write hover while the mouse is over their slots)
     playerInv_->hoveredItemId = 0;
+    playerInv_->dragHoverSlot = -1;
+    playerInv_->hoveredSlot = -1;
+    dragMgr_.UpdateHover(-1);
 
     // Sync DragManager → InventoryState before FIRST window render.
     // Also sync before EACH window below, because DragManager state can
