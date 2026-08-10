@@ -121,3 +121,4 @@ todo.md
 test.sh
 sudo_perf.sh
 .claude
+cmake-build-offline
