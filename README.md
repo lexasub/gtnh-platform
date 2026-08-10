@@ -10,22 +10,19 @@ Built with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + TC
 
 ![ScreenShot](screenshots/main.jpg)
 
-## Git History & Contributing
-
-**Git history**: full multi-commit history on branch `main` (110+ commits since 2026-06-20).
-Open-source remote: `github.com/lexasub/gtnh-platform`.
+## Contributing
 
 **Looking for contributors.** Areas that need work:
 
 | Area | Scope / keywords |
 |------|-----------------|
+| **Assets** | Textures, models, sprites for items, blocks, and machines |
+| **UI** | MachineWindow, Drill UI, inventory drag-and-drop, ImGui widgets |
+| **Pipes/cables** | PipeNetwork BFS, CableGraph, HeatLoss, transformers, item/fluid transport |
 | **Inventories** | EntityStateStore persistence, inventory drag-and-drop polish, WorldContainerInventory |
 | **Crafting** | RecipeManager YAML recipes, server-authoritative grid, condition evaluation |
-| **Heat transfer** | Boiler, overheat, water→steam, explosion, thermal dynamics, neighbor propagation |
-| **Pipes/cables** | PipeNetwork BFS, CableGraph, HeatLoss, transformers, item/fluid transport |
-| **UI** | MachineWindow, Drill UI, inventory drag-and-drop, ImGui widgets |
-| **Assets** | Textures, models, sprites for items, blocks, and machines |
 | **Questbook** | Quest library, quest data, completion tracking, rewards, exchange market |
+| **Heat transfer** | Boiler, overheat, water→steam, explosion, thermal dynamics, neighbor propagation |
 | **Game modes** | Survival (no mobs — ore gen, gating, tools), Creative (build mode), Adventure, Spectator |
 | **Protocol** | Resolve GatewayMsg C++ constants vs FlatBuffers `GatewayPayload` union divergence |
 | **Tests** | Contract/integration tests: protocol frames, router pub/sub flows, RPC boundaries, service handoff |
