@@ -33,6 +33,8 @@ struct BlockEntityUpdateData {
   std::vector<ItemStack> outputItems;
   float heatRatio = 0.0f;      // Heat ratio (0.0 - 1.0+) for overheat warnings
   uint64_t mbId = 0;           // Multiblock ID (0 = not a multiblock)
+  double steamCurrent = -1.0;  // Produced STEAM (boilers, no water)
+  double steamCapacity = -1.0; // STEAM buffer capacity
 };
 
 // One multiblock hatch shown in the window (task 3.1). `type` matches

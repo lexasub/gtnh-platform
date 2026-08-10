@@ -232,6 +232,14 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
             reg_.emplace_or_replace<HeatIntakeComponent>(entity);
         }
 
+        if (machine_registry_) {
+            if (auto* info = machine_registry_->Get(block_id)) {
+                if (info->energy_out.has_value() && info->energy_out.value() == EnergyType::STEAM) {
+                    reg_.emplace_or_replace<SteamOutputComponent>(entity);
+                }
+            }
+        }
+
         if (onMachineCreated) {
             onMachineCreated(static_cast<int32_t>(x),
                              static_cast<int32_t>(y),

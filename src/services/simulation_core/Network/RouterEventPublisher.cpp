@@ -112,7 +112,9 @@ void RouterEventPublisher::publishBlockEntityUpdate(int32_t x, int32_t y, int32_
                                                     uint32_t energy_capacity,
                                                     int slots_in,
                                                     float heat_ratio,
-                                                    const std::vector<HatchUpdateData>* hatches)
+                                                    const std::vector<HatchUpdateData>* hatches,
+                                                    double steam_current,
+                                                    double steam_capacity)
 {
     flatbuffers::FlatBufferBuilder builder(128);
 
@@ -197,7 +199,9 @@ void RouterEventPublisher::publishBlockEntityUpdate(int32_t x, int32_t y, int32_
         0,                                             // mb_id
         false,                                         // structure_valid
         hatch_offsets.empty() ? nullptr : &hatch_offsets,  // hatches
-        nullptr                                        // covers
+        nullptr,                                       // covers
+        steam_current,                                 // steam_current
+        steam_capacity                                 // steam_capacity
     );
 
     builder.Finish(update);

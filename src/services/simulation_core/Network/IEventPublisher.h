@@ -51,7 +51,8 @@ public:
       uint32_t energy, EnergyType energy_type = EnergyType::ELECTRICITY,
       uint32_t energy_capacity = 0, int slots_in = -1,
       float heat_ratio = 0.0f,
-      const std::vector<HatchUpdateData>* hatches = nullptr) = 0;
+      const std::vector<HatchUpdateData>* hatches = nullptr,
+      double steam_current = -1.0, double steam_capacity = -1.0) = 0;
 
   virtual void publishMachineSlotResponse(int32_t x, int32_t y, int32_t z,
                                           uint16_t slot_idx, bool success,

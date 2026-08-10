@@ -17,6 +17,8 @@
 #include "ECS/components/RecipeProgress.h"
 #include "ECS/components/InventoryContainer.h"
 #include "ECS/components/EnergyStorage.h"
+#include "ECS/components/HeatIntakeComponent.h"
+#include "ECS/components/SteamOutputComponent.h"
 #include "ECS/components/Position.h"
 #include "ECS/Systems/GeneratorSystem.h"
 #include "ECS/Systems/AdjacencyTransferSystem.h"
@@ -76,6 +78,8 @@ struct MockEventPublisher : simcore::IEventPublisher {
     uint16_t last_machine_id = 0;
     float last_progress = 0;
     uint32_t last_energy = 0;
+    double last_steam_current = -1.0;
+    double last_steam_capacity = -1.0;
 
     void publishBlockAck(uint8_t, int32_t x, int32_t y, int32_t z,
                          uint16_t, uint8_t, const char*, uint32_t,
@@ -92,20 +96,24 @@ struct MockEventPublisher : simcore::IEventPublisher {
         block_changed_count++;
     }
     void publishBlockEntityUpdate(int32_t x, int32_t y, int32_t z,
-                                   uint16_t machine_type,
-                                   const std::vector<uint8_t>&,
-                                   float progress,
-                                   uint32_t energy,
-                                   EnergyType,
-                                   uint32_t,
-                                   int,
-                                   float,
-                                   const std::vector<HatchUpdateData>* = nullptr) override {
+                                    uint16_t machine_type,
+                                    const std::vector<uint8_t>&,
+                                    float progress,
+                                    uint32_t energy,
+                                    EnergyType,
+                                    uint32_t,
+                                    int,
+                                    float,
+                                    const std::vector<HatchUpdateData>* = nullptr,
+                                    double steam_current = -1.0,
+                                    double steam_capacity = -1.0) override {
         block_entity_update_count++;
         last_x = x; last_y = y; last_z = z;
         last_machine_id = machine_type;
         last_progress = progress;
         last_energy = energy;
+        last_steam_current = steam_current;
+        last_steam_capacity = steam_capacity;
     }
 
     void publishMachineSlotResponse(int32_t, int32_t, int32_t,
@@ -841,6 +849,63 @@ static void test_DrillSystem_falls_back_to_machine_energy() {
     PASS();
 }
 
+static void test_BoilerSystem_heat_boiler_produces_steam_no_water() {
+    setupMachineRegistry();
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(std::make_shared<simcore::IoUringRouterClient>());
+    simcore::BoilerSystem sys(reg, events, pipeClient);
+
+    auto ent = reg.create();
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:1"), 0, 100, 64, 100, 1);
+    // EnergyStorage holds input HEAT (received from an adjacent heat producer via
+    // AdjacencyTransferSystem, which keeps heat_stored and current in sync).
+    reg.emplace<simcore::EnergyStorage>(ent, 10000, 500, 0, 32, 1, EnergyType::HEAT);
+
+    simcore::HeatIntakeComponent heat;
+    heat.heat_stored = 500;
+    heat.heat_capacity = 1000;
+    reg.emplace<simcore::HeatIntakeComponent>(ent, heat);
+
+    simcore::SteamOutputComponent steam;
+    steam.steam_capacity = 1000;
+    reg.emplace<simcore::SteamOutputComponent>(ent, steam);
+
+    sys.tick(0.05f);
+
+    auto& steamOut = reg.get<simcore::SteamOutputComponent>(ent);
+    auto& heatIn = reg.get<simcore::HeatIntakeComponent>(ent);
+
+    CHECK_GT(steamOut.steam_stored, 0, "heat boiler should convert HEAT into STEAM");
+    CHECK_EQ(events->last_machine_id, ItemId::pack("1110:01:1"), "machine_id should be steam_heat_boiler");
+    CHECK_GT(events->last_steam_current, 0, "BlockEntityUpdate should carry steam_current");
+    CHECK_LT(heatIn.heat_stored, 500, "heat should be consumed (no water involved)");
+
+    PASS();
+}
+
+static void test_GeneratorSystem_solid_boiler_produces_steam() {
+    setupMachineRegistry();
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(std::make_shared<simcore::IoUringRouterClient>());
+    simcore::GeneratorSystem sys(reg, events, pipeClient);
+
+    auto ent = reg.create();
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:0"), 0, 200, 64, 200, 4);
+    reg.emplace<simcore::EnergyStorage>(ent, 10000, 0, 0, 32, 0, EnergyType::STEAM);
+    simcore::InventoryContainer container(0, 2, {{ItemId::pack("0:11110:2"), 1, 0}});
+    reg.emplace<simcore::InventoryContainer>(ent, container);
+
+    sys.tick(0.05f);
+    auto& energy = reg.get<simcore::EnergyStorage>(ent);
+
+    CHECK_GT(energy.current, 0, "solid boiler should produce STEAM from fuel (no water)");
+    CHECK_EQ(static_cast<int>(energy.type), static_cast<int>(EnergyType::STEAM), "produced energy type should be STEAM");
+
+    PASS();
+}
+
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
 void test_ecs_systems() {
@@ -851,6 +916,8 @@ void test_ecs_systems() {
     TEST(GeneratorSystem_producer_maxInput_zero);
     TEST(GeneratorSystem_no_fuel_no_energy);
     TEST(GeneratorSystem_full_storage_skips);
+    TEST(BoilerSystem_heat_boiler_produces_steam_no_water);
+    TEST(GeneratorSystem_solid_boiler_produces_steam);
     TEST(AdjacencyTransferSystem_adjacent_transfer);
     TEST(AdjacencyTransferSystem_non_adjacent_no_transfer);
     TEST(MachineSystem_idle_no_recipe);

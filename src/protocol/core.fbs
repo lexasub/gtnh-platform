@@ -451,6 +451,10 @@ table BlockEntityUpdate {
   structure_valid:bool;
   hatches:[HatchInfo];
   covers:[CoverInfo];
+  // Steam output for boilers (no water): produced STEAM stored separately from the
+  // primary energy buffer (which holds input HEAT for the steam heat boiler).
+  steam_current:double;
+  steam_capacity:double;
 }
 
 // CraftRequest: client→server, sent from workbench

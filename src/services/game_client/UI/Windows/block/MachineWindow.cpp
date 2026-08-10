@@ -348,6 +348,16 @@ void MachineWindow::Render(InventoryState* playerInv) {
                             hasPendingUpdate_ ? pendingUpdate_.heatRatio : 0.0f,
                             hasPendingUpdate_ ? pendingUpdate_.mbId : 0);
 
+        // ── Boiler STEAM output bar (water-free steam production) ──────────
+        if (info && info->machine_class == "boiler" &&
+            hasPendingUpdate_ && pendingUpdate_.steamCurrent >= 0.0) {
+            ImGui::Separator();
+            RenderEnergyBarImpl(EnergyType::STEAM,
+                                static_cast<uint32_t>(pendingUpdate_.steamCurrent),
+                                static_cast<uint32_t>(pendingUpdate_.steamCapacity > 0
+                                    ? pendingUpdate_.steamCapacity : 1));
+        }
+
         // ── Multiblock hatches (task 3.1) ─────────────────────────────────
         if (!pendingHatches_.empty()) {
             ImGui::Separator();
@@ -493,6 +503,8 @@ void MachineWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
     pendingUpdate_.energyType = static_cast<EnergyType>(update->energy_type());
     pendingUpdate_.heatRatio = update->temperature();
     pendingUpdate_.mbId = update->mb_id();
+    pendingUpdate_.steamCurrent = update->steam_current();
+    pendingUpdate_.steamCapacity = update->steam_capacity();
     framesSinceUpdate_ = 0;
 
     pendingUpdate_.inputItems.clear();

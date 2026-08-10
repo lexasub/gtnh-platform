@@ -5,6 +5,7 @@
 #include "components/Block.h"
 #include "components/EnergyStorage.h"
 #include "components/HeatIntakeComponent.h"
+#include "components/SteamOutputComponent.h"
 #include "components/InventoryContainer.h"
 #include "components/MachineComponent.h"
 #include "components/MultiblockController.h"

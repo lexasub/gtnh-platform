@@ -140,13 +140,13 @@ machine_classes:
           capacity: 10000
           max_output: 32
 
-      # Consumes steam → produces HEAT (steam→heat converter)
+      # Consumes neighbour HEAT → produces STEAM (no water)
       - block_id: "1110:01:1"
         name: steam_heat_boiler
-        energy_in: STEAM
-        energy_out: HEAT
+        energy_in: HEAT
+        energy_out: STEAM
         tier: 0
-        role: producer
+        role: consumer
         slots: { input: 1, output: 1 }
         energy:
           capacity: 10000

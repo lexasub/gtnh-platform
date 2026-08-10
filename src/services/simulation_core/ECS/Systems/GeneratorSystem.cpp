@@ -102,6 +102,24 @@ void GeneratorSystem::tick(float /*dt*/) {
             );
         }
 
+        // STEAM generators (solid boiler) publish node update for PipeNetwork registration
+        if (pipeClient_ && energy.type == EnergyType::STEAM) {
+            pipeClient_->publishNodeUpdate(
+                static_cast<uint64_t>(ent),
+                static_cast<int32_t>(machine.x),
+                static_cast<int32_t>(machine.y),
+                static_cast<int32_t>(machine.z),
+                energy.current,
+                energy.capacity,
+                energy.maxInput,
+                energy.maxOutput,
+                energy.tier,
+                static_cast<int32_t>(energy.type),
+                true,
+                false
+            );
+        }
+
         if (remaining <= 0) {
             burnEnergy_.erase(ent);
             burnFuel_.erase(ent);
