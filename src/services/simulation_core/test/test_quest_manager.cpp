@@ -11,6 +11,8 @@
 #include <common/ItemId.h>
 #include <flatbuffers/flatbuffers.h>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -18,6 +20,8 @@
 #ifndef PASS
 #define PASS() do { ++g_passed; } while(0)
 #endif
+
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -567,6 +571,206 @@ static void test_QuestManager_loadProgress_unlocks_quest_12() {
   PASS();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.4: auto_complete gating. A quest with auto_complete:false whose objective
+// + prereqs are met transitions to AVAILABLE only — no COMPLETED, no
+// quest.completed, no dependent unlock; the manual Complete button
+// (completeQuest, server-authoritative) then finishes it. The shipped seed has
+// no auto_complete:false quests, so quest 2 is overridden via a temp
+// requirements JSON (LoadRequirementsJSON merges per quest id).
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestManager_autoComplete_false_gates_manual() {
+  const uint64_t player = 202;
+  quest::QuestData qd;
+  quest::QuestGraph graph;
+  RecordingPublisher pub;
+  simcore::QuestManager mgr(&qd, &graph, pub.callback());
+  buildManager(qd, graph);
+
+  const fs::path tmp = fs::temp_directory_path() / "quest_req_ac_false.json";
+  {
+    std::ofstream of(tmp);
+    of << R"({
+  "2": {
+    "auto_complete": false,
+    "requirements": [
+      {"kind": "craft", "item": "0:10:00:0", "count": 1, "consume": false}
+    ]
+  }
+})";
+  }
+  CHECK(qd.LoadRequirementsJSON(tmp.string()), "temp override loaded");
+  fs::remove(tmp);
+
+  // Quest 1 COMPLETED → reconciliation unlocks quest 2 (AVAILABLE).
+  seedProgress(mgr, player,
+      {{1, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+
+  // Objective met → quest 2 goes AVAILABLE only, no COMPLETED / reward.
+  mgr.checkCraftCompletion(player, ItemId::pack("0:10:00:0"), 1);
+  CHECK_EQ(lastAdvertisedStatus(pub, 2),
+           static_cast<int>(quest::QuestStatus::AVAILABLE),
+           "auto_complete:false quest stays AVAILABLE after objective met");
+  CHECK_EQ(countTopic(pub, "quest.completed"), 0,
+           "no quest.completed for auto_complete:false quest");
+  CHECK_EQ(lastAdvertisedStatus(pub, 3),
+           static_cast<int>(quest::QuestStatus::LOCKED),
+           "dependent quest 3 NOT unlocked by AVAILABLE transition");
+
+  // Manual Complete (server-authoritative) finishes it.
+  CHECK(mgr.completeQuest(player, 2), "completeQuest(2) accepted");
+  CHECK_EQ(countTopic(pub, "quest.completed"), 1,
+           "quest.completed published on manual completion");
+  CHECK_EQ(lastAdvertisedStatus(pub, 3),
+           static_cast<int>(quest::QuestStatus::AVAILABLE),
+           "dependent quest 3 unlocked after real COMPLETED");
+  PASS();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.4: auto_complete defaults to TRUE when the field is absent (QuestDef
+// default) — objective met completes instantly, matching the shipped seed
+// (all 163 quests auto-complete).
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestManager_autoComplete_default_is_true() {
+  const uint64_t player = 212;
+  quest::QuestData qd;
+  quest::QuestGraph graph;
+  RecordingPublisher pub;
+  simcore::QuestManager mgr(&qd, &graph, pub.callback());
+  buildManager(qd, graph);
+
+  const fs::path tmp = fs::temp_directory_path() / "quest_req_ac_default.json";
+  {
+    std::ofstream of(tmp);
+    of << R"({
+  "2": {
+    "requirements": [
+      {"kind": "craft", "item": "0:10:00:0", "count": 1, "consume": false}
+    ]
+  }
+})";
+  }
+  CHECK(qd.LoadRequirementsJSON(tmp.string()), "temp override loaded");
+  fs::remove(tmp);
+
+  const quest::QuestDef* q2 = qd.GetQuest(2);
+  CHECK(q2 != nullptr, "quest 2 present");
+  CHECK(q2 && q2->autoComplete,
+        "auto_complete defaults to true when field absent");
+
+  seedProgress(mgr, player,
+      {{1, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+  mgr.checkCraftCompletion(player, ItemId::pack("0:10:00:0"), 1);
+  CHECK_EQ(lastAdvertisedStatus(pub, 2),
+           static_cast<int>(quest::QuestStatus::COMPLETED),
+           "quest without auto_complete field completes instantly (default true)");
+  CHECK_EQ(countTopic(pub, "quest.completed"), 1,
+           "quest.completed published once");
+  PASS();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.4 / spec 3.6 MACHINE detection: a machine quest (kind machine, machine
+// field declared) completes only when BOTH the produced item and the machine
+// match. Wrong machine → no completion; matching machine → COMPLETED +
+// quest.completed. The shipped seed has no machine quests, so quest 2 is
+// overridden: heat_furnace (1110:00:0) producing oak_planks (0:10:00:0).
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestManager_detection_machine_output() {
+  const uint64_t player = 222;
+  quest::QuestData qd;
+  quest::QuestGraph graph;
+  RecordingPublisher pub;
+  simcore::QuestManager mgr(&qd, &graph, pub.callback());
+  buildManager(qd, graph);
+
+  const fs::path tmp = fs::temp_directory_path() / "quest_req_machine.json";
+  {
+    std::ofstream of(tmp);
+    of << R"({
+  "2": {
+    "auto_complete": true,
+    "requirements": [
+      {"kind": "machine", "item": "0:10:00:0", "count": 1, "consume": true, "machine": "1110:00:0"}
+    ]
+  }
+})";
+  }
+  CHECK(qd.LoadRequirementsJSON(tmp.string()), "temp override loaded");
+  fs::remove(tmp);
+
+  seedProgress(mgr, player,
+      {{1, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+
+  // Wrong machine (battery_buffer_lv 1110:10:0): item matches, machine doesn't.
+  mgr.checkMachineOutput(player, ItemId::pack("1110:10:0"), ItemId::pack("0:10:00:0"), 1);
+  CHECK_EQ(countTopic(pub, "quest.completed"), 0,
+           "wrong machine does not complete machine quest");
+  CHECK_EQ(lastAdvertisedStatus(pub, 2),
+           static_cast<int>(quest::QuestStatus::AVAILABLE),
+           "quest 2 stays AVAILABLE after wrong-machine output");
+
+  // Matching machine (heat_furnace 1110:00:0) → completes.
+  mgr.checkMachineOutput(player, ItemId::pack("1110:00:0"), ItemId::pack("0:10:00:0"), 1);
+  CHECK_EQ(lastAdvertisedStatus(pub, 2),
+           static_cast<int>(quest::QuestStatus::COMPLETED),
+           "machine quest completes on output take from matching machine");
+  CHECK_EQ(countTopic(pub, "quest.completed"), 1,
+           "quest.completed published once");
+  PASS();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3.4 / spec 3.6 fallback: a machine quest WITHOUT a machine field falls back
+// to item-only (INVENTORY-style) matching when the machine attribution is
+// unavailable (machine id not resolvable → hierarchical id ""). The machine
+// quest then completes on the produced item alone.
+// ─────────────────────────────────────────────────────────────────────────────
+static void test_QuestManager_detection_machine_fallback() {
+  const uint64_t player = 232;
+  quest::QuestData qd;
+  quest::QuestGraph graph;
+  RecordingPublisher pub;
+  simcore::QuestManager mgr(&qd, &graph, pub.callback());
+  buildManager(qd, graph);
+
+  const fs::path tmp = fs::temp_directory_path() / "quest_req_machine_fb.json";
+  {
+    std::ofstream of(tmp);
+    of << R"({
+  "2": {
+    "auto_complete": true,
+    "requirements": [
+      {"kind": "machine", "item": "0:10:00:0", "count": 1, "consume": false}
+    ]
+  }
+})";
+  }
+  CHECK(qd.LoadRequirementsJSON(tmp.string()), "temp override loaded");
+  fs::remove(tmp);
+
+  // Find a packed id not registered in items.csv → idToHierarchical == "".
+  uint16_t unknownMachine = 0;
+  const auto& reg = RecipeManager::ItemRegistry::instance();
+  for (uint16_t id = 1; id != 0; ++id) {
+    if (reg.idToHierarchical(id).empty()) { unknownMachine = id; break; }
+  }
+  CHECK(unknownMachine != 0, "found an unregistered packed machine id");
+
+  seedProgress(mgr, player,
+      {{1, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
+
+  // Machine attribution unavailable → item match alone completes (fallback).
+  mgr.checkMachineOutput(player, unknownMachine, ItemId::pack("0:10:00:0"), 1);
+  CHECK_EQ(lastAdvertisedStatus(pub, 2),
+           static_cast<int>(quest::QuestStatus::COMPLETED),
+           "machine quest without machine field completes on item alone (fallback)");
+  CHECK_EQ(countTopic(pub, "quest.completed"), 1,
+           "quest.completed published once");
+  PASS();
+}
+
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
 void test_quest_manager() {
@@ -584,4 +788,8 @@ void test_quest_manager() {
   TEST(QuestManager_loadProgress_reconciles_unlocks);
   TEST(QuestData_graph_json_overrides_csv_prereqs);
   TEST(QuestManager_loadProgress_unlocks_quest_12);
+  TEST(QuestManager_autoComplete_false_gates_manual);
+  TEST(QuestManager_autoComplete_default_is_true);
+  TEST(QuestManager_detection_machine_output);
+  TEST(QuestManager_detection_machine_fallback);
 }

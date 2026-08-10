@@ -341,22 +341,23 @@ void QuestBookWindow::renderQuestDetail(const InventoryState* playerInv) {
         }
     }
 
-    // Manual completion (server-authoritative): shown only for AVAILABLE,
-    // non-exchange, non-autoComplete quests. autoComplete quests finish
-    // instantly server-side so no button is offered. Local status is updated
-    // only on server confirmation (QuestCompletedNotification).
-    if (it->status == 1 && !it->isExchange && !it->autoComplete) {
+    // Manual completion (server-authoritative): offered for ALL AVAILABLE,
+    // non-exchange quests — regardless of auto_complete. autoComplete quests
+    // still auto-finish server-side, but the Complete button is shown in any
+    // case so the player can complete manually too. Local status updates only
+    // on server confirmation (QuestCompletedNotification).
+    if (it->status == 1 && !it->isExchange) {
+        if (it->autoComplete) {
+            ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(160, 160, 160, 255));
+            ImGui::Text("Completes automatically when the objective is met.");
+            ImGui::PopStyleColor();
+        }
         ImGui::Dummy(ImVec2(0, 8));
         ImGui::PushID(static_cast<int>(it->id));
         if (ImGui::Button("Complete", ImVec2(120, 0))) {
             onCompleteClicked(playerId);
         }
         ImGui::PopID();
-    } else if (it->status == 1 && it->autoComplete) {
-        ImGui::Dummy(ImVec2(0, 8));
-        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(160, 160, 160, 255));
-        ImGui::Text("Completes automatically when the objective is met.");
-        ImGui::PopStyleColor();
     }
 
     renderCompletionBadge(it->status);
