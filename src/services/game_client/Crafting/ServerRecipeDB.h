@@ -62,6 +62,12 @@ public:
   bool IsCatalogLoaded() const { return catalogLoaded_; }
   const std::vector<uint16_t> &Catalog() const { return catalog_; }
 
+  // ── Timeout poll (call every frame from the game thread) ────────────
+  /// Expire pending requests that never received a response (e.g. reciped
+  /// started after the client's first query). Resets in-flight flags and
+  /// fires pending callbacks so the UI can retry on the next query.
+  void PollTimeouts();
+
   // ── Queries (cache-first; async on miss, deduped while in flight) ──
   /// "How is X crafted / where is X used". `done` fires once the item's
   /// recipes are available (immediately on cache hit); read them via
@@ -129,10 +135,16 @@ private:
     uint16_t item_id;
     uint16_t machine_id;
     uint64_t grid_key;
+    uint64_t sent_at_ms; // timestamp when the request was sent
     std::function<void()> done;
+    // Additional callbacks queued while this request was in-flight.
+    // All are invoked when the response arrives (or on timeout).
+    std::vector<std::function<void()>> extra_callbacks;
   };
 
   uint32_t nextReqId() { return ++nextReqId_; }
+
+  void RetryCatalog();
 
   // Response parsers (populate caches, then fire the pending callback).
   void handleCatalogResponse(const Protocol::RecipeReply *reply);

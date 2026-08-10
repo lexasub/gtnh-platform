@@ -283,6 +283,10 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
 }
 
 void GameClient::Update(float dt) {
+    // Expire stale recipe requests so a lost response doesn't permanently
+    // block future queries for the same item / machine / grid.
+    recipeDb_.PollTimeouts();
+
     // Flight only in CREATIVE and SPECTATOR; SURVIVAL/ADVENTURE walk only
     camera_.SetFlightEnabled(invState_.gameMode == GameMode::CREATIVE ||
                              invState_.gameMode == GameMode::SPECTATOR);
