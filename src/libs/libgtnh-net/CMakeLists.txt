@@ -25,6 +25,6 @@ target_link_libraries(gtnh-net PUBLIC
 
 # Tests
 option(GTNH_NET_TESTS "Build libgtnh-net tests" ON)
-if(GTNH_NET_TESTS)
+if(BUILD_TESTING AND GTNH_NET_TESTS)
     add_subdirectory(test)
 endif()

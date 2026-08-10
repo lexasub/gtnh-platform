@@ -12,6 +12,7 @@ target_include_directories(Crafting PUBLIC
 
 target_link_libraries(Crafting PUBLIC
     recipe_manager_lib
+    EnTT::EnTT
 )
 
 target_link_libraries(Crafting PRIVATE

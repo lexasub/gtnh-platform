@@ -30,26 +30,28 @@ target_link_libraries(worldgeneratord PRIVATE
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-add_executable(worldgeneratord_test
-    test/test_main.cpp
-    test/test_tree_generation.cpp
-)
-target_compile_definitions(worldgeneratord_test PRIVATE
-    DATA_DIR="${CMAKE_SOURCE_DIR}/data"
-)
-target_include_directories(worldgeneratord_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/libs
-    ${CMAKE_SOURCE_DIR}/third_party/FastNoise2/include
-)
-target_link_libraries(worldgeneratord_test PRIVATE
-    worldgeneratord
-    recipe_manager_lib
-    spdlog::spdlog
-    fastnoise2::fastnoise2
-    glm::glm
-    nlohmann_json::nlohmann_json
-    Threads::Threads
-    pthread
-)
-add_test(NAME worldgeneratord_test COMMAND worldgeneratord_test)
+if(BUILD_TESTING)
+    add_executable(worldgeneratord_test
+        test/test_main.cpp
+        test/test_tree_generation.cpp
+    )
+    target_compile_definitions(worldgeneratord_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+    )
+    target_include_directories(worldgeneratord_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/libs
+        ${CMAKE_SOURCE_DIR}/third_party/FastNoise2/include
+    )
+    target_link_libraries(worldgeneratord_test PRIVATE
+        worldgeneratord
+        recipe_manager_lib
+        spdlog::spdlog
+        fastnoise2::fastnoise2
+        glm::glm
+        nlohmann_json::nlohmann_json
+        Threads::Threads
+        pthread
+    )
+    add_test(NAME worldgeneratord_test COMMAND worldgeneratord_test)
+endif()

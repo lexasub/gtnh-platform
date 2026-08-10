@@ -71,28 +71,30 @@ target_link_libraries(entitystated PRIVATE
 )
 
 # Unit tests
-add_executable(entitystated_test
-    test_persistence.cpp
-    EntityStateStorage.cpp
-    cache.cpp
-    Client/MessageRouterClient.cpp
-    Client/ChunkStoreClient.cpp
-)
-target_include_directories(entitystated_test PRIVATE
-    ${FBS_GEN_DIR}
-    ${flatbuffers_INCLUDE_DIRS}
-    ${CMAKE_SOURCE_DIR}/src/services
-    ${CMAKE_SOURCE_DIR}/src/services/storage_interfaces
-    ${CMAKE_SOURCE_DIR}/src/services/simulation_core
-    ${CMAKE_SOURCE_DIR}/src/services/simulation_core/Network
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
-add_dependencies(entitystated_test entitystated_fbs)
-target_link_libraries(entitystated_test PRIVATE
-    flatbuffers::flatbuffers
-    spdlog::spdlog
-    asio::asio
-    Threads::Threads
-    lmdb::lmdb
-)
-add_test(NAME entitystated_test COMMAND entitystated_test)
+if(BUILD_TESTING)
+    add_executable(entitystated_test
+        test_persistence.cpp
+        EntityStateStorage.cpp
+        cache.cpp
+        Client/MessageRouterClient.cpp
+        Client/ChunkStoreClient.cpp
+    )
+    target_include_directories(entitystated_test PRIVATE
+        ${FBS_GEN_DIR}
+        ${flatbuffers_INCLUDE_DIRS}
+        ${CMAKE_SOURCE_DIR}/src/services
+        ${CMAKE_SOURCE_DIR}/src/services/storage_interfaces
+        ${CMAKE_SOURCE_DIR}/src/services/simulation_core
+        ${CMAKE_SOURCE_DIR}/src/services/simulation_core/Network
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    add_dependencies(entitystated_test entitystated_fbs)
+    target_link_libraries(entitystated_test PRIVATE
+        flatbuffers::flatbuffers
+        spdlog::spdlog
+        asio::asio
+        Threads::Threads
+        lmdb::lmdb
+    )
+    add_test(NAME entitystated_test COMMAND entitystated_test)
+endif()

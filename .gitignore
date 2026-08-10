@@ -112,7 +112,6 @@ src/ast_rag_config.json
 skills-lock.json
 
 # ── Temporary / scratch files ────────────────────────────
-test/
 tests/
 Testing/
 test_recipe.json

@@ -47,6 +47,10 @@ target_link_libraries(chunkd_storage
     PRIVATE
     asio::asio
     worldgeneratord # TODO - may be remove deps
+    PUBLIC
+    lmdb::lmdb
+    spdlog::spdlog
+    atomic
 )
 
 add_executable(chunkd
@@ -63,34 +67,36 @@ include_directories(BEFORE SYSTEM ${flatbuffers_INCLUDE_DIRS} ${FBS_GEN_DIR})
 add_dependencies(chunkd chunkd_fbs asio::asio chunkd_storage gtnh-net)
 
 # Lock-free ClockCache test — header-only, no external deps beyond Threads
-add_executable(clock_cache_test
-    Storage/clock_cache_test.cpp
-)
-target_compile_options(clock_cache_test PRIVATE -mcx16)
-target_link_libraries(clock_cache_test PRIVATE Threads::Threads chunkd_storage)
+if(BUILD_TESTING)
+    add_executable(clock_cache_test
+        Storage/clock_cache_test.cpp
+    )
+    target_compile_options(clock_cache_test PRIVATE -mcx16)
+    target_link_libraries(clock_cache_test PRIVATE Threads::Threads chunkd_storage)
 
-# ChunkStore + ClockCache integration test — links to real ChunkStore + LMDB
-add_executable(chunk_cache_test
-    Storage/chunk_cache_test.cpp
-)
-target_compile_options(chunk_cache_test PRIVATE -mcx16)
-add_dependencies(chunk_cache_test chunkd_fbs)
+    # ChunkStore + ClockCache integration test — links to real ChunkStore + LMDB
+    add_executable(chunk_cache_test
+        Storage/chunk_cache_test.cpp
+    )
+    target_compile_options(chunk_cache_test PRIVATE -mcx16)
+    add_dependencies(chunk_cache_test chunkd_fbs)
 
-target_link_libraries(chunk_cache_test PRIVATE
-    lmdb::lmdb
-    spdlog::spdlog
-    Threads::Threads
-    worldgeneratord
-    asio::asio
-    chunkd_storage
-)
+    target_link_libraries(chunk_cache_test PRIVATE
+        lmdb::lmdb
+        spdlog::spdlog
+        Threads::Threads
+        worldgeneratord
+        asio::asio
+        chunkd_storage
+    )
+endif()
 
 # ClockCache vs LruCache microbenchmark — header-only, Threads only
 add_executable(clock_cache_bench
     Storage/clock_cache_bench.cpp
 )
 target_compile_options(clock_cache_bench PRIVATE -mcx16)
-target_link_libraries(clock_cache_bench PRIVATE Threads::Threads)
+target_link_libraries(clock_cache_bench PRIVATE Threads::Threads atomic)
 
 target_link_libraries(chunkd PRIVATE
     lmdb::lmdb
@@ -105,47 +111,49 @@ target_link_libraries(chunkd PRIVATE
     chunkd_storage
 )
 
-add_executable(chunk_store_cli_test
-    chunk_store_cli_test.cpp
-)
+if(BUILD_TESTING)
+    add_executable(chunk_store_cli_test
+        chunk_store_cli_test.cpp
+    )
 
-add_dependencies(chunk_store_cli_test chunkd_fbs chunkd_storage)
-target_compile_options(chunk_store_cli_test PRIVATE -mcx16)
-target_link_libraries(chunk_store_cli_test PRIVATE
-    lmdb::lmdb
-    spdlog::spdlog
-    Threads::Threads
-    worldgeneratord
-    asio::asio
-    chunkd_storage
-)
+    add_dependencies(chunk_store_cli_test chunkd_fbs chunkd_storage)
+    target_compile_options(chunk_store_cli_test PRIVATE -mcx16)
+    target_link_libraries(chunk_store_cli_test PRIVATE
+        lmdb::lmdb
+        spdlog::spdlog
+        Threads::Threads
+        worldgeneratord
+        asio::asio
+        chunkd_storage
+    )
 
-# Load test — throughput, latency, mixed read/write, eviction stress
-add_executable(chunkd_load_test
-    Storage/chunkd_load_test.cpp
-)
-add_dependencies(chunkd_load_test chunkd_fbs)
-target_compile_options(chunkd_load_test PRIVATE -mcx16)
-target_link_libraries(chunkd_load_test PRIVATE
-    lmdb::lmdb
-    spdlog::spdlog
-    Threads::Threads
-    worldgeneratord
-    asio::asio
-    chunkd_storage
-)
+    # Load test — throughput, latency, mixed read/write, eviction stress
+    add_executable(chunkd_load_test
+        Storage/chunkd_load_test.cpp
+    )
+    add_dependencies(chunkd_load_test chunkd_fbs)
+    target_compile_options(chunkd_load_test PRIVATE -mcx16)
+    target_link_libraries(chunkd_load_test PRIVATE
+        lmdb::lmdb
+        spdlog::spdlog
+        Threads::Threads
+        worldgeneratord
+        asio::asio
+        chunkd_storage
+    )
 
-# Dirty-chunk tracking test — real LMDB, real concurrency
-add_executable(chunk_dirty_test
-    Storage/chunk_dirty_test.cpp
-)
-add_dependencies(chunk_dirty_test chunkd_fbs asio::asio)
-target_compile_options(chunk_dirty_test PRIVATE -mcx16)
-target_link_libraries(chunk_dirty_test PRIVATE
-    lmdb::lmdb
-    spdlog::spdlog
-    Threads::Threads
-    worldgeneratord
-    asio::asio
-    chunkd_storage
-)
+    # Dirty-chunk tracking test — real LMDB, real concurrency
+    add_executable(chunk_dirty_test
+        Storage/chunk_dirty_test.cpp
+    )
+    add_dependencies(chunk_dirty_test chunkd_fbs asio::asio)
+    target_compile_options(chunk_dirty_test PRIVATE -mcx16)
+    target_link_libraries(chunk_dirty_test PRIVATE
+        lmdb::lmdb
+        spdlog::spdlog
+        Threads::Threads
+        worldgeneratord
+        asio::asio
+        chunkd_storage
+    )
+endif()

@@ -2,6 +2,10 @@
 set(FBS_DIR ${CMAKE_SOURCE_DIR}/src/protocol)
 set(FBS_GO_OUT_DIR ${CMAKE_SOURCE_DIR}/src/protocol/generated/go)
 file(MAKE_DIRECTORY ${FBS_GO_OUT_DIR})
+# flatc generates only .go files — the module file must exist for
+# `go build` (replace ../../protocol/generated/go requires go.mod).
+file(WRITE ${FBS_GO_OUT_DIR}/go.mod
+"module github.com/gtnh-platform/protocol/generated/go\n\ngo 1.21\n\nrequire github.com/google/flatbuffers v24.3.25+incompatible\n")
 
 add_custom_command(
     OUTPUT

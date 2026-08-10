@@ -20,19 +20,21 @@ target_link_libraries(quest_lib PUBLIC
 )
 
 # quest_lib unit tests — data loaders only (no network/ECS dependencies).
-add_executable(quest_lib_test
-    test/test_questdata.cpp
-)
-target_compile_definitions(quest_lib_test PRIVATE
-    DATA_DIR="${CMAKE_SOURCE_DIR}/data"
-)
-target_include_directories(quest_lib_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/libs
-    ${CMAKE_SOURCE_DIR}/src/libs/libgtnh-net
-)
-target_link_libraries(quest_lib_test PRIVATE
-    quest_lib
-    spdlog::spdlog
-    nlohmann_json::nlohmann_json
-)
-add_test(NAME quest_lib_test COMMAND quest_lib_test)
+if(BUILD_TESTING)
+    add_executable(quest_lib_test
+        test/test_questdata.cpp
+    )
+    target_compile_definitions(quest_lib_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+    )
+    target_include_directories(quest_lib_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/libs
+        ${CMAKE_SOURCE_DIR}/src/libs/libgtnh-net
+    )
+    target_link_libraries(quest_lib_test PRIVATE
+        quest_lib
+        spdlog::spdlog
+        nlohmann_json::nlohmann_json
+    )
+    add_test(NAME quest_lib_test COMMAND quest_lib_test)
+endif()

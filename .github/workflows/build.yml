@@ -21,7 +21,10 @@ jobs:
         run: bash ci/check.sh tooling
 
   build:
-    runs-on: ubuntu-24.04
+    # ubuntu-26.04 = gcc 15.2: C++26 (флаг -std=c++26 есть с gcc 14, на 24.04/gcc13
+    # проект не собирался бы) + max версия, которую знает Conan (15.2) — бандл
+    # можно пересобирать под тем же компилятором, что и CI.
+    runs-on: ubuntu-26.04
     needs: [tooling]
     steps:
       - uses: actions/checkout@v4
@@ -31,20 +34,29 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq \
             cmake ninja-build \
-            g++-13 clang-tidy \
+            g++ \
             liburing-dev \
-            libglm-dev \
-            libspdlog-dev \
-            libasio-dev \
-            nlohmann-json3-dev \
-            libsqlite3-dev \
-            liblmdb-dev \
-            libfmt-dev
+            libtbb-dev \
+            libgl1-mesa-dev libx11-dev libxkbcommon-dev \
+            libwayland-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+            libx11-xcb-dev libfontenc-dev libice-dev libsm-dev libxaw7-dev \
+            libxcomposite-dev libxdamage-dev libxext-dev libxfixes-dev libxi-dev \
+            libxkbfile-dev libxmu-dev libxmuu-dev libxpm-dev libxrandr-dev \
+            libxrender-dev libxres-dev libxss-dev libxt-dev libxtst-dev libxv-dev \
+            libxxf86vm-dev libxcb-glx0-dev libxcb-render0-dev libxcb-render-util0-dev \
+            libxcb-xkb-dev libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
+            libxcb-randr0-dev libxcb-shape0-dev libxcb-sync-dev libxcb-xfixes0-dev \
+            libxcb-xinerama0-dev libxcb-dri3-dev uuid-dev libxcb-cursor-dev \
+            libxcb-dri2-0-dev libxcb-present-dev libxcb-composite0-dev \
+            libxcb-ewmh-dev libxcb-res0-dev libxcb-util-dev
 
-      - name: Install Conan
-        run: |
-          pip install conan --quiet
-          conan profile detect --force 2>/dev/null || true
+      # Deps (asio/flatbuffers/glm/EnTT/imgui/bgfx/...) — из бандла в GitHub
+      # Release, как у конечного потребителя. Conan на CI не нужен.
+      - name: Fetch offline deps bundle
+        run: bash scripts/fetch-offline-deps.sh
+
+      - name: Install bgfx/bx/bimg to /usr/local
+        run: sudo bash cmake-build-offline/install-deps.sh
 
       - name: Configure CMake
         run: |

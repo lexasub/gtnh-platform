@@ -195,43 +195,48 @@ target_link_libraries(simcored_exec PRIVATE
 # ---------------------------------------------------------------------------
 # Tests — struct layout + ECS systems
 # ---------------------------------------------------------------------------
-add_executable(simcored_test
-    test/test_main.cpp
-    test/test_ecs_systems.cpp
-    test/test_recipe_manager.cpp
-    test/test_quest_manager.cpp
-    test/test_game_scenario.cpp
-    test/test_inventory_click.cpp
-    test/test_container_click.cpp
-)
-target_compile_definitions(simcored_test PRIVATE
-    DATA_DIR="${CMAKE_SOURCE_DIR}/data"
-)
-target_include_directories(simcored_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/libs
-    ${FBS_GEN_DIR}
-    ${flatbuffers_INCLUDE_DIRS}
-    .
-    ${CMAKE_SOURCE_DIR}/src
-)
-target_link_libraries(simcored_test PRIVATE
-    simcored
-    gtnh-net
-    machine_registry
-    recipe_manager_lib
-    asio::asio
-    flatbuffers::flatbuffers
-    EnTT::EnTT
-    lmdb::lmdb
-    spdlog::spdlog
-    SQLite::SQLite3
-    pthread
-)
-add_test(NAME simcored_test COMMAND simcored_test)
-add_dependencies(simcored_test simcored_fbs)
+if(BUILD_TESTING)
+    add_executable(simcored_test
+        test/test_main.cpp
+        test/test_ecs_systems.cpp
+        test/test_recipe_manager.cpp
+        test/test_quest_manager.cpp
+        test/test_game_scenario.cpp
+        test/test_inventory_click.cpp
+        test/test_container_click.cpp
+    )
+    target_compile_definitions(simcored_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+    )
+    target_include_directories(simcored_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/libs
+        ${FBS_GEN_DIR}
+        ${flatbuffers_INCLUDE_DIRS}
+        .
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(simcored_test PRIVATE
+        simcored
+        gtnh-net
+        machine_registry
+        recipe_manager_lib
+        asio::asio
+        flatbuffers::flatbuffers
+        EnTT::EnTT
+        lmdb::lmdb
+        spdlog::spdlog
+        SQLite::SQLite3
+        pthread
+    )
+    add_test(NAME simcored_test COMMAND simcored_test)
+    add_dependencies(simcored_test simcored_fbs)
+endif()
 
 # Install
-install(TARGETS simcored simcored_exec simcored_test
+install(TARGETS simcored simcored_exec
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
 )
+if(BUILD_TESTING)
+    install(TARGETS simcored_test RUNTIME DESTINATION bin)
+endif()

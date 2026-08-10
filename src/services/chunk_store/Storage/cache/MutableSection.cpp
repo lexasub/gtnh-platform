@@ -160,7 +160,7 @@ void MutableSection::fromBlocks(const uint16_t blocks[4096]) {
 }
 
 void MutableSection::encodeToWire(std::vector<uint8_t> &buf) const {
-    auto t0 = std::chrono::steady_clock::now();
+    /*auto t0 = std::chrono::steady_clock::now();*/
     auto record = [&]() {
         /*auto us = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - t0).count();
@@ -256,7 +256,7 @@ void MutableSection::encodeToWire(std::vector<uint8_t> &buf) const {
 
 bool MutableSection::fromWire(Reader &r) {
     clear();
-    auto t0 = std::chrono::steady_clock::now();
+    /*auto t0 = std::chrono::steady_clock::now();*/
     auto record = [&]() {
         /*auto us = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - t0).count();

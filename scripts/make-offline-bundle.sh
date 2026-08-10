@@ -33,7 +33,7 @@ BUNDLE_DEPS="$OUT_DIR/deps"
 
 echo "==> Чистим $OUT_DIR"
 rm -rf "$OUT_DIR"
-mkdir -p "$BUNDLE_DEPS/p" "$BUNDLE_DEPS/conan-offline" "$BUNDLE_DEPS/usr-local"
+mkdir -p "$BUNDLE_DEPS/p" "$BUNDLE_DEPS/conan-offline" "$BUNDLE_DEPS/usr-local/include" "$BUNDLE_DEPS/usr-local/lib"
 
 if ! compgen -G "$GEN_DIR/*.cmake" > /dev/null; then
     echo "ОШИБКА: в $GEN_DIR нет .cmake — сначала: conan install -of $GEN_DIR --build=missing" >&2
@@ -77,8 +77,10 @@ cat > "$OUT_DIR/install-deps.sh" <<'EOF'
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 echo "==> bgfx/bx/bimg -> /usr/local"
-sudo cp -r "$HERE/deps/usr-local/include/bgfx" "$HERE/deps/usr-local/include/bimg" "$HERE/deps/usr-local/include/bx" /usr/local/include/
-sudo cp "$HERE/deps/usr-local/lib/libbgfx.a" "$HERE/deps/usr-local/lib/libbimg"*.a "$HERE/deps/usr-local/lib/libbx.a" /usr/local/lib/
+# Копируем ВСЁ содержимое include/ и lib/ — работает и с плоскими
+# заголовками (bgfx.h), и с вложенными папками (bgfx/, bimg/, bx/).
+sudo cp -r "$HERE/deps/usr-local/include/." /usr/local/include/
+sudo cp "$HERE/deps/usr-local/lib/"*.a /usr/local/lib/
 echo "Готово. Проверь: ls /usr/local/lib/libbgfx.a /usr/local/include/bgfx"
 EOF
 chmod +x "$OUT_DIR/install-deps.sh"

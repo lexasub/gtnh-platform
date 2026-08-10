@@ -61,7 +61,8 @@ void test_check(bool cond, const char* file, int line, const char* expr, const c
 static std::string makeTempFile(const std::string& content) {
     char tmpl[] = "/tmp/machine_test_XXXXXX";
     int fd = mkstemp(tmpl);
-    write(fd, content.data(), content.size());
+    if (fd < 0) return {};
+    [[maybe_unused]] ssize_t wr = write(fd, content.data(), content.size());
     close(fd);
     return std::string(tmpl);
 }

@@ -111,7 +111,3 @@ private:
 
     void moveFrom(MutableSection&& o);
 };
-
-
-
-#endif //MUTABLESECTION_H

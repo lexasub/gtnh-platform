@@ -16,7 +16,6 @@ void ToolActionHandler::handle(const std::vector<uint8_t>& data) {
     if (!v.VerifyBuffer<Protocol::ToolAction>(nullptr)) return;
     auto* action = flatbuffers::GetRoot<Protocol::ToolAction>(data.data());
     if (!action || !action->pos()) return;
-    auto* p = action->pos();
     flatbuffers::FlatBufferBuilder fbb(128); std::vector<uint8_t> respData;
     switch (action->action()) {
     case Protocol::ToolActionType_WRENCH_CYCLE: {

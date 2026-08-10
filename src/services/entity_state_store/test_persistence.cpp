@@ -35,7 +35,7 @@ static std::string makeTempDb() {
 
 static void removeDb(const std::string& path) {
     std::string cmd = "rm -f " + path;
-    system(cmd.c_str());
+    [[maybe_unused]] int rc = system(cmd.c_str());
 }
 
 static void test_save_and_load() {

@@ -299,7 +299,7 @@ static bool LoadMergeRegistry(const char* dataDir, std::vector<uint8_t>& atlasPi
 }
 
 static bool LoadSourcePNG(const std::string& filename, std::vector<uint8_t>& atlasPixels,
-                         int atlasW, int atlasH, const std::vector<uint16_t>& tileIds) {
+                         int atlasW, [[maybe_unused]] int atlasH, const std::vector<uint16_t>& tileIds) {
     std::string fullPath = std::string("data/textures/") + filename;
     
     std::vector<unsigned char> pngData;

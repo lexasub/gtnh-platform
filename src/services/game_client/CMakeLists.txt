@@ -207,54 +207,56 @@ target_include_directories(gameclientd PRIVATE ${miniaudio_INCLUDE_DIRS} UI ${CM
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-add_executable(gameclient_item_registry_test
-    tests/test_item_registry.cpp
-    Crafting/ClientItemRegistry.cpp
-)
-target_compile_definitions(gameclient_item_registry_test PRIVATE
-    DATA_DIR="${CMAKE_SOURCE_DIR}/data"
-)
-target_include_directories(gameclient_item_registry_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
-add_test(NAME gameclient_item_registry_test COMMAND gameclient_item_registry_test)
+if(BUILD_TESTING)
+    add_executable(gameclient_item_registry_test
+        tests/test_item_registry.cpp
+        Crafting/ClientItemRegistry.cpp
+    )
+    target_compile_definitions(gameclient_item_registry_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+    )
+    target_include_directories(gameclient_item_registry_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    add_test(NAME gameclient_item_registry_test COMMAND gameclient_item_registry_test)
 
-add_executable(gameclient_drag_manager_test
-    tests/DragManager_test.cpp
-    UI/Core/DragManager.cpp
-)
-target_compile_definitions(gameclient_drag_manager_test PRIVATE
-    DATA_DIR="${CMAKE_SOURCE_DIR}/data"
-)
-target_include_directories(gameclient_drag_manager_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}
-)
-target_link_libraries(gameclient_drag_manager_test PRIVATE
-    renderlib
-    glm::glm
-    imgui::imgui
-    spdlog::spdlog
-)
-add_test(NAME gameclient_drag_manager_test COMMAND gameclient_drag_manager_test)
+    add_executable(gameclient_drag_manager_test
+        tests/DragManager_test.cpp
+        UI/Core/DragManager.cpp
+    )
+    target_compile_definitions(gameclient_drag_manager_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+    )
+    target_include_directories(gameclient_drag_manager_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    target_link_libraries(gameclient_drag_manager_test PRIVATE
+        renderlib
+        glm::glm
+        imgui::imgui
+        spdlog::spdlog
+    )
+    add_test(NAME gameclient_drag_manager_test COMMAND gameclient_drag_manager_test)
 
-add_executable(gameclient_start_scenario_test
-    tests/test_start_scenario_command.cpp
-)
-target_compile_definitions(gameclient_start_scenario_test PRIVATE
-    DATA_DIR="${CMAKE_SOURCE_DIR}/data"
-)
-target_include_directories(gameclient_start_scenario_test PRIVATE
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/UI
-)
-add_test(NAME gameclient_start_scenario_test COMMAND gameclient_start_scenario_test)
+    add_executable(gameclient_start_scenario_test
+        tests/test_start_scenario_command.cpp
+    )
+    target_compile_definitions(gameclient_start_scenario_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+    )
+    target_include_directories(gameclient_start_scenario_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/UI
+    )
+    add_test(NAME gameclient_start_scenario_test COMMAND gameclient_start_scenario_test)
 
-add_executable(gameclient_static_assert_test
-    tests/test_client.cpp
-)
-target_include_directories(gameclient_static_assert_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
-add_dependencies(gameclient_static_assert_test game_client_fbs)
-add_test(NAME gameclient_static_assert_test COMMAND gameclient_static_assert_test)
+    add_executable(gameclient_static_assert_test
+        tests/test_client.cpp
+    )
+    target_include_directories(gameclient_static_assert_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
+    add_dependencies(gameclient_static_assert_test game_client_fbs)
+    add_test(NAME gameclient_static_assert_test COMMAND gameclient_static_assert_test)
+endif()

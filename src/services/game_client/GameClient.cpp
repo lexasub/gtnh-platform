@@ -152,7 +152,7 @@ void GameClient::subscribeNetClient() {
         });
 
     netClient_->SetToolActionRespCallback(
-        [this](bool success, uint8_t newRole, const std::vector<uint8_t>& allRoles) {
+        [this](bool success, uint8_t newRole, [[maybe_unused]] const std::vector<uint8_t>& allRoles) {
             if (!success) {
                 spdlog::warn("[ToolAction] failed new_role={}", newRole);
                 return;

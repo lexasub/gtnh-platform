@@ -59,28 +59,30 @@ target_link_libraries(pipe_networkd PRIVATE
 )
 
 # Unit tests
-add_executable(pipe_network_test
-    pipe_network_test.cpp
-    PipeNetwork.cpp
-    CableGraph.cpp
-    FluidRegistry.cpp
-)
+if(BUILD_TESTING)
+    add_executable(pipe_network_test
+        pipe_network_test.cpp
+        PipeNetwork.cpp
+        CableGraph.cpp
+        FluidRegistry.cpp
+    )
 
-target_include_directories(pipe_network_test PRIVATE
-    ${FBS_GEN_DIR}
-    ${flatbuffers_INCLUDE_DIRS}
-    ${CMAKE_SOURCE_DIR}/src/protocol
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/src
-)
+    target_include_directories(pipe_network_test PRIVATE
+        ${FBS_GEN_DIR}
+        ${flatbuffers_INCLUDE_DIRS}
+        ${CMAKE_SOURCE_DIR}/src/protocol
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/src
+    )
 
-add_dependencies(pipe_network_test pipenet_fbs)
+    add_dependencies(pipe_network_test pipenet_fbs)
 
-target_link_libraries(pipe_network_test PRIVATE
-    flatbuffers::flatbuffers
-    spdlog::spdlog
-    asio::asio
-    Threads::Threads
-)
+    target_link_libraries(pipe_network_test PRIVATE
+        flatbuffers::flatbuffers
+        spdlog::spdlog
+        asio::asio
+        Threads::Threads
+    )
 
-add_test(NAME pipe_network_test COMMAND pipe_network_test)
+    add_test(NAME pipe_network_test COMMAND pipe_network_test)
+endif()
