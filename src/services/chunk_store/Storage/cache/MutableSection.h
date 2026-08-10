@@ -1,6 +1,4 @@
-#ifndef MUTABLESECTION_H
-#define MUTABLESECTION_H
-
+#pragma once
 
 #include <algorithm>
 #include <cstdint>
