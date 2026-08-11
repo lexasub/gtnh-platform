@@ -171,7 +171,7 @@ int main(int argc, char* argv[]) {
 
         if (machineRegistry) {
             auto registerController = [&machineRegistry](uint16_t id, const char* name,
-                                                         const char* cls, MachineRole role,
+                                                         const char* cls,
                                                          std::optional<EnergyType> energy_in,
                                                          std::optional<EnergyType> energy_out,
                                                          int slots_in = 0) {
@@ -179,7 +179,6 @@ int main(int argc, char* argv[]) {
                 info.id = id;
                 info.name = name;
                 info.machine_class = cls;
-                info.role = role;
                 info.energy_in = energy_in;
                 info.energy_out = energy_out;
                 info.tier = 1;
@@ -194,12 +193,12 @@ int main(int argc, char* argv[]) {
             // EBF — HEAT consumer; Large Boiler — STEAM producer (fuel via
             // controller container, so give it 4 fuel slots); LCR — ELECTRICITY.
             registerController(EBF_CONTROLLER, "electric_blast_furnace", "ebf",
-                               MachineRole::CONSUMER, EnergyType::HEAT, std::nullopt);
+                               EnergyType::HEAT, std::nullopt);
             registerController(BOILER_CONTROLLER, "large_boiler", "large_boiler",
-                               MachineRole::PRODUCER, std::nullopt, EnergyType::STEAM,
+                               std::nullopt, EnergyType::STEAM,
                                /*slots_in=*/4);
             registerController(LCR_CONTROLLER, "large_chemical_reactor", "chemical_reactor",
-                               MachineRole::CONSUMER, EnergyType::ELECTRICITY, std::nullopt);
+                               EnergyType::ELECTRICITY, std::nullopt);
         }
 
         if (recipeManager) {

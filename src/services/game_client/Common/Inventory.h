@@ -30,6 +30,40 @@ inline const char* GameModeName(GameMode mode) {
   return "UNKNOWN";
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// GameModePerm — permission matrix, the single source of truth for what a
+// mode allows. Values mirror what the client enforces today:
+//
+//   | Mode      | canFly | noclip | canBreak | canPlace | infiniteItems |
+//   |-----------|--------|--------|----------|----------|---------------|
+//   | SPECTATOR |   ✅   |   ✅   |    ❌    |    ❌    |      ✅       |
+//   | CREATIVE  |   ✅   |   ✅   |    ✅    |    ✅    |      ✅       |
+//   | SURVIVAL  |   ❌   |   ❌   |    ✅    |    ✅    |      ❌       |
+//   | ADVENTURE |   ❌   |   ❌   |    ❌    |    ❌    |      ❌       |
+//
+// canFly/noClip: CREATIVE and SPECTATOR fly with no collision (current dev
+// behavior; a true creative-vs-spectator noclip split is future work).
+// canBreak/canPlace: enforced inline in GameClient::Update for now; the
+// separate `add-interaction-mode-gating` change will adopt these predicates.
+// ──────────────────────────────────────────────────────────────────────────
+namespace GameModePerm {
+inline bool CanFly(GameMode m) {
+  return m == GameMode::CREATIVE || m == GameMode::SPECTATOR;
+}
+inline bool NoClip(GameMode m) {
+  return m == GameMode::CREATIVE || m == GameMode::SPECTATOR;
+}
+inline bool InfiniteItems(GameMode m) {
+  return m == GameMode::CREATIVE || m == GameMode::SPECTATOR;
+}
+inline bool CanBreak(GameMode m) {
+  return m == GameMode::CREATIVE || m == GameMode::SURVIVAL;
+}
+inline bool CanPlace(GameMode m) {
+  return m == GameMode::CREATIVE || m == GameMode::SURVIVAL;
+}
+} // namespace GameModePerm
+
 struct InventoryState {
   std::vector<ItemStack> slots;
   BlockPos position;

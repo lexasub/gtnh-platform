@@ -164,8 +164,9 @@ void GameClient::subscribeNetClient() {
             BlockPos pos = interaction_.GetHighlightedBlock();
             if (pos.x != std::numeric_limits<int32_t>::max()) {
                 uint16_t blockId = world_.GetBlockAt(pos);
-                asio::post(worldContext_, [this, pos, blockId]() {
-                    meshMgr_.OnBlockUpdate(pos, blockId, 0, 0, world_);
+                uint8_t blockMeta = world_.GetMetaAt(pos);
+                asio::post(worldContext_, [this, pos, blockId, blockMeta]() {
+                    meshMgr_.OnBlockUpdate(pos, blockId, blockMeta, 0, world_);
                 });
             }
             // Server-driven wrench guidance (pipe connect state) → HUD toast
@@ -215,13 +216,12 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
         // LoadFromRegistry so right-click opens a MachineWindow for them.
         if (auto* mreg = MachineRegistry::instance()) {
             auto registerController = [mreg](uint16_t id, const char* name,
-                                             const char* cls, MachineRole role,
+                                             const char* cls,
                                              int slots_in, int slots_out) {
                 MachineInfo info{};
                 info.id = id;
                 info.name = name;
                 info.machine_class = cls;
-                info.role = role;
                 info.tier = 1;
                 // EBF/LCR: the 4+4 slot grids map 1:1 onto the ITEM_IN/ITEM_OUT
                 // hatch slot ranges by index. Boiler: 4 fuel slots in controller.
@@ -233,11 +233,11 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
                 mreg->Register(info);
             };
             registerController(1003, "electric_blast_furnace", "ebf",
-                               MachineRole::CONSUMER, 4, 4);
+                               4, 4);
             registerController(1005, "large_boiler", "large_boiler",
-                               MachineRole::PRODUCER, 4, 0);
+                               4, 0);
             registerController(1006, "large_chemical_reactor", "chemical_reactor",
-                               MachineRole::CONSUMER, 4, 4);
+                               4, 4);
         }
         BlockUIFactory::LoadFromRegistry(*MachineRegistry::instance());
     }
@@ -420,17 +420,28 @@ void GameClient::Run() {
         // block whose neighbours include a connectable pipe/cable.
         const BlockPos hb = interaction_.GetHighlightedBlock();
         const bool holdingWrench = (interaction_.GetHeldItem() == ITEM_WRENCH);
+        frd.ext.heldItemId = interaction_.GetHeldItem();
         frd.ext.showWrenchOverlay =
             holdingWrench && interaction_.HasHighlight() && highlightedBlockId != 0;
         if (frd.ext.showWrenchOverlay) {
             const int dx[6] = {1, -1, 0, 0, 0, 0};
             const int dy[6] = {0, 0, 1, -1, 0, 0};
             const int dz[6] = {0, 0, 0, 0, 1, -1};
+            const bool hbIsPC = ItemId::isPipe(highlightedBlockId) ||
+                                ItemId::isCable(highlightedBlockId);
+            const uint8_t metaHb = hbIsPC ? world_.GetMetaAt(hb) : 0;
             for (int i = 0; i < 6; ++i) {
-                uint16_t n = world_.GetBlockAt(
-                    BlockPos{hb.x + dx[i], hb.y + dy[i], hb.z + dz[i]});
-                frd.ext.wrenchConnectable[i] =
-                    n != 0 && (ItemId::isPipe(n) || ItemId::isCable(n));
+                const BlockPos nb{hb.x + dx[i], hb.y + dy[i], hb.z + dz[i]};
+                uint16_t n = world_.GetBlockAt(nb);
+                bool connectable = hbIsPC && n != 0 &&
+                                   (ItemId::isPipe(n) || ItemId::isCable(n));
+                if (connectable) {
+                    uint8_t metaNb = world_.GetMetaAt(nb);
+                    uint8_t mhb = (metaHb == 0) ? 0x3F : metaHb;
+                    uint8_t mnb = (metaNb == 0) ? 0x3F : metaNb;
+                    connectable = ((mhb >> i) & 1) && ((mnb >> (i ^ 1)) & 1);
+                }
+                frd.ext.wrenchConnectable[i] = connectable;
             }
         }
 

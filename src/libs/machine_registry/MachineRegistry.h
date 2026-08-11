@@ -13,18 +13,10 @@ enum class EnergyType : uint8_t {
   ROTATION = 3,
 };
 
-enum class MachineRole : uint8_t {
-  CONSUMER = 0,
-  PRODUCER = 1,
-};
-
 struct MachineInfo {
   uint16_t id;
   std::string name;
   std::string machine_class;
-  MachineRole role;
-  // CONSUMER: всегда set; PRODUCER: опц. (только для гибридов вроде
-  // steam_heat_boiler)
   std::optional<EnergyType> energy_in;
   std::optional<EnergyType> energy_out;
   int tier;
@@ -57,8 +49,11 @@ public:
 
   const MachineInfo *Get(uint16_t block_id) const;
   bool IsMachine(uint16_t block_id) const;
-  bool IsConsumer(uint16_t block_id) const;
-  bool IsProducer(uint16_t block_id) const;
+  // Derived heat-network topology. A machine is a heat node iff its
+  // energy_in/energy_out declares HEAT — covers pure heat machines and
+  // converters like steam_heat_boiler (consumes HEAT, emits STEAM).
+  bool IsHeatSource(uint16_t block_id) const;
+  bool IsHeatSink(uint16_t block_id) const;
   const std::unordered_map<uint16_t, MachineInfo> &All() const;
   static const char *EnergyLabel(EnergyType et);
   static const char *EnergyTypeToString(EnergyType et);

@@ -1,7 +1,6 @@
 #include "MachineRegistry.h"
 #include <fstream>
 #include <sstream>
-#include <cctype>
 #include <spdlog/spdlog.h>
 #include <yaml-cpp/yaml.h>
 #include <common/ItemId.h>
@@ -14,17 +13,6 @@ inline EnergyType ParseEnergy(const std::string& str) {
     if (str == "STEAM")       return EnergyType::STEAM;
     if (str == "ROTATION")    return EnergyType::ROTATION;
     return EnergyType::ELECTRICITY;
-}
-
-inline MachineRole ParseRole(const std::string& str) {
-    // machines.yaml uses lowercase ("producer"/"consumer"), the legacy CSV
-    // used uppercase. Accept both — otherwise every producer is silently
-    // misparsed as CONSUMER (maxOutput=0, maxInput=usage default 32).
-    std::string up = str;
-    for (auto& c : up) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-    if (up == "CONSUMER") return MachineRole::CONSUMER;
-    if (up == "PRODUCER") return MachineRole::PRODUCER;
-    return MachineRole::CONSUMER;
 }
 
 inline bool ParseOptionalEnergy(const std::string& str,
@@ -106,7 +94,6 @@ bool MachineRegistry::ParseYamlMachineVariant(const YAML::Node& v, const std::st
 
         info.name = v["name"].as<std::string>("");
         info.machine_class = className;
-        info.role = ParseRole(v["role"].as<std::string>("consumer"));
 
         // energy types
         info.energy_in = ParseOptEnergy(v["energy_in"]);
@@ -129,7 +116,7 @@ bool MachineRegistry::ParseYamlMachineVariant(const YAML::Node& v, const std::st
         // energy config
         if (v["energy"]) {
             info.capacity = v["energy"]["capacity"].as<int>(0);
-            if (info.role == MachineRole::CONSUMER) {
+            if (info.energy_in.has_value()) {
                 info.maxInput = v["energy"]["usage"].as<int>(32);
                 info.maxOutput = 0;
             } else {
@@ -201,7 +188,6 @@ bool MachineRegistry::LoadConsumers(const char* path) {
             info.id = id;
             info.name = name;
             info.machine_class = machine_class;
-            info.role = MachineRole::CONSUMER;
             info.energy_in = energy_in;
             info.energy_out = std::nullopt;
             info.tier = tier;
@@ -258,7 +244,6 @@ bool MachineRegistry::LoadProducers(const char* path) {
             info.id = id;
             info.name = name;
             info.machine_class = machine_class;
-            info.role = MachineRole::PRODUCER;
             info.energy_in = energy_in;
             info.energy_out = energy_out;
             info.tier = tier;
@@ -291,14 +276,16 @@ bool MachineRegistry::IsMachine(uint16_t block_id) const {
     return machines_.find(block_id) != machines_.end();
 }
 
-bool MachineRegistry::IsConsumer(uint16_t block_id) const {
+bool MachineRegistry::IsHeatSource(uint16_t block_id) const {
     auto it = machines_.find(block_id);
-    return it != machines_.end() && it->second.role == MachineRole::CONSUMER;
+    if (it == machines_.end()) return false;
+    return it->second.energy_out == EnergyType::HEAT;
 }
 
-bool MachineRegistry::IsProducer(uint16_t block_id) const {
+bool MachineRegistry::IsHeatSink(uint16_t block_id) const {
     auto it = machines_.find(block_id);
-    return it != machines_.end() && it->second.role == MachineRole::PRODUCER;
+    if (it == machines_.end()) return false;
+    return it->second.energy_in == EnergyType::HEAT;
 }
 
 const std::unordered_map<uint16_t, MachineInfo>& MachineRegistry::All() const {
