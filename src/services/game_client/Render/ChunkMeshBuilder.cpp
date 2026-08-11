@@ -101,7 +101,7 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
     for (int y = 0; y < CHUNK_SIZE; ++y) {
         for (int z = 0; z < CHUNK_SIZE; ++z) {
             for (int x = 0; x < CHUNK_SIZE; ++x) {
-                uint16_t block = chunk->GetBlock(x, y, z);
+                uint16_t block = cache.GetBlock(x, y, z);
                 if (block == 0) continue;
 
                 if (isPipeBlock(block)) {

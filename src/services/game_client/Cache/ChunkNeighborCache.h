@@ -36,4 +36,9 @@ private:
   std::shared_ptr<const ChunkView> holders_[6];
   const ChunkView *nchunks_[6] = {};
   const ChunkView *centerChunk_ = nullptr;
+  // Flat export arrays of [0]=center + [1..6]=neighbors, captured ONCE in
+  // Init. GetBlock/GetMeta index them directly — no per-block mutex.
+  // ChunkView::SetBlock updates them in place, so pointers stay valid.
+  const uint16_t *blocks_[7] = {};
+  const uint8_t *meta_[7] = {};
 };
