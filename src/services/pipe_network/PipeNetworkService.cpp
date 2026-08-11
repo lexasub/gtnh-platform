@@ -17,6 +17,13 @@ struct CheckBridge {
     gtnh::pipe_network::MessageRouterClient& router;
 };
 
+// Canonical face order for per-face connection masks: index = meta bit.
+//   0=+X, 1=-X, 2=+Y, 3=-Y, 4=+Z, 5=-Z  (matches CableGraph / meta-bit convention).
+// meta == 0 ⇒ all six faces connected (0x3F).
+static constexpr int8_t FACE_DX[6] = { 1, -1, 0, 0, 0, 0};
+static constexpr int8_t FACE_DY[6] = { 0,  0, 1,-1, 0, 0};
+static constexpr int8_t FACE_DZ[6] = { 0,  0, 0, 0, 1,-1};
+
 // Generic check handler: iterates network, sums source energy, publishes response.
 template<typename ReqT, typename RespT>
 void handleCheckTemplate(
@@ -288,27 +295,96 @@ void PipeNetworkService::handleBlockChanged(const std::vector<uint8_t>& data) {
             spdlog::debug("[PipeNet] pipe node at ({},{},{}) removed", x, y, z);
         }
         machine_nodes_.erase(key);
+        pipe_meta_.erase(key);
+        cable_graph_.removeCableNode(key);
         return;
+    }
+
+    // Cable handling must run before the isPipeBlock early-return: cables are
+    // not isPipeBlock, so their masks would otherwise never reach CableGraph.
+    if (isCableBlock(block_id)) {
+        const auto* cableDef = getCableDef(block_id);
+        if (cableDef) {
+            uint8_t meta = event->meta();
+            pipe_meta_[key] = meta;
+            if (cable_graph_.hasCableNode(key)) {
+                // Wrench toggle / re-place on same key: update mask + rebuild
+                // so the per-face connection change takes effect immediately.
+                cable_graph_.setCableMeta(key, meta);
+            } else {
+                cable_graph_.addCableNode(key, *cableDef, x, y, z, meta);
+            }
+            spdlog::debug("[PipeNet] cable node {} at ({},{},{}) meta={:#x}",
+                          key, x, y, z, meta);
+        }
     }
 
     if (!isPipeBlock(block_id)) return;
 
-    if (pipe_nodes_.find(key) == pipe_nodes_.end()) {
-        uint64_t nodeId = network_manager_.addNode(x, y, z, block_id);
+    bool isNew = (pipe_nodes_.find(key) == pipe_nodes_.end());
+    uint64_t nodeId;
+    if (isNew) {
+        nodeId = network_manager_.addNode(x, y, z, block_id);
         pipe_nodes_.emplace(key, nodeId);
         spdlog::debug("[PipeNet] pipe node {} at ({},{},{}) added", nodeId, x, y, z);
+    } else {
+        nodeId = pipe_nodes_[key];
     }
 
-    // Trigger item network rebuilds for pipe block changes
+    uint8_t meta = event->meta();
+    pipe_meta_[key] = meta;
+    network_manager_.setNodeMeta(nodeId, meta);
+
+    // Rebuild mask-aware connectivity: drop stale edges, then re-add only the
+    // faces both endpoints permit open.
+    network_manager_.removeEdgesForNode(nodeId);
+    bool isItem = (block_id == BLOCK_ID_ITEM_PIPE || block_id == BLOCK_ID_DENSE_ITEM_PIPE);
+    connectNodeNeighbors(nodeId, x, y, z, meta, isItem, /*sourceIsPipe=*/true);
+
     network_manager_.rebuildItemNetworks();
-    
-    // Handle cable blocks separately for packet-based electricity transport
-    if (isCableBlock(block_id)) {
-        const auto* cableDef = getCableDef(block_id);
-        if (cableDef) {
-            // Add cable node to CableGraph for packet-based electricity
-            cable_graph_.addCableNode(key, *cableDef, x, y, z);
-            spdlog::debug("[PipeNet] cable node added at ({},{},{})", x, y, z);
+}
+
+void PipeNetworkService::connectNodeNeighbors(uint64_t sourceNodeId,
+                                             int32_t x, int32_t y, int32_t z,
+                                             uint8_t sourceMeta, bool isItem,
+                                             bool sourceIsPipe) {
+    for (int f = 0; f < 6; ++f) {
+        int32_t nx = x + FACE_DX[f];
+        int32_t ny = y + FACE_DY[f];
+        int32_t nz = z + FACE_DZ[f];
+        uint64_t nKey = posKey(nx, ny, nz);
+
+        uint64_t nNode = 0;
+        bool nIsPipe = false;
+        auto pit = pipe_nodes_.find(nKey);
+        if (pit != pipe_nodes_.end()) {
+            nNode = pit->second;
+            nIsPipe = true;
+        } else {
+            auto mit = machine_nodes_.find(nKey);
+            if (mit != machine_nodes_.end()) nNode = mit->second;
+        }
+        if (nNode == 0) continue;
+        // Only connect across exactly one pipe endpoint (pipe↔pipe or pipe↔machine);
+        // never machine↔machine.
+        if (!sourceIsPipe && !nIsPipe) continue;
+
+        const auto* nn = network_manager_.getNode(nNode);
+        if (!nn) continue;
+        bool compatible = isItem ? (nn->itemCapacity > 0) : (nn->fluidCapacity > 0);
+        if (!compatible) continue;
+
+        if (nIsPipe) {
+            uint8_t nMeta = pipe_meta_.count(nKey) ? pipe_meta_[nKey] : 0;
+            // Connected iff both endpoints open their shared face.
+            if (pipenet::pipeFacesConnected(sourceMeta, nMeta, f)) {
+                network_manager_.addEdge(sourceNodeId, nNode);
+            }
+        } else {
+            // Machine endpoints carry no per-face mask; the pipe side gates.
+            if (pipenet::pipeFaceOpen(sourceMeta, f)) {
+                network_manager_.addEdge(sourceNodeId, nNode);
+            }
         }
     }
 }
@@ -532,6 +608,12 @@ void PipeNetworkService::handleFluidNodeUpdate(const std::vector<uint8_t>& data)
             }
         }
     }
+
+    // Fluid machines previously built no edges (connected_nodes is empty), so
+    // fluid never flowed. Add masked machine→fluid-pipe connections: the machine
+    // has no per-face mask, the pipe's open faces gate the link.
+    connectNodeNeighbors(mgr_id, x, y, z,
+                         /*sourceMeta=*/0, /*isItem=*/false, /*sourceIsPipe=*/false);
 }
 
 void PipeNetworkService::handleFluidCheckRequest(const std::vector<uint8_t>& data) {
@@ -649,15 +731,11 @@ void PipeNetworkService::handleItemNodeUpdate(const std::vector<uint8_t>& data) 
             }
         }
     } else {
-        static const int dx[6] = {0, 0, 0, 0, -1, 1};
-        static const int dy[6] = {-1, 1, 0, 0, 0, 0};
-        static const int dz[6] = {0, 0, -1, 1, 0, 0};
-        for (int f = 0; f < 6; ++f) {
-            uint64_t adjKey = posKey(x + dx[f], y + dy[f], z + dz[f]);
-            if (auto pit = pipe_nodes_.find(adjKey); pit != pipe_nodes_.end()) {
-                network_manager_.addEdge(mgr_id, pit->second);
-            }
-        }
+        // Mask-aware machine→item-pipe connections. Machine endpoints carry no
+        // per-face mask; only the pipe's open faces gate the connection, so a
+        // wrench-disconnected pipe face no longer links to an adjacent machine.
+        connectNodeNeighbors(mgr_id, x, y, z,
+                             /*sourceMeta=*/0, /*isItem=*/true, /*sourceIsPipe=*/false);
     }
 
     spdlog::debug("handleItemNodeUpdate: node={} at ({},{},{}) source={} sink={} caps={} items={}",

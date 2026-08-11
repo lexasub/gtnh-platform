@@ -11,7 +11,7 @@
 namespace gtnh {
 namespace pipe_network {
 
-void CableGraph::addCableNode(uint64_t nodeId, const CableDef& def, int32_t x, int32_t y, int32_t z) {
+void CableGraph::addCableNode(uint64_t nodeId, const CableDef& def, int32_t x, int32_t y, int32_t z, uint8_t meta) {
     CableGraph::CableNode node;
     node.id = nodeId;
     node.x = x;
@@ -25,8 +25,21 @@ void CableGraph::addCableNode(uint64_t nodeId, const CableDef& def, int32_t x, i
     node.packetsThisTick = 0;
     node.temperature = 0.0f;
     node.maxSeenVoltage = 0;
+    node.meta = meta;
     m_nodes[nodeId] = node;
     m_posToNode[packPos(x, y, z)] = nodeId;
+}
+
+void CableGraph::setCableMeta(uint64_t nodeId, uint8_t meta) {
+    auto it = m_nodes.find(nodeId);
+    if (it == m_nodes.end()) return;
+    if (it->second.meta == meta) return;
+    it->second.meta = meta;
+    rebuildGraph();
+}
+
+bool CableGraph::hasCableNode(uint64_t nodeId) const {
+    return m_nodes.find(nodeId) != m_nodes.end();
 }
 
 void CableGraph::removeCableNode(uint64_t nodeId) {
@@ -65,19 +78,27 @@ void CableGraph::rebuildGraph() {
             int32_t y = nodeIt->second.y;
             int32_t z = nodeIt->second.z;
             
-            // Check 6 adjacent positions
+            // Check 6 adjacent positions. offsets index matches meta bit order
+            // {+X,-X,+Y,-Y,+Z,-Z}: a cable connects to a neighbor only if its
+            // own face bit (f) AND the neighbor's opposite face bit (f^1) are set.
+            // meta==0 means "all connected" (0x3F) for backward compatibility.
             constexpr int32_t offsets[6][3] = {
                 {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}
             };
-            
-            for (const auto& off : offsets) {
-                int32_t nx = x + off[0];
-                int32_t ny = y + off[1];
-                int32_t nz = z + off[2];
+
+            for (int f = 0; f < 6; ++f) {
+                int32_t nx = x + offsets[f][0];
+                int32_t ny = y + offsets[f][1];
+                int32_t nz = z + offsets[f][2];
 
                 auto posIt = m_posToNode.find(packPos(nx, ny, nz));
                 if (posIt != m_posToNode.end()) {
                     uint64_t neighborId = posIt->second;
+                    auto nIt = m_nodes.find(neighborId);
+                    if (nIt == m_nodes.end()) continue;
+                    uint8_t mCur = (nodeIt->second.meta == 0) ? 0x3F : nodeIt->second.meta;
+                    uint8_t mNbr = (nIt->second.meta == 0) ? 0x3F : nIt->second.meta;
+                    if (!(mCur & (1u << f)) || !(mNbr & (1u << (f ^ 1)))) continue;
                     if (!visited.contains(neighborId)) {
                         visited.insert(neighborId);
                         q.push(neighborId);
@@ -184,14 +205,22 @@ void CableGraph::tick() {
                             {1,0,0}, {-1,0,0}, {0,1,0}, {0,-1,0}, {0,0,1}, {0,0,-1}
                         };
 
-                        for (const auto& off : offsets) {
-                            int32_t nx = cx + off[0];
-                            int32_t ny = cy + off[1];
-                            int32_t nz = cz + off[2];
+                        for (int f = 0; f < 6; ++f) {
+                            int32_t nx = cx + offsets[f][0];
+                            int32_t ny = cy + offsets[f][1];
+                            int32_t nz = cz + offsets[f][2];
 
                             auto posIt = m_posToNode.find(packPos(nx, ny, nz));
                             if (posIt != m_posToNode.end()) {
                                 uint64_t neighborId = posIt->second;
+                                auto nItTick = m_nodes.find(neighborId);
+                                if (nItTick == m_nodes.end()) continue;
+                                // offsets[f] maps directly to meta bit f
+                                // ({+X,-X,+Y,-Y,+Z,-Z}); require both
+                                // endpoints connected on the shared axis.
+                                uint8_t mCur = (curIt->second.meta == 0) ? 0x3F : curIt->second.meta;
+                                uint8_t mNbr = (nItTick->second.meta == 0) ? 0x3F : nItTick->second.meta;
+                                if (!(mCur & (1u << f)) || !(mNbr & (1u << (f ^ 1)))) continue;
                                 if (visited.find(neighborId) == visited.end()) {
                                     visited.insert(neighborId);
                                     std::vector<uint64_t> newPath = curPath;
@@ -361,14 +390,22 @@ std::vector<uint64_t> CableGraph::findPath(uint64_t fromCableNode, uint64_t toMa
             {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}
         };
         
-        for (const auto& off : offsets) {
-            int32_t nx = x + off[0];
-            int32_t ny = y + off[1];
-            int32_t nz = z + off[2];
+        for (int f = 0; f < 6; ++f) {
+            int32_t nx = x + offsets[f][0];
+            int32_t ny = y + offsets[f][1];
+            int32_t nz = z + offsets[f][2];
 
             auto posIt = m_posToNode.find(packPos(nx, ny, nz));
             if (posIt != m_posToNode.end()) {
                 uint64_t neighborId = posIt->second;
+                auto nItPath = m_nodes.find(neighborId);
+                if (nItPath == m_nodes.end()) continue;
+                // offsets[f] maps directly to meta bit f
+                // ({+X,-X,+Y,-Y,+Z,-Z}); require both
+                // endpoints connected on the shared axis.
+                uint8_t mCur = (nodeIt->second.meta == 0) ? 0x3F : nodeIt->second.meta;
+                uint8_t mNbr = (nItPath->second.meta == 0) ? 0x3F : nItPath->second.meta;
+                if (!(mCur & (1u << f)) || !(mNbr & (1u << (f ^ 1)))) continue;
                 if (!visited.contains(neighborId)) {
                     visited.insert(neighborId);
                     std::vector<uint64_t> newPath = currentPath;

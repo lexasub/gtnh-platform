@@ -19,6 +19,17 @@ inline uint64_t pipePosKey(int32_t x, int32_t y, int32_t z) {
          | (static_cast<uint64_t>(static_cast<int64_t>(z) & 0xFFFFF));
 }
 
+// Per-face connection mask helpers. A pipe's `meta` byte encodes which of its 6
+// faces are open: bit f (0=+X,1=-X,2=+Y,3=-Y,4=+Z,5=-Z) set ⇒ face open.
+// meta == 0 ⇒ all faces open (0x3F). Two pipes connect across a shared face f
+// only if BOTH open it (f on one side, opposite f^1 on the other).
+inline bool pipeFaceOpen(uint8_t meta, int face) {
+    return meta == 0 || ((meta & (1u << face)) != 0);
+}
+inline bool pipeFacesConnected(uint8_t fromMeta, uint8_t toMeta, int face) {
+    return pipeFaceOpen(fromMeta, face) && pipeFaceOpen(toMeta, face ^ 1);
+}
+
 // Wrench-on-pipe guidance (mirrors Protocol::PipeWrenchGuidance; kept local so
 // the evaluator stays testable without FlatBuffers headers).
 enum class WrenchGuidance : uint8_t {
@@ -53,6 +64,7 @@ struct PipeNode {
   uint64_t id;
   int32_t x, y, z;
   uint16_t block_id;
+  uint8_t meta = 0;       // per-face connection mask; 0 ⇒ all faces open (0x3F)
 
   // Energy handling
   int32_t energyBuffer;   // current energy stored in this node
@@ -115,6 +127,11 @@ public:
   // Add/remove connection between nodes
   uint64_t addEdge(uint64_t fromNode, uint64_t toNode, float resistance = 0.0f);
   void removeEdge(uint64_t edgeId);
+
+  // Per-face connection mask for item/fluid pipe nodes.
+  void setNodeMeta(uint64_t nodeId, uint8_t meta);
+  // Drop all incident edges so they can be recomputed from the current mask.
+  void removeEdgesForNode(uint64_t nodeId);
 
   // BFS: discover connected networks from a node
   std::vector<uint64_t> discoverNetwork(uint64_t startNodeId) const;

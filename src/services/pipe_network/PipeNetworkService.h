@@ -53,6 +53,8 @@ private:
   std::unordered_map<uint64_t, uint64_t> protocol_to_mgr_;
   // pos_key → PipeNetworkManager node_id (pipe blocks, from world.blocks.changed)
   std::unordered_map<uint64_t, uint64_t> pipe_nodes_;
+  // pos_key → connection mask (meta) for pipe/cable blocks
+  std::unordered_map<uint64_t, uint8_t> pipe_meta_;
   // pos_key → node_id (registered machine nodes, from *.node.update)
   std::unordered_map<uint64_t, uint64_t> machine_nodes_;
   CableGraph cable_graph_;
@@ -79,6 +81,12 @@ private:
 
   // Block change handler (pipe auto-detection)
   void handleBlockChanged(const std::vector<uint8_t> &data);
+
+  // Mask-aware item/fluid edge creation: connects the node at (x,y,z) to
+  // compatible pipe/machine neighbors, gated by per-face connection masks.
+  void connectNodeNeighbors(uint64_t sourceNodeId, int32_t x, int32_t y, int32_t z,
+                           uint8_t sourceMeta, bool isItem, bool sourceIsPipe);
+
   static bool isPipeBlock(uint16_t block_id);
   static bool isCableBlock(uint16_t block_id);
   static uint64_t posKey(int32_t x, int32_t y, int32_t z);

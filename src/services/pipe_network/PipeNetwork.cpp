@@ -171,6 +171,23 @@ void PipeNetworkManager::removeEdge(uint64_t edgeId) {
     rebuildNetworks();
 }
 
+void PipeNetworkManager::setNodeMeta(uint64_t nodeId, uint8_t meta) {
+    auto it = nodes_.find(nodeId);
+    if (it == nodes_.end()) return;
+    it->second.meta = meta;
+}
+
+void PipeNetworkManager::removeEdgesForNode(uint64_t nodeId) {
+    for (auto it = edges_.begin(); it != edges_.end();) {
+        if (it->second.fromNode == nodeId || it->second.toNode == nodeId) {
+            it = edges_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    rebuildNetworks();
+}
+
 void PipeNetworkManager::bfsNetwork(uint64_t startNode, std::unordered_set<uint64_t>& visited,
                                      std::vector<uint64_t>& component) {
     std::queue<uint64_t> q;

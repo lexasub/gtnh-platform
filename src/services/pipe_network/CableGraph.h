@@ -36,11 +36,14 @@ public:
     uint32_t maxSeenVoltage = 0;
     std::vector<EnergyPacket> packetsIn;
     std::vector<EnergyPacket> packetsOut;
+    uint8_t meta = 0;  // connection mask {+X,-X,+Y,-Y,+Z,-Z}; 0 ⇒ all connected
   };
 
   void addCableNode(uint64_t nodeId, const CableDef &def, int32_t x, int32_t y,
-                    int32_t z);
+                    int32_t z, uint8_t meta = 0);
   void removeCableNode(uint64_t nodeId);
+  void setCableMeta(uint64_t nodeId, uint8_t meta);
+  bool hasCableNode(uint64_t nodeId) const;
   void rebuildGraph();
   void injectPacket(const EnergyPacket &packet, uint64_t startNodeId);
   std::vector<EnergyPacket> collectPackets(uint64_t machineNodeId);

@@ -1064,6 +1064,121 @@ static void test_machine_to_pipe_to_machine() {
     PASS();
 }
 
+static void test_pipe_node_meta() {
+    // New manager mask support: per-face mask stored on the node, and bulk
+    // removal of a node's incident edges (used when a pipe's mask changes).
+    pipenet::PipeNetworkManager mgr;
+    uint64_t a = mgr.addNode(0, 0, 0, 62);
+    uint64_t b = mgr.addNode(1, 0, 0, 62);
+    mgr.addEdge(a, b);
+
+    mgr.setNodeMeta(a, 0x3F);
+    CHECK_EQ(mgr.getNode(a)->meta, uint8_t(0x3F), "setNodeMeta stores mask");
+    mgr.setNodeMeta(a, 0);
+    CHECK_EQ(mgr.getNode(a)->meta, uint8_t(0), "setNodeMeta overwrites mask");
+
+    mgr.removeEdgesForNode(a);
+    bool together = false;
+    for (const auto* net : mgr.getAllNetworks()) {
+        bool hasA = false, hasB = false;
+        for (uint64_t n : net->nodeIds) { if (n == a) hasA = true; if (n == b) hasB = true; }
+        if (hasA && hasB) together = true;
+    }
+    CHECK(!together, "removeEdgesForNode dropped the a↔b edge");
+    PASS();
+}
+
+static void test_item_pipe_face_mask() {
+    // Validates the exact gating rule PipeNetworkService::connectNodeNeighbors
+    // applies: two pipes connect across face f only if BOTH open it
+    // (f on one side, f^1 on the other); a machine endpoint (no mask, treated
+    // as open) connects whenever the pipe's shared face is open.
+    using pipenet::pipeFaceOpen;
+    using pipenet::pipeFacesConnected;
+
+    CHECK(pipeFacesConnected(0, 0, 0), "meta 0 (all open) connects on every face");
+    CHECK(!pipeFacesConnected(0x3E, 0x3F, 0), "closing A's +X face disconnects A↔B");
+    CHECK(!pipeFacesConnected(0x3F, 0x3D, 0), "closing B's −X face disconnects A↔B (must be mutual)");
+    CHECK(pipeFacesConnected(0x3F, 0x3F, 0), "both fully open connect");
+    CHECK(pipeFacesConnected(0x01, 0x02, 0), "mutual open across +X connects (only those faces)");
+    CHECK(pipeFaceOpen(0x3F, 0), "machine connects through a pipe's open +X face");
+    CHECK(!pipeFaceOpen(0x3E, 0), "machine does NOT connect through a pipe's closed +X face");
+    PASS();
+}
+
+static void test_pipe_wrench_disconnect() {
+    // Regression: a wrench toggling a pipe face OFF must disconnect that pipe
+    // while open faces stay connected. connectNodeNeighbors is private, so this
+    // rebuilds A's edges through the public API as that method does.
+    pipenet::PipeNetworkManager mgr;
+
+    auto inSame = [&](uint64_t x, uint64_t y) -> bool {
+        auto net = mgr.discoverNetwork(x);
+        for (uint64_t n : net) if (n == y) return true;
+        return false;
+    };
+
+    uint64_t a = mgr.addNode(0, 0, 0, 62);
+    uint64_t b = mgr.addNode(1, 0, 0, 62);
+    uint64_t c = mgr.addNode(-1, 0, 0, 62);
+    mgr.setNodeItemProps(a, 1, false, false);
+    mgr.setNodeItemProps(b, 1, false, false);
+    mgr.setNodeItemProps(c, 1, false, false);
+
+    // Face f connects A to a neighbor; the neighbor's opposite face is f^1.
+    auto rebuildA = [&](uint8_t metaA, uint8_t metaB, uint8_t metaC) {
+        mgr.setNodeMeta(a, metaA);
+        mgr.setNodeMeta(b, metaB);
+        mgr.setNodeMeta(c, metaC);
+        mgr.removeEdgesForNode(a);
+        mgr.removeEdgesForNode(b);
+        mgr.removeEdgesForNode(c);
+        if (pipenet::pipeFacesConnected(metaA, metaB, 0)) mgr.addEdge(a, b);
+        if (pipenet::pipeFacesConnected(metaA, metaC, 1)) mgr.addEdge(a, c);
+    };
+
+    rebuildA(0x3F, 0x3F, 0x3F);
+    CHECK(inSame(a, b), "fully-open pipes connect across +X");
+    CHECK(inSame(a, c), "fully-open pipes connect across -X");
+
+    rebuildA(0x3E, 0x3F, 0x3F);
+    CHECK(!inSame(a, b), "wrench closing A's +X face disconnects A<->B");
+    CHECK(inSame(a, c), "A keeps still-open -X connection to C");
+    PASS();
+}
+
+static void test_pipe_machine_connect() {
+    // Regression: a machine connects to a pipe gated only by the pipe's own
+    // face mask (machine side has none). connectNodeNeighbors is private, so
+    // this drives its pipe<->machine branch through the public API.
+    pipenet::PipeNetworkManager mgr;
+
+    auto inSame = [&](uint64_t x, uint64_t y) -> bool {
+        auto net = mgr.discoverNetwork(x);
+        for (uint64_t n : net) if (n == y) return true;
+        return false;
+    };
+
+    uint64_t pipe = mgr.addNode(0, 0, 0, 62);
+    uint64_t machine = mgr.addNode(1, 0, 0, 100);
+    mgr.setNodeItemProps(pipe, 1, false, false);
+    mgr.setNodeItemProps(machine, 1, false, false);
+
+    auto rebuild = [&](uint8_t pipeMeta) {
+        mgr.setNodeMeta(pipe, pipeMeta);
+        mgr.removeEdgesForNode(pipe);
+        mgr.removeEdgesForNode(machine);
+        if (pipenet::pipeFaceOpen(pipeMeta, 0)) mgr.addEdge(pipe, machine);
+    };
+
+    rebuild(0x3F);
+    CHECK(inSame(pipe, machine), "machine connects through pipe's open +X face");
+
+    rebuild(0x3E);
+    CHECK(!inSame(pipe, machine), "machine does not connect through pipe's closed +X face");
+    PASS();
+}
+
 static void test_cable_graph_transformer_integration() {
     using namespace gtnh::pipe_network;
 
@@ -1281,6 +1396,12 @@ int main(int, char**) {
     // Integration-style
     TEST(block_place_auto_discovery);
     TEST(machine_to_pipe_to_machine);
+
+    // Per-face mask support (item/fluid pipe disconnect via wrench)
+    TEST(pipe_node_meta);
+    TEST(item_pipe_face_mask);
+    TEST(pipe_wrench_disconnect);
+    TEST(pipe_machine_connect);
 
     printf("\n=== Results: %d tests, %d passed, %d failed ===\n",
            g_tests, g_passed, g_failed);
