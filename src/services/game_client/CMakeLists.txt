@@ -70,6 +70,7 @@ add_executable(gameclientd
     Render/MinimapWorldAdapter.cpp
     Render/ChunkMeshProvider.cpp
     Render/RenderBridge.cpp
+    Render/WrenchOverlay.cpp
 
     World/InteractionSystem.cpp
     World/ChunkStorage.cpp
@@ -242,6 +243,21 @@ if(BUILD_TESTING)
     )
     add_test(NAME gameclient_drag_manager_test COMMAND gameclient_drag_manager_test)
 
+    add_executable(gameclient_gamemode_permissions_test
+        tests/test_gamemode_permissions.cpp
+    )
+    target_compile_definitions(gameclient_gamemode_permissions_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+    )
+    target_include_directories(gameclient_gamemode_permissions_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    target_link_libraries(gameclient_gamemode_permissions_test PRIVATE
+        glm::glm
+    )
+    add_test(NAME gameclient_gamemode_permissions_test COMMAND gameclient_gamemode_permissions_test)
+
     add_executable(gameclient_start_scenario_test
         tests/test_start_scenario_command.cpp
     )
@@ -261,4 +277,52 @@ if(BUILD_TESTING)
     target_include_directories(gameclient_static_assert_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
     add_dependencies(gameclient_static_assert_test game_client_fbs)
     add_test(NAME gameclient_static_assert_test COMMAND gameclient_static_assert_test)
+
+    add_executable(gameclient_mesh_hash_test
+        tests/MeshHash_test.cpp
+    )
+    target_include_directories(gameclient_mesh_hash_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    add_test(NAME gameclient_mesh_hash_test COMMAND gameclient_mesh_hash_test)
+
+    add_executable(gameclient_wrench_overlay_test
+        tests/WrenchOverlay_test.cpp
+        Render/WrenchOverlay.cpp
+    )
+    target_include_directories(gameclient_wrench_overlay_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    target_link_libraries(gameclient_wrench_overlay_test PRIVATE
+        glm::glm
+    )
+    add_test(NAME gameclient_wrench_overlay_test COMMAND gameclient_wrench_overlay_test)
+
+    add_executable(gameclient_wrench_grid_test
+        tests/WrenchGrid_test.cpp
+    )
+    target_include_directories(gameclient_wrench_grid_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    target_link_libraries(gameclient_wrench_grid_test PRIVATE
+        glm::glm
+    )
+    add_test(NAME gameclient_wrench_grid_test COMMAND gameclient_wrench_grid_test)
+
+    add_executable(gameclient_wrench_meta_link_test
+        tests/WrenchMetaLink_test.cpp
+        Render/PipeMeshBuilder.cpp
+    )
+    target_include_directories(gameclient_wrench_meta_link_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/services
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    target_link_libraries(gameclient_wrench_meta_link_test PRIVATE
+        glm::glm
+    )
+    add_test(NAME gameclient_wrench_meta_link_test COMMAND gameclient_wrench_meta_link_test)
 endif()

@@ -7,6 +7,7 @@
 #include "BlockRenderRegistry.h"
 #include <common/ItemId.h>
 #include <array>
+#include <unordered_map>
 
 namespace {
     thread_local ChunkMeshBuilder::MeshData data;
@@ -22,6 +23,30 @@ namespace {
             case ItemId::pack("0:10:11:3"):   return 0xFF228B22;  // oak_leaves
             default: return 0xFFFFFFFF;
         }
+    }
+
+    // Per-block-id render info (6 UVs + transparency). UVs are deterministic
+    // (atlas tile layout is a compile-time constant), so this cache is valid
+    // for the whole process. It turns ~12 hash-map lookups per block
+    // (GetUV + IsTransparent per visible face) into 1 lookup per distinct
+    // block id per thread — and chunk rebuilds reuse the same ids, so the
+    // hot path is amortized to zero lookups.
+    struct BlockRenderInfo {
+        renderlib::UVRect uv[6];
+        bool transparent;
+    };
+    thread_local std::unordered_map<uint16_t, BlockRenderInfo> s_blockInfo;
+
+    inline const BlockRenderInfo& GetBlockRenderInfo(uint16_t block) {
+        auto it = s_blockInfo.find(block);
+        if (it != s_blockInfo.end())
+            return it->second;
+        BlockRenderInfo info;
+        for (int f = 0; f < 6; ++f)
+            info.uv[f] = renderlib::TextureAtlas::GetUV(block, f);
+        info.transparent = renderlib::TextureAtlas::IsTransparent(block);
+        auto res = s_blockInfo.emplace(block, info);
+        return res.first->second;
     }
 }
 
@@ -83,7 +108,8 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
                     static PipeMeshBuilder pipeBuilder;
                     auto pipeType = blockIdToPipeType(block);
                     auto mask = pipeBuilder.detectConnections(x, y, z, pipeType,
-                        [&](int32_t bx, int32_t by, int32_t bz) { return cache.GetBlock(bx, by, bz); });
+                        [&](int32_t bx, int32_t by, int32_t bz) { return cache.GetBlock(bx, by, bz); },
+                        [&](int32_t bx, int32_t by, int32_t bz) { return cache.GetMeta(bx, by, bz); });
                     auto pipeMesh = pipeBuilder.buildPipeMesh(x, y, z, pipeType, mask);
                     size_t vertBase = data.vertices.size();
                     data.vertices.insert(data.vertices.end(), pipeMesh.vertices.begin(), pipeMesh.vertices.end());
@@ -96,7 +122,8 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
                     static CableMeshBuilder cableBuilder;
                     auto tier = blockIdToCableTier(block);
                     auto mask = cableBuilder.detectConnections(x, y, z, tier,
-                        [&](int32_t bx, int32_t by, int32_t bz) { return cache.GetBlock(bx, by, bz); });
+                        [&](int32_t bx, int32_t by, int32_t bz) { return cache.GetBlock(bx, by, bz); },
+                        [&](int32_t bx, int32_t by, int32_t bz) { return cache.GetMeta(bx, by, bz); });
                     auto cableMesh = cableBuilder.buildCableMesh(x, y, z, tier, mask);
                     size_t vertBase = data.vertices.size();
                     data.vertices.insert(data.vertices.end(), cableMesh.vertices.begin(), cableMesh.vertices.end());
@@ -105,12 +132,14 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
                     continue;
                 }
 
+                const auto& info = GetBlockRenderInfo(block);
+
                 for (int f = 0; f < 6; ++f) {
                     if (cache.GetBlock(x + deltas[f][0], y + deltas[f][1], z + deltas[f][2]) != 0)
                         continue;
 
                     const auto &face = faces[f];
-                    auto uv = renderlib::TextureAtlas::GetUV(block, f);
+                    auto uv = info.uv[f];
 
                     auto nx = static_cast<uint8_t>((normals[f][0] * 0.5f + 0.5f) * 255.0f);
                     auto ny = static_cast<uint8_t>((normals[f][1] * 0.5f + 0.5f) * 255.0f);
@@ -140,14 +169,14 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
                             .v = uv.v0 + dv * (vert[axis[2]] ^ axis[3])
                         };
 
-                        if (renderlib::TextureAtlas::IsTransparent(block)) {
+                        if (info.transparent) {
                             data.transparentVertices.push_back(vertex);
                         } else {
                             data.vertices.push_back(vertex);
                         }
                     }
 
-                    auto &curIdx = renderlib::TextureAtlas::IsTransparent(block) ? transparentIdx : idx;
+                    auto &curIdx = info.transparent ? transparentIdx : idx;
 
                     data.indices.push_back(curIdx + 0);
                     data.indices.push_back(curIdx + 1);
@@ -160,10 +189,8 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
             }
         }
     }
-    data.vertices.shrink_to_fit();
-    data.indices.shrink_to_fit();
-    data.transparentVertices.shrink_to_fit();
-    data.transparentIndices.shrink_to_fit();
-
+    // NOTE: no shrink_to_fit here — the buffers are moved out of this
+    // thread_local on return, so shrinking would only add an extra
+    // allocation + full copy per rebuild for zero benefit.
     return std::move(data);
 }

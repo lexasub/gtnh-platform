@@ -3,6 +3,7 @@
 #include "Render/ChunkMeshBuilder.h"
 #include "World/ChunkView.h"
 #include "World/World.h"
+#include "Cache/MeshHash.h"
 #include <chrono>
 #include <spdlog/spdlog.h>
 
@@ -14,17 +15,6 @@ MeshManager::~MeshManager() {
     shuttingDown_ = true;
     loadGroup_.wait();
     updateGroup_.wait();
-}
-
-// FNV-1a over the block array.
-uint64_t MeshManager::HashChunkData(const uint16_t* blocks, size_t count) {
-    if (!blocks) return 0;
-    uint64_t h = 0xcbf29ce484222325ull;
-    for (size_t i = 0; i < count; ++i) {
-        h ^= blocks[i];
-        h *= 0x100000001b3ull;
-    }
-    return h;
 }
 
 // Atomically check if a rebuild is already in-flight for this chunk.
@@ -58,7 +48,8 @@ void MeshManager::OnBlockUpdate(BlockPos pos, uint16_t block_id, uint8_t meta,
         auto ch = world.GetChunk(c);
         if (!ch) return;
         if (!ch->blocks_data()) return;
-        uint64_t h = HashChunkData(ch->blocks_data(), ch->blocks_size());
+        uint64_t h = mesh::HashBlockData(ch->blocks_data(), ch->blocks_size(),
+                                  ch->meta_data(), ch->meta_size());
         if (meshCache_.CheckBuildHash(c, h))
             return;
 
@@ -85,10 +76,18 @@ void MeshManager::OnBlockUpdate(BlockPos pos, uint16_t block_id, uint8_t meta,
                 releaseRebuild(pendingRebuildMtx_, pendingRebuilds_, key);
                 return;
             }
-            uint64_t h_actual = HashChunkData(ch->blocks_data(), ch->blocks_size());
+            uint64_t h_actual = mesh::HashBlockData(ch->blocks_data(), ch->blocks_size(),
+                                             ch->meta_data(), ch->meta_size());
+            auto t_build = std::chrono::steady_clock::now();
             ChunkNeighborCache cache;
             cache.Init(world, c, ch.get());
             auto meshData = ChunkMeshBuilder::Build(cache, ch);
+            auto build_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - t_build).count();
+            if (build_us > 300) {
+                spdlog::trace("MeshManager: rebuild ({},{},{}) took {} us ({} verts)",
+                              c.x, c.y, c.z, build_us, meshData.vertices.size());
+            }
             meshCache_.EnqueueCreateMesh(c, h_actual, std::move(meshData));
             releaseRebuild(pendingRebuildMtx_, pendingRebuilds_, key);
         });
@@ -118,7 +117,8 @@ void MeshManager::OnChunkData(ChunkCoord coord, std::shared_ptr<ChunkView> chunk
         return;
 
     if (!chunk->blocks_data()) return;
-    uint64_t hash = HashChunkData(chunk->blocks_data(), chunk->blocks_size());
+    uint64_t hash = mesh::HashBlockData(chunk->blocks_data(), chunk->blocks_size(),
+                                 chunk->meta_data(), chunk->meta_size());
     std::shared_ptr<const ChunkView> shared = world.OnChunkData(std::move(chunk), coord);
     if (meshCache_.CheckBuildHash(coord, hash))
         return;
@@ -147,10 +147,18 @@ void MeshManager::OnChunkData(ChunkCoord coord, std::shared_ptr<ChunkView> chunk
             releaseRebuild(pendingRebuildMtx_, pendingRebuilds_, key);
             return;
         }
-        uint64_t h_actual = HashChunkData(shared->blocks_data(), shared->blocks_size());
+        uint64_t h_actual = mesh::HashBlockData(shared->blocks_data(), shared->blocks_size(),
+                                         shared->meta_data(), shared->meta_size());
+        auto t_build = std::chrono::steady_clock::now();
         ChunkNeighborCache cache;
         cache.Init(world, coord, shared.get());
         auto meshData = ChunkMeshBuilder::Build(cache, shared);
+        auto build_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - t_build).count();
+        if (build_us > 300) {
+            spdlog::trace("MeshManager: rebuild ({},{},{}) took {} us ({} verts)",
+                          coord.x, coord.y, coord.z, build_us, meshData.vertices.size());
+        }
         meshCache_.EnqueueCreateMesh(coord, h_actual, std::move(meshData));
         releaseRebuild(pendingRebuildMtx_, pendingRebuilds_, key);
     });
