@@ -39,13 +39,8 @@ void AdjacencyTransferSystem::tick(float /*dt*/) {
         auto& mc = view.get<MachineComponent>(ent);
         auto& energy = view.get<EnergyStorage>(ent);
         auto& pos = view.get<Position>(ent);
-        if (energy.type != EnergyType::HEAT && energy.type != EnergyType::ROTATION) continue;
-        auto* info = machineRegistry_.Get(mc.machine_id);
-        if (!info) continue;
-        bool isProducer = info->role == MachineRole::PRODUCER //TODO fix read real info
-                       || (info->energy_out.has_value()
-                        && info->energy_out.value() == energy.type);
-        if (!isProducer) continue;
+        if (energy.type != EnergyType::HEAT) continue;
+        if (!machineRegistry_.IsHeatSource(mc.machine_id)) continue;
         if (energy.current <= 0) continue;
         producers.push_back({ent, pos.x, pos.y, pos.z, &energy});
     }
@@ -71,9 +66,8 @@ void AdjacencyTransferSystem::tick(float /*dt*/) {
             auto& mc = view.get<MachineComponent>(ent);
             auto& energy = view.get<EnergyStorage>(ent);
             auto& pos = view.get<Position>(ent);
-            if (energy.type != EnergyType::HEAT && energy.type != EnergyType::ROTATION) continue;
-            auto* info = machineRegistry_.Get(mc.machine_id);
-            if (!info || info->role != MachineRole::CONSUMER) continue;
+            if (energy.type != EnergyType::HEAT) continue;
+            if (!machineRegistry_.IsHeatSink(mc.machine_id)) continue;
             if (energy.current >= energy.capacity) continue;
 
             int32_t needed = energy.capacity - energy.current;

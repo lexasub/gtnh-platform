@@ -182,9 +182,9 @@ void setupMachineRegistry() {
     reg.release();
 }
 
-// machines.yaml uses lowercase role ("producer"/"consumer"). ParseRole must be
-// case-insensitive, otherwise every producer is parsed as CONSUMER →
-// maxOutput=0 (generators never produce) and maxInput=usage-default 32.
+// machines.yaml specifies energy_in/energy_out (the manual role flag is gone).
+// The energy-config branch (maxOutput for producers vs maxInput for consumers)
+// is now derived from whether energy_in is present.
 static void test_MachineRegistry_Yaml_lowercase_role() {
     std::string yaml =
         "machine_classes:\n"
@@ -193,7 +193,6 @@ static void test_MachineRegistry_Yaml_lowercase_role() {
         "      - block_id: \"1110:00:2\"\n"
         "        name: heat_generator\n"
         "        energy_out: HEAT\n"
-        "        role: producer\n"
         "        slots: { input: 1, output: 0 }\n"
         "        energy:\n"
         "          capacity: 10000\n"
@@ -203,7 +202,6 @@ static void test_MachineRegistry_Yaml_lowercase_role() {
         "      - block_id: \"1110:00:8\"\n"
         "        name: macerator\n"
         "        energy_in: ELECTRICITY\n"
-        "        role: consumer\n"
         "        slots: { input: 1, output: 1 }\n"
         "        energy:\n"
         "          capacity: 5000\n"
@@ -215,8 +213,7 @@ static void test_MachineRegistry_Yaml_lowercase_role() {
     auto* gen = reg->Get(ItemId::pack("1110:00:2"));
     CHECK(gen != nullptr, "heat_generator should load from YAML");
     if (gen) {
-        CHECK_EQ(static_cast<int>(gen->role), static_cast<int>(MachineRole::PRODUCER),
-                 "lowercase 'producer' must parse as PRODUCER");
+        // producer (energy_out present, no energy_in) → maxOutput read, maxInput 0
         CHECK_EQ(gen->maxOutput, 32, "producer must read max_output");
         CHECK_EQ(gen->maxInput, 0, "producer without usage must have maxInput 0");
         CHECK(gen->energy_out.has_value(), "energy_out must parse");
@@ -229,8 +226,7 @@ static void test_MachineRegistry_Yaml_lowercase_role() {
     auto* mac = reg->Get(ItemId::pack("1110:00:8"));
     CHECK(mac != nullptr, "macerator should load from YAML");
     if (mac) {
-        CHECK_EQ(static_cast<int>(mac->role), static_cast<int>(MachineRole::CONSUMER),
-                 "lowercase 'consumer' must parse as CONSUMER");
+        // consumer (energy_in present) → maxInput reads usage
         CHECK_EQ(mac->maxInput, 16, "consumer must read usage");
         CHECK(mac->energy_in.has_value(), "energy_in must parse");
     }
@@ -666,7 +662,6 @@ static void test_MultiblockFormation_hatchIO() {
     ebf.id = 1003;
     ebf.name = "electric_blast_furnace";
     ebf.machine_class = "ebf";
-    ebf.role = MachineRole::CONSUMER;
     ebf.energy_in = EnergyType::HEAT;
     ebf.tier = 1;
     ebf.slots_in = 0;

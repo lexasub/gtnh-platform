@@ -19,6 +19,7 @@ void ToolActionHandler::handle(const std::vector<uint8_t>& data) {
     flatbuffers::FlatBufferBuilder fbb(128); std::vector<uint8_t> respData;
     switch (action->action()) {
     case Protocol::ToolActionType_WRENCH_CYCLE: {
+        router_->Publish("player.wrench.action", data);
         break;
     }
     case Protocol::ToolActionType_MINE_BLOCK: {

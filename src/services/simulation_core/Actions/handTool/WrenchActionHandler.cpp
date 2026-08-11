@@ -50,15 +50,20 @@ void WrenchActionHandler::handle(const std::vector<uint8_t>& data) {
 
     if (action->action() != Protocol::ToolActionType_WRENCH_CYCLE) return;
 
+    spdlog::info("[Wrench] player={} pos=({},{},{}) face={} held={}", action->player_id(),
+                 p->x(), p->y(), p->z(), action->face(), action->item_id());
+
     uint64_t ckey = cooldownKey(action->player_id(), p->x(), p->y(), p->z(), action->face());
     auto now = std::chrono::steady_clock::now();
     auto it = lastActionTime_.find(ckey);
     if (it != lastActionTime_.end() && (now - it->second) < COOLDOWN_MS) {
+        spdlog::info("[Wrench] cooldown skip pos=({},{},{}) face={}", p->x(), p->y(), p->z(), action->face());
         return;
     }
     lastActionTime_[ckey] = now;
 
     auto r = wrenchHandler_->cycleFace(action->player_id(), p->x(), p->y(), p->z(), action->face());
+    spdlog::info("[Wrench] cycleFace success={} error=\"{}\" newRole={}", r.success, r.error, r.newRole);
 
     // SIDE_CONFIGURED detection: a machine face was cycled successfully.
     // Hatches carry machine_id == 0 and are not side-config quest targets.
@@ -86,7 +91,11 @@ void WrenchActionHandler::handle(const std::vector<uint8_t>& data) {
     if (r.error == "no_machine_at_position" && blockRepository_) {
         const int32_t x = p->x(), y = p->y(), z = p->z();
         const uint8_t face = action->face();
-        if (face > 5) return;  // guard against malformed wire face
+        spdlog::info("[Wrench] pipe branch: pos=({},{},{}) face={}", x, y, z, face);
+        if (face > 5) {
+            spdlog::warn("[Wrench] INVALID face={} dropped for pos=({},{},{})", face, x, y, z);
+            return;  // guard against malformed wire face
+        }
         blockRepository_->getBlock(x, y, z, [this, x, y, z, face](const BlockData& bd) {
             if (!(ItemId::isPipe(bd.block_id) || ItemId::isCable(bd.block_id))) {
                 flatbuffers::FlatBufferBuilder fbb(128);
@@ -106,6 +115,9 @@ void WrenchActionHandler::handle(const std::vector<uint8_t>& data) {
                 // when the neighbor is itself a pipe/cable (mutual connection).
                 auto toggle = computePipeToggle(face, bd.meta, nbIsPC ? nbd.meta : 0);
                 const uint8_t newMHb = toggle.hostMeta;
+                spdlog::info("[Wrench] toggle host=({},{},{}) bid={} meta {}->{} nbIsPC={} nbMeta {}->{}",
+                             x, y, z, bd.block_id, bd.meta, newMHb, nbIsPC,
+                             nbd.meta, toggle.neighborMeta);
                 blockRepository_->setBlockCAS(x, y, z, bd.block_id, bd.block_id, newMHb,
                     [this, x, y, z, bid = bd.block_id, newMHb](const CASResult& cr) {
                         if (cr.status == 0) publishBlockChanged(x, y, z, bid, newMHb);
