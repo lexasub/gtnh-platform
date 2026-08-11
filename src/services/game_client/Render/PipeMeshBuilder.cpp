@@ -188,7 +188,8 @@ static constexpr FaceMask FACE_TO_MASK[6] = {
 
 FaceMask PipeMeshBuilder::detectConnections(
     int32_t x, int32_t y, int32_t z, PipeType type,
-    std::function<uint16_t(int32_t, int32_t, int32_t)> getBlock) {
+    std::function<uint16_t(int32_t, int32_t, int32_t)> getBlock,
+    std::function<uint8_t(int32_t, int32_t, int32_t)> getMeta) {
     FaceMask mask = 0;
     uint16_t target = pipeTypeToBlockId(type);
     if (getBlock(x,   y+1, z  ) == target) mask |= FACE_UP;
@@ -197,7 +198,10 @@ FaceMask PipeMeshBuilder::detectConnections(
     if (getBlock(x,   y,   z+1) == target) mask |= FACE_SOUTH;
     if (getBlock(x-1, y,   z  ) == target) mask |= FACE_WEST;
     if (getBlock(x+1, y,   z  ) == target) mask |= FACE_EAST;
-    return mask;
+    if (!getMeta) return mask;
+    uint8_t mv = getMeta(x, y, z);
+    if (mv == 0) return mask;  // legacy: unset meta = all 6 faces connected
+    return mask & metaToFaceMask(mv);
 }
 
 ChunkMeshBuilder::MeshData PipeMeshBuilder::buildPipeMesh(

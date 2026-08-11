@@ -1,5 +1,7 @@
 #pragma once
 #include "ChunkMeshBuilder.h"
+#include "PipeMeta.h"
+#include "common/ItemId.h"
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -17,44 +19,7 @@ enum class PipeType : uint8_t {
   CABLE_PLATINUM,
 };
 
-using FaceMask = uint8_t;
-
-constexpr FaceMask FACE_DOWN = 1 << 0;
-constexpr FaceMask FACE_UP = 1 << 1;
-constexpr FaceMask FACE_NORTH = 1 << 2;
-constexpr FaceMask FACE_SOUTH = 1 << 3;
-constexpr FaceMask FACE_WEST = 1 << 4;
-constexpr FaceMask FACE_EAST = 1 << 5;
-
-inline uint16_t pipeTypeToBlockId(PipeType type) {
-  switch (type) {
-  // IDs must match data/registry/items.csv:
-  //   pipes: fluid=61, item=62, dense_item=64, dense_fluid=65
-  //   cables: tin=66, copper=67, gold=68, alu=69, tungsten=70, platinum=71
-  case PipeType::ITEM_PIPE:
-    return 62;
-  case PipeType::DENSE_ITEM_PIPE:
-    return 64;
-  case PipeType::FLUID_PIPE:
-    return 61;
-  case PipeType::DENSE_FLUID_PIPE:
-    return 65;
-  case PipeType::CABLE_TIN:
-    return 66;
-  case PipeType::CABLE_COPPER:
-    return 67;
-  case PipeType::CABLE_GOLD:
-    return 68;
-  case PipeType::CABLE_ALU:
-    return 69;
-  case PipeType::CABLE_TUNGSTEN:
-    return 70;
-  case PipeType::CABLE_PLATINUM:
-    return 71;
-  default:
-    return 0;
-  }
-}
+// FaceMask and FACE_* are defined in PipeMeta.h.
 
 // Check if PipeType is a cable variant (not a pipe)
 inline bool isCableType(PipeType type) {
@@ -65,6 +30,21 @@ inline bool isCableType(PipeType type) {
 // Only valid when isCableType(type) is true
 inline uint8_t pipeTypeToCableTier(PipeType type) {
   return static_cast<uint8_t>(type) - static_cast<uint8_t>(PipeType::CABLE_TIN) + 1;
+}
+
+// Returns the WORLD block id for a pipe/cable type. These must match the ids
+// actually stored in chunks (data/registry/items.csv):
+//   pipes:  1111:10:0..3  -> 0xF800..0xF803
+//   cables: 1111:01:0..5  -> 0xF400..0xF405
+// This is the exact inverse of blockIdToPipeType / blockIdToCableTier, which is
+// what detectConnections relies on to match neighbouring pipe/cable blocks.
+inline uint16_t pipeTypeToBlockId(PipeType type) {
+  if (isCableType(type)) {
+    uint8_t tier = pipeTypeToCableTier(type); // 1..6
+    return static_cast<uint16_t>(ItemId::pack("1111:01:0") + (tier - 1));
+  }
+  return static_cast<uint16_t>(ItemId::pack("1111:10:0") +
+                               static_cast<int>(type));
 }
 
 // Cable tier → RGBA color for cable-specific rendering
@@ -87,7 +67,8 @@ public:
   PipeMeshBuilder() = default;
   FaceMask detectConnections(
       int32_t x, int32_t y, int32_t z, PipeType type,
-      std::function<uint16_t(int32_t, int32_t, int32_t)> getBlock);
+      std::function<uint16_t(int32_t, int32_t, int32_t)> getBlock,
+      std::function<uint8_t(int32_t, int32_t, int32_t)> getMeta = nullptr);
   ChunkMeshBuilder::MeshData buildPipeMesh(int32_t x, int32_t y, int32_t z,
                                            PipeType type, FaceMask connections);
 };

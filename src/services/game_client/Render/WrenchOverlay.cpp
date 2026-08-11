@@ -4,20 +4,8 @@
 
 namespace wrench_overlay {
 
-// Corner indices reference the 8 cube corners
-// {0:000,1:100,2:010,3:110,4:001,5:101,6:011,7:111}.
-// Face order: {0:+X, 1:-X, 2:+Y, 3:-Y, 4:+Z, 5:-Z}.
-const int kFaceCorners[6][4] = {
-    {1, 3, 7, 5}, // +X
-    {0, 2, 6, 4}, // -X
-    {2, 3, 7, 6}, // +Y
-    {0, 1, 5, 4}, // -Y
-    {4, 5, 7, 6}, // +Z
-    {0, 1, 3, 2}  // -Z
-};
-const glm::vec3 kFaceNormal[6] = {
-    {1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}
-};
+// kFaceCorners / kFaceNormal are re-exported from wrench_grid (see
+// WrenchOverlay.h) — single source of truth for the cube geometry.
 
 int HitTestWrenchBar(const glm::mat4& view, const glm::mat4& proj,
                      int width, int height, const glm::vec3& camPos,
@@ -53,8 +41,16 @@ int HitTestWrenchBar(const glm::mat4& view, const glm::mat4& proj,
     }
 
     const glm::vec2 m(static_cast<float>(mouseX), static_cast<float>(mouseY));
+
+    // GT-style: 4 connection BARS on the edges of the FACED face (each = the
+    // SIDE face it borders) + 4 CORNER CROSSES (each = the FAR face). Bars are
+    // checked FIRST (they cover most of each edge), crosses only near the
+    // corner points — so a bar hit never returns the far face.
+    float bestBarDist = 1e9f;
+    int bestBarFace = -1;
     for (int s = 0; s < 6; ++s) {
-        if (s == faced || s == (faced ^ 1)) continue;
+        if (s == faced || s == (faced ^ 1)) continue;   // only the 4 side faces
+        // Midpoint of the edge shared between face s and the faced face.
         int shared[2];
         int k = 0;
         for (int c = 0; c < 4 && k < 2; ++c) {
@@ -70,19 +66,26 @@ int HitTestWrenchBar(const glm::mat4& view, const glm::mat4& proj,
         const glm::vec2 e0 = screen[shared[0]];
         const glm::vec2 e1 = screen[shared[1]];
         const glm::vec2 mid = (e0 + e1) * 0.5f;
-        glm::vec2 dir = e1 - e0;
-        const float len = glm::length(dir);
-        if (len < 1.0f) continue;
-        dir /= len;
-        const glm::vec2 perp(-dir.y, dir.x);
-        const float half = len * 0.10f;
-        const float ht = 14.0f;
-        const glm::vec2 rel = m - mid;
-        if (std::abs(glm::dot(rel, dir)) <= half &&
-            std::abs(glm::dot(rel, perp)) <= ht) {
-            return s;
-        }
+        // Distance from cursor to this bar's midpoint (bar is ~16px tall).
+        const float d = glm::distance(m, mid);
+        if (d < bestBarDist) { bestBarDist = d; bestBarFace = s; }
     }
+    constexpr float kBarR = 18.0f;   // hit radius around the bar midpoint
+    if (bestBarFace >= 0 && bestBarDist <= kBarR) return bestBarFace;
+
+    // Corner crosses (FAR face) — small radius right at the corner points, so
+    // they only trigger when the cursor is clearly on a corner, never a bar.
+    float bestCornerDist = 1e9f;
+    int bestCorner = -1;
+    for (int i = 0; i < 4; ++i) {
+        if (offscreen[kFaceCorners[faced][i]]) continue;
+        const glm::vec2 c = screen[kFaceCorners[faced][i]];
+        const float d = glm::distance(m, c);
+        if (d < bestCornerDist) { bestCornerDist = d; bestCorner = i; }
+    }
+    constexpr float kCrossR = 9.0f;   // only right at the corner
+    if (bestCorner >= 0 && bestCornerDist <= kCrossR) return faced ^ 1;
+
     return -1;
 }
 }  // namespace wrench_overlay

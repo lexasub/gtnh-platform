@@ -30,6 +30,28 @@ public:
   // state. Used by GameClient to check for block UI opening on right-click.
   BlockPos RaycastTarget(const Camera &camera) const;
 
+  // Fresh ray-cast FROM A MOUSE PIXEL (un-project through view/proj) — returns
+  // the block under the cursor, not the block at screen center. Used by the
+  // wrench overlay so a click on a connection bar targets the bar's own block.
+  BlockPos RaycastTargetAtMouse(const Camera &camera, float width, float height,
+                                double mouseX, double mouseY) const;
+
+  // GT-style wrench hit: ray from the mouse pixel, returns the hit block, the
+  // entered face (sideHit) and local UV on that face — input to
+  // determineWrenchingSide.
+  renderlib::Raycaster::HitInfo RaycastHitAtMouse(const Camera &camera,
+                                                  float width, float height,
+                                                  double mouseX,
+                                                  double mouseY) const;
+  // Ray-cast from the screen CENTER (crosshair). The mouse is captured
+  // (GLFW_CURSOR_DISABLED) while the UI is closed, so the cursor's virtual
+  // position is not the screen center; a mouse-pixel ray would miss the
+  // targeted pipe. GT-style side selection is screen-center driven: hit.u/v
+  // select the 3x3 grid cell on the entered face.
+  renderlib::Raycaster::HitInfo RaycastHitAtCenter(const Camera &camera,
+                                                   float width,
+                                                   float height) const;
+
   // Face of the targeted block the player is looking at (0=DOWN..5=EAST).
   uint8_t TargetFace(const Camera &camera) const;
 
@@ -41,6 +63,8 @@ public:
 
 private:
   Ray buildRay(const Camera &camera) const;
+  Ray buildRayFromMouse(const Camera &camera, float width, float height,
+                        double mouseX, double mouseY) const;
 
   renderlib::Raycaster raycaster_;
   InventoryState *inventory_ = nullptr;

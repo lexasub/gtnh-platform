@@ -4,6 +4,8 @@
 #include "Network/NetClient.h"
 #include "World/World.h"
 #include "UI/Core/InputBinder.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 #include <spdlog/spdlog.h>
 #include <limits>
 #include <cstdint>
@@ -16,6 +18,61 @@ InteractionSystem::InteractionSystem(const IBlockQuery* blockQuery,
 
 Ray InteractionSystem::buildRay(const Camera& camera) const {
     return {camera.GetRayOrigin(), camera.GetForward()};
+}
+
+// Un-project a mouse pixel into a world-space ray: origin = camera, dir = the
+// point on the far plane under the cursor. Mirrors how the overlay projects
+// block corners (same view/proj), so the clickable bars line up with the ray.
+Ray InteractionSystem::buildRayFromMouse(const Camera& camera, float width,
+                                         float height, double mouseX,
+                                         double mouseY) const {
+    const float aspect = width / height;
+    const glm::mat4 view = camera.GetViewMatrix();
+    const glm::mat4 proj = camera.GetProjectionMatrix(aspect);
+    const glm::mat4 invVP = glm::inverse(proj * view);
+
+    // NDC: x,y from mouse; z=0 near, z=1 far.
+    const float ndcX = static_cast<float>(mouseX) / width * 2.0f - 1.0f;
+    const float ndcY = 1.0f - static_cast<float>(mouseY) / height * 2.0f;
+
+    glm::vec4 nearP = invVP * glm::vec4(ndcX, ndcY, 0.0f, 1.0f);
+    glm::vec4 farP  = invVP * glm::vec4(ndcX, ndcY, 1.0f, 1.0f);
+    if (std::abs(nearP.w) < 1e-6f || std::abs(farP.w) < 1e-6f)
+        return {camera.GetRayOrigin(), camera.GetForward()};
+    nearP /= nearP.w;
+    farP  /= farP.w;
+
+    const glm::vec3 origin = camera.GetRayOrigin();
+    const glm::vec3 dir = glm::normalize(glm::vec3(farP - nearP));
+    return {origin, dir};
+}
+
+BlockPos InteractionSystem::RaycastTargetAtMouse(const Camera& camera,
+                                                 float width, float height,
+                                                 double mouseX,
+                                                 double mouseY) const {
+    Ray ray = buildRayFromMouse(camera, width, height, mouseX, mouseY);
+    return raycaster_.GetTargetedBlock(ray, renderlib::Raycaster::REACH_DIST);
+}
+
+renderlib::Raycaster::HitInfo InteractionSystem::RaycastHitAtMouse(
+    const Camera& camera, float width, float height, double mouseX,
+    double mouseY) const {
+    Ray ray = buildRayFromMouse(camera, width, height, mouseX, mouseY);
+    return raycaster_.RaycastHit(ray, renderlib::Raycaster::REACH_DIST);
+}
+
+// Ray-cast from the CENTER of the screen (crosshair). The mouse is captured
+// (GLFW_CURSOR_DISABLED) while the UI is closed, so the cursor's virtual
+// position is NOT the screen center — clicking with a mouse-pixel ray
+// frequently misses the targeted pipe. GT-style side selection is
+// screen-center driven: the crosshair hits the faced face, and hit.u/v
+// select the 3x3 grid cell.
+renderlib::Raycaster::HitInfo InteractionSystem::RaycastHitAtCenter(
+    const Camera& camera, float width, float height) const {
+    Ray ray = buildRayFromMouse(camera, width, height, width * 0.5,
+                                height * 0.5);
+    return raycaster_.RaycastHit(ray, renderlib::Raycaster::REACH_DIST);
 }
 
 BlockPos InteractionSystem::RaycastTarget(const Camera& camera) const {
@@ -84,6 +141,9 @@ void InteractionSystem::Update(const Camera& camera, const InputState& input,
                 player_id,
                 Protocol::ToolActionType::ToolActionType_WRENCH_CYCLE,
                 highlightedBlock_.x, highlightedBlock_.y, highlightedBlock_.z,
+                // Same as GameClient's right-click wrench: the G-key toggles
+                // the face the camera is looking at (the near face). The far
+                // face is reachable by clicking a grid corner on the overlay.
                 TargetFace(camera),
                 heldItem
             );

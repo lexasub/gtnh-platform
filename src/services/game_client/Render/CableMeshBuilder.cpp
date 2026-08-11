@@ -156,16 +156,20 @@ static constexpr FaceMask FACE_TO_MASK[6] = {
 
 FaceMask CableMeshBuilder::detectConnections(
     int32_t x, int32_t y, int32_t z, uint8_t tier,
-    std::function<uint16_t(int32_t, int32_t, int32_t)> getBlock) {
+    std::function<uint16_t(int32_t, int32_t, int32_t)> getBlock,
+    std::function<uint8_t(int32_t, int32_t, int32_t)> getMeta) {
     FaceMask connections = 0;
-    uint16_t id = static_cast<uint16_t>(79 + tier);
+    uint16_t id = static_cast<uint16_t>(ItemId::pack("1111:01:0") + (tier - 1));
     if (getBlock(x,   y+1, z  ) == id) connections |= FACE_UP;
     if (getBlock(x,   y-1, z  ) == id) connections |= FACE_DOWN;
     if (getBlock(x,   y,   z-1) == id) connections |= FACE_NORTH;
     if (getBlock(x,   y,   z+1) == id) connections |= FACE_SOUTH;
     if (getBlock(x-1, y,   z  ) == id) connections |= FACE_WEST;
     if (getBlock(x+1, y,   z  ) == id) connections |= FACE_EAST;
-    return connections;
+    if (!getMeta) return connections;
+    uint8_t mv = getMeta(x, y, z);
+    if (mv == 0) return connections;  // legacy: unset meta = all 6 faces connected
+    return connections & metaToFaceMask(mv);
 }
 
 ChunkMeshBuilder::MeshData CableMeshBuilder::buildCableMesh(

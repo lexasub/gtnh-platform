@@ -86,6 +86,12 @@ struct FrameExt {
   // has an adjacent pipe/cable the block can connect to.
   bool showWrenchOverlay = false;
   bool wrenchConnectable[6] = {false, false, false, false, false, false};
+  // Wire face 0..5 the click ray ENTERS (the face the grid is drawn on),
+  // 0xFF = none. Set by GameClient from the same RaycastHitAtCenter the click
+  // handler uses, so the overlay's grid and the click's hit-test can never
+  // pick different faces.
+  uint8_t wrenchSideHit = 0xFF;
+  uint16_t heldItemId = 0;
   size_t chunkCount = 0;
   size_t meshCount = 0;
 };

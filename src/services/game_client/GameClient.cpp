@@ -18,6 +18,7 @@
 #include "machine_registry/MachineRegistry.h"
 #include "common/ItemId.h"
 #include "data/registry/ToolIds.h"
+#include "World/WrenchingSide.h"
 #include <limits>
 
 GameClient::GameClient()
@@ -317,20 +318,68 @@ void GameClient::Update(float dt) {
     // ── Right-click → server decides (open UI, place, or reject) ───────────
     // Client sends raw intent (button + target + held item + face); the server
     // answers with a BlockActionDirective (OPEN_UI) or a world-state BlockAck.
+    // Holding a wrench over a pipe/cable toggles that connection instead:
+    // right-clicking a face marker disconnects/reconnects exactly that side
+    // (same server action as the G-key "wrench_cycle", with the clicked face).
     bool rightClickHandled = false;
     if (inputMgr_.State().mouseRightPressed && !uiMgr_.AnyOpen()) {
         BlockPos target = interaction_.RaycastTarget(camera_);
         if (target.x != std::numeric_limits<int32_t>::max() &&
             world_.GetBlockAt(target) != 0) {
-            netClient_->SendBlockAction(
-                Protocol::PlayerActionType::PlayerActionType_RIGHT_MOUSE_CLICK,
-                target.x, target.y, target.z,
-                world_.GetBlockAt(target),
-                interaction_.GetHeldItem(),
-                interaction_.TargetFace(camera_),
-                invState_.player_id);
-            world_.MarkBlockActionSent(target);
-            rightClickHandled = true;
+            const uint16_t targetBlockId = world_.GetBlockAt(target);
+            const bool holdingWrench = (interaction_.GetHeldItem() == ITEM_WRENCH);
+            const bool targetIsPipeOrCable =
+                ItemId::isPipe(targetBlockId) || ItemId::isCable(targetBlockId);
+            if (holdingWrench && targetIsPipeOrCable) {
+                // GT-style wrench side selection: ray-cast from the SCREEN
+                // CENTER (crosshair). The mouse is captured while the UI is
+                // closed, so its virtual position is not the screen center —
+                // a mouse-pixel ray used to miss the pipe and the server
+                // answered "not_a_machine". The crosshair hits the faced
+                // face; hit.u/v select the 3x3 grid cell → target face.
+                const renderlib::Raycaster::HitInfo hit =
+                    interaction_.RaycastHitAtCenter(
+                        camera_, static_cast<float>(width_),
+                        static_cast<float>(height_));
+                const BlockPos applyTarget(hit.pos.x, hit.pos.y, hit.pos.z);
+                if (applyTarget.x == std::numeric_limits<int32_t>::max() ||
+                    world_.GetBlockAt(applyTarget) == 0) {
+                    rightClickHandled = true;   // nothing targetable under cursor
+                } else {
+                    // sideHit from the DDA face normal. Raycaster returns
+                    // faceX/Y/Z = -lastStep: the OUTWARD normal of the face
+                    // the ray ENTERED through (faceZ==-1 -> entered the -Z /
+                    // NORTH face). faceNormalToWireSide converts it directly —
+                    // an early version flipped all six cases, so a click on
+                    // the visible face toggled the OPPOSITE face and the
+                    // whole grid was mirrored (pipe↔pipe flow never connected).
+                    const uint8_t sideHit =
+                        faceNormalToWireSide(hit.faceX, hit.faceY, hit.faceZ);
+                    const uint8_t face = determineWrenchingSide(
+                        static_cast<uint8_t>(sideHit), hit.u, hit.v);
+                    spdlog::info(
+                        "[Wrench] click target=({},{},{}) face={} side={} "
+                        "uv=({:.3f},{:.3f}) send WRENCH_CYCLE",
+                        target.x, target.y, target.z, face, sideHit, hit.u,
+                        hit.v);
+                    netClient_->SendToolAction(
+                        invState_.player_id,
+                        Protocol::ToolActionType::ToolActionType_WRENCH_CYCLE,
+                        applyTarget.x, applyTarget.y, applyTarget.z, face, ITEM_WRENCH);
+                    world_.MarkBlockActionSent(applyTarget);
+                }
+                rightClickHandled = true;
+            } else {
+                netClient_->SendBlockAction(
+                    Protocol::PlayerActionType::PlayerActionType_RIGHT_MOUSE_CLICK,
+                    target.x, target.y, target.z,
+                    world_.GetBlockAt(target),
+                    interaction_.GetHeldItem(),
+                    interaction_.TargetFace(camera_),
+                    invState_.player_id);
+                world_.MarkBlockActionSent(target);
+                rightClickHandled = true;
+            }
         }
     }
 
@@ -424,6 +473,18 @@ void GameClient::Run() {
         frd.ext.showWrenchOverlay =
             holdingWrench && interaction_.HasHighlight() && highlightedBlockId != 0;
         if (frd.ext.showWrenchOverlay) {
+            // The face the grid is drawn on = the face the center ray enters =
+            // the same raycast the right-click wrench uses to pick the side. A
+            // camera-pos-based "faced" heuristic could pick a different face at
+            // oblique angles, drawing the X's where the click never toggles.
+            const renderlib::Raycaster::HitInfo wh =
+                interaction_.RaycastHitAtCenter(
+                    camera_, static_cast<float>(width_),
+                    static_cast<float>(height_));
+            frd.ext.wrenchSideHit =
+                (wh.pos.x != std::numeric_limits<int32_t>::max())
+                    ? faceNormalToWireSide(wh.faceX, wh.faceY, wh.faceZ)
+                    : 0xFF;
             const int dx[6] = {1, -1, 0, 0, 0, 0};
             const int dy[6] = {0, 0, 1, -1, 0, 0};
             const int dz[6] = {0, 0, 0, 0, 1, -1};

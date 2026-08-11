@@ -108,6 +108,70 @@ BlockPos Raycaster::GetTargetedBlock(const Ray& ray, float maxDist,
     return {std::numeric_limits<int32_t>::max(), std::numeric_limits<int32_t>::max(), std::numeric_limits<int32_t>::max()};
 }
 
+Raycaster::HitInfo Raycaster::RaycastHit(const Ray& ray, float maxDist) const {
+    HitInfo info;
+    info.pos = {std::numeric_limits<int32_t>::max(), std::numeric_limits<int32_t>::max(), std::numeric_limits<int32_t>::max()};
+
+    float px = ray.origin.x, py = ray.origin.y, pz = ray.origin.z;
+    const float dx = ray.direction.x, dy = ray.direction.y, dz = ray.direction.z;
+    if (std::abs(dx) < 1e-6f && std::abs(dy) < 1e-6f && std::abs(dz) < 1e-6f)
+        return info;
+    //TODO refactor math shit (may be use src/services/simulation_core/Saturate.h)
+    int stepX = (dx > 0) ? 1 : (dx < 0) ? -1 : 0;
+    int stepY = (dy > 0) ? 1 : (dy < 0) ? -1 : 0;
+    int stepZ = (dz > 0) ? 1 : (dz < 0) ? -1 : 0;
+
+    float tDeltaX = (stepX != 0) ? std::abs(1.0f / dx) : std::numeric_limits<float>::infinity();
+    float tDeltaY = (stepY != 0) ? std::abs(1.0f / dy) : std::numeric_limits<float>::infinity();
+    float tDeltaZ = (stepZ != 0) ? std::abs(1.0f / dz) : std::numeric_limits<float>::infinity();
+
+    float tMaxX = (stepX > 0) ? (std::floor(px) + 1.0f - px) / dx
+                 : (stepX < 0) ? (px - std::floor(px)) / (-dx)
+                 : std::numeric_limits<float>::infinity();
+    float tMaxY = (stepY > 0) ? (std::floor(py) + 1.0f - py) / dy
+                 : (stepY < 0) ? (py - std::floor(py)) / (-dy)
+                 : std::numeric_limits<float>::infinity();
+    float tMaxZ = (stepZ > 0) ? (std::floor(pz) + 1.0f - pz) / dz
+                 : (stepZ < 0) ? (pz - std::floor(pz)) / (-dz)
+                 : std::numeric_limits<float>::infinity();
+
+    int vx = static_cast<int>(std::floor(px));
+    int vy = static_cast<int>(std::floor(py));
+    int vz = static_cast<int>(std::floor(pz));
+    int lastStepX = 0, lastStepY = 0, lastStepZ = 0;
+
+    const float maxDistSq = maxDist * maxDist;
+    while (true) {
+        const float distSq = (px - ray.origin.x) * (px - ray.origin.x) +
+                             (py - ray.origin.y) * (py - ray.origin.y) +
+                             (pz - ray.origin.z) * (pz - ray.origin.z);
+        if (distSq > maxDistSq) break;
+        if (blockQuery_->GetBlockAt({vx, vy, vz}) != 0) {
+            info.pos = {vx, vy, vz};
+            info.faceX = -lastStepX;
+            info.faceY = -lastStepY;
+            info.faceZ = -lastStepZ;
+            // Local hit point inside the block (0..1 on each axis).
+            const float hx = px - static_cast<float>(vx);
+            const float hy = py - static_cast<float>(vy);
+            const float hz = pz - static_cast<float>(vz);
+            // UV on the entered face: the two axes NOT normal to the face.
+            if (info.faceX != 0) { info.u = hz; info.v = hy; }
+            else if (info.faceY != 0) { info.u = hx; info.v = hz; }
+            else { info.u = hx; info.v = hy; }
+            return info;
+        }
+        if (tMaxX < tMaxY) {
+            if (tMaxX < tMaxZ) { lastStepX = stepX; lastStepY = 0; lastStepZ = 0; vx += stepX; px += tMaxX * dx; py += tMaxX * dy; pz += tMaxX * dz; tMaxX += tDeltaX; }
+            else { lastStepX = 0; lastStepY = 0; lastStepZ = stepZ; vz += stepZ; px += tMaxZ * dx; py += tMaxZ * dy; pz += tMaxZ * dz; tMaxZ += tDeltaZ; }
+        } else {
+            if (tMaxY < tMaxZ) { lastStepX = 0; lastStepY = stepY; lastStepZ = 0; vy += stepY; px += tMaxY * dx; py += tMaxY * dy; pz += tMaxY * dz; tMaxY += tDeltaY; }
+            else { lastStepX = 0; lastStepY = 0; lastStepZ = stepZ; vz += stepZ; px += tMaxZ * dx; py += tMaxZ * dy; pz += tMaxZ * dz; tMaxZ += tDeltaZ; }
+        }
+    }
+    return info;
+}
+
 BlockPos Raycaster::GetPlacementPos(const Ray& ray) const {
     int faceNormalX = 0, faceNormalY = 0, faceNormalZ = 0;
     BlockPos hit = GetTargetedBlock(ray, REACH_DIST, &faceNormalX, &faceNormalY, &faceNormalZ);

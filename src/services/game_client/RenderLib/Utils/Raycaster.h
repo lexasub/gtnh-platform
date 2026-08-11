@@ -21,6 +21,16 @@ public:
   // Find empty block adjacent to hit (for placement)
   BlockPos GetPlacementPos(const Ray &ray) const;
 
+  // Ray-cast to the first non-air block, returning the hit block, the face it
+  // entered (sideHit), and the LOCAL hit coordinates in [0,1] on that face.
+  // Returns max-coord BlockPos and (0,0,0,0) if nothing hit.
+  struct HitInfo {
+    BlockPos pos;
+    int faceX = 0, faceY = 0, faceZ = 0;   // sideHit normal (0 if none)
+    float u = 0.0f, v = 0.0f;              // local UV on the entered face
+  };
+  HitInfo RaycastHit(const Ray &ray, float maxDist = REACH_DIST) const;
+
 private:
   const IBlockQuery *blockQuery_;
 };

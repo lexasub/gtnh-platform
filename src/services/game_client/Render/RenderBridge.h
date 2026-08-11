@@ -41,6 +41,15 @@ public:
                  BlockPos highlightedBlock, uint16_t highlightedBlockId,
                  size_t chunkCount, size_t meshCount);
 
+  // Hit-test the GT-style wrench overlay bars (the per-face connection
+  // markers) for a highlighted block.  Returns the overlay face index
+  // {0:+X, 1:-X, 2:+Y, 3:-Y, 4:+Z, 5:-Z} whose bar contains the mouse
+  // position (window pixels), or -1 if the mouse is over no bar — the
+  // caller then falls back to the raycast face.
+  static int HitTestWrenchBar(const glm::mat4 &view, const glm::mat4 &proj,
+                              int width, int height, const glm::vec3 &camPos,
+                              const BlockPos &hb, double mouseX, double mouseY);
+
   void SubmitFrame(const renderlib::FrameRenderData &frd);
   void WaitForFrame();
 

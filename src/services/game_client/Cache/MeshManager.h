@@ -53,8 +53,6 @@ public:
   void RequestShutdown() { shuttingDown_ = true; }
 
 private:
-  static uint64_t HashChunkData(const uint16_t *blocks, size_t count);
-
   ChunkMeshCache meshCache_;
   tbb::global_control tbbControl_{tbb::global_control::max_allowed_parallelism,
                                   6};
