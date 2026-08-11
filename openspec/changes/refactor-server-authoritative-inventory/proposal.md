@@ -14,31 +14,36 @@ Inventory drag-and-drop in the game client is a **client-optimistic simulation o
 
 Result: only single-vector drags inside the player inventory "work", and even those desync on partial operations.
 
+## Status (2026-08-10)
+
+- **Phases A–D implemented & committed on `main`** (squashed: `f8d1e4a feat(inventory): server-authoritative click model`): click-model protocol + server cursor (A), chest (B), machine (C), workbench (D) as live `container_id=1` sessions. Chest/machine/workbench windows are snapshot-driven; `ctest` green (11/11).
+- **Workbench deviation from the original plan**: the grid is a world-bound server-synced **staging area** — craft still consumes from the player inventory and `GridUpdate` is retained as the craft-feedback channel (see design D12).
+- **Remaining — Phase E cleanup**: delete legacy root `simulation_core/InventoryActionHandler.*` (after splitting structs), server-side `MachineSlotHandler` + gateway `SetMachineSlotReq` route, `RenderSlotGrid`, dead callbacks; RMB-distribute hover fix; cursor/drill-in polish; client test rework; final validation + push.
+
 ## What Changes
 
 Adopt Minecraft's **server-authoritative container-click model**:
 
-- **Protocol (`core.fbs`)**
-  - Repurpose `InventoryAction` into a container-click descriptor: `action_type` (CLICK / QUICK_MOVE / DROP / DRAG_PLACE / PICKUP_ALL), `button`, `mods`, `container_id`, `slot`, `count`. **BREAKING** semantics for `action_type`.
-  - Extend `InventoryUpdate` with the server-owned **cursor stack** and the **open-container slots** (`container_id` + `container_pos` + `slots`), so one snapshot drives player + cursor + container windows.
-- **Server (simcore)**
-  - `PlayerInventoryStore` gains a per-player **cursor slot**.
-  - A pure, unit-testable click rule table `applyContainerClick(state, click)` implements pickup / place / merge / swap / half / place-1 / quick-move / double-click / drop / RMB-drag-distribute, across player slots and an open **container session** (chest / machine / workbench).
-  - New `ContainerClickHandler` (replaces `Storage/InventoryActionHandler`) runs the rule table on authoritative state and publishes a full `player.inventory.update` snapshot after every mutation. Chest / workbench containers persist live to EntityStateStore; machine slots stay coupled to MachineSystem.
-- **Client**
-  - `DragManager` becomes a thin click→action translator (no optimistic mutation, no held-item state); cursor is rendered from the server snapshot.
-  - `InventoryState` gains `cursor` + open-container fields.
-  - `PlayerInventory`, `ChestWindow`, `MachineWindow`, `CraftingWindow` become snapshot-driven; per-window special cases (`kMachineSlotBase`, `kGridFlag`, `SendChestSaveReq`, per-slot `SetMachineSlotReq`) are removed for slot movement.
-  - Fix `SlotGridComponent` hover→`UpdateHover` and `RenderSlotGrid` double-invoke.
-- **Gateway**: pass-through only; the container session is registered when the client opens a block window (new `container.open` / `container.close` topic or reuse existing open/close messages).
+- **Protocol (`core.fbs`)** ✅ done
+  - `InventoryAction` repurposed into a container-click descriptor: `action_type` (CLICK / QUICK_MOVE / DROP / DRAG_PLACE / PICKUP_ALL), `button`, `mods`, `container_id`, `slot`, `count`. **BREAKING** semantics for `action_type`; old `source_slot`/`target_slot`/`meta` removed.
+  - `InventoryUpdate` extended with the server-owned **cursor stack** and the **open-container slots** (`container_id` + `container_pos` + `container_slots`), so one snapshot drives player + cursor + container windows.
+- **Server (simcore)** ✅ done
+  - `PlayerInventoryStore` gained a per-player **cursor slot**.
+  - Pure, unit-tested click rule table `Storage/InventoryClick.h` (`ApplyContainerClick`) implements pickup / place / merge / swap / half / place-1 / quick-move / double-click / drop / RMB-drag-distribute across player slots and an open **container session** (chest / machine / workbench).
+  - `Storage/InventoryActionHandler` (rewritten in place as the click handler) runs the rule table on authoritative state and publishes a full `player.inventory.update` snapshot after every mutation. Chest / workbench containers persist live (`ChestStateManager` / `WorkbenchStateManager`); machine sessions mutate the **live ECS `InventoryContainer`** in place.
+- **Client** ✅ done (dual-mode DragManager; legacy mutation path removed in Phase E)
+  - `DragManager` has a click-translator path (no optimistic mutation); cursor is rendered from the server snapshot. Legacy `OnSlotActivated` mutation path retained for unconverted grids until Phase E.
+  - `PlayerInventory`, `ChestWindow`, `MachineWindow`, `ClientCraftingWindow` are snapshot-driven; client-side `SendChestSaveReq` and per-slot `SetMachineSlotReq` movement are removed.
+  - `SlotGridComponent` hover→`UpdateHover` fixed; `SetAuthoritative(bool)` + `SetContainerId(uint8_t)` route clicks per-window.
+- **Gateway** ✅ done — pass-through only: `kChestOpenReq=19`/`kChestCloseReq=45` → `player.chest.open/close`, `kMachineOpenReq=18`/`kMachineCloseReq=46` → `player.machine.open/close`, `kWorkbenchOpenReq=44` → `sim.workbench.load`; `sim.workbench.state` → `kGridUpdate=43` relay retained for craft feedback.
 
 ## Impact
 
 - Affected specs: `protocol`, `player-interaction`
-- Affected code:
+- Affected code (implemented):
   - `src/protocol/core.fbs` (+ regenerated stubs)
-  - `src/services/simulation_core/Storage/PlayerInventoryStore.{h,cpp}`, `Storage/InventoryActionHandler.{h,cpp}`, new `Storage/ContainerClickHandler.*`, `Network/SimCoreMessageHandler.cpp`, `main.cpp`, `Actions/MachineSlotHandler.{h,cpp}`, `Crafting/CraftRequestHandler.{h,cpp}`, `Storage/WorkbenchStateManager.*`
-  - `src/services/game_client/UI/Core/DragManager.{h,cpp}`, `UI/Components/SlotGrid.{h,cpp}`, `UI/Components/CraftingGrid.{h,cpp}`, `UI/Windows/block/ChestWindow.{h,cpp}`, `UI/Windows/block/MachineWindow.{h,cpp}`, `UI/Windows/player/ClientCraftingWindow.{h,cpp}`, `UI/Windows/player/PlayerInventory.{h,cpp}`, `UI/UIManager.cpp`, `Common/Inventory.h`, `Network/NetClient.{h,cpp}`
-  - `src/services/gateway/gateway.cpp` (minor topic wiring)
-  - Tests: new rule-table tests; rework `DragManager_test.cpp`
-- **BREAKING**: wire semantics of `Protocol::InventoryAction.action_type` and removal of `SendChestSaveReq` / per-slot `SetMachineSlotReq` movement.
+  - `src/services/simulation_core/Storage/PlayerInventoryStore.{h,cpp}`, `Storage/InventoryActionHandler.{h,cpp}`, new `Storage/InventoryClick.h`, `Storage/ContainerSession.h`, `Storage/ChestStateManager.{h,cpp}`, `Network/ChestOpenHandler/ChestCloseHandler/MachineOpenHandler/MachineCloseHandler/WorkbenchOpenHandler`, `Network/SimCoreMessageHandler.cpp`, `ECS/Reactors/ItemFlowHandler.cpp`, `ECS/Systems/MachineSystem.cpp` (publish hook), `Crafting/CraftRequestHandler.cpp`, `Crafting/WorkbenchStateManager.{h,cpp}`, `Actions/MachineSlotHandler.{h,cpp}` (still wired, Phase E), `main.cpp`
+  - `src/services/game_client/UI/Core/DragManager.{h,cpp}`, `UI/Components/SlotGrid.{h,cpp}`, `UI/Components/CraftingGrid.{h,cpp}`, `UI/Components/PlayerInventoryGrid.{h,cpp}`, `UI/Windows/block/ChestWindow.{h,cpp}`, `UI/Windows/block/MachineWindow.{h,cpp}`, `UI/Windows/player/ClientCraftingWindow.{h,cpp}`, `UI/Windows/player/PlayerInventory.{h,cpp}`, `UI/UIManager.cpp`, `Common/Inventory.h`, `Network/NetClient.{h,cpp}`
+  - `src/services/gateway/gateway.cpp` (topic wiring for open/close)
+  - Tests: `test/test_inventory_click.cpp` (15 rule-table tests) + `test/test_container_click.cpp` (9 container tests); `DragManager_test.cpp` rework pending (Phase E)
+- **BREAKING**: wire semantics of `Protocol::InventoryAction.action_type`; removal of `SendChestSaveReq` and client per-slot `SetMachineSlotReq` movement. `kChestSaveReq=18` re-purposed as `kMachineOpenReq`.

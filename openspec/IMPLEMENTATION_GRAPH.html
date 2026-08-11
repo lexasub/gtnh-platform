@@ -32,17 +32,8 @@
       background: #161b22;
       border-radius: 8px;
     }
-    .legend-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 13px;
-    }
-    .legend-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 3px;
-    }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
     .legend-done { background: #3fb950; }
     .legend-done:hover { box-shadow: 0 0 8px #3fb950; }
     .legend-progress { background: #d29922; }
@@ -55,7 +46,7 @@
     .legend-skip:hover { opacity: 1; box-shadow: 0 0 8px #8b949e; }
     .graph-container {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
       gap: 20px;
       max-width: 2000px;
       margin: 0 auto;
@@ -75,30 +66,15 @@
       border-bottom: 1px solid #30363d;
     }
     .service-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      font-size: 11px;
+      width: 28px; height: 28px; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: bold; font-size: 11px;
     }
-    .service-title {
-      flex: 1;
-      font-size: 17px;
-      font-weight: 700;
-      color: #fff;
-    }
-    .service-lang {
-      font-size: 12px;
-      color: #8b949e;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
+    .service-title { flex: 1; font-size: 17px; font-weight: 700; color: #fff; }
+    .service-lang { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; }
     .components-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 12px;
     }
     .component-item {
@@ -110,24 +86,13 @@
       justify-content: space-between;
       transition: transform 0.15s ease, box-shadow 0.15s ease;
     }
-    .component-item:hover {
-      transform: translateY(-1px);
-    }
-    .component-name {
-      flex: 1;
-      margin-right: 8px;
-    }
+    .component-item:hover { transform: translateY(-1px); box-shadow: 0 0 6px rgba(88,166,255,0.15); }
+    .component-name { flex: 1; margin-right: 8px; }
+    .dep-item { font-size: 11px; color: #8b949e; display: block; margin-top: 2px; }
     .component-status {
-      width: 18px;
-      height: 18px;
-      border-radius: 3px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 9px;
-      font-weight: 700;
-      color: #000;
-      flex-shrink: 0;
+      width: 18px; height: 18px; border-radius: 3px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700; color: #000; flex-shrink: 0;
     }
     .component-status.done { background: #238636; }
     .component-status.done::after { content: "✓"; color: #fff; }
@@ -139,690 +104,1001 @@
     .component-status.gapped::after { content: "✗"; color: #fff; }
     .component-status.skip { background: #6e7681; opacity: 0.6; }
     .component-status.skip::after { content: "—"; color: #fff; }
-    .gap-tooltip {
-      font-size: 11px;
-      color: #f85149;
-      font-style: italic;
-    }
     .progress-bar {
-      position: relative;
-      height: 6px;
-      background: #21262d;
-      border-radius: 3px;
-      margin-top: 8px;
-      overflow: hidden;
+      position: relative; height: 6px;
+      background: #21262d; border-radius: 3px; margin-top: 8px; overflow: hidden;
     }
-    .progress-fill {
-      height: 100%;
-      border-radius: 3px;
-      transition: width 0.5s ease;
-    }
+    .progress-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
     .progress-85 { width: 85%; background: linear-gradient(90deg, #d29922, #f0e68c); }
     .progress-60 { width: 60%; background: linear-gradient(90deg, #d29922, #b8860b); }
     .progress-30 { width: 30%; background: linear-gradient(90deg, #d29922, #8b4513); }
     .progress-10 { width: 10%; background: #d29922; }
     .summary-bar {
-      margin-top: 14px;
-      padding: 10px;
-      background: #0d1117;
-      border-radius: 6px;
-      font-size: 13px;
+      margin-top: 14px; padding: 10px; background: #0d1117;
+      border-radius: 6px; font-size: 13px;
     }
-    .summary-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 4px;
-    }
+    .summary-row { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
     .summary-row:last-child { margin-bottom: 0; }
-    .summary-label {
-      width: 60px;
-      font-size: 12px;
-      color: #8b949e;
-    }
-    .summary-value {
-      flex: 1;
-      text-align: right;
-      font-weight: 600;
-    }
+    .summary-label { width: 80px; font-size: 12px; color: #8b949e; }
+    .summary-value { flex: 1; text-align: right; font-weight: 600; }
     .summary-done { color: #3fb950; }
     .summary-progress { color: #d29922; }
     .summary-planned { color: #58a6ff; }
     .summary-gapped { color: #f85149; }
-    .total-bar {
-      margin-top: 12px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 13px;
-    }
-    .total-dot {
-      width: 14px;
-      height: 14px;
-      border-radius: 3px;
-    }
+    .summary-skip { color: #8b949e; }
+    .total-bar { margin-top: 12px; display: flex; align-items: center; gap: 12px; font-size: 13px; }
+    .total-dot { width: 14px; height: 14px; border-radius: 3px; }
     .total-done { background: #3fb950; }
     .total-progress { background: #d29922; }
     .total-planned { background: #58a6ff; }
     .total-gapped { background: #f85149; }
     .total-skip { background: #8b949e; opacity: 0.3; }
-    .dependency-line {
-      margin-top: 12px;
-      padding-left: 14px;
-      border-left: 1px solid #30363d;
-    }
-    .dep-item {
-      font-size: 12px;
-      color: #8b949e;
-      margin-bottom: 4px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .dep-icon {
-      font-size: 11px;
-      color: #58a6ff;
-    }
     .critical-path {
-      margin-top: 12px;
-      padding: 12px;
+      margin-top: 12px; padding: 12px;
       background: rgba(248, 81, 73, 0.1);
       border: 1px solid rgba(248, 81, 73, 0.3);
-      border-radius: 6px;
-      font-size: 12px;
+      border-radius: 6px; font-size: 12px;
     }
-    .critical-path h4 {
-      color: #f85149;
-      margin-bottom: 6px;
-      font-size: 13px;
-    }
-    .critical-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 4px;
-    }
-    .critical-item::before {
-      content: "⚠";
-      font-size: 14px;
-    }
-    .empty-state {
-      text-align: center;
-      padding: 30px 10px;
-      color: #8b949e;
-      font-size: 13px;
-    }
+    .critical-path h4 { color: #f85149; margin-bottom: 6px; font-size: 13px; }
+    .critical-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .critical-item::before { content: "⚠"; font-size: 14px; }
+    .empty-state { text-align: center; padding: 30px 10px; color: #8b949e; font-size: 13px; }
   </style>
 </head>
 <body>
   <h1>🏗️ GTNH Platform Implementation Graph</h1>
-  <p class="subtitle">Реализовано / В работе / Планируется / Пропуск</p>
-
-  <div class="legend">
-    <div class="legend-item">
-      <span class="legend-dot legend-done"></span>
-      <span>Реализовано</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot legend-progress"></span>
-      <span>В работе</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot legend-planned"></span>
-      <span>Планируется</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot legend-gapped"></span>
-      <span>Не сделано (Gap)</span>
-    </div>
-    <div class="legend-item">
-      <span class="legend-dot legend-skip"></span>
-      <span>Пропуск (Skip)</span>
-    </div>
+  <p class="subtitle">Реализовано / В работе / Планируется / Gap / Пропуск · обновлено 2026-08-11</p>
+<div class="legend">
+    <div class="legend-item"><span class="legend-dot legend-done"></span><span>Реализовано</span></div>
+    <div class="legend-item"><span class="legend-dot legend-progress"></span><span>В работе</span></div>
+    <div class="legend-item"><span class="legend-dot legend-planned"></span><span>Планируется</span></div>
+    <div class="legend-item"><span class="legend-dot legend-gapped"></span><span>Не сделано (Gap)</span></div>
+    <div class="legend-item"><span class="legend-dot legend-skip"></span><span>Пропуск (Skip)</span></div>
   </div>
-
   <div class="graph-container">
-    <!-- Gateway -->
-    <div class="service-card">
-      <div class="service-header">
-        <span class="service-icon" style="background:#58a6ff;color:#fff;">GW</span>
-        <div class="service-title">Gateway</div>
-        <div class="service-lang">C++</div>
-      </div>
-      <div class="components-grid">
-        <div class="component-item">
-          <span class="component-name">TCP Server (Asio)</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Interest Management</span>
-          <span class="component-status progress"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">ChunkSnapshot RPC</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">PlayerAction RPC</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Zero-Copy Protocol</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Rate Limiting</span>
-          <span class="component-status gap-tooltip">Отложено до масштабируемости</span>
-          <span class="component-status skip"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Compression (LZ4)</span>
-          <span class="component-status gap-tooltip">Отложено до масштабируемости</span>
-          <span class="component-status skip"></span>
-        </div>
-      </div>
-      <div class="summary-bar">
-        <div class="summary-row">
-          <span class="summary-label">Достигнуто:</span>
-          <span class="summary-value summary-done">5/5</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">В работе:</span>
-          <span class="summary-value summary-progress">1/1</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Гепы:</span>
-          <span class="summary-value summary-gapped">0/0</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- ChunkStore -->
-    <div class="service-card">
-      <div class="service-header">
-        <span class="service-icon" style="background:#3fb950;color:#fff;">CS</span>
-        <div class="service-title">ChunkStore</div>
-        <div class="service-lang">C++</div>
-      </div>
-      <div class="components-grid">
-        <div class="component-item">
-          <span class="component-name">Chunk (32×32×32)</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">SetBlock/GetBlock</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">LMDB Persistence</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Chunk Snapshot</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Pending Unload</span>
-          <span class="component-status progress"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Coord Serialization</span>
-          <span class="component-status done"></span>
-        </div>
-      </div>
-      <div class="summary-bar">
-        <div class="summary-row">
-          <span class="summary-label">Достигнуто:</span>
-          <span class="summary-value summary-done">5/5</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">В работе:</span>
-          <span class="summary-value summary-progress">1/1</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Гепы:</span>
-          <span class="summary-value summary-gapped">0/0</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- WorldGenerator -->
-    <div class="service-card">
-      <div class="service-header">
-        <span class="service-icon" style="background:#3fb950;color:#fff;">WG</span>
-        <div class="service-title">WorldGenerator</div>
-        <div class="service-lang">C++</div>
-      </div>
-      <div class="components-grid">
-        <div class="component-item">
-          <span class="component-name">Flat Terrain</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Noise Functions</span>
-          <span class="component-status planned"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Biomes</span>
-          <span class="component-status planned"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">3D Perlin</span>
-          <span class="component-status planned"></span>
-        </div>
-      </div>
-      <div class="summary-bar">
-        <div class="summary-row">
-          <span class="summary-label">Достигнуто:</span>
-          <span class="summary-value summary-done">1/1</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">В работе:</span>
-          <span class="summary-value summary-progress">0/0</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Планируется:</span>
-          <span class="summary-value summary-planned">3/3</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- SimulationCore -->
-    <div class="service-card">
-      <div class="service-header">
-        <span class="service-icon" style="background:#d29922;color:#fff;">SC</span>
-        <div class="service-title">SimulationCore</div>
-        <div class="service-lang">C++</div>
-      </div>
-      <div class="components-grid">
-        <div class="component-item">
-          <span class="component-name">ECS (EnTT)</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Multiblock Controller</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">BlockChanged Event</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Multiblock Pattern Match</span>
-          <span class="component-status progress"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">SetBlockMeta RPC</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Entity Components</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Mobs (AI/Combat)</span>
-          <span class="component-status progress"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">RecipeManager</span>
-          <span class="component-status progress"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">EnergyStorage</span>
-          <span class="component-status progress"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">PipeNetwork</span>
-          <span class="component-status skip"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">PipeFlowSolver</span>
-          <span class="component-status skip"></span>
-        </div>
-      </div>
-      <div class="summary-bar">
-        <div class="summary-row">
-          <span class="summary-label">Достигнуто:</span>
-          <span class="summary-value summary-done">5/5</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">В работе:</span>
-          <span class="summary-value summary-progress">3/3</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Планируется:</span>
-          <span class="summary-value summary-planned">0/0</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Пропуск:</span>
-          <span class="summary-value summary-skip">2/2</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- SpatialIndex -->
-    <div class="service-card">
-      <div class="service-header">
-        <span class="service-icon" style="background:#d29922;color:#fff;">SI</span>
-        <div class="service-title">SpatialIndex</div>
-        <div class="service-lang">C++</div>
-      </div>
-      <div class="components-grid">
-        <div class="component-item">
-          <span class="component-name">R-tree / Octree</span>
-          <span class="component-status progress"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">AABB Intersection</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Frustum Culling</span>
-          <span class="component-status progress"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Multiblock Queries</span>
-          <span class="component-status progress"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Entity Queries</span>
-          <span class="component-status planned"></span>
-        </div>
-      </div>
-      <div class="summary-bar">
-        <div class="summary-row">
-          <span class="summary-label">Достигнуто:</span>
-          <span class="summary-value summary-done">1/1</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">В работе:</span>
-          <span class="summary-value summary-progress">3/3</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Планируется:</span>
-          <span class="summary-value summary-planned">1/1</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Гепы:</span>
-          <span class="summary-value summary-gapped">0/0</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- MetaDB -->
-    <div class="service-card">
-      <div class="service-header">
-        <span class="service-icon" style="background:#d29922;color:#fff;">MD</span>
-        <div class="service-title">MetaDB</div>
-        <div class="service-lang">Go</div>
-      </div>
-      <div class="components-grid">
-        <div class="component-item">
-          <span class="component-name">SQLite Driver</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Player Saves</span>
-          <span class="component-status progress"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Inventory Data</span>
-          <span class="component-status planned"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Transaction Saves</span>
-          <span class="component-status planned"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">WAL Logging</span>
-          <span class="component-status planned"></span>
-        </div>
-      </div>
-      <div class="summary-bar">
-        <div class="summary-row">
-          <span class="summary-label">Достигнуто:</span>
-          <span class="summary-value summary-done">1/1</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">В работе:</span>
-          <span class="summary-value summary-progress">1/1</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Планируется:</span>
-          <span class="summary-value summary-planned">3/3</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Protocol -->
-    <div class="service-card">
-      <div class="service-header">
-        <span class="service-icon" style="background:#3fb950;color:#fff;">PR</span>
-        <div class="service-title">Protocol</div>
-        <div class="service-lang">FlatBuffers</div>
-      </div>
-      <div class="components-grid">
-        <div class="component-item">
-          <span class="component-name">ChunkSnapshot</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">PlayerAction</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">EntitySnapshot</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">MultiblockCreated</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">MultiblockDestroyed</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">PipeNetworkUpdate</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Zero-Copy Design</span>
-          <span class="component-status done"></span>
-        </div>
-      </div>
-      <div class="summary-bar">
-        <div class="summary-row">
-          <span class="summary-label">Достигнуто:</span>
-          <span class="summary-value summary-done">6/6</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">В работе:</span>
-          <span class="summary-value summary-progress">0/0</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Планируется:</span>
-          <span class="summary-value summary-planned">0/0</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Гепы:</span>
-          <span class="summary-value summary-gapped">0/0</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- MessageRouter -->
-    <div class="service-card">
-      <div class="service-header">
-        <span class="service-icon" style="background:#d29922;color:#fff;">MR</span>
-        <div class="service-title">MessageRouter</div>
-        <div class="service-lang">Go</div>
-      </div>
-      <div class="components-grid">
-        <div class="component-item">
-          <span class="component-name">Pub/Sub Channels</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Topic Routing</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">100k Concurrent Topics</span>
-          <span class="component-status progress"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Gateway Integration</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">SimulationCore Integration</span>
-          <span class="component-status done"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">ChunkStore Integration</span>
-          <span class="component-status done"></span>
-        </div>
-      </div>
-      <div class="summary-bar">
-        <div class="summary-row">
-          <span class="summary-label">Достигнуто:</span>
-          <span class="summary-value summary-done">5/5</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">В работе:</span>
-          <span class="summary-value summary-progress">1/1</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Планируется:</span>
-          <span class="summary-value summary-planned">0/0</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Гепы:</span>
-          <span class="summary-value summary-gapped">0/0</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- GameClient -->
-    <div class="service-card">
-      <div class="service-header">
-        <span class="service-icon" style="background:#d29922;color:#fff;">GC</span>
-        <div class="service-title">GameClient</div>
-        <div class="service-lang">C++</div>
-      </div>
-      <div class="components-grid">
-        <div class="component-item">
-          <span class="component-name">bgfx Renderer</span>
-          <span class="component-status planned"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">FPS Camera</span>
-          <span class="component-status planned"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">DDA Raycast</span>
-          <span class="component-status planned"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">ImGui Debug</span>
-          <span class="component-status planned"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Block Placement</span>
-          <span class="component-status planned"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Entity Rendering</span>
-          <span class="component-status planned"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">Input Handling</span>
-          <span class="component-status planned"></span>
-        </div>
-        <div class="component-item">
-          <span class="component-name">miniaudio</span>
-          <span class="component-status planned"></span>
-        </div>
-      </div>
-      <div class="summary-bar">
-        <div class="summary-row">
-          <span class="summary-label">Достигнуто:</span>
-          <span class="summary-value summary-done">0/0</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">В работе:</span>
-          <span class="summary-value summary-progress">0/0</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Планируется:</span>
-          <span class="summary-value summary-planned">8/8</span>
-        </div>
-        <div class="summary-row">
-          <span class="summary-label">Гепы:</span>
-          <span class="summary-value summary-gapped">0/0</span>
-        </div>
-      </div>
-    </div>
+<!-- Gateway -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#58a6ff;color:#fff;">GW</span>
+    <div class="service-title">Gateway</div>
+    <div class="service-lang">C++</div>
   </div>
-
-  <div style="margin-top:30px;">
-    <h2 style="color:#c9d1d9;margin-bottom:12px;">🔴 Критические Гепы (Critical Gaps)</h2>
-    <div class="critical-path">
-      <div class="critical-item">
-        <strong>SimulationCore → ChunkStore</strong> — Отсутствует callback для `pending_unload` проверки (anchor внутри/за пределами чанка)
-      </div>
-      <div class="critical-item">
-        <strong>SimulationCore → ChunkStore</strong> — Нет RPC для `SetBlockMeta` (запись mb_id в метаслой чанка)
-      </div>
-      <div class="critical-item">
-        <strong>ChunkStore</strong> — Отсутствует `isChunkLoaded` для быстрой проверки существования чанка
-      </div>
-      <div class="critical-item">
-        <strong>SimulationCore</strong> — `addEnergy/consumeEnergy` вспомогательные функции отсутствуют
-      </div>
-    </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">TCP Server (io_uring, ctrl+bulk) <span class="dep-item">gateway.cpp:34-164, dual ports 7777/7778, libgtnh-net</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Frame Protocol &amp; Message Types <span class="dep-item">Frame [4B size][1B type][FlatBuffer]; C++ GatewayMsg 1-46</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Client→Server Relay (PlayerAction + requests) <span class="dep-item">on_client_ctrl_message gateway.cpp:459-654</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Server→Client Topic Fan-out Relay <span class="dep-item">on_router_publish gateway.cpp:326-453, ~30 subs</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Player Join/Leave + Reconnect State <span class="dep-item">player.joined/left, position restore, CHUNK re-send</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Router Reconnect &amp; Heartbeat <span class="dep-item">20s heartbeat, 3s reconnect, re-register topics</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Block Change Broadcast <span class="dep-item">single client ok; multiplayer-sync 0/12 tasks</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Interest Management <span class="dep-item">client_interest() = nullptr (gateway.cpp:265), ShouldSendChunk не подключен</span></span>
+  <span class="component-status gapped"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Multi-Client Support <span class="dep-item">одна ctrl/bulk пара соединений, player id=1 (gateway.cpp:102)</span></span>
+  <span class="component-status gapped"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Rate Limiting <span class="dep-item">MOVE/UNLOAD flood дропается в main.cpp:83-92</span></span>
+  <span class="component-status skip"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Compression (LZ4) <span class="dep-item">компрессия в chunk_store; gateway — zero-copy passthrough</span></span>
+  <span class="component-status skip"></span>
+</div>
   </div>
-
-  <div style="margin-top:20px;">
-    <h2 style="color:#c9d1d9;margin-bottom:12px;">🟡 Прогресс-бары по сервисам</h2>
-    <div class="components-grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
-      <div style="padding:12px;background:#161b22;border-radius:6px;">
-        <strong>Gateway</strong><br>
-        <div class="progress-bar"><div class="progress-fill progress-85"></div></div>
-        <small style="color:#8b949e;margin-top:4px;">85%</small>
-      </div>
-      <div style="padding:12px;background:#161b22;border-radius:6px;">
-        <strong>ChunkStore</strong><br>
-        <div class="progress-bar"><div class="progress-fill progress-85"></div></div>
-        <small style="color:#8b949e;margin-top:4px;">85%</small>
-      </div>
-      <div style="padding:12px;background:#161b22;border-radius:6px;">
-        <strong>WorldGenerator</strong><br>
-        <div class="progress-bar"><div class="progress-fill progress-10"></div></div>
-        <small style="color:#8b949e;margin-top:4px;">10%</small>
-      </div>
-      <div style="padding:12px;background:#161b22;border-radius:6px;">
-        <strong>SimulationCore</strong><br>
-        <div class="progress-bar"><div class="progress-fill progress-60"></div></div>
-        <small style="color:#8b949e;margin-top:4px;">60%</small>
-      </div>
-      <div style="padding:12px;background:#161b22;border-radius:6px;">
-        <strong>SpatialIndex</strong><br>
-        <div class="progress-bar"><div class="progress-fill progress-30"></div></div>
-        <small style="color:#8b949e;margin-top:4px;">30%</small>
-      </div>
-      <div style="padding:12px;background:#161b22;border-radius:6px;">
-        <strong>MetaDB</strong><br>
-        <div class="progress-bar"><div class="progress-fill progress-30"></div></div>
-        <small style="color:#8b949e;margin-top:4px;">30%</small>
-      </div>
-    </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Достигнуто:</span>
+  <span class="summary-value summary-done">6</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">В работе:</span>
+  <span class="summary-value summary-progress">1</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Гепы:</span>
+  <span class="summary-value summary-gapped">2</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Пропуск:</span>
+  <span class="summary-value summary-skip">2</span>
+</div>
   </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-60" style="width:72%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">72%</small>
+<div class="critical-path">
+  <h4>⚠ Критические гэпы</h4>
+<div class="critical-item">Только один клиент: одна ctrl/bulk пара + player id=1 → broadcast 'all clients' не работает</div><div class="critical-item">Interest management — nullptr заглушка, чанки рассылаются безусловно</div>
+</div>
+</div>
 
-  <div style="margin-top:20px;padding:16px;background:#0d1117;border:1px solid #30363d;border-radius:8px;font-size:13px;">
-    <strong>📊 Общая статистика:</strong><br>
-    Всего компонентов: 70 | Достигнуто: 26 (37%) | В работе: 20 (29%) | Планируется: 16 (23%) | Пропуск: 6 (9%)
+<!-- ChunkStore -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#3fb950;color:#fff;">CS</span>
+    <div class="service-title">ChunkStore</div>
+    <div class="service-lang">C++</div>
+  </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">Chunk Data Model (32×32×32, palette) <span class="dep-item">MutableChunk+MutableSection, 'GCHK' wire format</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">SetBlock / GetBlock (block+meta) <span class="dep-item">sync fast path + RPC (IoUringChunkStoreService.cpp:110-156)</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">CAS Block Updates <span class="dep-item">CASHandler + SetBlockCAS RPC, conflict → actual block/meta</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">LMDB Persistence + Flush Pipeline <span class="dep-item">LmdbStore + FlushPipeline batch flush, encode-on-own-thread</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Chunk Snapshot / Compressed Delivery <span class="dep-item">world.chunk.loaded.compressed, palette bytes</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">io_uring Network Service <span class="dep-item">IoUringChunkStoreService, port 5001, rewrite 2a8da9b</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Router Integration (chunk.requests) <span class="dep-item">serves CHUNK_REQUEST, publishes compressed chunks</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Worldgen Hookup <span class="dep-item">GenerationQueue → encode pipeline (ChunkStore.cpp:28-33)</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Multiblock ID in Meta-layer (write) <span class="dep-item">чтение/хранение есть; SetBlock дропает mbId ((void)mbId)</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Chunk Unload Protocol (pending_unload) <span class="dep-item">нет handshake; заменён save-on-dissociation (L2 задача 6.4)</span></span>
+  <span class="component-status skip"></span>
+</div>
+  </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Достигнуто:</span>
+  <span class="summary-value summary-done">8</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">В работе:</span>
+  <span class="summary-value summary-progress">1</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Пропуск:</span>
+  <span class="summary-value summary-skip">1</span>
+</div>
+  </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-85" style="width:94%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">94%</small>
+<div class="critical-path">
+  <h4>⚠ Критические гэпы</h4>
+<div class="critical-item">mb_id write path отсутствует: SetBlock/SetBlockCAS дропают mbId, BlockChangedEvent хардкодит mb_id=0</div><div class="critical-item">can-I-unload handshake не существует нигде; L2 задача 6.4 → save-on-dissociation</div>
+</div>
+</div>
+
+<!-- WorldGenerator -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#3fb950;color:#fff;">WG</span>
+    <div class="service-title">WorldGenerator</div>
+    <div class="service-lang">C++</div>
+  </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">Noise Terrain (SurfaceHeights) <span class="dep-item">64 + PerlinFBM*12 + SimplexFBM*20, [32,96]</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Cave Noise (3D) <span class="dep-item">Simplex FractalFBm 3D, |noise|&lt;0.12 carving</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Ore Generation <span class="dep-item">OreGenerator + ores.json, архив 2026-07-12</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Oak Tree Generation <span class="dep-item">TreeGenerator, 5×5 strict local max, 7 тестов</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Tree Blocks + Crafting Recipe <span class="dep-item">oak_log/leaves в items.csv, log→4 planks recipe</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Generation Queue <span class="dep-item">multithreaded worker pool, deque alternation (6840207)</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Texture System (client) <span class="dep-item">add-texture-system 16/23: atlas loader + transparency done</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Biome System <span class="dep-item">Phase 2 не-цель по proposal add-tree-generation</span></span>
+  <span class="component-status skip"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Tree Variants / Drop Tables <span class="dep-item">spruce/birch, coastal, saplings — Phase 2</span></span>
+  <span class="component-status skip"></span>
+</div>
+  </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Достигнуто:</span>
+  <span class="summary-value summary-done">6</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">В работе:</span>
+  <span class="summary-value summary-progress">1</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Пропуск:</span>
+  <span class="summary-value summary-skip">2</span>
+</div>
+  </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-85" style="width:93%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">93%</small>
+
+</div>
+
+<!-- SimulationCore -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#d29922;color:#fff;">SC</span>
+    <div class="service-title">SimulationCore</div>
+    <div class="service-lang">C++</div>
+  </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">ECS (EnTT) Engine <span class="dep-item">entt::registry, onBlockChanged lifecycle, 20Hz, 81 тестов</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Multiblock Controller + Pattern (L2/L3) <span class="dep-item">PatternLibrary, EBF/LargeBoiler/LCR, serialize/deserialize</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">BlockChanged Event <span class="dep-item">onBlockChanged + publishBlockChangedEvent</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Entity Components <span class="dep-item">Machine, Energy, Heat, Steam, Overheat, Inventory, Transformer…</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Energy Storage &amp; Generators <span class="dep-item">GeneratorSystem, Creative, BatteryBuffer, Transformer, Rotare</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Explosion Mechanics <span class="dep-item">ExplosionSystem, 60-tick CRITICAL, архив 08-03</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">RecipeManager (sim) <span class="dep-item">MachineSystem + YAML + ConditionEvaluator</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Crafting (server-auth) <span class="dep-item">Crafting/ WorkbenchStateManager, GridPatternMatcher</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Pipe/Energy Transport (sim-side) <span class="dep-item">PipeEnergyClient, Reactors Energy/Fluid/ItemFlowHandler</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">QuestManager <span class="dep-item">detection hooks, era transitions, loadProgress</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Heat / Water-free Boiler <span class="dep-item">BoilerSystem HEAT→STEAM committed 1727e65; AdjacencyTransfer refactor WIP</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Wrench / Pipe Guidance <span class="dep-item">add-wrench-pipe-guidance 22/24; face-toggle WIP uncommitted</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Mobs (AI/Combat) <span class="dep-item">нет кода, нет spec — future work</span></span>
+  <span class="component-status planned"></span>
+</div>
+  </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Достигнуто:</span>
+  <span class="summary-value summary-done">10</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">В работе:</span>
+  <span class="summary-value summary-progress">2</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Планируется:</span>
+  <span class="summary-value summary-planned">1</span>
+</div>
+  </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-85" style="width:85%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">85%</small>
+
+</div>
+
+<!-- PipeNetwork -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#d29922;color:#fff;">PN</span>
+    <div class="service-title">PipeNetwork</div>
+    <div class="service-lang">C++</div>
+  </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">Item Pipe Transport <span class="dep-item">BFS networks, 1 block/tick, machine→pipe→machine</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Fluid Pipe Transport <span class="dep-item">type tracking + volume distribution, mismatch blocks</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Energy Cable Transport <span class="dep-item">CableGraph, tier/ampacity/loss, CableExplodedEvent</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Heat Transport <span class="dep-item">HeatLoss, distributeHeat, per-node temperature</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Per-face Connection Mask <span class="dep-item">PipeNode.meta, pipeFaceOpen, 8ecc56d</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Pipe Wrench Guidance <span class="dep-item">pipe.wrench.action → response, 1551655</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Item Buffer Persistence <span class="dep-item">exportItemBuffers, .pipe_network_persist/ (file-based)</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Service Integration <span class="dep-item">standalone daemon, 11 topics, 54 теста / 217 asserts</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Client Pipe Mask Rendering <span class="dep-item">game_client WIP: PipeMeta.h, PipeMeshBuilder untracked</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Transformers <span class="dep-item">TransformerSystem живёт в simulation_core</span></span>
+  <span class="component-status skip"></span>
+</div>
+  </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Достигнуто:</span>
+  <span class="summary-value summary-done">8</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">В работе:</span>
+  <span class="summary-value summary-progress">1</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Пропуск:</span>
+  <span class="summary-value summary-skip">1</span>
+</div>
+  </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-85" style="width:94%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">94%</small>
+
+</div>
+
+<!-- SpatialIndex -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#8b949e;color:#fff;">SI</span>
+    <div class="service-title">SpatialIndex</div>
+    <div class="service-lang">C++</div>
+  </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">SpatialIndex Service (spatialindexd) <span class="dep-item">2-строчный stub, add_subdirectory закомментирован</span></span>
+  <span class="component-status gapped"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">R-tree / Octree <span class="dep-item">Deferred (L2) по architecture/spec.md:33</span></span>
+  <span class="component-status skip"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">AABB Intersection <span class="dep-item">нет кода</span></span>
+  <span class="component-status skip"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Frustum Culling <span class="dep-item">есть только renderer-side в game_client</span></span>
+  <span class="component-status skip"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Multiblock Queries <span class="dep-item">SimulationCore владеет MB в ECS</span></span>
+  <span class="component-status skip"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Entity Queries <span class="dep-item">deferred вместе с сервисом</span></span>
+  <span class="component-status skip"></span>
+</div>
+  </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Гепы:</span>
+  <span class="summary-value summary-gapped">1</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Пропуск:</span>
+  <span class="summary-value summary-skip">5</span>
+</div>
+  </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-10" style="width:8%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">0%</small>
+
+</div>
+
+<!-- EntityStateStore -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#d29922;color:#fff;">ES</span>
+    <div class="service-title">EntityStateStore</div>
+    <div class="service-lang">C++</div>
+  </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">LMDB Storage Backend <span class="dep-item">EntityStateStorage, 1GB mapsize, key=dim|x|y|z|type</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">LRU Write-through Cache <span class="dep-item">cache.cpp, ~1000 entries, mutex-guarded</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">TCP RPC Server (:5200) <span class="dep-item">Get/Set EntityStateReq, FlatBuffer frames</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">ESS Client (simcore) <span class="dep-item">async RPC, req_id + pending callbacks</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Chest Persistence <span class="dep-item">ChestStateManager → ESS, 5bf4abb</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Workbench Grid Persistence <span class="dep-item">WorkbenchStateManager → ESS, 5bf4abb</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Tests <span class="dep-item">test_persistence.cpp, 5 тестов / 31 assert</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Build / CI Integration <span class="dep-item">add_subdirectory в default build, run.sh 3-й</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Router pub/sub path (entity.state.*) <span class="dep-item">реализован но без потребителей — dead by design</span></span>
+  <span class="component-status skip"></span>
+</div>
+  </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Достигнуто:</span>
+  <span class="summary-value summary-done">8</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Пропуск:</span>
+  <span class="summary-value summary-skip">1</span>
+</div>
+  </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-85" style="width:100%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">100%</small>
+
+</div>
+
+<!-- MetaDB -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#d29922;color:#fff;">MD</span>
+    <div class="service-title">MetaDB</div>
+    <div class="service-lang">Go</div>
+  </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">SQLite Driver <span class="dep-item">mattn/go-sqlite3, db.go, go vet clean</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Player Saves <span class="dep-item">players table, position.load/left persist</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Inventory Data <span class="dep-item">40-slot publish, grantItemToInventory merge</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Transactional Saves <span class="dep-item">CreateInventory tx, atomic reward redemption</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Quest Progress Persistence <span class="dep-item">quest_progress CRUD, HandleQuestCompleted upsert</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Quest Rewards &amp; Redemption <span class="dep-item">Redeem/Batch + idempotency tests</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Quest Definition Loading <span class="dep-item">quests.csv + JSON requirements/rewards</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Quest Exchange Market <span class="dep-item">add-quest-exchange 41/41, single-tx cooldown</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">MessageRouter Integration <span class="dep-item">10 topics, heartbeat 20s, 1s reconnect</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">WAL Logging <span class="dep-item">заявлено в доке, но PRAGMA journal_mode=WAL отсутствует</span></span>
+  <span class="component-status gapped"></span>
+</div>
+  </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Достигнуто:</span>
+  <span class="summary-value summary-done">9</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Гепы:</span>
+  <span class="summary-value summary-gapped">1</span>
+</div>
+  </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-85" style="width:90%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">90%</small>
+
+</div>
+
+<!-- RecipeManager -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#3fb950;color:#fff;">RM</span>
+    <div class="service-title">RecipeManager</div>
+    <div class="service-lang">C++</div>
+  </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">recipe-id-format ID Resolution <span class="dep-item">resolveItemId: ':'→pack, digits→pack, else nameToId</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">RecipeManager Core Lib <span class="dep-item">YAML load, class/variant tier filter</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">ItemRegistry <span class="dep-item">CSV+SQLite, nameToId/idToName, items.csv</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">ConditionEvaluator <span class="dep-item">MachineState: temperature, purity, biomes, tags</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">RPC Service (:5555) <span class="dep-item">checkRecipe/craft/evaluateConditions, 50ms timer</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Recipe YAML Data (14 files) <span class="dep-item">все 14 классов грузятся, все референсы резолвятся</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Crafting Integration (server-auth) <span class="dep-item">ServerRecipeDB, 5bf4abb</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">fix-ore-processing-chain <span class="dep-item">0/27 задач; цепочка разошлась (dust-based, нет per-metal plates)</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">MachineRegistry (refactor) <span class="dep-item">refactor-machine-role-semantics: IsHeatSource/IsHeatSink WIP</span></span>
+  <span class="component-status progress"></span>
+</div>
+  </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Достигнуто:</span>
+  <span class="summary-value summary-done">7</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">В работе:</span>
+  <span class="summary-value summary-progress">2</span>
+</div>
+  </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-85" style="width:89%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">89%</small>
+
+</div>
+
+<!-- GameClient -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#58a6ff;color:#fff;">GC</span>
+    <div class="service-title">GameClient</div>
+    <div class="service-lang">C++</div>
+  </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">bgfx Renderer <span class="dep-item">RenderBridge/Scene/API + ChunkMeshBuilder + minimap; wrench overlay WIP</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Block Interaction &amp; Placement (DDA, CAS) <span class="dep-item">Raycaster + InteractionSystem + ActionHandler, f8d1e4a</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Input Handling &amp; Bindings <span class="dep-item">InputBinder action-binding refactor c6477c0</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">ImGui UI Core <span class="dep-item">UIManager, ActionRegistry, DragManager, ToastNotification</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Crafting &amp; NEI Browser <span class="dep-item">ClientCraftingWindow + CraftingGrid + ServerRecipeDB + NeiPanel</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Machine &amp; Chest Windows <span class="dep-item">MachineWindow + ChestWindow + BlockUIFactory</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">FPS Camera <span class="dep-item">Camera.cpp рефакторит под PlayerController (uncommitted)</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Player Movement / Physics <span class="dep-item">Player/PlayerController fly+walk, AABB sweep (untracked)</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Quest Book UI <span class="dep-item">icons/lock-reasons/rewards landed; polish 4/10</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Console Window <span class="dep-item">history есть, но ImGuiKey хардкод — beads GTNH-7ct</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Entity Rendering <span class="dep-item">нет entity/mob рендер-пайплайна</span></span>
+  <span class="component-status gapped"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Audio (miniaudio) <span class="dep-item">miniaudio залинкован, кода нет (CLAUDE.md TODO)</span></span>
+  <span class="component-status skip"></span>
+</div>
+  </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Достигнуто:</span>
+  <span class="summary-value summary-done">5</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">В работе:</span>
+  <span class="summary-value summary-progress">5</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Гепы:</span>
+  <span class="summary-value summary-gapped">1</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Пропуск:</span>
+  <span class="summary-value summary-skip">1</span>
+</div>
+  </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-60" style="width:68%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">68%</small>
+<div class="critical-path">
+  <h4>⚠ Критические гэпы</h4>
+<div class="critical-item">CHARGE_ITEM producer отсутствует в клиенте → quest TOOL_CHARGED 40 дремлет (beads GTNH-akf)</div>
+</div>
+</div>
+
+<!-- MessageRouter -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#d29922;color:#fff;">MR</span>
+    <div class="service-title">MessageRouter</div>
+    <div class="service-lang">Go</div>
+  </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">TCP Pub/Sub Core <span class="dep-item">[4B len][1B type][payload], frame pooling</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">MQTT Topic Matching (+/#) <span class="dep-item">topicMatches, single + и trailing #</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Service Discovery / Registry <span class="dep-item">RegisterService, auto-unregister on disconnect</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Priority Delivery Channels <span class="dep-item">PrioHigh/Normal/Low, drop-oldest для non-high</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Connection Lifecycle &amp; Idle Cleanup <span class="dep-item">2b541c9: silent-клиенты убиваются, сервисы — нет</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Cross-Service Integration <span class="dep-item">все C++ сервисы + Go MetaDB на :4000</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Observability &amp; Lifecycle <span class="dep-item">SIGUSR1 metrics, --version, graceful shutdown</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Delivery Guarantees (at-least-once) <span class="dep-item">SHALL ack+retry не реализован — at-most-once fan-out</span></span>
+  <span class="component-status gapped"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">No Self-Delivery Suppression <span class="dep-item">publisher не исключается; только reply-topic конвенция</span></span>
+  <span class="component-status gapped"></span>
+</div>
+  </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Достигнуто:</span>
+  <span class="summary-value summary-done">7</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Гепы:</span>
+  <span class="summary-value summary-gapped">2</span>
+</div>
+  </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-60" style="width:78%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">78%</small>
+<div class="critical-path">
+  <h4>⚠ Критические гэпы</h4>
+<div class="critical-item">At-least-once с Ack+retry — SHALL-требование spec, реализован только at-most-once</div><div class="critical-item">No self-delivery — SHALL-сценарий не реализован, publisher получает свои же сообщения</div>
+</div>
+</div>
+
+<!-- Protocol -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#3fb950;color:#fff;">PR</span>
+    <div class="service-title">Protocol</div>
+    <div class="service-lang">FlatBuffers</div>
+  </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">Core Value Types &amp; Enums <span class="dep-item">Vec3i/ItemStack/GameMode/BlockAckStatus/…</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">PlayerAction / SetBlockAction / BlockAck / Directive <span class="dep-item">wire 1/5/11/42</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">ChunkSnapshot / CompressedChunkData <span class="dep-item">wire 12 = live path</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">EntitySnapshot <span class="dep-item">wire 3, entities.* topic relay</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">InventoryUpdate / Action / ContainerOpen <span class="dep-item">wire 6/7/19</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">BlockEntityUpdate <span class="dep-item">wire 8, steam_current/steam_capacity (1727e65)</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">MultiblockCreated / Destroyed <span class="dep-item">wire 23</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">PipeNetworkUpdate <span class="dep-item">energy/fluid/item events + wrench guidance</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Quest Protocol (GameMode/StartScenario) <span class="dep-item">wire 20-29/33, add-quest-exchange 41/41</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Recipe Protocol <span class="dep-item">wire 17, 34-41 Req/Resp</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Zero-Copy Wire Framing <span class="dep-item">[4B size][1B type][FB], byte dispatch без union</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">BlockUpdate (incremental diff) <span class="dep-item">core.fbs:169 TODO(diff-protocol)</span></span>
+  <span class="component-status planned"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">GatewayPayload Union Consistency <span class="dep-item">union устарел vs C++ GatewayMsg 1-46 (документировано)</span></span>
+  <span class="component-status gapped"></span>
+</div>
+  </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Достигнуто:</span>
+  <span class="summary-value summary-done">11</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Планируется:</span>
+  <span class="summary-value summary-planned">1</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Гепы:</span>
+  <span class="summary-value summary-gapped">1</span>
+</div>
+  </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-85" style="width:85%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">85%</small>
+<div class="critical-path">
+  <h4>⚠ Критические гэпы</h4>
+<div class="critical-item">gateway.fbs GatewayPayload union устарел vs C++ GatewayMsg consts 1-46 — дрейфует с каждым новым типом</div>
+</div>
+</div>
+
+<!-- Quest System -->
+<div class="service-card">
+  <div class="service-header">
+    <span class="service-icon" style="background:#58a6ff;color:#fff;">QK</span>
+    <div class="service-title">Quest System</div>
+    <div class="service-lang">C++/Go</div>
+  </div>
+  <div class="components-grid">
+<div class="component-item">
+  <span class="component-name">Quest Data Model (quest_lib) <span class="dep-item">CSV+Graph+Requirements+Rewards, BuildEraStructure</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">QuestManager (simcore) <span class="dep-item">все 6 типов детекции + completeQuest + unlock cascade</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Detection Handlers (craft/block/machine/tool/side) <span class="dep-item">questbook-detection-handlers 8/8</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">QuestBookWindow Client UI <span class="dep-item">3-панельный layout, era tabs, icons, lock-reasons</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Rewards → Inventory Redemption <span class="dep-item">grantItemToInventory, atomic grant+mark</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Quest Exchange <span class="dep-item">add-quest-exchange 41/41</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Icons / Lock-Reasons / Choice / Auto-complete <span class="dep-item">add-questbook-icons-lock-reasons 23/24</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Era Transition <span class="dep-item">maybePublishEraTransition, client apply</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">MetaDB Quest Persistence <span class="dep-item">quest_progress.go + definitions.go, 161aa7c</span></span>
+  <span class="component-status done"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">INVENTORY Detection <span class="dep-item">код committed end-to-end, но beads GTNH-dav open</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Client UI Polish <span class="dep-item">questbook-client-polish 4/10: toasts, era badges</span></span>
+  <span class="component-status progress"></span>
+</div>
+<div class="component-item">
+  <span class="component-name">Quest Registry Coverage <span class="dep-item">beads GTNH-14e: 102/158 целей отсутствуют в items.csv</span></span>
+  <span class="component-status gapped"></span>
+</div>
+  </div>
+  <div class="summary-bar">
+<div class="summary-row">
+  <span class="summary-label">Достигнуто:</span>
+  <span class="summary-value summary-done">9</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">В работе:</span>
+  <span class="summary-value summary-progress">2</span>
+</div>
+<div class="summary-row">
+  <span class="summary-label">Гепы:</span>
+  <span class="summary-value summary-gapped">1</span>
+</div>
+  </div>
+  <div class="progress-bar" style="margin-top:12px;">
+    <div class="progress-fill progress-85" style="width:83%;"></div>
+  </div>
+  <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">83%</small>
+<div class="critical-path">
+  <h4>⚠ Критические гэпы</h4>
+<div class="critical-item">GTNH-14e: 102/158 quest-целей отсутствуют в items.csv — детекция не сработает</div><div class="critical-item">INVENTORY detection (GTNH-dav) код есть, но change не формализован</div>
+</div>
+</div>
+
+  </div>
+  <div style="margin-top:30px;padding:16px;background:#161b22;border:1px solid #30363d;border-radius:8px;">
+    <h2 style="color:#c9d1d9;margin-bottom:12px;">📊 Общая статистика</h2>
+    <div class="summary-bar">
+      <div class="summary-row"><span class="summary-label">Достигнуто:</span><span class="summary-value summary-done">94</span></div>
+      <div class="summary-row"><span class="summary-label">В работе:</span><span class="summary-value summary-progress">15</span></div>
+      <div class="summary-row"><span class="summary-label">Планируется:</span><span class="summary-value summary-planned">2</span></div>
+      <div class="summary-row"><span class="summary-label">Гепы:</span><span class="summary-value summary-gapped">9</span></div>
+      <div class="summary-row"><span class="summary-label">Пропуск:</span><span class="summary-value summary-skip">13</span></div>
+      <div class="total-bar"><span class="total-dot total-done"></span> 94<span class="total-dot total-progress"></span> 15<span class="total-dot total-planned"></span> 2<span class="total-dot total-gapped"></span> 9<span class="total-dot total-skip"></span> 13<span style="margin-left:auto;">Всего компонентов: 133 | Достигнуто: 94 (71%) | В работе: 15 (11%) | Планируется: 2 (2%) | Пропуск: 13 (10%)</span></div>
+      <div class="progress-bar" style="margin-top:12px;">
+        <div class="progress-fill progress-85" style="width:85%;"></div>
+      </div>
+      <small style="color:#8b949e;display:block;text-align:right;margin-top:4px;">общий прогресс ~85%</small>
+    </div>
   </div>
 </body>
 </html>

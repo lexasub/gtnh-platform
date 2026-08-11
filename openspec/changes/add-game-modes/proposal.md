@@ -21,17 +21,17 @@ one-gate change.
   (canFly, noclip, canBreak, canPlace, infiniteItems); mode becomes the single source
   of truth for behavior
 - **Mode-aware movement**: SPECTATOR/CREATIVE keep fly + noclip (current behavior);
-  SURVIVAL switches to gravity + AABB collision against solid blocks (new
-  `PlayerController`)
-- **NEI gating**: item spawning blocked in SURVIVAL
-- **Interaction gating**: break/place stay enabled in all modes during the dev phase
-  (spectator restriction deferred to beta — explicit decision); SURVIVAL placement
-  consumes inventory
-- **Protocol**: `SetGameModeReq` (client→gateway, union index 27) and
-  `GameModeChanged` (gateway→client, union index 28); server stores the per-player
-  mode and echoes it, trusting the client for now
-- Default mode constant flipped to SPECTATOR (currently CREATIVE) to match the
-  spectator-like dev behavior
+  SURVIVAL/ADVENTURE use gravity + AABB collision against solid blocks, owned by a
+  new `PlayerController` (physics extracted from `Camera::Update`)
+- **NEI gating**: item spawning blocked in SURVIVAL and ADVENTURE
+  (`GameModePerm::InfiniteItems`)
+- **Interaction gating**: break/place currently disabled in ADVENTURE/SPECTATOR;
+  the full per-mode interaction semantics (consumption etc.) are tracked by the
+  separate `add-interaction-mode-gating` change
+- **Protocol**: single `GameModeChange` table (`core.fbs`) with wire constant
+  `kGameModeChange = 30`; server stores the per-player mode and echoes it, trusting
+  the client for now
+- Default mode stays **CREATIVE** (unchanged; SPECTATOR default deferred)
 
 ## Impact
 - Affected specs: `game-modes` (new capability), `protocol`

@@ -34,6 +34,46 @@ The Gateway SHALL route machine-window open/close requests to SimulationCore as 
 - **THEN** the Gateway SHALL publish `player.machine.close` to SimulationCore unchanged
 - **AND** SimulationCore SHALL persist the session's live slots (blob keyed by `machine_id`) and deregister the per-player session
 
+### Requirement: Chest Window Open/Close
+The Gateway SHALL route chest-window open/close requests to SimulationCore as container sessions: `kChestOpenReq=19` and `kChestCloseReq=45` (reusing `Protocol::ContainerOpenReq` — no new table), published as `player.chest.open` / `player.chest.close`. Chest slots SHALL persist as a `Protocol::MachineState` blob (`entity_type = 3`) on every mutation and on close.
+
+#### Scenario: Chest window opens
+- **GIVEN** the player interacts with a chest block
+- **WHEN** the client sends `ContainerOpenReq` with `kChestOpenReq=19`
+- **THEN** the Gateway SHALL publish `player.chest.open` to SimulationCore unchanged
+- **AND** SimulationCore SHALL register the `container_id=1` session immediately and load the saved slots from EntityStateStore into it before the open is acknowledged via a full `player.inventory.update` snapshot
+
+#### Scenario: Clicks before the chest load completes are dropped
+- **GIVEN** a chest session was just registered but the async EntityStateStore load has not completed
+- **WHEN** an `InventoryAction` with `container_id=1` arrives
+- **THEN** SimulationCore SHALL drop it (authoritative no-op) so the in-flight load cannot race a per-action save and wipe fresh state
+
+#### Scenario: Chest window closes
+- **GIVEN** the player closes the chest window
+- **WHEN** the client sends `ContainerOpenReq` with `kChestCloseReq=45`
+- **THEN** the Gateway SHALL publish `player.chest.close` unchanged
+- **AND** SimulationCore SHALL persist the session's slots (MachineState blob, `entity_type = 3`) and deregister the per-player session
+
+### Requirement: Workbench Grid as Container Session
+The Gateway SHALL route workbench-grid open to SimulationCore via `kWorkbenchOpenReq=44`, published as `sim.workbench.load`; SimulationCore SHALL register a `container_id=1` session of 9 grid cells and load the saved grid from EntityStateStore (cache-first via `WorkbenchStateManager`) before clicks are applied. Grid feedback SHALL reach the client via `sim.workbench.state` → `kGridUpdate=43` (craft result) and the `player.inventory.update` container snapshot.
+
+#### Scenario: Workbench opens
+- **GIVEN** the player interacts with a crafting table block
+- **WHEN** the client sends `kWorkbenchOpenReq=44`
+- **THEN** the Gateway SHALL publish `sim.workbench.load` unchanged
+- **AND** SimulationCore SHALL register the session immediately and fill the 9 cells from the loaded grid (empty-until-loaded guarded)
+
+#### Scenario: Grid clicks apply to the session
+- **GIVEN** a workbench session is open as `container_id=1`
+- **WHEN** the client sends `InventoryAction` clicks on grid slots
+- **THEN** the server SHALL apply the click rules to the session's 9 cells and persist the result via `WorkbenchStateManager::setGridState`
+
+#### Scenario: Craft result is relayed to the open window
+- **GIVEN** the player presses craft on a workbench with a matching recipe
+- **WHEN** SimulationCore publishes the consumed grid on `sim.workbench.state`
+- **THEN** the Gateway SHALL relay it to the client as `kGridUpdate=43`
+- **AND** the client SHALL apply it only when the position matches the open window's workbench
+
 ### Requirement: Server-Authoritative Inventory Snapshot
 `Protocol::InventoryUpdate` SHALL carry the server-owned cursor stack and the open-container slots (`cursor`, `container_id`, `container_pos`, `container_slots`) in addition to the 40 player slots, so a single snapshot drives the player inventory, the cursor and the open container window.
 

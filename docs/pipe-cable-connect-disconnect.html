@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Pipe / Cable Connect–Disconnect — Bug Handoff Dashboard</title>
+<style>
+  /* ── palette: dataviz reference instance (light/dark swapped in one place) ── */
+  .viz-root {
+    color-scheme: light;
+    --surface-1:  #fcfcfb;   /* chart surface  */
+    --page:       #f9f9f7;   /* page plane     */
+    --ink-1:      #0b0b0b;   /* primary ink    */
+    --ink-2:      #52514e;   /* secondary ink  */
+    --ink-3:      #898781;   /* muted          */
+    --grid:       #e1e0d9;   /* hairline grid  */
+    --axis:       #c3c2b7;   /* baseline/axis  */
+    --border:     rgba(11,11,11,0.10);
+    /* status (fixed, never themed) */
+    --good:       #0ca30c;
+    --warn:       #fab219;
+    --serious:    #ec835a;
+    --critical:   #d03b3b;
+    /* categorical slots 1–6 (validated, both modes) */
+    --slot1:      #2a78d6;   /* bit0  EAST  */
+    --slot2:      #eb6834;   /* bit1  WEST  */
+    --slot3:      #1baf7a;   /* bit2  UP    */
+    --slot4:      #eda100;   /* bit3  DOWN  */
+    --slot5:      #e87ba4;   /* bit4  SOUTH */
+    --slot6:      #008300;   /* bit5  NORTH */
+    --tex-ink:    rgba(11,11,11,0.45);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --page:      #0d0d0d;
+      --ink-1:     #ffffff;
+      --ink-2:     #c3c2b7;
+      --ink-3:     #898781;
+      --grid:      #2c2c2a;
+      --axis:      #383835;
+      --border:    rgba(255,255,255,0.10);
+      --slot1:     #3987e5;
+      --slot2:     #d95926;
+      --slot3:     #199e70;
+      --slot4:     #c98500;
+      --slot5:     #d55181;
+      --slot6:     #008300;
+      --tex-ink:   rgba(255,255,255,0.45);
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page:      #0d0d0d;
+    --ink-1:     #ffffff;
+    --ink-2:     #c3c2b7;
+    --ink-3:     #898781;
+    --grid:      #2c2c2a;
+    --axis:      #383835;
+    --border:    rgba(255,255,255,0.10);
+    --slot1:     #3987e5;
+    --slot2:     #d95926;
+    --slot3:     #199e70;
+    --slot4:     #c98500;
+    --slot5:     #d55181;
+    --slot6:     #008300;
+    --tex-ink:   rgba(255,255,255,0.45);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink-1);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .viz-root { max-width: 980px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  h1 { font-size: 28px; font-weight: 650; letter-spacing: -0.01em; margin: 0 0 6px; }
+  h2 { font-size: 17px; font-weight: 650; margin: 0; letter-spacing: -0.005em; }
+  .subtitle { margin: 0 0 14px; color: var(--ink-2); font-size: 14px; }
+  .lede { color: var(--ink-2); font-size: 14.5px; max-width: 74ch; margin: 0 0 26px; }
+  .lede em { color: var(--ink-1); font-style: normal; }
+
+  /* masthead meta + controls */
+  .masthead-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+  .pill {
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 2px 10px; font-size: 12px; color: var(--ink-2);
+    background: var(--surface-1); font-family: var(--mono);
+  }
+  .pill-open { color: var(--ink-1); border-color: var(--critical); background: color-mix(in srgb, var(--critical) 10%, var(--surface-1)); }
+  .controls { margin-left: auto; display: flex; gap: 8px; }
+  .btn {
+    appearance: none; border: 1px solid var(--border); background: var(--surface-1);
+    color: var(--ink-1); border-radius: 8px; padding: 5px 12px; font-size: 12.5px;
+    cursor: pointer; font-family: inherit;
+  }
+  .btn:hover { background: color-mix(in srgb, var(--ink-1) 5%, var(--surface-1)); }
+  .btn[aria-pressed="true"] { border-color: var(--ink-2); }
+
+  /* panels */
+  .panel {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 22px 22px; margin: 0 0 22px;
+  }
+  .panel-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .panel-head .tabletoggle { margin-left: auto; }
+  figure { margin: 0; }
+  figcaption { color: var(--ink-3); font-size: 12.5px; margin-top: 10px; }
+  svg { display: block; max-width: 100%; height: auto; }
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  svg .mono { font-family: var(--mono); }
+
+  /* KPI row */
+  .kpi-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+  .kpi {
+    flex: 1 1 120px; background: var(--page); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px;
+  }
+  .kpi-num { font-size: 24px; font-weight: 650; display: block; line-height: 1.1; }
+  .kpi-label { font-size: 12px; color: var(--ink-2); }
+  .kpi-label .glyph { font-style: normal; }
+
+  /* status dot plot */
+  .lane { stroke: var(--grid); stroke-width: 1; }
+  .rowlabel { fill: var(--ink-2); font-size: 13px; }
+  .axislabel { fill: var(--ink-3); font-size: 12.5px; }
+  .dotring { fill: var(--surface-1); }
+  .dotrow:hover .dot, .dotrow:focus-visible .dot { filter: brightness(1.12); }
+  .dotrow:hover .dotring, .dotrow:focus-visible .dotring { stroke: var(--ink-2); stroke-width: 1.5; }
+  .dotrow:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 2px; border-radius: 8px; }
+  .critwash { fill: var(--critical); fill-opacity: 0.07; }
+  .statword { fill: var(--ink-2); font-size: 12.5px; }
+  .critpill {
+    fill: none; stroke: var(--critical); stroke-width: 1.2;
+  }
+  .critpill text { fill: var(--ink-2); font-size: 10.5px; font-weight: 600; }
+
+  /* flow diagram */
+  .flow-node rect.nodebox { fill: var(--page); stroke: var(--border); stroke-width: 1; }
+  .flow-node.verified rect.nodebox { stroke: var(--good); }
+  .flow-node.unverified rect.nodebox { stroke: var(--warn); }
+  .flow-node.critical rect.nodebox { stroke: var(--critical); }
+  .flow-node.target rect.nodebox { stroke: var(--axis); }
+  .node-title { fill: var(--ink-1); font-size: 13.5px; font-weight: 600; }
+  .node-desc { fill: var(--ink-2); font-size: 11.5px; }
+  .nchip-glyph { font-size: 11.5px; }
+  .flow-arrow { stroke: var(--axis); stroke-width: 1.5; fill: none; }
+  .edge-label { fill: var(--ink-3); font-size: 11px; font-family: var(--mono); }
+  .flow-node:focus-visible rect.nodebox { stroke: var(--ink-2); stroke-width: 2; }
+
+  /* face net */
+  .face rect.box { stroke-width: 1.6; }
+  .face rect.wash { stroke: none; }
+  .face .fname { font-size: 14px; font-weight: 600; fill: var(--ink-1); }
+  .face .fmeta { font-size: 11px; font-family: var(--mono); fill: var(--ink-2); }
+  .face .fmask { font-size: 10.5px; font-family: var(--mono); fill: var(--ink-3); }
+  .face:focus-visible rect.box { stroke-width: 2.5; }
+  .face-overlay { display: none; }
+  .textured .face-overlay { display: block; }
+  @media (forced-colors: active) {
+    .face-overlay { display: block; }
+    .face rect.box { stroke: CanvasText; }
+  }
+
+  /* callouts + tables */
+  .mask-grid { display: grid; grid-template-columns: 1.05fr 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 760px) { .mask-grid { grid-template-columns: 1fr; } }
+  .callout {
+    border: 1px solid var(--border); border-left-width: 3px; border-radius: 8px;
+    background: var(--page); padding: 10px 12px; margin-top: 12px; font-size: 12.5px; color: var(--ink-2);
+  }
+  .callout.legacy { border-left-color: var(--warn); }
+  .callout .code { font-family: var(--mono); color: var(--ink-1); }
+  .callout strong { color: var(--ink-1); }
+
+  .data-table {
+    width: 100%; border-collapse: collapse; margin-top: 4px; font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+  .data-table th {
+    text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--ink-3); font-weight: 600; padding: 4px 8px; border-bottom: 1px solid var(--axis);
+  }
+  .data-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table .mono { font-family: var(--mono); font-size: 12px; }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 6px; }
+  .tag {
+    display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 11px;
+    border: 1px solid var(--border); font-family: var(--mono);
+  }
+  .tag.good { color: var(--ink-1); border-color: var(--good); }
+  .tag.warn { color: var(--ink-1); border-color: var(--warn); }
+  .tag.crit { color: var(--ink-1); border-color: var(--critical); }
+
+  footer { color: var(--ink-3); font-size: 12px; margin-top: 8px; }
+  footer .mono { font-family: var(--mono); }
+
+  /* tooltip */
+  #tooltip {
+    position: fixed; z-index: 50; pointer-events: none; max-width: 340px;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.14); padding: 8px 11px;
+    font-size: 12.5px; color: var(--ink-1); line-height: 1.45;
+  }
+  #tooltip .tt-strong { font-weight: 600; }
+  #tooltip .tt-strong::after { content: "\a"; white-space: pre; }
+
+  @media print {
+    .controls, .panel-head .tabletoggle { display: none; }
+    body { background: #fff; }
+    .panel { break-inside: avoid; }
+  }
+</style>
+</head>
+<body data-palette="#2a78d6,#eb6834,#1baf7a,#eda100,#e87ba4,#008300" data-mode="light" data-pairs="adjacent">
+
+<div class="viz-root" id="app">
+  <header>
+    <h1>Pipe / Cable Connect &amp; Disconnect</h1>
+    <p class="subtitle">Bug handoff dashboard — wrench disconnect · P1 · bead <span class="mono">GTNH-u0v</span> · updated 2026-08-11</p>
+    <div class="masthead-meta">
+      <span class="pill pill-open">OPEN · P1</span>
+      <span class="pill">GTNH-u0v</span>
+      <span class="pill">fix d32d8d9</span>
+      <div class="controls">
+        <button class="btn" id="themeBtn" type="button" aria-pressed="false">Dark mode</button>
+        <button class="btn" id="textureBtn" type="button" aria-pressed="false">Texture</button>
+      </div>
+    </div>
+  </header>
+
+  <p class="lede">
+    Wrenching a pipe/cable face should sever <em>that</em> face on both adjacent blocks. Pipes currently do
+    <em>not</em> disconnect. A prior fix (<span class="mono">d32d8d9</span>) restored only local-client
+    <em>visibility</em> of the toggle. This dashboard separates observed facts from unverified hypotheses and is
+    clean input for the next session.
+  </p>
+
+  <!-- ════════════ 1 · VERIFICATION STATUS ════════════ -->
+  <section class="panel" id="panel-status">
+    <div class="panel-head">
+      <h2>1 · Verification status</h2>
+      <button class="btn tabletoggle" type="button" data-toggle="statusTable" aria-pressed="false">Table view</button>
+    </div>
+
+    <div class="kpi-row">
+      <div class="kpi"><span class="kpi-num">6</span><span class="kpi-label">systems in play</span></div>
+      <div class="kpi"><span class="kpi-num">2</span><span class="kpi-label">verified</span></div>
+      <div class="kpi"><span class="kpi-num">4</span><span class="kpi-label">need investigation</span></div>
+      <div class="kpi"><span class="kpi-num">1</span><span class="kpi-label"><span class="glyph" aria-hidden="true">✖</span> critical — the meta→event path</span></div>
+    </div>
+
+    <figure id="statusViz">
+      <svg viewBox="0 0 760 412" role="img" aria-label="Verification status of six systems: two verified, four unverified, one critical (ChunkStore)">
+        <line class="lane" x1="300" y1="36" x2="300" y2="368"/>
+        <line class="lane" x1="560" y1="36" x2="560" y2="368"/>
+        <text class="axislabel" x="300" y="392" text-anchor="middle">Unverified · needs investigation</text>
+        <text class="axislabel" x="560" y="392" text-anchor="middle">Verified</text>
+
+        <g class="dotrow" tabindex="0" data-tip="ChunkStore — CRITICAL · unverified — Does a meta-only change emit BlockChangedEvent with the new meta? If it does not, neither the client mesh nor PipeNetwork ever sees the toggle. Verify setBlockCAS + the publish site.">
+          <rect class="critwash" x="8" y="42" width="744" height="44" rx="8"/>
+          <text class="rowlabel" x="14" y="68">ChunkStore</text>
+          <circle class="dotring" cx="560" cy="63" r="9"/>
+          <circle class="dot" cx="560" cy="63" r="7" fill="var(--critical)"/>
+          <text class="nchip-glyph" x="580" y="67" fill="var(--critical)">✖</text>
+          <text class="statword" x="595" y="67">CRITICAL · unverified</text>
+          <rect class="critpill" x="580" y="76" width="78" height="15" rx="7.5"/>
+          <text x="619" y="87.5" text-anchor="middle" style="fill:var(--ink-2);font-size:10.5px;font-weight:600">CRITICAL</text>
+        </g>
+
+        <g class="dotrow" tabindex="0" data-tip="PipeNetwork — unverified · H2 — Disconnect must update the network graph and invalidate the ~5s unchanged-network cache. addEdge / rebuildGraph must be mask-aware: skip the shared face unless BOTH nodes' bits are set.">
+          <text class="rowlabel" x="14" y="122">PipeNetwork</text>
+          <circle class="dotring" cx="300" cy="117" r="9"/>
+          <circle class="dot" cx="300" cy="117" r="7" fill="var(--warn)"/>
+          <text class="nchip-glyph" x="320" y="121" fill="var(--warn)">⚠</text>
+          <text class="statword" x="335" y="121">Unverified · H2</text>
+        </g>
+
+        <g class="dotrow" tabindex="0" data-tip="Mesh builders — Pipe/Cable — unverified · H2/H3 — PipeMeshBuilder / CableMeshBuilder detectConnections must read block meta (meta==0 → 0x3F) before drawing a connection; otherwise the mesh keeps showing the face connected.">
+          <text class="rowlabel" x="14" y="176">Mesh builders · Pipe/Cable</text>
+          <circle class="dotring" cx="300" cy="171" r="9"/>
+          <circle class="dot" cx="300" cy="171" r="7" fill="var(--warn)"/>
+          <text class="nchip-glyph" x="320" y="175" fill="var(--warn)">⚠</text>
+          <text class="statword" x="335" y="175">Unverified · H2/H3</text>
+        </g>
+
+        <g class="dotrow" tabindex="0" data-tip="Multiblock boundaries — unverified — Disconnect must not cross chunk or multiblock boundaries incorrectly; the face bit lives in block meta and flows through setBlockCAS.">
+          <text class="rowlabel" x="14" y="230">Multiblock boundaries</text>
+          <circle class="dotring" cx="300" cy="225" r="9"/>
+          <circle class="dot" cx="300" cy="225" r="7" fill="var(--warn)"/>
+          <text class="nchip-glyph" x="320" y="229" fill="var(--warn)">⚠</text>
+          <text class="statword" x="335" y="229">Unverified</text>
+        </g>
+
+        <g class="dotrow" tabindex="0" data-tip="Gateway relay — verified · O3/O4 — source_player_id=0 makes gateway relay world.blocks.changed to ALL clients including the acting player (commit d32d8d9).">
+          <text class="rowlabel" x="14" y="284">Gateway relay</text>
+          <circle class="dotring" cx="560" cy="279" r="9"/>
+          <circle class="dot" cx="560" cy="279" r="7" fill="var(--good)"/>
+          <text class="nchip-glyph" x="580" y="283" fill="var(--good)">✓</text>
+          <text class="statword" x="595" y="283">Verified · O3/O4</text>
+        </g>
+
+        <g class="dotrow" tabindex="0" data-tip="simcored_test — verified · O5 — 454/0 after d32d8d9; no simulation regression. Keep it green.">
+          <text class="rowlabel" x="14" y="338">simcored_test</text>
+          <circle class="dotring" cx="560" cy="333" r="9"/>
+          <circle class="dot" cx="560" cy="333" r="7" fill="var(--good)"/>
+          <text class="nchip-glyph" x="580" y="337" fill="var(--good)">✓</text>
+          <text class="statword" x="595" y="337">Verified · 454/0</text>
+        </g>
+      </svg>
+      <figcaption>Status is <strong>icon + label</strong>, never color alone. ChunkStore is the critical item: whether a meta-only change emits <span class="mono">BlockChangedEvent</span> gates every downstream step (H1).</figcaption>
+    </figure>
+
+    <table id="statusTable" class="data-table" hidden>
+      <thead><tr><th>System</th><th>Status</th><th>Detail</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">ChunkStore</td><td><span class="tag crit">✖ CRITICAL · unverified</span></td><td>Does a meta-only change emit <span class="mono">BlockChangedEvent</span> with the new meta? If not, neither the client mesh nor PipeNetwork sees the toggle. Verify <span class="mono">setBlockCAS</span> + the publish site (H1).</td></tr>
+        <tr><td class="mono">PipeNetwork</td><td><span class="tag warn">⚠ unverified · H2</span></td><td>Disconnect must update the network graph and invalidate the ~5s unchanged-network cache; <span class="mono">addEdge</span>/<span class="mono">rebuildGraph</span> must be mask-aware.</td></tr>
+        <tr><td class="mono">Mesh builders · Pipe/Cable</td><td><span class="tag warn">⚠ unverified · H2/H3</span></td><td><span class="mono">detectConnections</span> must read block meta (<span class="mono">meta==0 → 0x3F</span>) before drawing a connection.</td></tr>
+        <tr><td class="mono">Multiblock boundaries</td><td><span class="tag warn">⚠ unverified</span></td><td>Disconnect must not cross chunk/multiblock boundaries incorrectly.</td></tr>
+        <tr><td class="mono">Gateway relay</td><td><span class="tag good">✓ verified · O3/O4</span></td><td><span class="mono">source_player_id=0</span> → <span class="mono">world.blocks.changed</span> relayed to all clients incl. the actor (<span class="mono">d32d8d9</span>).</td></tr>
+        <tr><td class="mono">simcored_test</td><td><span class="tag good">✓ verified · O5</span></td><td>454/0 after <span class="mono">d32d8d9</span>; no simulation regression.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ════════════ 2 · DISCONNECT DATA FLOW ════════════ -->
+  <section class="panel" id="panel-flow">
+    <div class="panel-head">
+      <h2>2 · Disconnect data flow</h2>
+      <button class="btn tabletoggle" type="button" data-toggle="flowTable" aria-pressed="false">Table view</button>
+    </div>
+
+    <figure id="flowViz">
+      <svg viewBox="0 0 800 650" role="img" aria-label="End-to-end disconnect data flow from client wrench action to severed face, annotated with verified and unverified hypothesis chips">
+        <defs>
+          <marker id="flow-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#898781"/>
+          </marker>
+        </defs>
+
+        <!-- client -->
+        <g class="flow-node" tabindex="0" data-tip="Client (game_client) — wrench on a pipe/cable face sends a WRENCH_CYCLE ToolAction with the target face.">
+          <rect class="nodebox" x="140" y="20" width="520" height="58" rx="10"/>
+          <text class="node-title" x="160" y="44">Client · game_client</text>
+          <text class="node-desc" x="160" y="64">Wrench on a pipe/cable face</text>
+        </g>
+        <path class="flow-arrow" d="M400,78 L400,112" marker-end="url(#flow-arrow)"/>
+        <text class="edge-label" x="410" y="100">ToolAction{ WRENCH_CYCLE, face }</text>
+
+        <!-- wrench handler -->
+        <g class="flow-node unverified" tabindex="0" data-tip="WrenchActionHandler (simulation_core) — handle() early-returns unless WRENCH_CYCLE, enforces a 200ms cooldown, then calls wrenchHandler_->cycleFace(player, x, y, z, face). The pipe branch is the toggle site the prior fix never correctly implemented.">
+          <rect class="nodebox" x="140" y="120" width="520" height="72" rx="10"/>
+          <text class="node-title" x="160" y="144">WrenchActionHandler · simulation_core</text>
+          <text class="node-desc" x="160" y="164">handle() → wrenchHandler_->cycleFace(player, x, y, z, face)</text>
+          <text class="node-desc" x="160" y="180">pipe branch = the toggle site (was never correctly implemented)</text>
+        </g>
+        <path class="flow-arrow" d="M400,192 L400,226" marker-end="url(#flow-arrow)"/>
+        <text class="edge-label" x="410" y="214">cycleFace → pipe branch</text>
+
+        <!-- setBlockCAS -->
+        <g class="flow-node critical" tabindex="0" data-tip="setBlockCAS — the toggle site · H1 — Does the meta toggle actually reach block meta, and does setBlockCAS emit BlockChangedEvent WITH meta? This is the critical unverified step: if it does not, nothing downstream ever sees the change.">
+          <rect class="nodebox" x="140" y="234" width="520" height="72" rx="10"/>
+          <text class="node-title" x="160" y="258">setBlockCAS — the toggle site</text>
+          <text class="node-desc" x="160" y="278">cur = (meta==0 ? 0x3F : meta) · newMeta = cur ^ (1&lt;&lt;face)</text>
+          <text class="node-desc" x="160" y="294">also toggle neighbor opposite bit: 1&lt;&lt;(face^1) · persist via setBlockCAS</text>
+          <text class="nchip-glyph" x="560" y="280" fill="var(--warn)">⚠</text>
+          <text class="node-desc" x="576" y="280" style="fill:var(--warn);font-weight:600">H1 · emits BlockChangedEvent(meta)?</text>
+        </g>
+        <path class="flow-arrow" d="M400,306 L400,340" marker-end="url(#flow-arrow)"/>
+        <text class="edge-label" x="410" y="328">BlockChangedEvent(meta)</text>
+
+        <!-- event -->
+        <g class="flow-node verified" tabindex="0" data-tip="BlockChangedEvent — verified · O3/O4 — Gateway relay with source_player_id=0 relays world.blocks.changed to ALL clients including the acting player. The visibility symptom is no longer the open bug.">
+          <rect class="nodebox" x="140" y="348" width="520" height="58" rx="10"/>
+          <text class="node-title" x="160" y="372">BlockChangedEvent</text>
+          <text class="node-desc" x="160" y="392">Gateway relay · source_player_id=0 → all clients incl. the actor</text>
+          <text class="nchip-glyph" x="560" y="372" fill="var(--good)">✓</text>
+          <text class="node-desc" x="576" y="372" style="fill:var(--good);font-weight:600">verified · O3/O4</text>
+        </g>
+
+        <!-- fork -->
+        <path class="flow-arrow" d="M400,406 C400,428 230,420 230,442" marker-end="url(#flow-arrow)"/>
+        <path class="flow-arrow" d="M400,406 C400,428 570,420 570,442" marker-end="url(#flow-arrow)"/>
+        <text class="edge-label" x="416" y="420">world.blocks.changed</text>
+
+        <!-- branch A: client mesh -->
+        <g class="flow-node unverified" tabindex="0" data-tip="Client mesh — unverified · H2/H3 — If detectConnections ignores meta, the client keeps drawing the face connected. Fix: geomMask &amp; metaToFaceMask(m) when m != 0, in both PipeMeshBuilder and CableMeshBuilder.">
+          <rect class="nodebox" x="80" y="450" width="300" height="72" rx="10"/>
+          <text class="node-title" x="100" y="474">Client mesh</text>
+          <text class="node-desc" x="100" y="494">Pipe/CableMeshBuilder</text>
+          <text class="node-desc" x="100" y="510">detectConnections must read meta</text>
+          <text class="nchip-glyph" x="100" y="528" fill="var(--warn)">⚠</text>
+          <text class="node-desc" x="116" y="528" style="fill:var(--warn);font-weight:600">H2/H3 · unverified</text>
+        </g>
+
+        <!-- branch B: pipe network -->
+        <g class="flow-node unverified" tabindex="0" data-tip="PipeNetwork / CableGraph — unverified · H2 — If the solver ignores meta, flow continues across a disconnected face. Fix: addEdge / rebuildGraph skip the shared face unless BOTH blocks' bits are set; machine→pipe edges exempt.">
+          <rect class="nodebox" x="420" y="450" width="300" height="72" rx="10"/>
+          <text class="node-title" x="440" y="474">PipeNetwork / CableGraph</text>
+          <text class="node-desc" x="440" y="494">addEdge / rebuildGraph</text>
+          <text class="node-desc" x="440" y="510">skip shared face unless both bits set</text>
+          <text class="nchip-glyph" x="440" y="528" fill="var(--warn)">⚠</text>
+          <text class="node-desc" x="456" y="528" style="fill:var(--warn);font-weight:600">H2 · unverified</text>
+        </g>
+
+        <!-- join -->
+        <path class="flow-arrow" d="M230,522 C230,546 300,540 300,562" marker-end="url(#flow-arrow)"/>
+        <path class="flow-arrow" d="M570,522 C570,546 500,540 500,562" marker-end="url(#flow-arrow)"/>
+        <text class="edge-label" x="312" y="552">meta updated</text>
+
+        <!-- result -->
+        <g class="flow-node target" tabindex="0" data-tip="Acceptance (F1–F5) — both blocks' face bit cleared → mesh hides it, flow stops, the two sides become independent networks, state persists in meta. Backward compat: freshly placed pipe (meta==0) connects all 6 faces. simcored_test stays 454/0.">
+          <rect class="nodebox" x="120" y="570" width="560" height="58" rx="10"/>
+          <text class="node-title" x="140" y="594">Disconnected face · acceptance target</text>
+          <text class="node-desc" x="140" y="614">face bit cleared on BOTH blocks → mesh hides it · flow stops · state persists · simcored_test stays 454/0</text>
+          <text class="node-desc" x="636" y="594" text-anchor="end" style="fill:var(--ink-2);font-weight:600">TARGET</text>
+        </g>
+      </svg>
+      <figcaption>Thick outlines mark the stage&#8217;s verification state: <span style="color:var(--critical);font-weight:600">red = critical unverified</span>, <span style="color:var(--warn);font-weight:600">amber = unverified hypothesis</span>, <span style="color:var(--good);font-weight:600">green = verified</span>. Hover any node for its detail.</figcaption>
+    </figure>
+
+    <table id="flowTable" class="data-table" hidden>
+      <thead><tr><th>Stage</th><th>Carries</th><th>Status</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">Client · game_client</td><td class="mono">ToolAction{ WRENCH_CYCLE, face }</td><td><span class="tag">entry</span></td><td>Wrench on a pipe/cable face.</td></tr>
+        <tr><td class="mono">WrenchActionHandler</td><td class="mono">cycleFace(player, x, y, z, face)</td><td><span class="tag warn">⚠ pipe branch</span></td><td>The toggle site; never correctly implemented.</td></tr>
+        <tr><td class="mono">setBlockCAS</td><td class="mono">meta ^ (1&lt;&lt;face) · ^ (1&lt;&lt;(face^1))</td><td><span class="tag crit">✖ H1 · unverified</span></td><td>Does it emit <span class="mono">BlockChangedEvent</span> with meta? Critical gate.</td></tr>
+        <tr><td class="mono">BlockChangedEvent</td><td class="mono">world.blocks.changed</td><td><span class="tag good">✓ verified · O3/O4</span></td><td>Relay to all clients incl. the actor.</td></tr>
+        <tr><td class="mono">Client mesh</td><td class="mono">geomMask &amp; metaToFaceMask(m)</td><td><span class="tag warn">⚠ H2/H3 · unverified</span></td><td>Mesh keeps showing the face connected if meta is ignored.</td></tr>
+        <tr><td class="mono">PipeNetwork / CableGraph</td><td class="mono">addEdge / rebuildGraph</td><td><span class="tag warn">⚠ H2 · unverified</span></td><td>Flow continues across a disconnected face if the solver ignores meta.</td></tr>
+        <tr><td class="mono">Disconnected face</td><td class="mono">meta persists</td><td><span class="tag">TARGET</span></td><td>Face severed on both blocks; flow stops; simcored_test 454/0 (F1–F5).</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ════════════ 3 · CONNECTION MASK REFERENCE ════════════ -->
+  <section class="panel" id="panel-mask">
+    <div class="panel-head"><h2>3 · Connection mask (meta) — reference</h2></div>
+
+    <div class="mask-grid">
+      <figure id="netViz">
+        <svg viewBox="0 0 656 396" role="img" aria-label="Cube net of the six block faces, each labeled with its meta bit, axis direction and FaceMask constant">
+          <defs>
+            <pattern id="tex45" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <line x1="0" y1="0" x2="0" y2="7" stroke="var(--tex-ink)" stroke-width="1.4"/>
+            </pattern>
+          </defs>
+
+          <g class="face" tabindex="0" data-tip="UP · bit2 = +Y · FACE_UP — Opposite face: DOWN (bit3 = −Y · face^1).">
+            <rect class="box" x="264" y="28" width="96" height="96" rx="6" fill="var(--slot3)" fill-opacity="0.16" stroke="var(--slot3)"/>
+            <rect class="face-overlay" x="264" y="28" width="96" height="96" rx="6" fill="url(#tex45)"/>
+            <text class="fname" x="312" y="70" text-anchor="middle">UP</text>
+            <text class="fmeta" x="312" y="90" text-anchor="middle">bit2 · +Y</text>
+            <text class="fmask" x="312" y="106" text-anchor="middle">FACE_UP</text>
+          </g>
+
+          <g class="face" tabindex="0" data-tip="WEST · bit1 = −X · FACE_WEST — Opposite face: EAST (bit0 = +X · face^1).">
+            <rect class="box" x="128" y="148" width="96" height="96" rx="6" fill="var(--slot2)" fill-opacity="0.16" stroke="var(--slot2)"/>
+            <rect class="face-overlay" x="128" y="148" width="96" height="96" rx="6" fill="url(#tex45)"/>
+            <text class="fname" x="176" y="190" text-anchor="middle">WEST</text>
+            <text class="fmeta" x="176" y="210" text-anchor="middle">bit1 · −X</text>
+            <text class="fmask" x="176" y="226" text-anchor="middle">FACE_WEST</text>
+          </g>
+
+          <g class="face" tabindex="0" data-tip="EAST · bit0 = +X · FACE_EAST — Opposite face: WEST (bit1 = −X · face^1).">
+            <rect class="box" x="264" y="148" width="96" height="96" rx="6" fill="var(--slot1)" fill-opacity="0.16" stroke="var(--slot1)"/>
+            <rect class="face-overlay" x="264" y="148" width="96" height="96" rx="6" fill="url(#tex45)"/>
+            <text class="fname" x="312" y="190" text-anchor="middle">EAST</text>
+            <text class="fmeta" x="312" y="210" text-anchor="middle">bit0 · +X</text>
+            <text class="fmask" x="312" y="226" text-anchor="middle">FACE_EAST</text>
+          </g>
+
+          <g class="face" tabindex="0" data-tip="SOUTH · bit4 = +Z · FACE_SOUTH — Opposite face: NORTH (bit5 = −Z · face^1).">
+            <rect class="box" x="400" y="148" width="96" height="96" rx="6" fill="var(--slot5)" fill-opacity="0.16" stroke="var(--slot5)"/>
+            <rect class="face-overlay" x="400" y="148" width="96" height="96" rx="6" fill="url(#tex45)"/>
+            <text class="fname" x="448" y="190" text-anchor="middle">SOUTH</text>
+            <text class="fmeta" x="448" y="210" text-anchor="middle">bit4 · +Z</text>
+            <text class="fmask" x="448" y="226" text-anchor="middle">FACE_SOUTH</text>
+          </g>
+
+          <g class="face" tabindex="0" data-tip="NORTH · bit5 = −Z · FACE_NORTH — Opposite face: SOUTH (bit4 = +Z · face^1).">
+            <rect class="box" x="536" y="148" width="96" height="96" rx="6" fill="var(--slot6)" fill-opacity="0.16" stroke="var(--slot6)"/>
+            <rect class="face-overlay" x="536" y="148" width="96" height="96" rx="6" fill="url(#tex45)"/>
+            <text class="fname" x="584" y="190" text-anchor="middle">NORTH</text>
+            <text class="fmeta" x="584" y="210" text-anchor="middle">bit5 · −Z</text>
+            <text class="fmask" x="584" y="226" text-anchor="middle">FACE_NORTH</text>
+          </g>
+
+          <g class="face" tabindex="0" data-tip="DOWN · bit3 = −Y · FACE_DOWN — Opposite face: UP (bit2 = +Y · face^1).">
+            <rect class="box" x="264" y="268" width="96" height="96" rx="6" fill="var(--slot4)" fill-opacity="0.16" stroke="var(--slot4)"/>
+            <rect class="face-overlay" x="264" y="268" width="96" height="96" rx="6" fill="url(#tex45)"/>
+            <text class="fname" x="312" y="310" text-anchor="middle">DOWN</text>
+            <text class="fmeta" x="312" y="330" text-anchor="middle">bit3 · −Y</text>
+            <text class="fmask" x="312" y="346" text-anchor="middle">FACE_DOWN</text>
+          </g>
+        </svg>
+        <figcaption>Face color = identity, in fixed categorical order (slot = bit order). Same mapping in the table. The <strong>Texture</strong> button (or <span class="mono">forced-colors</span>) overlays 45° hatching for the CVD/print case.</figcaption>
+      </figure>
+
+      <div class="mask-side">
+        <table class="data-table mask-table">
+          <thead><tr><th>Face</th><th>bit</th><th>axis</th><th>FaceMask</th><th>opposite</th></tr></thead>
+          <tbody>
+            <tr><td><span class="swatch" style="background:var(--slot1)"></span><strong>EAST</strong></td><td class="mono">bit0</td><td class="mono">+X</td><td class="mono">FACE_EAST</td><td class="mono">WEST (bit1)</td></tr>
+            <tr><td><span class="swatch" style="background:var(--slot2)"></span><strong>WEST</strong></td><td class="mono">bit1</td><td class="mono">−X</td><td class="mono">FACE_WEST</td><td class="mono">EAST (bit0)</td></tr>
+            <tr><td><span class="swatch" style="background:var(--slot3)"></span><strong>UP</strong></td><td class="mono">bit2</td><td class="mono">+Y</td><td class="mono">FACE_UP</td><td class="mono">DOWN (bit3)</td></tr>
+            <tr><td><span class="swatch" style="background:var(--slot4)"></span><strong>DOWN</strong></td><td class="mono">bit3</td><td class="mono">−Y</td><td class="mono">FACE_DOWN</td><td class="mono">UP (bit2)</td></tr>
+            <tr><td><span class="swatch" style="background:var(--slot5)"></span><strong>SOUTH</strong></td><td class="mono">bit4</td><td class="mono">+Z</td><td class="mono">FACE_SOUTH</td><td class="mono">NORTH (bit5)</td></tr>
+            <tr><td><span class="swatch" style="background:var(--slot6)"></span><strong>NORTH</strong></td><td class="mono">bit5</td><td class="mono">−Z</td><td class="mono">FACE_NORTH</td><td class="mono">SOUTH (bit4)</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout legacy">
+          <strong>Legacy default:</strong> <span class="code">meta == 0</span> MUST be treated as
+          <span class="code">0x3F</span> (all 6 faces connected) everywhere it is read. Only a wrench toggle
+          makes meta non-zero. Bits 6–7 reserved. <span class="code">opposite face = face ^ 1</span> (0↔1, 2↔3, 4↔5).
+        </div>
+
+        <div class="callout">
+          <strong>Helper:</strong> <span class="code">metaToFaceMask(m)</span> — bit&nbsp;i → FaceMask:
+          <span class="code">META_BIT_TO_FACEMASK[6] = { FACE_EAST, FACE_WEST, FACE_UP, FACE_DOWN, FACE_SOUTH, FACE_NORTH }</span>.
+          Face → world offset: <span class="code">DX[6]={+1,−1,0,0,0,0}</span> <span class="code">DY[6]={0,0,+1,−1,0,0}</span>
+          <span class="code">DZ[6]={0,0,0,0,+1,−1}</span>.
+        </div>
+
+        <div class="callout">
+          <strong>Item ids:</strong> pipes <span class="code">0xF800–0xF803</span> · cables
+          <span class="code">0xF400–0xF405</span> · wrench <span class="code">0xF005</span> (<span class="code">ITEM_WRENCH</span>).
+          Detect with <span class="code">ItemId::isPipe(n)</span> / <span class="code">ItemId::isCable(n)</span>.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Source: <span class="mono">docs/pipe-cable-connect-disconnect.md</span> · Palette: dataviz reference instance
+    (categorical slots 1–6, validated light + dark; status tokens fixed). The six-slot categorical palette
+    auto-validates on load — check the browser console (or run
+    <span class="mono">node docs/validate_palette.js "#2a78d6,#eb6834,#1baf7a,#eda100,#e87ba4,#008300"</span>).
+    Open via a local server for the module report.
+  </footer>
+</div>
+
+<div id="tooltip" role="tooltip" hidden></div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var tip = document.getElementById('tooltip');
+
+  /* ── theme toggle ─────────────────────────────────────────── */
+  function effectiveDark() {
+    return root.dataset.theme === 'dark' ||
+      (root.dataset.theme !== 'light' &&
+        window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+  var themeBtn = document.getElementById('themeBtn');
+  function syncThemeBtn() {
+    var dark = effectiveDark();
+    themeBtn.textContent = dark ? 'Light mode' : 'Dark mode';
+    themeBtn.setAttribute('aria-pressed', String(dark));
+  }
+  themeBtn.addEventListener('click', function () {
+    root.setAttribute('data-theme', effectiveDark() ? 'light' : 'dark');
+    syncThemeBtn();
+  });
+  syncThemeBtn();
+  if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncThemeBtn);
+
+  /* ── texture toggle (a11y / CVD / print channel) ──────────── */
+  var texBtn = document.getElementById('textureBtn');
+  texBtn.addEventListener('click', function () {
+    var on = root.classList.toggle('textured');
+    texBtn.setAttribute('aria-pressed', String(on));
+  });
+
+  /* ── table-view toggles (charts always keep a WCAG twin) ──── */
+  document.querySelectorAll('.tabletoggle').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var table = document.getElementById(btn.dataset.toggle);
+      var figure = btn.closest('.panel').querySelector('figure');
+      var showTable = table.hidden;
+      table.hidden = !showTable;
+      figure.hidden = showTable;
+      btn.textContent = showTable ? 'Chart view' : 'Table view';
+      btn.setAttribute('aria-pressed', String(showTable));
+    });
+  });
+
+  /* ── tooltip (enhances, never gates; same on hover & focus) ─ */
+  function place(e) {
+    var pad = 14;
+    var x = (e.clientX != null) ? e.clientX + pad : 0;
+    var y = (e.clientY != null) ? e.clientY + pad : 0;
+    if (e.clientX == null && e.currentTarget && e.currentTarget.getBoundingClientRect) {
+      var r = e.currentTarget.getBoundingClientRect();
+      x = r.left; y = r.bottom + 6;
+    }
+    var tw = tip.offsetWidth, th = tip.offsetHeight;
+    if (x + tw > window.innerWidth - 8) x = x - tw - pad * 2;
+    if (y + th > window.innerHeight - 8) y = y - th - pad * 2;
+    x = Math.max(8, x); y = Math.max(8, y);
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+  function show(e) {
+    var text = e.currentTarget.getAttribute('data-tip') || '';
+    if (!text) return;
+    tip.textContent = text;                 // labels are untrusted → textContent only
+    tip.hidden = false;
+    place(e);
+  }
+  function hide() { tip.hidden = true; }
+  document.querySelectorAll('[data-tip]').forEach(function (el) {
+    el.addEventListener('pointermove', show);
+    el.addEventListener('pointerleave', hide);
+    el.addEventListener('pointerdown', hide);
+    el.addEventListener('focus', show);
+    el.addEventListener('blur', hide);
+  });
+})();
+</script>
+
+<!-- Palette auto-validation on load (browser console report). Dark run was validated via CLI:
+     node validate_palette.js "#3987e5,#d95926,#199e70,#c98500,#d55181,#008300" --mode dark --surface "#1a1a19" -->
+<script type="module" src="./validate_palette.js"></script>
+</body>
+</html>

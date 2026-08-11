@@ -160,3 +160,24 @@ The system SHALL distribute quest rewards upon completion.
 - **THEN** QuestManager SHALL log the reward and publish a `QuestCompleted` event (player_id, quest_id, timestamp) on `quest.completed` — the event carries no reward fields
 - **AND** `MetaDB::HandleQuestCompleted` SHALL resolve the reward from `quests.csv` via `GetQuestDefinition()`, store it in `player_quest_rewards`, and forward a completion notification to the client
 
+### Requirement: Quest Book Opens on Scenario Start
+
+The client SHALL open the Quest Book programmatically when a game scenario starts successfully.
+On a successful `StartScenarioResp`, the client SHALL open `QuestBookWindow` and select the quest
+era carried in the response. The default era selection (VAGRANT = 0) SHALL remain the no-op default
+for the initial scenario.
+
+#### Scenario: Scenario start opens the book on Vagrant
+
+- **GIVEN** the client receives `StartScenarioResp(success = true, quest_book_era = VAGRANT)`
+- **WHEN** it processes the response
+- **THEN** `QuestBookWindow` SHALL be opened if not already open
+- **AND** the selected era SHALL be VAGRANT, showing the vagrant section tabs
+
+#### Scenario: Failed scenario does not open the book
+
+- **GIVEN** the client receives `StartScenarioResp(success = false, error = ...)`
+- **WHEN** it processes the response
+- **THEN** `QuestBookWindow` SHALL NOT be opened by the scenario
+- **AND** the error SHALL be printed to the console
+

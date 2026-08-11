@@ -137,6 +137,8 @@ ninja -j5
 
 **If build fails**: Check `conan install` was run. See README.md for Conan setup.
 
+Always compile and verify changes incrementally after each small logical chunk, never batched, to avoid hitting the $1/day API budget during final build checks.
+
 **Tests**:
 ```bash
 cd cmake-build-debug && ctest --output-on-failure -j$(nproc)
@@ -302,3 +304,6 @@ Rules that apply to ALL AI agents (Claude Code, OpenCode, Hermes, Cursor, ...) w
 - **Code navigation**: codegraph MCP daemon is running (`.codegraph/`, SQLite+WASM, zero infra) — use `codegraph_explore "<query>"` for symbol/relationship questions before raw grep. Knowledge graph: `graphify query "<question>"` (see graphify section).
 - **Parallel agents**: OpenCode agents in `.claude/worktrees/` may commit to `main` during your session. Always check fresh `git status` / `git log --oneline -5` / `git reflog -5` before answering anything about repo state. Run `git pull --rebase` before touching shared zones: `src/protocol/`, `data/registry/`, `data/recipes/`, `CMakeLists.txt`, `conanfile.txt`.
 - **Task tracking**: use `bd` (beads) for ALL task tracking — never markdown TODO lists (see Beads section above).
+
+Preserve the existing order of ACCEPTED status checks in event handlers unless explicitly directed to reorder them.
+When analyzing logs, prefer command-line tools (grep, awk, jq) over reading entire files into context to minimize token consumption

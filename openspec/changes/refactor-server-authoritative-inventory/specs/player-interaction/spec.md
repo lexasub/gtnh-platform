@@ -14,6 +14,21 @@ An open machine window SHALL render as `container_id=1` backed by the machine's 
 - **THEN** the session's live slots SHALL be persisted to EntityStateStore keyed by `machine_id`
 - **AND** the per-player session SHALL be deregistered
 
+### Requirement: Workbench Crafting Consumes the Server Grid
+Workbench crafting SHALL be computed server-side: the server reads the persisted grid, consumes the recipe inputs from the player inventory, grants the result to the player inventory, and pushes the remaining grid back to the open window. The client SHALL NOT stage or deduct items locally.
+
+#### Scenario: Craft consumes player inventory
+- **GIVEN** a workbench window open with a full server grid
+- **WHEN** the player clicks craft and the recipe matches
+- **THEN** the server SHALL read the grid from the session (`getGridState`, client-supplied slots ignored), deduct the consumed inputs from the player's inventory, grant the result via the authoritative `player.inventory.update` push, and update the grid via `kGridUpdate`
+- **AND** the client SHALL NOT modify player or grid slots itself
+
+#### Scenario: Grid is world-bound staging, not player-owned
+- **GIVEN** a player closes and later reopens the same workbench block
+- **WHEN** the saved grid is loaded from EntityStateStore
+- **THEN** the grid SHALL contain the previously staged items (keyed by block position, shared across players, last-write-wins per cell)
+- **AND** staged items SHALL remain in the player inventory — the grid cells are a staging area, not an item-holding container
+
 ### Requirement: Server-Authoritative Inventory Manipulation
 The system SHALL implement Minecraft-style item manipulation as server-authoritative click semantics covering the player inventory and open containers (chest, machine, workbench grid): pick-up, place, merge, swap, half-split, place-one, drag-distribute, quick-move, double-click pick-up-all and drop.
 

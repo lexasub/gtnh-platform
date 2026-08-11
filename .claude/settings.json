@@ -1,5 +1,18 @@
 {
   "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/su/src/local/gtnh-platform/.claude/hooks/syntax-check.py",
+            "timeout": 60,
+            "statusMessage": "Syntax-checking edited file..."
+          }
+        ]
+      }
+    ],
     "PreCompact": [
       {
         "hooks": [
