@@ -10,6 +10,7 @@ recipes:
     outputs:
       - { item: quartz, count: 2 }
     duration: 300
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -19,6 +20,7 @@ recipes:
     outputs:
       - { item: sand, count: 1 }
     duration: 100
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -28,6 +30,7 @@ recipes:
     outputs:
       - { item: sand, count: 1 }
     duration: 100
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -37,6 +40,7 @@ recipes:
     outputs:
       - { item: sand, count: 1 }
     duration: 100
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -47,6 +51,7 @@ recipes:
     outputs:
       - { item: iron_dust, count: 2 }
     duration: 400
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -56,6 +61,7 @@ recipes:
     outputs:
       - { item: gold_dust, count: 2 }
     duration: 400
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -65,6 +71,7 @@ recipes:
     outputs:
       - { item: tin_dust, count: 2 }
     duration: 400
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -74,6 +81,7 @@ recipes:
     outputs:
       - { item: copper_dust, count: 2 }
     duration: 400
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -83,6 +91,7 @@ recipes:
     outputs:
       - { item: uranium_dust, count: 2 }
     duration: 500
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -92,6 +101,7 @@ recipes:
     outputs:
       - { item: electrum_dust, count: 2 }
     duration: 400
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -101,6 +111,7 @@ recipes:
     outputs:
       - { item: quartz, count: 2 }
     duration: 300
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -110,6 +121,7 @@ recipes:
     outputs:
       - { item: coal, count: 2 }
     duration: 200
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -119,6 +131,7 @@ recipes:
     outputs:
       - { item: redstone, count: 4 }
     duration: 300
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -128,6 +141,7 @@ recipes:
     outputs:
       - { item: lapis, count: 6 }
     duration: 300
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -137,6 +151,7 @@ recipes:
     outputs:
       - { item: diamond, count: 1 }
     duration: 500
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -148,6 +163,7 @@ recipes:
     outputs:
       - { item: copper_dust, count: 2 }
     duration: 160
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -158,6 +174,7 @@ recipes:
     outputs:
       - { item: gold_dust, count: 2 }
     duration: 160
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -168,6 +185,7 @@ recipes:
     outputs:
       - { item: iron_dust, count: 2 }
     duration: 160
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -179,6 +197,7 @@ recipes:
     outputs:
       - { item: copper_dust, count: 2 }
     duration: 200
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -189,6 +208,7 @@ recipes:
     outputs:
       - { item: iron_dust, count: 2 }
     duration: 200
+    eu: 32
     min_tier: 0
     max_tier: 32767
 
@@ -199,5 +219,6 @@ recipes:
     outputs:
       - { item: gold_dust, count: 2 }
     duration: 200
+    eu: 32
     min_tier: 0
     max_tier: 32767
