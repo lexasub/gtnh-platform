@@ -92,11 +92,12 @@ private:
   float recipeDoneFlash_ = 0.0f;
 
   // ── Out-of-sync detection ──────────────────────────────────────────
-  // Tracks how many frames since last viable update. When the tick channel
-  // is healthy this should be 0-1 frames; if it exceeds kOutOfSyncFrames
-  // we display a warning.
-  int framesSinceUpdate_ = 0;
-  static constexpr int kOutOfSyncFrames = 30; // ~0.5s at 60fps
+  // Tracks seconds since last viable update. Time-based, not frame-based:
+  // a frame threshold scales with refresh rate (30 frames = 0.2s at 144Hz,
+  // tripping the stale warning for machines that publish at 0.5s intervals).
+  // When the tick channel is healthy this stays well under 0.1s.
+  float timeSinceUpdate_ = 0.0f;
+  static constexpr float kOutOfSyncSeconds = 0.75f;
 
   // ── Progress style per machine class ─────────────────────────────────
   enum class ProgressStyle : uint8_t {

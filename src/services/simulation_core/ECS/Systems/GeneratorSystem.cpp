@@ -3,6 +3,7 @@
 #include "../../common/ItemId.h"
 #include "../../libs/machine_registry/MachineRegistry.h"
 #include "../components/HeatIntakeComponent.h"
+#include "../components/SteamOutputComponent.h"
 #include <cstring>
 #include <spdlog/spdlog.h>
 
@@ -188,6 +189,11 @@ void GeneratorSystem::tick(float /*dt*/) {
         if (auto* hic = reg_.try_get<HeatIntakeComponent>(ent)) {
             heatRatio = hic->ratio();
         }
+        double steamCur = -1.0, steamCap = -1.0;
+        if (auto* soc = reg_.try_get<SteamOutputComponent>(ent)) {
+            steamCur = soc->steam_stored;
+            steamCap = soc->steam_capacity;
+        }
         events_->publishBlockEntityUpdate(
             machine.x, machine.y, machine.z,
             machine.machine_id,
@@ -197,7 +203,8 @@ void GeneratorSystem::tick(float /*dt*/) {
             energy.type,
             static_cast<uint32_t>(energy.capacity),
             slotsIn,
-            heatRatio);
+            heatRatio,
+            nullptr, steamCur, steamCap);
     }
 }
 

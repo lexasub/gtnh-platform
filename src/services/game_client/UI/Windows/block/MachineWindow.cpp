@@ -257,7 +257,7 @@ void MachineWindow::RenderEnergyBarImpl(EnergyType et, uint32_t energy, uint32_t
 
 // ── Out-of-sync warning ────────────────────────────────────────────────────
 void MachineWindow::RenderOutOfSyncWarning() {
-    if (framesSinceUpdate_ < kOutOfSyncFrames) return;
+    if (timeSinceUpdate_ < kOutOfSyncSeconds) return;
 
     ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 180, 0, 255));
     ImGui::Text("⚠ Connection to machine lost — state may be stale");
@@ -267,7 +267,7 @@ void MachineWindow::RenderOutOfSyncWarning() {
 void MachineWindow::Render(InventoryState* playerInv) {
     if (!open_) return;
 
-    ++framesSinceUpdate_;
+    timeSinceUpdate_ += ImGui::GetIO().DeltaTime;
     //TODO refactor hell
     // Unique window ID per machine position (visible title stays "Machine")
     char title[64];
@@ -505,7 +505,7 @@ void MachineWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
     pendingUpdate_.mbId = update->mb_id();
     pendingUpdate_.steamCurrent = update->steam_current();
     pendingUpdate_.steamCapacity = update->steam_capacity();
-    framesSinceUpdate_ = 0;
+    timeSinceUpdate_ = 0.0f;
 
     pendingUpdate_.inputItems.clear();
     if (auto* inItems = update->input_items()) {
