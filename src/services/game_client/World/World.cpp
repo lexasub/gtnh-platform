@@ -194,6 +194,21 @@ uint16_t World::GetBlockAt(BlockPos pos) const {
     return chunk->GetBlock(lx, ly, lz);
 }
 
+uint8_t World::GetMetaAt(BlockPos pos) const {
+    // Arithmetic right shift = floor division (see GetBlockAt).
+    ChunkCoord c{pos.x >> 5, pos.y >> 5, pos.z >> 5};
+    auto chunk = storage_.GetChunk(c);
+    if (!chunk)
+        return 0;
+    int lx = pos.x & (CHUNK_SIZE - 1);
+    int ly = pos.y & (CHUNK_SIZE - 1);
+    int lz = pos.z & (CHUNK_SIZE - 1);
+    const uint8_t *meta = chunk->meta_data();
+    if (!meta)
+        return 0;
+    return meta[(ly << 10) | (lz << 5) | lx];
+}
+
 std::shared_ptr<const ChunkView> World::GetChunk(const ChunkCoord &c) const {
     return storage_.GetChunk(c);
 }

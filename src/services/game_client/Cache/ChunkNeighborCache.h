@@ -26,6 +26,10 @@ public:
   // Returns 0 if block is air or neighboring chunk not loaded.
   uint16_t GetBlock(int bx, int by, int bz) const;
 
+  // Get meta byte at (bx, by, bz) in center-chunk-local coords.
+  // Wraps to adjacent chunk like GetBlock. Returns 0 if chunk not loaded.
+  uint8_t GetMeta(int bx, int by, int bz) const;
+
   const ChunkView *CenterChunk() const { return centerChunk_; }
 
 private:

@@ -49,3 +49,37 @@ uint16_t ChunkNeighborCache::GetBlock(int bx, int by, int bz) const {
     const ChunkView* chunk = idx < 6 ? nchunks_[idx] : centerChunk_;
     return chunk ? chunk->GetBlock(lx, ly, lz) : 0;
 }
+
+uint8_t ChunkNeighborCache::GetMeta(int bx, int by, int bz) const {
+    int inX = static_cast<unsigned>(bx) < CHUNK_SIZE;
+    int inY = static_cast<unsigned>(by) < CHUNK_SIZE;
+    int inZ = static_cast<unsigned>(bz) < CHUNK_SIZE;
+
+    if (inX & inY & inZ) [[likely]] {
+        const ChunkView* chunk = centerChunk_;
+        if (!chunk) return 0;
+        const uint8_t* meta = chunk->meta_data();
+        return meta ? meta[(by << 10) | (bz << 5) | bx] : 0;
+    }
+
+    int oobX = inX ^ 1;
+    int oobY = inY ^ 1;
+    int oobZ = inZ ^ 1;
+
+    int sideX = bx >> 31 & 1;
+    int sideY = by >> 31 & 1;
+    int sideZ = bz >> 31 & 1;
+
+    int idx = oobX * sideX
+            + oobY * (2 + sideY)
+            + oobZ * (4 + sideZ);
+
+    int lx = oobX * (sideX * (CHUNK_SIZE - 1)) + (oobX ^ 1) * bx;
+    int ly = oobY * (sideY * (CHUNK_SIZE - 1)) + (oobY ^ 1) * by;
+    int lz = oobZ * (sideZ * (CHUNK_SIZE - 1)) + (oobZ ^ 1) * bz;
+
+    const ChunkView* chunk = idx < 6 ? nchunks_[idx] : centerChunk_;
+    if (!chunk) return 0;
+    const uint8_t* meta = chunk->meta_data();
+    return meta ? meta[(ly << 10) | (lz << 5) | lx] : 0;
+}

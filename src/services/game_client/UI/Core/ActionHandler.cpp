@@ -147,7 +147,11 @@ void ActionHandler::DoToggleConsole() {
 }
 
 void ActionHandler::SpawnItem(uint16_t itemId, uint8_t count, int16_t targetSlot) {
-    if (!netClient_ || !playerInv_) return;
+    // NEI / creative item spawning is gated by the permission matrix: blocked
+    // in SURVIVAL and ADVENTURE (infiniteItems=false). This is the single
+    // choke point — CreativeMenu is only reachable in CREATIVE anyway.
+    if (!playerInv_ || !GameModePerm::InfiniteItems(playerInv_->gameMode)) return;
+    if (!netClient_) return;
     netClient_->SendPlayerAction(
         playerInv_->player_id,
         Protocol::PlayerActionType::PlayerActionType_ITEM_ACTION,

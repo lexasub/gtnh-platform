@@ -42,4 +42,8 @@ private:
 
   void RenderMachineRecipes(MachineWindow *mw);
   void RenderAllRecipes();
+
+  // Permission matrix: item spawning allowed only when the player mode has
+  // infiniteItems (CREATIVE/SPECTATOR). Gates all NEI spawn clicks.
+  bool CanSpawn() const;
 };

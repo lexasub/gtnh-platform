@@ -1,8 +1,6 @@
 #include "Camera.h"
 #include "UI/Core/InputBinder.h"
 #include <GLFW/glfw3.h>
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/norm.hpp>
 #include "../Common/InputState.h"
 #include "../World/World.h"
 
@@ -11,6 +9,7 @@ void Camera::Init() {
     orient = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
     pos = glm::vec3(256.0f, 80.0f, 224.0f);
     fov = 70.0f;
+    controller_.pos = pos;
 }
 
 void Camera::SetBinder(const InputBinder* binder) {
@@ -48,8 +47,7 @@ void Camera::Update(float dt, const InputState& input) {
         120.0f
     );
 
-    // Movement (configurable via held bindings in bindings.json)
-    float speed = SPEED * dt;
+    // Movement intent from held bindings (configurable via bindings.json)
     float forward_primary = static_cast<float>(input.keys[keyFwd_]) - static_cast<float>(input.keys[keyBkwd_]);
     float forward_secondary = static_cast<float>(input.keys[keyFwdAlt_]) - static_cast<float>(input.keys[keyBkwdAlt_]);
 
@@ -60,112 +58,19 @@ void Camera::Update(float dt, const InputState& input) {
     float forward = forward_primary + (1.0f - glm::abs(forward_primary)) * forward_secondary;
     float right = right_primary + (1.0f - glm::abs(right_primary)) * right_secondary;
 
-    if (!flightEnabled_ && world_) {
-        // ── SURVIVAL / ADVENTURE: physics-based movement ──────────────────
-        // Project movement vectors onto XZ plane (no vertical from camera angle)
-        glm::vec3 fwdFlat = GetForward();
-        fwdFlat.y = 0.0f;
-        float fwdLen2 = glm::length2(fwdFlat);
-        if (fwdLen2 > 0.0001f) fwdFlat /= std::sqrt(fwdLen2);
+    PlayerMove move;
+    move.forward = forward;
+    move.right = right;
+    move.vertical = static_cast<float>(input.keys[keyAscend_]) -
+                    static_cast<float>(input.keys[keyDescend_]);
+    move.jump = input.keys[keyAscend_] != 0;
+    move.sneak = input.keys[keyDescend_] != 0;
 
-        glm::vec3 rightFlat = GetRight();
-        rightFlat.y = 0.0f;
-        float rightLen2 = glm::length2(rightFlat);
-        if (rightLen2 > 0.0001f) rightFlat /= std::sqrt(rightLen2);
-
-        // Gravity
-        velocityY_ -= GRAVITY * dt;
-
-        // Jump / Sneak
-        bool sneaking = input.keys[keyDescend_] && onGround_;
-        if (onGround_ && input.keys[keyAscend_] && !sneaking) {
-            velocityY_ = JUMP_VELOCITY;
-            onGround_ = false;
-        }
-
-        // Compute new position
-        glm::vec3 move = (forward * fwdFlat + right * rightFlat) * speed;
-        glm::vec3 newPos = pos + move;
-        newPos.y += velocityY_ * dt;
-
-        // Ground detection (scan no more than 12 blocks down)
-        auto findGround = [this](float x, float z) -> float {
-            int bx = static_cast<int>(std::floor(x));
-            int bz = static_cast<int>(std::floor(z));
-            int startY = static_cast<int>(std::floor(pos.y - EYE_HEIGHT));
-            for (int y = startY; y >= 0 && y >= startY - 12; y--) {
-                if (world_->GetBlockAt(BlockPos{bx, y, bz}) != 0) {
-                    return static_cast<float>(y + 1);
-                }
-            }
-            return -1000.0f; // void — player falls
-        };
-
-        float groundY = findGround(newPos.x, newPos.z);
-
-        // Sneak: stop at block edges — don't slide off
-        if (sneaking) {
-            float curGroundY = findGround(pos.x, pos.z);
-            if (groundY < curGroundY && onGround_) {
-                // Would step off a ledge — cancel horizontal movement
-                newPos.x = pos.x;
-                newPos.z = pos.z;
-                groundY = curGroundY;
-            }
-        }
-
-        float eyeHeight = sneaking ? EYE_HEIGHT - 0.3f : EYE_HEIGHT;
-        if (newPos.y <= groundY + eyeHeight) {
-            newPos.y = groundY + eyeHeight;
-            velocityY_ = 0.0f;
-            onGround_ = true;
-        } else {
-            onGround_ = false;
-        }
-
-        // Block collision: check all columns the player bounding box overlaps
-        // Player width ≈ 0.6 blocks (±0.3 from center)
-        static constexpr float kHalfWidth = 0.3f;
-        auto blockAt = [this](int bx, int by, int bz) -> bool {
-            return world_->GetBlockAt(BlockPos{bx, by, bz}) != 0;
-        };
-        auto collidesAt = [&](float px, float py, float pz) -> bool {
-            int fy = static_cast<int>(std::floor(py - eyeHeight + 0.01f));
-            int hy = static_cast<int>(std::floor(py + 0.3f));
-            int x0 = static_cast<int>(std::floor(px - kHalfWidth));
-            int x1 = static_cast<int>(std::floor(px + kHalfWidth));
-            int z0 = static_cast<int>(std::floor(pz - kHalfWidth));
-            int z1 = static_cast<int>(std::floor(pz + kHalfWidth));
-            for (int ix = x0; ix <= x1; ++ix)
-                for (int iz = z0; iz <= z1; ++iz)
-                    if (blockAt(ix, fy, iz) || blockAt(ix, hy, iz))
-                        return true;
-            return false;
-        };
-
-        if (!collidesAt(newPos.x, newPos.y, newPos.z)) {
-            pos = newPos;
-        } else {
-            // Try X independently
-            glm::vec3 testX = pos; testX.x = newPos.x;
-            if (!collidesAt(testX.x, testX.y, testX.z)) {
-                pos.x = newPos.x;
-            }
-            // Try Z independently
-            glm::vec3 testZ = pos; testZ.z = newPos.z;
-            if (!collidesAt(testZ.x, testZ.y, testZ.z)) {
-                pos.z = newPos.z;
-            }
-            // Always apply gravity (vertical is never blocked by walls)
-            pos.y = newPos.y;
-        }
-    } else {
-        // ── CREATIVE / SPECTATOR: free flight ─────────────────────────────
-        float vertical = static_cast<float>(input.keys[keyAscend_]) - static_cast<float>(input.keys[keyDescend_]);
-        pos += (forward * GetForward() + right * GetRight() + glm::vec3(0.0f, vertical, 0.0f)) * speed;
-        velocityY_ = 0.0f;
-        onGround_ = false;
-    }
+    // Per-mode body physics: free-fly when flightEnabled_, otherwise gravity +
+    // AABB collision (SURVIVAL/ADVENTURE). Movement state lives in the
+    // controller; the camera renders from its eye position.
+    controller_.Update(dt, move, flightEnabled_, GetForward(), GetRight());
+    pos = controller_.pos;
 }
 
 glm::mat4 Camera::GetViewMatrix() const {

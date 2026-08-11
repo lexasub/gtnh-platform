@@ -52,6 +52,8 @@ add_executable(gameclientd
 
     Camera/Camera.cpp
 
+    Player/PlayerController.cpp
+
     Crafting/ClientItemRegistry.cpp
     Crafting/ServerRecipeDB.cpp
 

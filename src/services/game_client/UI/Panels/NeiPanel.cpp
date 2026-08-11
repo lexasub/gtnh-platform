@@ -5,6 +5,7 @@
 #include "../Windows/block/MachineWindow.h"
 #include "Components/SlotGrid.h"
 #include "Core/ActionHandler.h"
+#include "Common/Inventory.h"
 #include "Common/Types.h"
 #include "RenderLib/Utils/TextureAtlas.h"
 #include <GLFW/glfw3.h>
@@ -14,6 +15,11 @@
 #include <unordered_set>
 
 NeiPanel::NeiPanel(UIManager* uiMgr) : uiMgr_(uiMgr) {}
+
+bool NeiPanel::CanSpawn() const {
+    auto* inv = uiMgr_ ? uiMgr_->GetPlayerInventory() : nullptr;
+    return inv && GameModePerm::InfiniteItems(inv->gameMode);
+}
 
 bool NeiPanel::OnKeyEvent(int key, int action, int /*mods*/) {
     if (!visible_) return false;
@@ -98,7 +104,8 @@ void NeiPanel::RenderMachineRecipes(MachineWindow* mw) {
         ImGui::Separator();
 
         auto spawnItem = [this](const ItemStack& item) {
-            if (uiMgr_ && item.item_id != 0) {
+            // Gated by permission matrix (infiniteItems); SpawnItem re-checks.
+            if (uiMgr_ && CanSpawn() && item.item_id != 0) {
                 auto* inv = uiMgr_->GetPlayerInventory();
                 int16_t ts = inv ? static_cast<int16_t>(inv->selectedSlot) : -1;
                 uiMgr_->GetActions().SpawnItem(item.item_id, item.count, ts);
@@ -152,6 +159,12 @@ void NeiPanel::RenderAllRecipes() {
     ImGui::Begin("NEI Items", nullptr,
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus);
+
+    // Permission matrix: spawning blocked unless the mode has infiniteItems.
+    if (!CanSpawn()) {
+        ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.0f, 1.0f),
+                           "Spawning disabled in this mode");
+    }
 
     if (justOpened_) {
         itemIndex_.Rebuild();
@@ -209,7 +222,7 @@ void NeiPanel::RenderAllRecipes() {
             ImGui::SetTooltip("%s", tip);
         }
 
-        if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && uiMgr_) {
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && uiMgr_ && CanSpawn()) {
             uint8_t count = ItemRegistry::GetStackSize(itemId);
             uiMgr_->GetActions().SpawnItem(itemId, count, spawnTargetSlot());
         }

@@ -4,6 +4,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include "../Common/Types.h"
+#include "../Player/PlayerController.h"
 #include <GLFW/glfw3.h>
 #include <array>
 struct InputState;
@@ -16,8 +17,10 @@ public:
   void Init();
   void Update(float dt, const InputState &input);
   void SetBinder(const InputBinder *binder);
+  // Fly (CREATIVE/SPECTATOR) vs walk (SURVIVAL/ADVENTURE) — derives from the
+  // permission matrix (GameModePerm::CanFly) in GameClient::Update.
   void SetFlightEnabled(bool enabled) { flightEnabled_ = enabled; }
-  void SetWorld(World *w) { world_ = w; }
+  void SetWorld(World *w) { controller_.SetWorld(w); }
 
   glm::mat4 GetViewMatrix() const;
   glm::mat4 GetProjectionMatrix(float aspect) const;
@@ -26,6 +29,8 @@ public:
   glm::vec3 GetForward() const;
   glm::vec3 GetRight() const;
   glm::vec3 GetUp() const;
+
+  bool IsOnGround() const { return controller_.IsOnGround(); }
 
   Frustum GetFrustum(float aspect) const;
 
@@ -40,11 +45,10 @@ private:
 
   const InputBinder *binder_ = nullptr;
   bool flightEnabled_ = true;
-  World *world_ = nullptr;
 
-  // Physics state (survival / adventure)
-  float velocityY_ = 0.0f;
-  bool onGround_ = false;
+  // Body physics — position/velocity/onGround live here; `pos` mirrors the
+  // controller's eye position each frame for the render path.
+  PlayerController controller_;
 
   // default
   int keyFwd_ = -1;
@@ -60,12 +64,6 @@ private:
 
   static constexpr float NEAR_PLANE = 0.1f;
   static constexpr float FAR_PLANE = 1000.0f;
-  static constexpr float SPEED = 14.317f;
   static constexpr float MOUSE_SENS = 0.1f;
   static constexpr float ZOOM_SENS = 0.1f;
-
-  // Survival physics constants
-  static constexpr float GRAVITY = 25.0f;
-  static constexpr float JUMP_VELOCITY = 8.5f;
-  static constexpr float EYE_HEIGHT = 1.6f;
 };

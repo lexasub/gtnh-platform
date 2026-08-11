@@ -39,6 +39,9 @@ public:
   // IBlockQuery
   uint16_t GetBlockAt(BlockPos pos) const override;
 
+  // Block meta byte at pos (0 if chunk missing). bits 0-5 = connection mask.
+  uint8_t GetMetaAt(BlockPos pos) const;
+
   // Chunk access for rendering
   std::shared_ptr<const ChunkView> GetChunk(const ChunkCoord &c) const;
 
