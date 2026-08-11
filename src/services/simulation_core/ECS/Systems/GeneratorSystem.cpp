@@ -1,4 +1,5 @@
 #include "GeneratorSystem.h"
+#include "Network/FluidClient.h"
 #include "../../common/ItemId.h"
 #include "../../libs/machine_registry/MachineRegistry.h"
 #include "../components/HeatIntakeComponent.h"
@@ -24,8 +25,9 @@ const std::unordered_map<uint16_t, int32_t>& GeneratorSystem::FuelValues() {
 
 GeneratorSystem::GeneratorSystem(entt::registry& reg,
                                  std::shared_ptr<IEventPublisher> events,
-                                 std::shared_ptr<PipeEnergyClient> pipeClient)
-    : reg_(reg), events_(events), pipeClient_(pipeClient)
+                                 std::shared_ptr<PipeEnergyClient> pipeClient,
+                                 std::shared_ptr<FluidClient> fluidClient)
+    : reg_(reg), events_(events), pipeClient_(pipeClient), fluidClient_(fluidClient)
 {
 }
 
@@ -38,6 +40,31 @@ void GeneratorSystem::tick(float /*dt*/) {
         auto& energy = view.get<EnergyStorage>(ent);
 
         if (!isGenerator(machine.machine_id)) continue;
+
+        // Register the STEAM node every tick (even when idle/fuel-less) so pipes
+        // can attach to a solid boiler that is not currently burning.
+        if (energy.type == EnergyType::STEAM) {
+            if (pipeClient_) {
+                pipeClient_->publishNodeUpdate(
+                    static_cast<uint64_t>(ent),
+                    static_cast<int32_t>(machine.x),
+                    static_cast<int32_t>(machine.y),
+                    static_cast<int32_t>(machine.z),
+                    energy.current, energy.capacity,
+                    energy.maxInput, energy.maxOutput,
+                    energy.tier, static_cast<int32_t>(energy.type),
+                    true, false);
+            }
+            if (fluidClient_) {
+                fluidClient_->publishNodeUpdate(
+                    static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
+                    ItemId::pack("1111:11:1"),              // steam
+                    energy.current, energy.capacity,
+                    0, energy.maxOutput, energy.tier,
+                    true, false);                           // is_source=true
+            }
+        }
+
         spdlog::debug("[GeneratorSystem] processing entity {} machine_id={} slots={} coal={} energy={}/{}",
                       static_cast<uint32_t>(ent), machine.machine_id,
                       container.slots.size(),
@@ -118,6 +145,18 @@ void GeneratorSystem::tick(float /*dt*/) {
                 true,
                 false
             );
+
+            // Steam fluid source publish: only STEAM generators (solid boiler)
+            // expose a steam node. Heat generators must not register as a steam
+            // source, or a consumer's BFS would drain phantom steam from them.
+            if (fluidClient_) {
+                fluidClient_->publishNodeUpdate(
+                    static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
+                    ItemId::pack("1111:11:1"),              // steam
+                    energy.current, energy.capacity,
+                    0, energy.maxOutput, energy.tier,
+                    true, false);                           // is_source=true
+            }
         }
 
         if (remaining <= 0) {

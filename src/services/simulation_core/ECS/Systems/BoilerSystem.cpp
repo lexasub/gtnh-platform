@@ -1,5 +1,6 @@
 #include "BoilerSystem.h"
 #include "HeatConstants.h"
+#include "Network/FluidClient.h"
 #include <common/ItemId.h>
 #include <spdlog/spdlog.h>
 #include "../components/HeatIntakeComponent.h"
@@ -10,8 +11,9 @@ namespace simcore {
 
 BoilerSystem::BoilerSystem(entt::registry& reg,
                            std::shared_ptr<IEventPublisher> events,
-                           std::shared_ptr<PipeEnergyClient> pipeClient)
-    : reg_(reg), events_(events), pipeClient_(pipeClient)
+                           std::shared_ptr<PipeEnergyClient> pipeClient,
+                           std::shared_ptr<FluidClient> fluidClient)
+    : reg_(reg), events_(events), pipeClient_(pipeClient), fluidClient_(fluidClient)
 {
 }
 
@@ -28,21 +30,32 @@ void BoilerSystem::tick(float /*dt*/) {
         auto& heatIntake = heatView.get<HeatIntakeComponent>(ent);
         auto& steam = heatView.get<SteamOutputComponent>(ent);
 
-        if (heatIntake.heat_stored <= 0) continue;
-        if (steam.steam_stored >= steam.steam_capacity) continue;
+        // Register/refresh pipe nodes every tick — a cold or steam-full boiler
+        // must still exist in the pipe network, or pipes can never attach to it.
+        int32_t maxOut = 0;
+        if (heatIntake.heat_stored > 0 && steam.steam_stored < steam.steam_capacity) {
+            double toConvert = std::min({
+                static_cast<double>(HeatConstants::CONVERSION_RATE),
+                static_cast<double>(heatIntake.heat_stored),
+                steam.steam_capacity - steam.steam_stored
+            });
+            heatIntake.heat_stored -= toConvert;
+            energy.current -= toConvert;
+            steam.steam_stored += toConvert;
+            maxOut = static_cast<int32_t>(toConvert);
 
-        double toConvert = std::min({
-            static_cast<double>(HeatConstants::CONVERSION_RATE),
-            static_cast<double>(heatIntake.heat_stored),
-            steam.steam_capacity - steam.steam_stored
-        });
-        heatIntake.heat_stored -= toConvert;
-        energy.current -= toConvert;
-        steam.steam_stored += toConvert;
+            spdlog::debug("Heat boiler {} at entity {} produced {} STEAM from {} HEAT",
+                          machine.machine_id, static_cast<uint32_t>(ent),
+                          toConvert, static_cast<uint32_t>(toConvert));
 
-        spdlog::debug("Heat boiler {} at entity {} produced {} STEAM from {} HEAT",
-                      machine.machine_id, static_cast<uint32_t>(ent),
-                      toConvert, static_cast<uint32_t>(toConvert));
+            events_->publishBlockEntityUpdate(
+                machine.x, machine.y, machine.z, machine.machine_id,
+                {}, 0.0f,
+                static_cast<uint32_t>(heatIntake.heat_stored),
+                EnergyType::HEAT, 0, -1,
+                heatIntake.ratio(), {},
+                steam.steam_stored, steam.steam_capacity);
+        }
 
         if (pipeClient_) {
             pipeClient_->publishNodeUpdate(
@@ -50,17 +63,19 @@ void BoilerSystem::tick(float /*dt*/) {
                 machine.x, machine.y, machine.z,
                 static_cast<int32_t>(steam.steam_stored),
                 static_cast<int32_t>(steam.steam_capacity),
-                0, static_cast<int32_t>(toConvert),
+                0, maxOut,
                 energy.tier, static_cast<int32_t>(EnergyType::STEAM),
                 true, false);
         }
-        events_->publishBlockEntityUpdate(
-            machine.x, machine.y, machine.z, machine.machine_id,
-            {}, 0.0f,
-            static_cast<uint32_t>(heatIntake.heat_stored),
-            EnergyType::HEAT, 0, -1,
-            heatIntake.ratio(), {},
-            steam.steam_stored, steam.steam_capacity);
+        if (fluidClient_) {
+            fluidClient_->publishNodeUpdate(
+                static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
+                ItemId::pack("1111:11:1"),              // steam fluid id
+                static_cast<int32_t>(steam.steam_stored),
+                static_cast<int32_t>(steam.steam_capacity),
+                0, maxOut, energy.tier,
+                true, false);                           // is_source=true, is_sink=false
+        }
     }
 }
 

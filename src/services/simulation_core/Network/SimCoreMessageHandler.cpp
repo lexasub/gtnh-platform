@@ -212,9 +212,8 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
 
             } else if (topic == "fluid.consume.response") {
                 auto* resp = flatbuffers::GetRoot<Protocol::FluidConsumeResp>(data.data());
-                if (!resp) return;
-                spdlog::trace("FluidConsumeResp: consumed={} remaining={}",
-                               resp->consumed(), resp->remaining());
+                if (!resp || !machineSystem) return;
+                machineSystem->onFluidConsumeResponse(resp->consumed());
 
             } else if (topic == "item.transfer.response") {
                 auto* resp = flatbuffers::GetRoot<Protocol::ItemTransferResp>(data.data());

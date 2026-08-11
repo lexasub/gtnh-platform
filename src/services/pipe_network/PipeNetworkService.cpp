@@ -588,6 +588,14 @@ void PipeNetworkService::handleFluidNodeUpdate(const std::vector<uint8_t>& data)
         spdlog::debug("Registered fluid node {} at ({},{},{})", protocol_id, x, y, z);
     } else {
         mgr_id = it->second;
+        // Fluid-capacity upgrade: machines register via handleNodeUpdate as
+        // energy nodes (blockId=1, fluidCapacity=0). First fluid update lifts
+        // them into the fluid layer so the masked scan below forms pipe edges.
+        const auto* nn = network_manager_.getNode(mgr_id);
+        if (nn && nn->fluidCapacity <= 0) {
+            network_manager_.setNodeFluid(mgr_id, update->amount(), update->capacity(),
+                                          update->fluid_id(), update->is_source(), update->is_sink());
+        }
     }
 
     NodeState& st = node_states_[mgr_id];

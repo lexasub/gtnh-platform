@@ -14,12 +14,14 @@
 
 namespace simcore {
 
+class FluidClient;
 class PipeEnergyClient;
 
 class BoilerSystem : public ISystem {
 public:
   BoilerSystem(entt::registry &reg, std::shared_ptr<IEventPublisher> events,
-               std::shared_ptr<PipeEnergyClient> pipeClient);
+               std::shared_ptr<PipeEnergyClient> pipeClient,
+               std::shared_ptr<FluidClient> fluidClient = nullptr);
 
   void tick(float dt) override;
 
@@ -27,6 +29,7 @@ private:
   entt::registry &reg_;
   std::shared_ptr<IEventPublisher> events_;
   std::shared_ptr<PipeEnergyClient> pipeClient_;
+  std::shared_ptr<FluidClient> fluidClient_;
 };
 
 } // namespace simcore

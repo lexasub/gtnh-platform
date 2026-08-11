@@ -30,6 +30,7 @@
 #include "ECS/components/DrillComponent.h"
 #include "Network/IEventPublisher.h"
 #include "Network/PipeEnergyClient.h"
+#include "Network/FluidClient.h"
 #include "MachineRegistry.h"
 #include "RecipeManager/RecipeManager.h"
 #include "Actions/SetBlockCASHandler.h"
@@ -181,6 +182,43 @@ void setupMachineRegistry() {
     MachineRegistry::setInstance(reg.get());
     reg.release();
 }
+
+// Spy: records fluid node-update/request calls so the steam cycle is asserted without a live PipeNetwork.
+struct MockFluidClient : simcore::FluidClient {
+    int publish_calls = 0;
+    int request_calls = 0;
+    uint64_t last_node_id = 0;
+    uint32_t last_fluid_id = 0;
+    bool last_is_source = false;
+    bool last_is_sink = false;
+    int32_t last_request_amount = 0;
+
+    MockFluidClient()
+        : simcore::FluidClient(std::make_shared<simcore::IoUringRouterClient>()) {}
+
+    void publishNodeUpdate(uint64_t node_id, int32_t x, int32_t y, int32_t z,
+                          uint32_t fluid_id, int32_t amount, int32_t capacity,
+                          int32_t max_input, int32_t max_output, int32_t tier,
+                          bool is_source, bool is_sink,
+                          const std::vector<uint64_t> &connected_nodes = {}) override {
+        (void)x; (void)y; (void)z; (void)amount; (void)capacity;
+        (void)max_input; (void)max_output; (void)tier; (void)connected_nodes;
+        publish_calls++;
+        last_node_id = node_id;
+        last_fluid_id = fluid_id;
+        last_is_source = is_source;
+        last_is_sink = is_sink;
+    }
+
+    void sendFluidRequest(uint64_t node_id, int32_t x, int32_t y, int32_t z,
+                         uint32_t fluid_id, int32_t amount) override {
+        (void)x; (void)y; (void)z;
+        request_calls++;
+        last_node_id = node_id;
+        last_fluid_id = fluid_id;
+        last_request_amount = amount;
+    }
+};
 
 // machines.yaml specifies energy_in/energy_out (the manual role flag is gone).
 // The energy-config branch (maxOutput for producers vs maxInput for consumers)
@@ -551,6 +589,101 @@ static void test_MachineSystem_idle_no_recipe() {
     PASS();
 }
 
+static void test_MachineSystem_steam_machine_requests_fluid() {
+    setupMachineRegistry();
+    auto* mreg = MachineRegistry::instance();
+
+    MachineInfo info{};
+    info.id = 9001;
+    info.name = "test_steam_macerator";
+    info.machine_class = "macerator";
+    info.energy_in = EnergyType::STEAM;
+    info.tier = 0;
+    info.slots_in = 1;
+    info.slots_out = 1;
+    info.capacity = 10000;
+    info.maxInput = 32;
+    info.maxOutput = 0;
+    mreg->Register(info);
+
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(
+        std::make_shared<simcore::IoUringRouterClient>());
+    auto recipes = std::make_shared<RecipeManager::RecipeManager>();
+
+    // Map block 9001 -> macerator class with STEAM energy_in so STEAM recipes
+    // match (findRecipeByInputs filters on the machine's registered energy_in).
+    recipes->registerMachineClass(9001, "macerator", 0,
+                                 static_cast<uint8_t>(RecipeManager::EnergyType::STEAM));
+
+    // Inject a STEAM recipe that carries a real energy_cost. Real steam recipes
+    // in data/recipes/macerator.yaml have no `eu`, so energy_cost would be 0 and
+    // the STEAM branch guard (energy.current < energy_cost) could never fire.
+    std::string yaml =
+        "class: macerator\n"
+        "recipes:\n"
+        "  - name: test_steam_mac_ore\n"
+        "    energy_in: STEAM\n"
+        "    inputs:\n"
+        "      - { item: \"0:11110:2\", count: 1 }\n"
+        "    outputs:\n"
+        "      - { item: \"0:11110:3\", count: 1 }\n"
+        "    eu: 32\n"
+        "    duration: 50\n"
+        "    min_tier: 0\n"
+        "    max_tier: 32767\n";
+    std::string recipePath = makeTempFile(yaml);
+    CHECK(recipes->loadRecipesFromYamlFile(recipePath), "temp steam recipe must load");
+
+    auto fluid = std::make_shared<MockFluidClient>();
+
+    // fluidClient is the 9th (last) ctor parameter.
+    simcore::MachineSystem sys(reg, recipes, events, pipeClient,
+                               nullptr, nullptr, nullptr, nullptr, fluid);
+
+    const uint16_t kBlock = 9001;
+    auto ent = reg.create();
+    reg.emplace<simcore::MachineComponent>(ent, kBlock, 0, 0, 0, 0, 0);
+    reg.emplace<simcore::RecipeProgress>(ent);
+    reg.emplace<simcore::EnergyStorage>(ent, 10000, 0, 32, 0, 0, EnergyType::STEAM);
+    simcore::InventoryContainer container(0, 1,
+        {{ItemId::pack("0:11110:2"), 1, 0}});
+    reg.emplace<simcore::InventoryContainer>(ent, container);
+
+    sys.tick(0.05f);
+
+    CHECK_GT(fluid->publish_calls, 0, "steam machine publishes fluid node update");
+    CHECK(fluid->last_is_sink, "published fluid node must be marked is_sink");
+    CHECK(!fluid->last_is_source, "sink node must not be a source");
+    CHECK_GT(fluid->request_calls, 0, "steam machine sends a fluid request");
+    CHECK_EQ(fluid->last_request_amount, 32, "requested amount == recipe energy_cost");
+    CHECK_EQ(fluid->last_fluid_id, ItemId::pack("1111:11:1"), "fluid id is steam");
+
+    CHECK_EQ(reg.get<simcore::EnergyStorage>(ent).current, 0,
+             "no credit before response");
+    sys.onFluidConsumeResponse(20);
+    CHECK_EQ(reg.get<simcore::EnergyStorage>(ent).current, 20,
+             "positive response credits 20 steam");
+
+    // Self-heal: a zero/negative response must clear the pending node WITHOUT
+    // crediting energy, so the next tick re-requests rather than stalling.
+    reg.get<simcore::EnergyStorage>(ent).current = 0;
+    int pub_before = fluid->publish_calls;
+    sys.tick(0.05f);
+    CHECK_GT(fluid->publish_calls, pub_before,
+             "re-requests fluid after positive credit");
+    sys.onFluidConsumeResponse(-1);
+    CHECK_EQ(reg.get<simcore::EnergyStorage>(ent).current, 0,
+             "negative response does not credit energy");
+    int cred_before = reg.get<simcore::EnergyStorage>(ent).current;
+    sys.onFluidConsumeResponse(5);
+    CHECK_EQ(reg.get<simcore::EnergyStorage>(ent).current, cred_before,
+             "no credit when no pending node exists");
+
+    PASS();
+}
+
 static void test_BatteryBufferSystem_charges_tool() {
     setupMachineRegistry();
     entt::registry reg;
@@ -916,6 +1049,7 @@ void test_ecs_systems() {
     TEST(AdjacencyTransferSystem_adjacent_transfer);
     TEST(AdjacencyTransferSystem_non_adjacent_no_transfer);
     TEST(MachineSystem_idle_no_recipe);
+    TEST(MachineSystem_steam_machine_requests_fluid);
     TEST(CreativeGeneratorSystem_fills_energy);
     TEST(BatteryBufferSystem_charges_tool);
     TEST(BatteryBufferSystem_empty_slot_noop);

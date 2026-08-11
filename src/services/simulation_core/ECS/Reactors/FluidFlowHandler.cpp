@@ -4,6 +4,7 @@
 #include "ECS/components/MachineComponent.h"
 #include "ECS/components/EnergyStorage.h"
 #include "ECS/components/FluidStorage.h"
+#include "ECS/components/SteamOutputComponent.h"
 #include "core_generated.h"
 #include "pipe_network_generated.h"
 #include <spdlog/spdlog.h>
@@ -81,6 +82,21 @@ void FluidFlowHandler::handle(const std::vector<uint8_t>& data) {
                     0, 0, energy->tier, false, true);
             }
             spdlog::trace("FluidFlowHandler: fluid {} x{} consumed as steam energy at ({},{},{})",
+                          fluid_id, amount, x, y, z);
+            break;
+        }
+
+        // Case 2b: No STEAM EnergyStorage, but SteamOutputComponent — boiler steam pool
+        if (auto* soc = reg_.try_get<SteamOutputComponent>(entity)) {
+            soc->steam_stored -= amount;
+            if (soc->steam_stored < 0) soc->steam_stored = 0;
+            if (mc && fluidClient_) {
+                fluidClient_->publishNodeUpdate(
+                    from_node, mc->x, mc->y, mc->z,
+                    fluid_id, static_cast<int32_t>(soc->steam_stored), static_cast<int32_t>(soc->steam_capacity),
+                    0, 0, 0, true, false);              // is_source=true
+            }
+            spdlog::trace("FluidFlowHandler: fluid {} x{} drained from SteamOutputComponent at ({},{},{})",
                           fluid_id, amount, x, y, z);
             break;
         }

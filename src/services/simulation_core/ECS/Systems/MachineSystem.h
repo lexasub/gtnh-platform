@@ -16,6 +16,7 @@
 namespace simcore {
 
 class PipeEnergyClient;
+class FluidClient;
 class ItemClient;
 class ContainerSessionRegistry;
 class PlayerInventoryStore;
@@ -30,11 +31,13 @@ public:
                 std::shared_ptr<ItemClient> itemClient = nullptr,
                 std::shared_ptr<ContainerSessionRegistry> sessions = nullptr,
                 std::shared_ptr<PlayerInventoryStore> invStore = nullptr,
-                std::shared_ptr<IoUringRouterClient> router = nullptr);
+                std::shared_ptr<IoUringRouterClient> router = nullptr,
+                std::shared_ptr<FluidClient> fluidClient = nullptr);
 
   void tick(float dt) override;
   void onConsumeResponse(uint64_t node_id = 0, int32_t consumed = 0,
                          int32_t remaining = 0);
+  void onFluidConsumeResponse(int32_t consumed);
 
   // TODO(perf): force-publishing every machine every 10 ticks (~0.5s) is
   // O(#machines) traffic per interval — temporary measure so late-connecting
@@ -56,7 +59,9 @@ private:
   std::shared_ptr<ContainerSessionRegistry> sessions_;
   std::shared_ptr<PlayerInventoryStore> invStore_;
   std::shared_ptr<IoUringRouterClient> router_;
+  std::shared_ptr<FluidClient> fluidClient_;
   std::unordered_map<uint64_t, int32_t> pendingConsumes_;
+  std::unordered_map<uint64_t, int32_t> pendingFluidConsumes_;
   std::unordered_map<uint64_t, uint64_t> lastInventoryHash_;
   int tickCounter_ = 0;
   int startupTicks_ = 3;

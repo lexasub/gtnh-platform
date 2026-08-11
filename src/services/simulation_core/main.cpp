@@ -87,13 +87,14 @@ entt::entity findEntityAt(const entt::registry& reg, int32_t x, int32_t y, int32
 void spawnECSSystems(std::shared_ptr<simcore::ChunkStoreRepository> blockRepository,
                      std::shared_ptr<simcore::RouterEventPublisher> eventPublisher,
                      std::shared_ptr<simcore::PipeEnergyClient> pipeEnergyClient,
+                     std::shared_ptr<simcore::FluidClient> fluidClient,
                      std::shared_ptr<simcore::SimulationEngine> simulationEngine) {
     // TODO - may be lazy start - on use
     simulationEngine->registerSystem(std::make_unique<simcore::CoolantSystem>(simulationEngine->reg()));
     simulationEngine->registerSystem(std::make_unique<simcore::ExplosionSystem>(simulationEngine->reg(), eventPublisher));
-    simulationEngine->registerSystem(std::make_unique<simcore::GeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
+    simulationEngine->registerSystem(std::make_unique<simcore::GeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient));
     simulationEngine->registerSystem(std::make_unique<simcore::CreativeGeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
-    simulationEngine->registerSystem(std::make_unique<simcore::BoilerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
+    simulationEngine->registerSystem(std::make_unique<simcore::BoilerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient));
     simulationEngine->registerSystem(std::make_unique<simcore::TransformerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
     simulationEngine->registerSystem(std::make_unique<simcore::DrillSystem>(simulationEngine->reg(), blockRepository, eventPublisher, pipeEnergyClient));
     simulationEngine->registerSystem(std::make_unique<simcore::RotareGeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
@@ -366,7 +367,7 @@ int main(int argc, char* argv[]) {
     {
         auto ms = std::make_unique<simcore::MachineSystem>(
             simulationEngine->reg(), recipeManager, eventPublisher, pipeEnergyClient, itemClient,
-            chestSessions, inventoryStore, routerClient);
+            chestSessions, inventoryStore, routerClient, fluidClient);
         machineSystemRaw = ms.get();
         simulationEngine->registerSystem(std::move(ms));
     }
@@ -377,7 +378,7 @@ int main(int argc, char* argv[]) {
         batteryBufferRaw = bbs.get();
         simulationEngine->registerSystem(std::move(bbs));
     }
-    spawnECSSystems(blockRepository, eventPublisher, pipeEnergyClient, simulationEngine);
+    spawnECSSystems(blockRepository, eventPublisher, pipeEnergyClient, fluidClient, simulationEngine);
 
     simulationEngine->registerSystem(std::make_unique<simcore::EBFSystem>(
         simulationEngine->reg(), simulationEngine->getControllers(),
