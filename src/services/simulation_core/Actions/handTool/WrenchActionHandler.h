@@ -27,6 +27,17 @@ private:
   static uint64_t cooldownKey(uint64_t playerId, int32_t x, int32_t y, int32_t z, uint8_t face);
   static constexpr auto COOLDOWN_MS = std::chrono::milliseconds(200);
 
+  // Re-publish a block (id+meta) so the client mesh and PipeNetwork pick up a
+  // meta-only change. setBlockCAS writes the store but does NOT emit this event.
+  // source_player_id is left 0 (NOT the acting player) on purpose: the wrench
+  // client receives no BlockAck carrying the new meta, so it MUST receive this
+  // BlockChangedEvent. The gateway drops world.blocks.changed when
+  // source_player_id == the connected client's id (it assumes an optimistic
+  // BlockAck already applied) — which would silently hide the toggle for the
+  // local player. source_player_id == 0 disables that skip for all clients.
+  void publishBlockChanged(int32_t x, int32_t y, int32_t z,
+                           uint16_t block_id, uint8_t meta);
+
   std::unordered_map<uint64_t, std::chrono::steady_clock::time_point> lastActionTime_;
   std::shared_ptr<WrenchHandler> wrenchHandler_;
   std::shared_ptr<IoUringRouterClient> router_;
