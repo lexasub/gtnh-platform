@@ -47,15 +47,17 @@ void BoilerSystem::tick(float /*dt*/) {
             spdlog::debug("Heat boiler {} at entity {} produced {} STEAM from {} HEAT",
                           machine.machine_id, static_cast<uint32_t>(ent),
                           toConvert, static_cast<uint32_t>(toConvert));
-
-            events_->publishBlockEntityUpdate(
-                machine.x, machine.y, machine.z, machine.machine_id,
-                {}, 0.0f,
-                static_cast<uint32_t>(heatIntake.heat_stored),
-                EnergyType::HEAT, 0, -1,
-                heatIntake.ratio(), {},
-                steam.steam_stored, steam.steam_capacity);
         }
+
+        // Publish UI state every tick: a cold or steam-full boiler still reports
+        // its levels, or the client window hides the SU bar / flags stale state.
+        events_->publishBlockEntityUpdate(
+            machine.x, machine.y, machine.z, machine.machine_id,
+            {}, 0.0f,
+            static_cast<uint32_t>(heatIntake.heat_stored),
+            EnergyType::HEAT, 0, -1,
+            heatIntake.ratio(), {},
+            steam.steam_stored, steam.steam_capacity);
 
         if (pipeClient_) {
             pipeClient_->publishNodeUpdate(
@@ -66,6 +68,30 @@ void BoilerSystem::tick(float /*dt*/) {
                 0, maxOut,
                 energy.tier, static_cast<int32_t>(EnergyType::STEAM),
                 true, false);
+
+            // HEAT sink node: lets a heat_pipe network deliver HEAT into the
+            // boiler (distributeHeat moves excess heat from sources to sinks).
+            // Publish every tick so the node state stays fresh.
+            pipeClient_->publishNodeUpdate(
+                static_cast<uint64_t>(ent),
+                machine.x, machine.y, machine.z,
+                energy.current, energy.capacity,
+                0, 0,
+                energy.tier, static_cast<int32_t>(EnergyType::HEAT),
+                false, true);
+
+            // Pull HEAT from the pipe network when the local buffer runs low:
+            // the boiler itself is not a recipe machine, so MachineSystem's
+            // energy-gated consume path never fires for it.
+            if (heatIntake.heat_stored < HeatConstants::HEAT_SINK_REPLENISH_TARGET &&
+                steam.steam_stored < steam.steam_capacity) {
+                int32_t needed = HeatConstants::HEAT_SINK_REPLENISH_TARGET - heatIntake.heat_stored;
+                pipeClient_->sendConsumeRequest(
+                    static_cast<uint64_t>(ent),
+                    machine.x, machine.y, machine.z,
+                    static_cast<int32_t>(EnergyType::HEAT),
+                    needed);
+            }
         }
         if (fluidClient_) {
             fluidClient_->publishNodeUpdate(

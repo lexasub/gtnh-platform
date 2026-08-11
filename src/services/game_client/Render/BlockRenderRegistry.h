@@ -12,6 +12,13 @@ inline bool isCableBlock(uint16_t blockId) {
   return ItemId::isCable(blockId);
 }
 
+// Machines live in the CAT_MACHINES range (1110:*). A pipe/cable adjacent to a
+// machine renders a connection flange even though the neighbour is not a
+// same-type pipe/cable block.
+inline bool isMachineBlock(uint16_t blockId) {
+  return ItemId::category(blockId) == ItemId::CAT_MACHINES;
+}
+
 inline PipeType blockIdToPipeType(uint16_t blockId) {
   return static_cast<PipeType>(
     (blockId - ItemId::pack("1111:10:0"))

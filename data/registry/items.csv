@@ -126,6 +126,7 @@ int,name,stack,meta
 1111:10:1,item_pipe,,0
 1111:10:2,dense_item_pipe,,0
 1111:10:3,dense_fluid_pipe,,0
+1111:10:4,heat_pipe,,0
 # fluids (111111)
 1111:11:0,water,,0
 1111:11:1,steam,,0

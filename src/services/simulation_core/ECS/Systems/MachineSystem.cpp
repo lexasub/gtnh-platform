@@ -9,6 +9,7 @@
 #include "../components/OverheatComponent.h"
 #include "../components/HeatSlowComponent.h"
 #include "../components/HeatIntakeComponent.h"
+#include "../components/SteamOutputComponent.h"
 #include "Storage/ContainerSession.h"
 #include "Storage/ChestStateManager.h"
 #include "Storage/PlayerInventoryStore.h"
@@ -85,6 +86,11 @@ void MachineSystem::tick(float /*dt*/) {
         if (auto* hic = reg_.try_get<HeatIntakeComponent>(ent)) {
             heatRatio = hic->ratio();
         }
+        double steamCur = -1.0, steamCap = -1.0;
+        if (auto* soc = reg_.try_get<SteamOutputComponent>(ent)) {
+            steamCur = soc->steam_stored;
+            steamCap = soc->steam_capacity;
+        }
         events_->publishBlockEntityUpdate(
             static_cast<int32_t>(machine.x),
             static_cast<int32_t>(machine.y),
@@ -96,7 +102,8 @@ void MachineSystem::tick(float /*dt*/) {
             static_cast<EnergyType>(energy.type),
             static_cast<uint32_t>(energy.capacity),
             slt_in,
-            heatRatio);
+            heatRatio,
+            nullptr, steamCur, steamCap);
     }
 
     // ---- Pass 1: find new recipes for idle machines (skip managed_externally) ----
@@ -498,34 +505,43 @@ void MachineSystem::onConsumeResponse(uint64_t node_id, int32_t consumed, int32_
 
          energy->current = (std::min)(simcore::add_sat(energy->current, consumed), energy->capacity);
 
-         spdlog::debug("Machine {} at entity {} received {} energy from PipeNetwork (total: {})",
-                       progress->recipe_id, static_cast<uint32_t>(ent), consumed, energy->current);
-         pendingConsumes_.erase(node_id);
-         return;
-     }
+         // Pipe-fed HEAT machines (e.g. steam_heat_boiler pulling via BoilerSystem)
+         // keep HeatIntakeComponent synced to EnergyStorage.current, exactly like
+         // AdjacencyTransferSystem does for neighbour-transferred heat.
+         if (energy->type == EnergyType::HEAT) {
+             if (auto* hic = reg_.try_get<HeatIntakeComponent>(ent)) {
+                 hic->heat_stored = energy->current;
+             }
+         }
+         }
 
-     // No node_id: process in FIFO order
-     if (pendingConsumes_.empty()) {
-         return;
-     }
+         // No node_id: process in FIFO order
+    if (pendingConsumes_.empty()) {
+        return;
+    }
 
-     // Get oldest pending entity
-     entt::entity oldest_ent = static_cast<entt::entity>(pendingConsumes_.begin()->first);
-     auto* machine = reg_.try_get<MachineComponent>(oldest_ent);
-     auto* progress = reg_.try_get<RecipeProgress>(oldest_ent);
-     auto* energy = reg_.try_get<EnergyStorage>(oldest_ent);
-     if (!machine || !progress || !energy) {
-         pendingConsumes_.erase(pendingConsumes_.begin());
-         return;
-     }
+    // Get oldest pending entity
+    entt::entity oldest_ent = static_cast<entt::entity>(pendingConsumes_.begin()->first);
+    auto* machine = reg_.try_get<MachineComponent>(oldest_ent);
+    auto* progress = reg_.try_get<RecipeProgress>(oldest_ent);
+    auto* energy = reg_.try_get<EnergyStorage>(oldest_ent);
+    if (!machine || !progress || !energy) {
+        pendingConsumes_.erase(pendingConsumes_.begin());
+        return;
+    }
 
-     energy->current = (std::min)(simcore::add_sat(energy->current, consumed), energy->capacity);
+    energy->current = (std::min)(simcore::add_sat(energy->current, consumed), energy->capacity);
 
-      spdlog::debug("Machine {} at entity {} received {} energy from PipeNetwork (total: {})",
-                    progress->recipe_id, static_cast<uint32_t>(oldest_ent), consumed, energy->current);
-     pendingConsumes_.erase(pendingConsumes_.begin());
- }
+    if (energy->type == EnergyType::HEAT) {
+        if (auto* hic = reg_.try_get<HeatIntakeComponent>(oldest_ent)) {
+            hic->heat_stored = energy->current;
+        }
+    }
 
+    spdlog::debug("Machine {} at entity {} received {} energy from PipeNetwork (total: {})",
+                  progress->recipe_id, static_cast<uint32_t>(oldest_ent), consumed, energy->current);
+    pendingConsumes_.erase(pendingConsumes_.begin());
+}
 void MachineSystem::onFluidConsumeResponse(int32_t consumed) {
      if (consumed <= 0) {
          if (!pendingFluidConsumes_.empty()) {

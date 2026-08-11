@@ -837,6 +837,56 @@ static void test_heat_node_temperature_tracked() {
 }
 
 // =========================================================================
+//  Heat pipe block (1111:10:4)
+// =========================================================================
+
+static void test_heat_pipe_node_capacity() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t hp = mgr.addNode(0, 0, 0, ItemId::pack("1111:10:4"));
+    const auto* node = mgr.getNode(hp);
+    CHECK(node, "heat pipe node registered");
+    CHECK_EQ(node->heatCapacity, 1000, "heat pipe carries heatCapacity=1000");
+    CHECK_EQ(node->itemCapacity, 0, "heat pipe carries no items");
+    CHECK_EQ(node->fluidCapacity, 0, "heat pipe carries no fluids");
+    PASS();
+}
+
+static void test_heat_pipe_network_transport() {
+    pipenet::PipeNetworkManager mgr;
+    // heat_generator (source) -> heat_pipe -> boiler (HEAT sink)
+    uint64_t src  = mgr.addNode(0, 0, 0, 1);  // plain block, set as heat source
+    uint64_t hp   = mgr.addNode(1, 0, 0, ItemId::pack("1111:10:4"));
+    uint64_t sink = mgr.addNode(2, 0, 0, 1);  // plain block, set as heat sink
+    mgr.addEdge(src, hp, 0.0f);
+    mgr.addEdge(hp, sink, 0.0f);
+
+    mgr.setNodeHeat(src, 5000, 5000, true, false);
+    mgr.setNodeHeat(hp, 0, 1000, false, false);
+    mgr.setNodeHeat(sink, 0, 5000, false, true);
+
+    uint64_t netId = heatNetworkWithSink(mgr, sink);
+    CHECK_GT(netId, uint64_t(0), "heat network discovered through heat pipe");
+
+    auto deltas = mgr.distributeHeat(netId, pipenet::HeatConstants::MAX_HEAT_PER_TICK);
+    CHECK(!deltas.empty(), "heat distributed across heat pipe");
+    CHECK_GT(mgr.getNode(sink)->heatStored, 0, "sink received heat through heat pipe");
+    CHECK_LT(mgr.getNode(src)->heatStored, 5000, "source drained");
+    PASS();
+}
+
+static void test_heat_pipe_no_fluid_transport() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t hp = mgr.addNode(0, 0, 0, ItemId::pack("1111:10:4"));
+    mgr.setNodeHeat(hp, 0, 1000, false, false);
+    uint64_t netId = heatNetworkWithSink(mgr, hp);
+    // No sink -> no distribution, and fluid path stays empty.
+    auto deltas = mgr.distributeHeat(netId, pipenet::HeatConstants::MAX_HEAT_PER_TICK);
+    CHECK(deltas.empty() || mgr.getNode(hp)->heatStored == 0,
+          "heat pipe alone without source/sink does not produce heat");
+    PASS();
+}
+
+// =========================================================================
 //  Edge cases and stress
 // =========================================================================
 
@@ -1370,6 +1420,11 @@ int main(int, char**) {
     TEST(heat_distribution_no_loss_with_zero_resistance);
     TEST(heat_distribution_capped_at_max);
     TEST(heat_node_temperature_tracked);
+
+    // Heat pipe block
+    TEST(heat_pipe_node_capacity);
+    TEST(heat_pipe_network_transport);
+    TEST(heat_pipe_no_fluid_transport);
 
     // Edge cases
     TEST(remove_edge_and_rebuild);

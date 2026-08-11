@@ -11,6 +11,7 @@ enum class PipeType : uint8_t {
   DENSE_ITEM_PIPE,
   FLUID_PIPE,
   DENSE_FLUID_PIPE,
+  HEAT_PIPE,
   CABLE_TIN,
   CABLE_COPPER,
   CABLE_GOLD,
@@ -34,7 +35,7 @@ inline uint8_t pipeTypeToCableTier(PipeType type) {
 
 // Returns the WORLD block id for a pipe/cable type. These must match the ids
 // actually stored in chunks (data/registry/items.csv):
-//   pipes:  1111:10:0..3  -> 0xF800..0xF803
+//   pipes:  1111:10:0..4  -> 0xF800..0xF804
 //   cables: 1111:01:0..5  -> 0xF400..0xF405
 // This is the exact inverse of blockIdToPipeType / blockIdToCableTier, which is
 // what detectConnections relies on to match neighbouring pipe/cable blocks.

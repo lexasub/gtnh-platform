@@ -1,5 +1,6 @@
 #include "PipeMeshBuilder.h"
 #include "ChunkMeshBuilder.h"
+#include "BlockRenderRegistry.h"
 #include "../Common/BlockVertex.h"
 
 namespace {
@@ -146,6 +147,7 @@ void pipeColor(PipeType type, uint8_t* out) {
         case PipeType::DENSE_ITEM_PIPE:  out[0]=0xA0; out[1]=0xA0; out[2]=0xA0; out[3]=0xFF; break;
         case PipeType::FLUID_PIPE:       out[0]=0x40; out[1]=0x60; out[2]=0xAA; out[3]=0xFF; break;
         case PipeType::DENSE_FLUID_PIPE: out[0]=0x50; out[1]=0x70; out[2]=0xCC; out[3]=0xFF; break;
+        case PipeType::HEAT_PIPE:        out[0]=0xCC; out[1]=0x50; out[2]=0x30; out[3]=0xFF; break;
         default:                         out[0]=0x80; out[1]=0x80; out[2]=0x80; out[3]=0xFF; break;
     }
 }
@@ -198,6 +200,14 @@ FaceMask PipeMeshBuilder::detectConnections(
     if (getBlock(x,   y,   z+1) == target) mask |= FACE_SOUTH;
     if (getBlock(x-1, y,   z  ) == target) mask |= FACE_WEST;
     if (getBlock(x+1, y,   z  ) == target) mask |= FACE_EAST;
+    // Any machine block on a face draws a connection flange: machines are the
+    // endpoints pipes attach to (boiler, generator, extractor...).
+    if (isMachineBlock(getBlock(x,   y+1, z  ))) mask |= FACE_UP;
+    if (isMachineBlock(getBlock(x,   y-1, z  ))) mask |= FACE_DOWN;
+    if (isMachineBlock(getBlock(x,   y,   z-1))) mask |= FACE_NORTH;
+    if (isMachineBlock(getBlock(x,   y,   z+1))) mask |= FACE_SOUTH;
+    if (isMachineBlock(getBlock(x-1, y,   z  ))) mask |= FACE_WEST;
+    if (isMachineBlock(getBlock(x+1, y,   z  ))) mask |= FACE_EAST;
     if (!getMeta) return mask;
     uint8_t mv = getMeta(x, y, z);
     if (mv == 0) return mask;  // legacy: unset meta = all 6 faces connected

@@ -1012,6 +1012,36 @@ static void test_BoilerSystem_heat_boiler_produces_steam_no_water() {
     PASS();
 }
 
+static void test_BoilerSystem_heat_pipe_replenish_request() {
+    setupMachineRegistry();
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(std::make_shared<simcore::IoUringRouterClient>());
+    simcore::BoilerSystem sys(reg, events, pipeClient);
+
+    auto ent = reg.create();
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:1"), 0, 100, 64, 100, 1);
+    // Heat nearly exhausted: boiler must issue a HEAT consume request (pull) so a
+    // connected heat pipe network can replenish it.
+    reg.emplace<simcore::EnergyStorage>(ent, 10000, 10, 0, 32, 1, EnergyType::HEAT);
+    simcore::HeatIntakeComponent heat;
+    heat.heat_stored = 10;
+    heat.heat_capacity = 1000;
+    reg.emplace<simcore::HeatIntakeComponent>(ent, heat);
+    simcore::SteamOutputComponent steam;
+    steam.steam_capacity = 1000;
+    reg.emplace<simcore::SteamOutputComponent>(ent, steam);
+
+    // Must not crash: publishNodeUpdate (HEAT sink) + sendConsumeRequest (pull)
+    // fire every tick through the real client (router drops silently offline).
+    sys.tick(0.05f);
+    sys.tick(0.05f);
+
+    auto& heatIn = reg.get<simcore::HeatIntakeComponent>(ent);
+    CHECK_LT(heatIn.heat_stored, 11, "no heat arrived (offline) but buffer did not inflate");
+    PASS();
+}
+
 static void test_GeneratorSystem_solid_boiler_produces_steam() {
     setupMachineRegistry();
     entt::registry reg;
@@ -1045,6 +1075,7 @@ void test_ecs_systems() {
     TEST(GeneratorSystem_no_fuel_no_energy);
     TEST(GeneratorSystem_full_storage_skips);
     TEST(BoilerSystem_heat_boiler_produces_steam_no_water);
+    TEST(BoilerSystem_heat_pipe_replenish_request);
     TEST(GeneratorSystem_solid_boiler_produces_steam);
     TEST(AdjacencyTransferSystem_adjacent_transfer);
     TEST(AdjacencyTransferSystem_non_adjacent_no_transfer);

@@ -1,6 +1,7 @@
 #include "CableMeshBuilder.h"
 #include "CableColors.h"
 #include "ChunkMeshBuilder.h"
+#include "BlockRenderRegistry.h"
 #include "../Common/BlockVertex.h"
 #include <cstdint>
 
@@ -166,6 +167,14 @@ FaceMask CableMeshBuilder::detectConnections(
     if (getBlock(x,   y,   z+1) == id) connections |= FACE_SOUTH;
     if (getBlock(x-1, y,   z  ) == id) connections |= FACE_WEST;
     if (getBlock(x+1, y,   z  ) == id) connections |= FACE_EAST;
+    // Any machine block on a face draws a connection flange: machines are the
+    // endpoints cables attach to (generator, machine input...).
+    if (isMachineBlock(getBlock(x,   y+1, z  ))) connections |= FACE_UP;
+    if (isMachineBlock(getBlock(x,   y-1, z  ))) connections |= FACE_DOWN;
+    if (isMachineBlock(getBlock(x,   y,   z-1))) connections |= FACE_NORTH;
+    if (isMachineBlock(getBlock(x,   y,   z+1))) connections |= FACE_SOUTH;
+    if (isMachineBlock(getBlock(x-1, y,   z  ))) connections |= FACE_WEST;
+    if (isMachineBlock(getBlock(x+1, y,   z  ))) connections |= FACE_EAST;
     if (!getMeta) return connections;
     uint8_t mv = getMeta(x, y, z);
     if (mv == 0) return connections;  // legacy: unset meta = all 6 faces connected

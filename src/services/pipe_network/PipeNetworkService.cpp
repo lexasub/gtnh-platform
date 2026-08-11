@@ -339,15 +339,16 @@ void PipeNetworkService::handleBlockChanged(const std::vector<uint8_t>& data) {
     // faces both endpoints permit open.
     network_manager_.removeEdgesForNode(nodeId);
     bool isItem = (block_id == BLOCK_ID_ITEM_PIPE || block_id == BLOCK_ID_DENSE_ITEM_PIPE);
-    connectNodeNeighbors(nodeId, x, y, z, meta, isItem, /*sourceIsPipe=*/true);
+    bool isHeat = (block_id == BLOCK_ID_HEAT_PIPE);
+    connectNodeNeighbors(nodeId, x, y, z, meta, isItem, isHeat, /*sourceIsPipe=*/true);
 
     network_manager_.rebuildItemNetworks();
 }
 
 void PipeNetworkService::connectNodeNeighbors(uint64_t sourceNodeId,
-                                             int32_t x, int32_t y, int32_t z,
-                                             uint8_t sourceMeta, bool isItem,
-                                             bool sourceIsPipe) {
+                                            int32_t x, int32_t y, int32_t z,
+                                            uint8_t sourceMeta, bool isItem,
+                                            bool isHeat, bool sourceIsPipe) {
     for (int f = 0; f < 6; ++f) {
         int32_t nx = x + FACE_DX[f];
         int32_t ny = y + FACE_DY[f];
@@ -371,7 +372,24 @@ void PipeNetworkService::connectNodeNeighbors(uint64_t sourceNodeId,
 
         const auto* nn = network_manager_.getNode(nNode);
         if (!nn) continue;
-        bool compatible = isItem ? (nn->itemCapacity > 0) : (nn->fluidCapacity > 0);
+        bool compatible;
+        if (isItem) {
+            compatible = nn->itemCapacity > 0;
+        } else if (isHeat) {
+            compatible = nn->heatCapacity > 0;
+            // Machine endpoints in heat mode must actually be HEAT-type nodes.
+            // Steam machines also carry heatCapacity via setNodeHeat(); without
+            // this check a heat pipe would link to a steam-only machine.
+            if (compatible && !nIsPipe) {
+                auto sit = node_states_.find(nNode);
+                if (sit == node_states_.end() ||
+                    sit->second.type != Protocol::EnergyType_HEAT) {
+                    compatible = false;
+                }
+            }
+        } else {
+            compatible = nn->fluidCapacity > 0;
+        }
         if (!compatible) continue;
 
         if (nIsPipe) {
@@ -490,6 +508,15 @@ void PipeNetworkService::handleNodeUpdate(const std::vector<uint8_t>& data) {
         if (st.is_sink)   cable_graph_.registerMachine(mgr_id, x, y, z, st.tier);
     } else if (st.type == Protocol::EnergyType_HEAT || st.type == Protocol::EnergyType_STEAM) {
         network_manager_.setNodeHeat(mgr_id, st.energy, st.capacity, st.is_source, st.is_sink);
+    }
+
+    // Machine placed after its pipe: build mask-aware edges to neighbours now.
+    // HEAT machines link to heat pipes (isHeat=true); the neighbour check in
+    // connectNodeNeighbors requires the peer to be a HEAT-type node.
+    if (st.type == Protocol::EnergyType_HEAT) {
+        connectNodeNeighbors(mgr_id, x, y, z,
+                             /*sourceMeta=*/0, /*isItem=*/false, /*isHeat=*/true,
+                             /*sourceIsPipe=*/false);
     }
 
     if (update->connected_nodes() && update->connected_nodes()->size() > 0) {
@@ -621,7 +648,8 @@ void PipeNetworkService::handleFluidNodeUpdate(const std::vector<uint8_t>& data)
     // fluid never flowed. Add masked machine→fluid-pipe connections: the machine
     // has no per-face mask, the pipe's open faces gate the link.
     connectNodeNeighbors(mgr_id, x, y, z,
-                         /*sourceMeta=*/0, /*isItem=*/false, /*sourceIsPipe=*/false);
+                         /*sourceMeta=*/0, /*isItem=*/false, /*isHeat=*/false,
+                         /*sourceIsPipe=*/false);
 }
 
 void PipeNetworkService::handleFluidCheckRequest(const std::vector<uint8_t>& data) {
@@ -743,7 +771,8 @@ void PipeNetworkService::handleItemNodeUpdate(const std::vector<uint8_t>& data) 
         // per-face mask; only the pipe's open faces gate the connection, so a
         // wrench-disconnected pipe face no longer links to an adjacent machine.
         connectNodeNeighbors(mgr_id, x, y, z,
-                             /*sourceMeta=*/0, /*isItem=*/true, /*sourceIsPipe=*/false);
+                             /*sourceMeta=*/0, /*isItem=*/true, /*isHeat=*/false,
+                             /*sourceIsPipe=*/false);
     }
 
     spdlog::debug("handleItemNodeUpdate: node={} at ({},{},{}) source={} sink={} caps={} items={}",

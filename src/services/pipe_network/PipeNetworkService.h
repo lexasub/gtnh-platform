@@ -82,10 +82,11 @@ private:
   // Block change handler (pipe auto-detection)
   void handleBlockChanged(const std::vector<uint8_t> &data);
 
-  // Mask-aware item/fluid edge creation: connects the node at (x,y,z) to
+  // Mask-aware item/fluid/heat edge creation: connects the node at (x,y,z) to
   // compatible pipe/machine neighbors, gated by per-face connection masks.
   void connectNodeNeighbors(uint64_t sourceNodeId, int32_t x, int32_t y, int32_t z,
-                           uint8_t sourceMeta, bool isItem, bool sourceIsPipe);
+                           uint8_t sourceMeta, bool isItem, bool isHeat,
+                           bool sourceIsPipe);
 
   static bool isPipeBlock(uint16_t block_id);
   static bool isCableBlock(uint16_t block_id);

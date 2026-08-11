@@ -78,6 +78,11 @@ uint64_t PipeNetworkManager::addNode(int32_t x, int32_t y, int32_t z, uint16_t b
             node.itemCapacity = 0;
             node.fluidCapacity = 4000;
             break;
+        case BLOCK_ID_HEAT_PIPE:
+            node.itemCapacity = 0;
+            node.fluidCapacity = 0;
+            node.heatCapacity = 1000;
+            break;
         default:
             break;
     }
@@ -125,6 +130,11 @@ bool PipeNetworkManager::addNodeWithId(uint64_t id, int32_t x, int32_t y, int32_
         case BLOCK_ID_DENSE_FLUID_PIPE:
             node.itemCapacity = 0;
             node.fluidCapacity = 4000;
+            break;
+        case BLOCK_ID_HEAT_PIPE:
+            node.itemCapacity = 0;
+            node.fluidCapacity = 0;
+            node.heatCapacity = 1000;
             break;
         default:
             break;
