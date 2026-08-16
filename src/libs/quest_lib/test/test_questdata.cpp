@@ -64,6 +64,31 @@ void test_LoadCSV_NineColumnSchema() {
     CHECK(q1->cooldownSecs == 0);
 }
 
+void test_BuildEraStructure_PreservesSectionDefinitionOrder() {
+    quest::QuestData qd;
+    fs::path csv = fs::temp_directory_path() / "quest_section_order.csv";
+    {
+        std::ofstream of(csv);
+        of << "id,title,description,era,section,cost_item,cost_count,cooldown,target_count\n"
+              "9001,First,Test,vagrant,zeta,,,,\n"
+              "9002,Second,Test,vagrant,alpha,,,,\n"
+              "9003,Third,Test,vagrant,zeta,,,,\n"
+              "9004,Fourth,Test,vagrant,beta,,,,\n";
+    }
+    CHECK(qd.LoadCSV(csv.string()));
+    fs::remove(csv);
+
+    const auto eras = qd.BuildEraStructure();
+    CHECK_EQ(eras.size(), size_t(1));
+    CHECK_EQ(eras[0].sections.size(), size_t(3));
+    CHECK(eras[0].sections[0].name == "zeta");
+    CHECK(eras[0].sections[1].name == "alpha");
+    CHECK(eras[0].sections[2].name == "beta");
+    CHECK_EQ(eras[0].sections[0].questIds.size(), size_t(2));
+    CHECK_EQ(eras[0].sections[0].questIds[0], uint32_t(9001));
+    CHECK_EQ(eras[0].sections[0].questIds[1], uint32_t(9003));
+}
+
 void test_LoadRequirementsJSON_MergesIntoQuestDef() {
     quest::QuestData qd;
     CHECK(qd.LoadCSV(std::string(DATA_DIR) + "/quests/quests.csv"));
@@ -210,6 +235,7 @@ int main(int argc, char** argv) {
     printf("=== quest_lib test suite ===\n\n");
 
     TEST(LoadCSV_NineColumnSchema);
+    TEST(BuildEraStructure_PreservesSectionDefinitionOrder);
     TEST(LoadRequirementsJSON_MergesIntoQuestDef);
     TEST(LoadRequirementsJSON_MachineKind);
     TEST(LoadRewardsJSON_RewardsAndChoiceOf);

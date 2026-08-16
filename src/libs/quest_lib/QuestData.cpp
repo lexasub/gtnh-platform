@@ -347,35 +347,34 @@ std::vector<uint32_t> QuestData::GetRootQuests() const {
 
 std::vector<EraInfo> QuestData::BuildEraStructure() const {
     std::vector<EraInfo> eras;
-    struct EraAccum {
-        std::unordered_map<std::string, std::vector<uint32_t>> sections;
-    };
-    std::unordered_map<int, EraAccum> accum;
-
-    for (const auto& qd : quests_) {
-        accum[static_cast<int>(qd.era)].sections[qd.section].push_back(qd.id);
-    }
 
     for (int e = 0; e < static_cast<int>(Era::COUNT); ++e) {
-        auto ea = accum.find(e);
-        if (ea == accum.end()) continue;
         Era era = static_cast<Era>(e);
 
         EraInfo ei;
         ei.name = EraLabel(era);
         ei.label = ei.name;
 
-        for (auto& [secName, ids] : ea->second.sections) {
-            SectionInfo si;
-            si.name = secName;
-            si.label = secName;
-            if (!si.label.empty()) {
-                si.label[0] = static_cast<char>(std::toupper(si.label[0]));
+        for (const auto& qd : quests_) {
+            if (qd.era != era) continue;
+
+            auto section = std::ranges::find_if(ei.sections, [&](const SectionInfo& si) {
+                return si.name == qd.section;
+            });
+            if (section == ei.sections.end()) {
+                SectionInfo si;
+                si.name = qd.section;
+                si.label = qd.section;
+                if (!si.label.empty()) {
+                    si.label[0] = static_cast<char>(std::toupper(si.label[0]));
+                }
+                ei.sections.push_back(std::move(si));
+                section = std::prev(ei.sections.end());
             }
-            si.questIds = std::move(ids);
-            ei.sections.push_back(std::move(si));
+            section->questIds.push_back(qd.id);
         }
-        eras.push_back(std::move(ei));
+
+        if (!ei.sections.empty()) eras.push_back(std::move(ei));
     }
     return eras;
 }
