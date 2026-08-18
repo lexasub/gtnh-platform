@@ -15,10 +15,13 @@
 #include "UI/Windows/block/MachineWindow.h"
 #include "Common/BlockType.h"
 #include "core_generated.h"
+#include "pipe_network_generated.h"
 #include "machine_registry/MachineRegistry.h"
 #include "common/ItemId.h"
 #include "data/registry/ToolIds.h"
 #include "World/WrenchingSide.h"
+#include "Render/PipeMeshBuilder.h"
+#include "Render/BlockRenderRegistry.h"
 #include <limits>
 
 GameClient::GameClient()
@@ -143,6 +146,24 @@ void GameClient::subscribeNetClient() {
     netClient_->SetGridUpdateCallback(
         [this](std::shared_ptr<std::vector<uint8_t>> data) {
             uiMgr_.HandleNetwork(GatewayMsg::kGridUpdate, data->data());
+        });
+    netClient_->SetPipeFluidStateCallback(
+        [this](std::shared_ptr<std::vector<uint8_t>> data) {
+            const uint8_t* payload = data->data();
+            size_t plen = data->size();
+            flatbuffers::Verifier v(payload, plen);
+            if (!v.VerifyBuffer<Protocol::FluidNodeUpdate>(nullptr)) return;
+            auto* upd = flatbuffers::GetRoot<Protocol::FluidNodeUpdate>(payload);
+            if (!upd || !upd->pos()) return;
+            int32_t x = upd->pos()->x();
+            int32_t y = upd->pos()->y();
+            int32_t z = upd->pos()->z();
+            uint64_t key = pipePosKeyFlat(x, y, z);
+            if (upd->amount() > 0) {
+                pipeFluidCache_[key] = {upd->fluid_id(), upd->amount(), upd->capacity()};
+            } else {
+                pipeFluidCache_.erase(key);
+            }
         });
     netClient_->SetQuestUpdateCallback(
         [this](uint8_t msgType, std::shared_ptr<std::vector<uint8_t>> data) {
@@ -503,6 +524,58 @@ void GameClient::Run() {
                     connectable = ((mhb >> i) & 1) && ((mnb >> (i ^ 1)) & 1);
                 }
                 frd.ext.wrenchConnectable[i] = connectable;
+            }
+        }
+
+        frd.ext.pipeFluidOverlayOn = uiMgr_.GetActions().PipeFluidOverlayOn();
+        frd.ext.showPipeFluidOverlay = false;
+        frd.ext.pipeFluidHoverInfo = "no highlight";
+        if (uiMgr_.GetActions().PipeFluidOverlayOn() && interaction_.HasHighlight() &&
+            highlightedBlockId != 0) {
+            const PipeType ptype =
+                blockIdToPipeType(highlightedBlockId);
+            if (ptype == PipeType::FLUID_PIPE)
+                frd.ext.pipeFluidHoverInfo = "fluid pipe";
+            else if (ptype == PipeType::DENSE_FLUID_PIPE)
+                frd.ext.pipeFluidHoverInfo = "dense fluid pipe";
+            else
+                frd.ext.pipeFluidHoverInfo =
+                    "not a fluid pipe (id=" + std::to_string(highlightedBlockId) + ")";
+            if (ptype == PipeType::FLUID_PIPE || ptype == PipeType::DENSE_FLUID_PIPE) {
+                frd.ext.showPipeFluidOverlay = true;
+                frd.ext.pipeFluidIsDense = (ptype == PipeType::DENSE_FLUID_PIPE);
+                PipeMeshBuilder builder;
+                auto gb = [this](int32_t x, int32_t y, int32_t z) {
+                    return world_.GetBlockAt(BlockPos{x, y, z});
+                };
+                auto gm = [this](int32_t x, int32_t y, int32_t z) {
+                    return world_.GetMetaAt(BlockPos{x, y, z});
+                };
+                const FaceMask mask =
+                    builder.detectConnections(hb.x, hb.y, hb.z, ptype, gb, gm);
+                for (int i = 0; i < 6; ++i)
+                    frd.ext.pipeFluidConnectable[i] =
+                        (mask & META_BIT_TO_FACEMASK[i]) != 0;
+
+                // Look up pipe fluid content from server-side cache.
+                uint64_t pkey = pipePosKeyFlat(hb.x, hb.y, hb.z);
+                auto fit = pipeFluidCache_.find(pkey);
+                if (fit != pipeFluidCache_.end()) {
+                    frd.ext.pipeFluidAmount = fit->second.amount;
+                    frd.ext.pipeFluidCapacity = fit->second.capacity;
+                    frd.ext.pipeFluidId = fit->second.fluidId;
+                    frd.ext.pipeFluidHoverInfo = "Steam: " +
+                        std::to_string(fit->second.amount) + "/" +
+                        std::to_string(fit->second.capacity) + " mB";
+                } else {
+                    // No server data — treat as empty rather than unknown,
+                    // so the fluid bar still renders (showing 0/100 or 0/1000).
+                    const int32_t fallbackCapacity = ptype == PipeType::DENSE_FLUID_PIPE ? 4000 : 1000;
+                    frd.ext.pipeFluidAmount = 0;
+                    frd.ext.pipeFluidCapacity = fallbackCapacity;
+                    frd.ext.pipeFluidId = 0;
+                    frd.ext.pipeFluidHoverInfo = "waiting for data...";
+                }
             }
         }
 

@@ -469,6 +469,10 @@ void NetClient::OnMessage(uint8_t msg_type,
             }
             return;
         }
+        case GatewayMsg::kPipeFluidState:
+            if (onPipeFluidState_)
+                onPipeFluidState_(data);
+            break;
         default:
             spdlog::trace("NetClient: ctrl unknown msg_type={}", msg_type);
             break;

@@ -86,6 +86,14 @@ struct FrameExt {
   // has an adjacent pipe/cable the block can connect to.
   bool showWrenchOverlay = false;
   bool wrenchConnectable[6] = {false, false, false, false, false, false};
+  bool showPipeFluidOverlay = false;
+  bool pipeFluidConnectable[6] = {false, false, false, false, false, false};
+  bool pipeFluidIsDense = false;
+  bool pipeFluidOverlayOn = false;  // raw toggle state (for HUD indicator)
+  std::string pipeFluidHoverInfo;   // what the crosshair targets (diagnostic HUD)
+  int32_t pipeFluidAmount = 0;      // pipe fluid buffer level (mB)
+  int32_t pipeFluidCapacity = 0;    // pipe fluid capacity (mB)
+  uint32_t pipeFluidId = 0;         // 0 = empty
   // Wire face 0..5 the click ray ENTERS (the face the grid is drawn on),
   // 0xFF = none. Set by GameClient from the same RaycastHitAtCenter the click
   // handler uses, so the overlay's grid and the click's hit-test can never

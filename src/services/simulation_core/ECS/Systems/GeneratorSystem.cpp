@@ -33,6 +33,7 @@ GeneratorSystem::GeneratorSystem(entt::registry& reg,
 }
 
 void GeneratorSystem::tick(float /*dt*/) {
+    ++tickCount_;
     auto view = reg_.view<MachineComponent, InventoryContainer, EnergyStorage>();
 
     for (auto ent : view) {
@@ -42,27 +43,36 @@ void GeneratorSystem::tick(float /*dt*/) {
 
         if (!isGenerator(machine.machine_id)) continue;
 
-        // Register the STEAM node every tick (even when idle/fuel-less) so pipes
-        // can attach to a solid boiler that is not currently burning.
+        // Register the STEAM node so pipes can attach to a solid boiler even
+        // when idle/fuel-less. Throttle to a low-frequency heartbeat: register
+        // once, then re-publish every kSteamHeartbeatTicks for late pipe
+        // placement. Stops spamming PipeNetwork every tick (which, on id
+        // collision, also flooded "Duplicate node" warnings).
         if (energy.type == EnergyType::STEAM) {
-            if (pipeClient_) {
-                pipeClient_->publishNodeUpdate(
-                    static_cast<uint64_t>(ent),
-                    static_cast<int32_t>(machine.x),
-                    static_cast<int32_t>(machine.y),
-                    static_cast<int32_t>(machine.z),
-                    energy.current, energy.capacity,
-                    energy.maxInput, energy.maxOutput,
-                    energy.tier, static_cast<int32_t>(energy.type),
-                    true, false);
-            }
-            if (fluidClient_) {
-                fluidClient_->publishNodeUpdate(
-                    static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
-                    ItemId::pack("1111:11:1"),              // steam
-                    energy.current, energy.capacity,
-                    0, energy.maxOutput, energy.tier,
-                    true, false);                           // is_source=true
+            auto sit = lastSteamPublish_.find(ent);
+            bool publishSteam = (sit == lastSteamPublish_.end()) ||
+                                ((tickCount_ - sit->second) >= kSteamHeartbeatTicks);
+            if (publishSteam) {
+                if (pipeClient_) {
+                    pipeClient_->publishNodeUpdate(
+                        static_cast<uint64_t>(ent),
+                        static_cast<int32_t>(machine.x),
+                        static_cast<int32_t>(machine.y),
+                        static_cast<int32_t>(machine.z),
+                        energy.current, energy.capacity,
+                        energy.maxInput, energy.maxOutput,
+                        energy.tier, static_cast<int32_t>(energy.type),
+                        true, false);
+                }
+                if (fluidClient_) {
+                    fluidClient_->publishNodeUpdate(
+                        static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
+                        ItemId::pack("1111:11:1"),              // steam
+                        energy.current, energy.capacity,
+                        0, energy.maxOutput, energy.tier,
+                        true, false);                           // is_source=true
+                }
+                lastSteamPublish_[ent] = tickCount_;
             }
         }
 

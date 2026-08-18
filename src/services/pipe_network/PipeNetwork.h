@@ -147,7 +147,22 @@ public:
 
   // Distribute fluid across a network for one tick
   std::unordered_map<uint64_t, int32_t> distributeFluid(uint64_t networkId,
-                                                        int32_t tickFluid);
+                                                         int32_t tickFluid);
+
+  // Per-tick fluid buffering: push source fluid into every node with capacity.
+  // Pipes buffer fluid even with no downstream sink (GTNH-style fill). Returns
+  // node_id -> fluid_delta (positive = received, negative = drained from a
+  // source). Source fluid is read from PipeNode::fluidBuffer, so callers must
+  // sync the live machine-source amount into the graph before invoking.
+  std::unordered_map<uint64_t, int32_t> tickFluidNetworks();
+
+  // Drain fluid from pipe nodes (non-source, non-sink) in a network for machine
+  // consumption. Scans pipe nodes with matching fluidId, drains proportionally,
+  // returns node_id -> delta (negative = drained). Callers should check at least
+  // one drain occurred before publishing a response.
+  std::unordered_map<uint64_t, int32_t> drainFluidFromNetwork(uint64_t networkId,
+                                                              uint32_t fluidId,
+                                                              int32_t amount);
 
   // Item network operations
   void rebuildItemNetworks();

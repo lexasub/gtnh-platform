@@ -448,6 +448,8 @@ else if (topic == "player.machine.slot.response")
         send_to_client_ctrl_raw(GatewayMsg::kGameModeChange, payload, plen);
     else if (topic == "player.scenario.start.response")
         send_to_client_ctrl_raw(GatewayMsg::kStartScenarioResp, payload, plen);
+    else if (topic == "fluid.pipe.state")
+        send_to_client_ctrl_raw(GatewayMsg::kPipeFluidState, payload, plen);
     else if (on_router_message)
         on_router_message(topic, payload, plen);
 }

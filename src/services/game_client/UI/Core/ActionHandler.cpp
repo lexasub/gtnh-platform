@@ -36,6 +36,7 @@ void ActionHandler::Init(ActionRegistry* reg, UIManager* mgr, NetClient* nc,
     reg->Register("toggle_creative",   [this]() { DoToggleCreativeMenu(); });
     reg->Register("toggle_quest_book", [this]() { DoToggleQuestBook(); });
     reg->Register("toggle_console",    [this]() { DoToggleConsole(); });
+    reg->Register("toggle_pipe_fluid_overlay", [this]() { DoTogglePipeFluidOverlay(); });
     reg->Register("INVENTORY",         [this]() { DoToggleInventory(); });
     reg->Register("CREATIVE_MENU",     [this]() { DoToggleCreativeMenu(); });
     for (int i = 0; i < 10; ++i) {
@@ -144,6 +145,14 @@ void ActionHandler::DoToggleConsole() {
     if (auto* cw = uiMgr_->FindByType<ConsoleWindow>()) {
         cw->SetOpen(!cw->IsOpen());
     }
+}
+
+void ActionHandler::DoTogglePipeFluidOverlay() {
+    pipeFluidOverlayOn_ = !pipeFluidOverlayOn_;
+}
+
+bool ActionHandler::PipeFluidOverlayOn() const {
+    return pipeFluidOverlayOn_;
 }
 
 void ActionHandler::SpawnItem(uint16_t itemId, uint8_t count, int16_t targetSlot) {

@@ -7,9 +7,12 @@
 #include <functional>
 
 enum class PipeType : uint8_t {
+  // Order MUST match data/registry/items.csv pipe ids (1111:10:0..4):
+  // 0=fluid_pipe, 1=item_pipe, 2=dense_item_pipe, 3=dense_fluid_pipe, 4=heat_pipe.
+  // blockIdToPipeType / pipeTypeToBlockId rely on this positional mapping.
+  FLUID_PIPE,
   ITEM_PIPE,
   DENSE_ITEM_PIPE,
-  FLUID_PIPE,
   DENSE_FLUID_PIPE,
   HEAT_PIPE,
   CABLE_TIN,

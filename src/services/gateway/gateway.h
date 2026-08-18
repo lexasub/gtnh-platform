@@ -78,6 +78,9 @@ inline constexpr uint8_t kRecipeMachineResp = 41;
 inline constexpr uint8_t kBlockActionDirective = 42;
 inline constexpr uint8_t kGridUpdate = 43;
 inline constexpr uint8_t kWorkbenchOpenReq = 44;
+// Pipe fluid state debug: server→client, FluidNodeUpdate for every pipe that
+// received fluid this tick. Client stores for L-key overlay rendering.
+inline constexpr uint8_t kPipeFluidState = 47;
 } // namespace GatewayMsg
 
 // ---------------------------------------------------------------------------

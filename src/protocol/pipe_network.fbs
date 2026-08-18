@@ -150,6 +150,10 @@ table FluidNodeUpdate {
   connected_nodes:[uint64];     // IDs of adjacent pipe/machine nodes
 }
 
+// Published by PipeNetworkService::tick as `fluid.pipe.state` for every pipe node
+// that received fluid on the buffering tick (GTNH-style fill, even with no sink).
+// Reuses FluidNodeUpdate with is_source/is_sink=false.
+
 // ---------------------------------------------------------------------------
 // Fluid check: request/response over topics
 // "fluid.check.request" → "fluid.check.response"

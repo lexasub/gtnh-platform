@@ -476,6 +476,257 @@ static void test_fluid_distribution_no_source() {
 }
 
 // =========================================================================
+//  Fluid buffering tests (tickFluidNetworks: pipes fill even with no sink)
+// =========================================================================
+
+static void test_fluid_buffering_pipe_fills_without_sink() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t src = mgr.addNode(0, 0, 0, 61);
+    uint64_t pipe = mgr.addNode(1, 0, 0, 61);
+    mgr.addEdge(src, pipe);
+
+    mgr.setNodeFluid(src, 500, 2000, 84, true, false);  // source: 500 mB water
+    mgr.setNodeFluid(pipe, 0, 1000, 0, false, false);   // empty pipe, 1000 mB cap
+
+    mgr.rebuildNetworks();
+    auto nets = mgr.getAllNetworks();
+    uint64_t targetNet = 0;
+    for (const auto* n : nets)
+        for (uint64_t nid : n->nodeIds)
+            if (nid == pipe) { targetNet = n->id; break; }
+    CHECK_GT(targetNet, uint64_t(0), "fluid network exists");
+
+    // No sink present — pipe must still fill from the source.
+    mgr.tickFluidNetworks();
+    const auto* pipeNode = mgr.getNode(pipe);
+    CHECK_GT(pipeNode->fluidBuffer, 0, "pipe filled even with no sink");
+    CHECK_EQ(pipeNode->fluidId, uint32_t(84), "pipe fluid type is water");
+    CHECK_LT(mgr.getNode(src)->fluidBuffer, 500, "source drained as pipe filled");
+    PASS();
+}
+
+static void test_fluid_buffering_pipes_capped_source_drained() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t src = mgr.addNode(0, 0, 0, 61);
+    uint64_t pipe = mgr.addNode(1, 0, 0, 61);
+    mgr.addEdge(src, pipe);
+
+    // Source has only 200 mB; pipe can hold 1000. One tick fills pipe to 200,
+    // source drained to 0, nothing lost.
+    mgr.setNodeFluid(src, 200, 2000, 84, true, false);
+    mgr.setNodeFluid(pipe, 0, 1000, 0, false, false);
+    mgr.rebuildNetworks();
+    auto nets = mgr.getAllNetworks();
+    uint64_t targetNet = 0;
+    for (const auto* n : nets)
+        for (uint64_t nid : n->nodeIds)
+            if (nid == pipe) { targetNet = n->id; break; }
+    CHECK_GT(targetNet, uint64_t(0), "network exists");
+
+    mgr.tickFluidNetworks();
+    CHECK_EQ(mgr.getNode(pipe)->fluidBuffer, 200, "pipe holds all available fluid");
+    CHECK_EQ(mgr.getNode(src)->fluidBuffer, 0, "source fully drained");
+    CHECK_EQ(mgr.getNode(pipe)->fluidId, uint32_t(84), "pipe fluid is water");
+    PASS();
+}
+
+static void test_fluid_buffering_even_split_across_pipes() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t src = mgr.addNode(0, 0, 0, 61);
+    uint64_t p1 = mgr.addNode(1, 0, 0, 61);
+    uint64_t p2 = mgr.addNode(2, 0, 0, 61);
+    mgr.addEdge(src, p1);
+    mgr.addEdge(p1, p2);
+
+    mgr.setNodeFluid(src, 1000, 2000, 84, true, false);
+    mgr.setNodeFluid(p1, 0, 1000, 0, false, false);
+    mgr.setNodeFluid(p2, 0, 1000, 0, false, false);
+    mgr.rebuildNetworks();
+    auto nets = mgr.getAllNetworks();
+    uint64_t targetNet = 0;
+    for (const auto* n : nets)
+        for (uint64_t nid : n->nodeIds)
+            if (nid == p2) { targetNet = n->id; break; }
+    CHECK_GT(targetNet, uint64_t(0), "network exists");
+
+    mgr.tickFluidNetworks();
+    CHECK_EQ(mgr.getNode(p1)->fluidBuffer, 500, "even split: each pipe gets 500");
+    CHECK_EQ(mgr.getNode(p2)->fluidBuffer, 500, "even split: each pipe gets 500");
+    CHECK_EQ(mgr.getNode(src)->fluidBuffer, 0, "source drained");
+    PASS();
+}
+
+// Regression guard for the boiler→pipe flow path after the protocol_id/id-space
+// collision fix in PipeNetworkService. A fluid pipe claims an auto mgr_id
+// (1,2,3...); a machine's protocol_id is its ECS entity id. When those collide
+// the OLD code returned early, so the machine never got an edge to its adjacent
+// pipe and steam could never enter the pipe. The fix remaps the machine to a
+// fresh addNode() id and still builds the edge. This reproduces that fixed
+// end-state: pipe holds the colliding auto-id, boiler is remapped to a distinct
+// id and connected, and steam must flow from boiler into the pipe.
+static void test_fluid_boiler_to_pipe_after_collision_remap() {
+    pipenet::PipeNetworkManager mgr;
+
+    // Pipe claims the first auto-id; a boiler with ECS entity id == that value
+    // would collide. The fixed service remaps it to a fresh id instead.
+    uint64_t pipe = mgr.addNode(1, 0, 0, 61);   // fluid pipe, auto-id
+    CHECK_GT(pipe, uint64_t(0), "pipe registered");
+
+    // Boiler remapped to a fresh, distinct id (the fix result).
+    uint64_t boiler = mgr.addNode(0, 0, 0, 61);  // fluid machine node
+    CHECK_NE(boiler, pipe, "boiler got a distinct id (remap, no collision)");
+
+    // Adjacent face → edge, exactly what connectNodeNeighbors builds once the
+    // boiler is present in machine_nodes_.
+    mgr.addEdge(boiler, pipe);
+
+    mgr.setNodeFluid(boiler, 500, 2000, 84, true, false);  // source: 500 mB steam-like
+    mgr.setNodeFluid(pipe,   0, 1000, 0,  false, false);   // empty pipe
+
+    mgr.rebuildNetworks();
+    auto nets = mgr.getAllNetworks();
+    uint64_t targetNet = 0;
+    for (const auto* n : nets)
+        for (uint64_t nid : n->nodeIds)
+            if (nid == pipe) { targetNet = n->id; break; }
+    CHECK_GT(targetNet, uint64_t(0), "boiler+pipe share a fluid network");
+
+    mgr.tickFluidNetworks();
+    CHECK_GT(mgr.getNode(pipe)->fluidBuffer, 0, "steam flows into pipe");
+    CHECK_LT(mgr.getNode(boiler)->fluidBuffer, 500, "boiler drained as pipe fills");
+    PASS();
+}
+
+static void test_rebuild_item_networks_no_accumulation() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t a = mgr.addNode(0, 0, 0, 61);
+    uint64_t b = mgr.addNode(1, 0, 0, 61);
+    uint64_t c = mgr.addNode(2, 0, 0, 61);
+    CHECK(a != 0 && b != 0 && c != 0, "three nodes registered");
+
+    // tickItemNetworks() calls rebuildItemNetworks() every tick. Before the fix
+    // it appended fresh single-node networks on each call instead of replacing
+    // the map, so 3 isolated nodes grew networks_ by 3 entries per tick
+    // (the hundreds-of-duplicate-networks symptom in live logs).
+    mgr.rebuildItemNetworks();
+    mgr.rebuildItemNetworks();
+    mgr.rebuildItemNetworks();
+
+    auto nets = mgr.getAllNetworks();
+    CHECK_EQ(nets.size(), size_t(3), "3 isolated nodes → exactly 3 networks after 3 rebuilds");
+    PASS();
+}
+
+// =========================================================================
+//  Fluid drain tests (drainFluidFromNetwork: machine pulls from pipe buffers)
+// =========================================================================
+
+static void test_fluid_drain_from_pipe() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t src = mgr.addNode(0, 0, 0, 61);
+    uint64_t pipe = mgr.addNode(1, 0, 0, 61);
+    uint64_t sink = mgr.addNode(2, 0, 0, 61);
+    mgr.addEdge(src, pipe);
+    mgr.addEdge(pipe, sink);
+
+    // Fill pipe with 500 mB steam via source
+    mgr.setNodeFluid(src, 500, 2000, 84, true, false);
+    mgr.setNodeFluid(pipe, 0, 1000, 0, false, false);
+    mgr.setNodeFluid(sink, 0, 400, 0, false, true);
+
+    mgr.rebuildNetworks();
+    auto nets = mgr.getAllNetworks();
+    uint64_t targetNet = 0;
+    for (const auto* n : nets)
+        for (uint64_t nid : n->nodeIds)
+            if (nid == pipe) { targetNet = n->id; break; }
+    CHECK_GT(targetNet, uint64_t(0), "network exists");
+
+    // Push source to pipe first.
+    mgr.tickFluidNetworks();
+    CHECK_EQ(mgr.getNode(pipe)->fluidBuffer, 500, "pipe has 500 steam from source");
+
+    // Now drain 200 from pipe — macerator consumes.
+    auto deltas = mgr.drainFluidFromNetwork(targetNet, 84, 200);
+    int32_t drained = 0;
+    for (const auto& [nid, d] : deltas) drained += (-d);
+    CHECK_EQ(drained, 200, "drained 200 steam from pipe");
+    CHECK_EQ(mgr.getNode(pipe)->fluidBuffer, 300, "pipe now has 300 steam");
+
+    // Source unaffected by drain (tickFluidNetworks owns source drain).
+    CHECK_EQ(mgr.getNode(src)->fluidBuffer, 0, "source untouched by drainFluidFromNetwork");
+    PASS();
+}
+
+static void test_fluid_drain_capped_by_pipe_amount() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t pipe = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(pipe, 100, 1000, 84, false, false);
+    mgr.rebuildNetworks();
+    auto nets = mgr.getAllNetworks();
+    uint64_t targetNet = 0;
+    for (const auto* n : nets)
+        for (uint64_t nid : n->nodeIds)
+            if (nid == pipe) { targetNet = n->id; break; }
+    CHECK_GT(targetNet, uint64_t(0), "network exists");
+
+    // Request 500 but pipe only has 100.
+    auto deltas = mgr.drainFluidFromNetwork(targetNet, 84, 500);
+    int32_t drained = 0;
+    for (const auto& [nid, d] : deltas) drained += (-d);
+    CHECK_EQ(drained, 100, "drained only what pipe had (100)");
+    CHECK_EQ(mgr.getNode(pipe)->fluidBuffer, 0, "pipe empty after drain");
+    PASS();
+}
+
+static void test_fluid_drain_empty_pipe_returns_nothing() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t pipe = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(pipe, 0, 1000, 0, false, false);
+    mgr.rebuildNetworks();
+    auto nets = mgr.getAllNetworks();
+    uint64_t targetNet = 0;
+    for (const auto* n : nets)
+        for (uint64_t nid : n->nodeIds)
+            if (nid == pipe) { targetNet = n->id; break; }
+    CHECK_GT(targetNet, uint64_t(0), "network exists");
+
+    auto deltas = mgr.drainFluidFromNetwork(targetNet, 84, 200);
+    CHECK(deltas.empty(), "no drain from empty pipe");
+    CHECK_EQ(mgr.getNode(pipe)->fluidBuffer, 0, "pipe still empty");
+    PASS();
+}
+
+static void test_fluid_drain_even_split_across_pipes() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t p1 = mgr.addNode(0, 0, 0, 61);
+    uint64_t p2 = mgr.addNode(1, 0, 0, 61);
+    uint64_t p3 = mgr.addNode(2, 0, 0, 61);
+    mgr.addEdge(p1, p2);
+    mgr.addEdge(p2, p3);
+
+    mgr.setNodeFluid(p1, 300, 1000, 84, false, false);
+    mgr.setNodeFluid(p2, 300, 1000, 84, false, false);
+    mgr.setNodeFluid(p3, 300, 1000, 84, false, false);
+    mgr.rebuildNetworks();
+    auto nets = mgr.getAllNetworks();
+    uint64_t targetNet = 0;
+    for (const auto* n : nets)
+        for (uint64_t nid : n->nodeIds)
+            if (nid == p3) { targetNet = n->id; break; }
+    CHECK_GT(targetNet, uint64_t(0), "network exists");
+
+    // Drain 300 from 3 pipes with 300 each — should split ~100 each.
+    auto deltas = mgr.drainFluidFromNetwork(targetNet, 84, 300);
+    int32_t totalDrained = 0;
+    for (const auto& [nid, d] : deltas) totalDrained += (-d);
+    CHECK_EQ(totalDrained, 300, "total drained 300");
+    CHECK_EQ(mgr.getNode(p1)->fluidBuffer + mgr.getNode(p2)->fluidBuffer +
+             mgr.getNode(p3)->fluidBuffer, 600, "600 steam left across pipes");
+    PASS();
+}
+
+// =========================================================================
 //  FluidRegistry tests
 // =========================================================================
 
@@ -1400,6 +1651,19 @@ int main(int, char**) {
     TEST(fluid_distribution_simple);
     TEST(fluid_distribution_capacity_limited);
     TEST(fluid_distribution_no_source);
+
+    // Fluid buffering (pipes fill even with no sink)
+    TEST(fluid_buffering_pipe_fills_without_sink);
+    TEST(fluid_buffering_pipes_capped_source_drained);
+    TEST(fluid_buffering_even_split_across_pipes);
+    TEST(fluid_boiler_to_pipe_after_collision_remap);
+    TEST(rebuild_item_networks_no_accumulation);
+
+    // Fluid drain (machine pulls from pipe buffer)
+    TEST(fluid_drain_from_pipe);
+    TEST(fluid_drain_capped_by_pipe_amount);
+    TEST(fluid_drain_empty_pipe_returns_nothing);
+    TEST(fluid_drain_even_split_across_pipes);
 
     // FluidRegistry
     TEST(fluid_registry_defaults);

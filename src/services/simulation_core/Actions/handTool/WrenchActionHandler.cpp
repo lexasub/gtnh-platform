@@ -88,66 +88,65 @@ void WrenchActionHandler::handle(const std::vector<uint8_t>& data) {
     // face is flipped only when the neighbor is itself a pipe/cable, i.e. the
     // mutual connection between two adjacent pipes/cables — so a standalone
     // pipe is still wrenchable without an adjacent pipe.
-    if (r.error == "no_machine_at_position" && blockRepository_) {
-        const int32_t x = p->x(), y = p->y(), z = p->z();
-        const uint8_t face = action->face();
-        spdlog::info("[Wrench] pipe branch: pos=({},{},{}) face={}", x, y, z, face);
-        if (face > 5) {
-            spdlog::warn("[Wrench] INVALID face={} dropped for pos=({},{},{})", face, x, y, z);
-            return;  // guard against malformed wire face
-        }
-        blockRepository_->getBlock(x, y, z, [this, x, y, z, face](const BlockData& bd) {
-            if (!(ItemId::isPipe(bd.block_id) || ItemId::isCable(bd.block_id))) {
-                flatbuffers::FlatBufferBuilder fbb(128);
-                auto err = fbb.CreateString("not_a_machine");
-                auto resp = Protocol::CreateToolActionResp(fbb, false, err, 0, 0, 0, 0, 0);
-                fbb.Finish(resp);
-                std::vector<uint8_t> respData(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
-                router_->Publish("player.tool.action.response", std::move(respData));
-                return;
-            }
-            const int nx = x + kWrenchFaceDX[face], ny = y + kWrenchFaceDY[face], nz = z + kWrenchFaceDZ[face];
-            blockRepository_->getBlock(nx, ny, nz, [this, x, y, z, face, bd, nx, ny, nz](const BlockData& nbd) {
-                const bool nbIsPC = (nbd.block_id != 0) &&
-                                    (ItemId::isPipe(nbd.block_id) || ItemId::isCable(nbd.block_id));
-                // Toggle the host pipe's face unconditionally so a standalone
-                // pipe is wrenchable; only flip the neighbor's opposite face
-                // when the neighbor is itself a pipe/cable (mutual connection).
-                auto toggle = computePipeToggle(face, bd.meta, nbIsPC ? nbd.meta : 0);
-                const uint8_t newMHb = toggle.hostMeta;
-                spdlog::info("[Wrench] toggle host=({},{},{}) bid={} meta {}->{} nbIsPC={} nbMeta {}->{}",
-                             x, y, z, bd.block_id, bd.meta, newMHb, nbIsPC,
-                             nbd.meta, toggle.neighborMeta);
-                blockRepository_->setBlockCAS(x, y, z, bd.block_id, bd.block_id, newMHb,
-                    [this, x, y, z, bid = bd.block_id, newMHb](const CASResult& cr) {
-                        if (cr.status == 0) publishBlockChanged(x, y, z, bid, newMHb);
-                    });
-                if (nbIsPC) {
-                    const uint8_t newMNb = toggle.neighborMeta;
-                    blockRepository_->setBlockCAS(nx, ny, nz, nbd.block_id, nbd.block_id, newMNb,
-                        [this, nx, ny, nz, nbid = nbd.block_id, newMNb](const CASResult& cr) {
-                            if (cr.status == 0) publishBlockChanged(nx, ny, nz, nbid, newMNb);
-                        });
-                }
-                flatbuffers::FlatBufferBuilder fbb(128);
-                auto msg = fbb.CreateString(nbIsPC ? "Toggled pipe/cable connection."
-                                                   : "Toggled pipe/cable face.");
-                auto resp = Protocol::CreateToolActionResp(fbb, true, 0, 0, 0, 0, 0, msg);
-                fbb.Finish(resp);
-                std::vector<uint8_t> respData(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
-                router_->Publish("player.tool.action.response", std::move(respData));
-            });
-        });
+    if (r.error != "no_machine_at_position" || !blockRepository_) { // TODO - use enums for error?
+        flatbuffers::FlatBufferBuilder fbb(128);
+        auto err = r.error.empty() ? 0 : fbb.CreateString(r.error);
+        auto roles = fbb.CreateVector(r.allRoles, 6);
+        auto resp = Protocol::CreateToolActionResp(fbb, r.success, err, 0, 0, r.newRole, roles, 0);
+        fbb.Finish(resp);
+        std::vector<uint8_t> respData(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+
+        router_->Publish("player.tool.action.response", std::move(respData));
         return;
     }
-
-    flatbuffers::FlatBufferBuilder fbb(128);
-    auto err = r.error.empty() ? 0 : fbb.CreateString(r.error);
-    auto roles = fbb.CreateVector(r.allRoles, 6);
-    auto resp = Protocol::CreateToolActionResp(fbb, r.success, err, 0, 0, r.newRole, roles, 0);
-    fbb.Finish(resp);
-    std::vector<uint8_t> respData(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
-
-    router_->Publish("player.tool.action.response", std::move(respData));
+    const int32_t x = p->x(), y = p->y(), z = p->z();
+    const uint8_t face = action->face();
+    spdlog::info("[Wrench] pipe branch: pos=({},{},{}) face={}", x, y, z, face);
+    if (face > 5) {
+        spdlog::warn("[Wrench] INVALID face={} dropped for pos=({},{},{})", face, x, y, z);
+        return;  // guard against malformed wire face
+    }
+    blockRepository_->getBlock(x, y, z, [this, x, y, z, face](const BlockData& bd) {
+        if (!(ItemId::isPipe(bd.block_id) || ItemId::isCable(bd.block_id))) {
+            flatbuffers::FlatBufferBuilder fbb(128);
+            auto err = fbb.CreateString("not_a_machine"); // TODO not a pipe/cable?
+            auto resp = Protocol::CreateToolActionResp(fbb, false, err, 0, 0, 0, 0, 0);
+            fbb.Finish(resp);
+            std::vector<uint8_t> respData(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+            router_->Publish("player.tool.action.response", std::move(respData));
+            return;
+        }
+        const int nx = x + kWrenchFaceDX[face], ny = y + kWrenchFaceDY[face], nz = z + kWrenchFaceDZ[face];
+        blockRepository_->getBlock(nx, ny, nz, [this, x, y, z, face, bd, nx, ny, nz](const BlockData& nbd) {
+            const bool nbIsPC = (nbd.block_id != 0) &&
+                                (ItemId::isPipe(nbd.block_id) || ItemId::isCable(nbd.block_id));
+            // Toggle the host pipe's face unconditionally so a standalone
+            // pipe is wrenchable; only flip the neighbor's opposite face
+            // when the neighbor is itself a pipe/cable (mutual connection).
+            auto toggle = computePipeToggle(face, bd.meta, nbIsPC ? nbd.meta : 0);
+            const uint8_t newMHb = toggle.hostMeta;
+            spdlog::info("[Wrench] toggle host=({},{},{}) bid={} meta {}->{} nbIsPC={} nbMeta {}->{}",
+                         x, y, z, bd.block_id, bd.meta, newMHb, nbIsPC,
+                         nbd.meta, toggle.neighborMeta);
+            blockRepository_->setBlockCAS(x, y, z, bd.block_id, bd.block_id, newMHb,
+                                          [this, x, y, z, bid = bd.block_id, newMHb](const CASResult& cr) {
+                                              if (cr.status == 0) publishBlockChanged(x, y, z, bid, newMHb);
+                                          });
+            if (nbIsPC) {
+                const uint8_t newMNb = toggle.neighborMeta;
+                blockRepository_->setBlockCAS(nx, ny, nz, nbd.block_id, nbd.block_id, newMNb,
+                                              [this, nx, ny, nz, nbid = nbd.block_id, newMNb](const CASResult& cr) {
+                                                  if (cr.status == 0) publishBlockChanged(nx, ny, nz, nbid, newMNb);
+                                              });
+            }
+            flatbuffers::FlatBufferBuilder fbb(128);
+            auto msg = fbb.CreateString(nbIsPC ? "Toggled pipe/cable connection."
+                                            : "Toggled pipe/cable face.");
+            auto resp = Protocol::CreateToolActionResp(fbb, true, 0, 0, 0, 0, 0, msg);
+            fbb.Finish(resp);
+            std::vector<uint8_t> respData(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+            router_->Publish("player.tool.action.response", std::move(respData));
+        });
+    });
 }
 } // namespace simcore

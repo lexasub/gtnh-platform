@@ -81,6 +81,7 @@ add_subdirectory(src/services/meta_db)
 add_subdirectory(src/services/game_client)
 add_subdirectory(src/services/entity_state_store)
 add_subdirectory(src/services/recipe_manager)
+add_subdirectory(src/common)
 
 #add_subdirectory(src/services/message_router)
 

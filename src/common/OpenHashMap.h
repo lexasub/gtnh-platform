@@ -3,7 +3,6 @@
 // Zero heap allocation, O(1) average lookup.
 // Key must be equality-comparable. SentinelKey marks empty slots.
 #include <cstdint>
-
 template <typename Key, typename Value, int Capacity, Key SentinelKey>
 class OpenHashMap {
   static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must be power of 2");
@@ -62,28 +61,28 @@ public:
         entries_[idx].key = SentinelKey;
         entries_[idx].value = Value{};
         --size_;
-        // Robin Hood deletion: re-probe displaced entries past this slot.
-        // An entry is "displaced" if its ideal position is between its current
-        // position and the deleted slot (circularly), meaning it was pushed
-        // forward during insertion and the gap behind it now breaks its probe chain.
-        uint32_t next = (idx + 1) & mask_;
+        // Backward-shift deletion: close the probe-chain hole left by the erased
+        // slot by sliding each following entry back into the gap, as long as the
+        // gap lies on that entry's probe path [ideal, next] (circularly). Each
+        // step is O(1); entries whose home is outside that path keep the map's
+        // probe clusters contiguous, so linear-probing find() stays correct.
+        uint32_t hole = idx;
+        uint32_t next = (hole + 1) & mask_;
         while (entries_[next].key != SentinelKey) {
           uint32_t ideal = hash(entries_[next].key);
-          bool displaced =
-              (ideal <= idx) ? (next > ideal && next <= idx)
-                             : (next > ideal || next <= idx);
-          if (!displaced)
-            break;
-          Entry boot = entries_[next];
-          entries_[next].key = SentinelKey;
-          entries_[next].value = Value{};
-          uint32_t ins = ideal;
-          for (int j = 0; j < Capacity; ++j) {
-            if (entries_[ins].key == SentinelKey) {
-              entries_[ins] = boot;
-              break;
-            }
-            ins = (ins + 1) & mask_;
+          // Is `hole` on the probe path from `ideal` to `next` (inclusive)?
+          bool on_path = (ideal <= next) ? (ideal <= hole && hole <= next)
+                                         : (hole >= ideal || hole <= next);
+          // Shift `next` back into the gap only if doing so keeps it on its own
+          // probe path. Entries whose home is outside [ideal, next] must NOT move
+          // (they'd become unfindable), but we keep scanning: a later entry whose
+          // probe path does include `hole` can still close the gap. Never break —
+          // breaking leaves an internal hole that breaks find() for displaced keys.
+          if (on_path) {
+            entries_[hole] = entries_[next];
+            entries_[next].key = SentinelKey;
+            entries_[next].value = Value{};
+            hole = next;
           }
           next = (next + 1) & mask_;
         }

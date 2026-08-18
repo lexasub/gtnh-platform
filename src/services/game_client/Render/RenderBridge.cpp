@@ -80,6 +80,7 @@ renderlib::FrameRenderData RenderBridge::BuildFrameData(
             .hudToastLifetime = 0.0f,
             .showWrenchOverlay = false,
             .wrenchConnectable = {false, false, false, false, false, false},
+            .pipeFluidHoverInfo = {},
             .chunkCount       = chunkCount,
             .meshCount        = meshCount
         }
@@ -304,6 +305,71 @@ void RenderBridge::ImGuiOverlay(const renderlib::FrameRenderData& frame) {
                 const glm::vec2 uv = wrench_grid::cellUV(cell);
                 drawX(gridPoint(uv.x, uv.y));
             }
+        }
+    }
+
+    if (frame.ext.showPipeFluidOverlay) {
+        const ImU32 baseFill = frame.ext.pipeFluidIsDense
+            ? IM_COL32(60, 90, 170, 80)
+            : IM_COL32(45, 70, 140, 70);
+        const ImU32 baseLine = frame.ext.pipeFluidIsDense
+            ? IM_COL32(130, 160, 230, 200)
+            : IM_COL32(110, 145, 220, 190);
+        const ImU32 fill = frame.ext.pipeFluidIsDense
+            ? IM_COL32(110, 150, 240, 165)
+            : IM_COL32(85, 125, 210, 155);
+        const ImU32 line = frame.ext.pipeFluidIsDense
+            ? IM_COL32(190, 220, 255, 255)
+            : IM_COL32(160, 195, 255, 245);
+        for (int f = 0; f < 6; ++f) {
+            const int *c = wrench_overlay::kFaceCorners[f];
+            if (frame.ext.pipeFluidConnectable[f]) {
+                dl->AddQuadFilled(screen[c[0]], screen[c[1]], screen[c[2]], screen[c[3]], fill);
+                dl->AddQuad(screen[c[0]], screen[c[1]], screen[c[2]], screen[c[3]], line, 2.5f);
+            } else {
+                dl->AddQuadFilled(screen[c[0]], screen[c[1]], screen[c[2]], screen[c[3]], baseFill);
+                dl->AddQuad(screen[c[0]], screen[c[1]], screen[c[2]], screen[c[3]], baseLine, 1.5f);
+            }
+        }
+    }
+
+    if (frame.ext.pipeFluidOverlayOn) {
+        dl->AddText(ImVec2(14.0f, 14.0f), IM_COL32(120, 170, 255, 255),
+                    "Fluid pipe overlay: ON");
+        dl->AddText(ImVec2(14.0f, 34.0f), IM_COL32(150, 200, 255, 255),
+                    frame.ext.pipeFluidHoverInfo.c_str());
+        // Show fluid bar when hovering a pipe with cached server data.
+        if (frame.ext.pipeFluidCapacity > 0 && frame.ext.showPipeFluidOverlay) {
+            float barWidth = 160.0f;
+            float barHeight = 14.0f;
+            float barX = 14.0f;
+            float barY = 56.0f;
+            float fill = static_cast<float>(frame.ext.pipeFluidAmount) /
+                         static_cast<float>(frame.ext.pipeFluidCapacity);
+            if (fill < 0.0f) fill = 0.0f;
+            if (fill > 1.0f) fill = 1.0f;
+
+            // Background
+            dl->AddRectFilled(ImVec2(barX, barY),
+                              ImVec2(barX + barWidth, barY + barHeight),
+                              IM_COL32(0, 0, 0, 180), 3.0f);
+            // Fluid fill (blue-tinted for steam)
+            ImU32 fillColor = IM_COL32(80, 160, 255, 220);
+            if (fill > 0.0f) {
+                dl->AddRectFilled(ImVec2(barX + 1, barY + 1),
+                                  ImVec2(barX + 1 + (barWidth - 2) * fill, barY + barHeight - 1),
+                                  fillColor, 2.0f);
+            }
+            // Border
+            dl->AddRect(ImVec2(barX, barY),
+                        ImVec2(barX + barWidth, barY + barHeight),
+                        IM_COL32(200, 200, 255, 120), 3.0f);
+            // Label
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%d / %d mB", frame.ext.pipeFluidAmount,
+                     frame.ext.pipeFluidCapacity);
+            dl->AddText(ImVec2(barX + barWidth + 8.0f, barY - 1.0f),
+                        IM_COL32(180, 220, 255, 255), buf);
         }
     }
 

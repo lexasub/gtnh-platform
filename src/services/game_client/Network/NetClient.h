@@ -69,6 +69,9 @@ inline constexpr uint8_t kRecipeMachineResp = 41;
 inline constexpr uint8_t kBlockActionDirective = 42;
 inline constexpr uint8_t kGridUpdate = 43;
 inline constexpr uint8_t kWorkbenchOpenReq = 44;
+// Pipe fluid state debug: server→client, FluidNodeUpdate for every pipe that
+// received fluid this tick. Client stores for L-key overlay rendering.
+inline constexpr uint8_t kPipeFluidState = 47;
 } // namespace GatewayMsg
 
 class NetClient : public std::enable_shared_from_this<NetClient> {
@@ -106,6 +109,11 @@ public:
         std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
     void SetGridUpdateCallback(GridUpdateCallback cb) {
         onGridUpdate_ = std::move(cb);
+    }
+    using PipeFluidStateCallback =
+        std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
+    void SetPipeFluidStateCallback(PipeFluidStateCallback cb) {
+        onPipeFluidState_ = std::move(cb);
     }
     using QuestUpdateCallback =
       std::function<void(uint8_t, std::shared_ptr<std::vector<uint8_t>>)>;
@@ -304,5 +312,6 @@ private:
     GameModeChangeCallback onGameModeChange_;
     StartScenarioRespCallback onStartScenarioResp_;
     GridUpdateCallback onGridUpdate_;
+    PipeFluidStateCallback onPipeFluidState_;
     ReconnectCallback onReconnect_;
 };

@@ -264,6 +264,8 @@ void PipeNetworkManager::rebuildNetworks() {
     nodeToNetwork_.clear();
     networks_.clear();
 
+    spdlog::info("[FLUID] rebuildNetworks: {} nodes, {} edges", nodes_.size(), edges_.size());
+
     std::unordered_set<uint64_t> visited;
 
     for (const auto& [nid, node] : nodes_) {
@@ -282,6 +284,12 @@ void PipeNetworkManager::rebuildNetworks() {
         net.totalFluid = 0;
         net.fluidId = 0;
         net.isActive = false;
+
+        spdlog::info("[FLUID] rebuildNetworks: net={} nodes=[", netId);
+        for (size_t i = 0; i < component.size(); ++i) {
+            spdlog::info("  {}", component[i]);
+        }
+        spdlog::info("]");
 
         uint32_t firstFluidId = 0;
         bool fluidMixed = false;
@@ -443,6 +451,178 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeFluid(uint64
     return deltas;
 }
 
+std::unordered_map<uint64_t, int32_t> PipeNetworkManager::tickFluidNetworks() {
+    std::unordered_map<uint64_t, int32_t> deltas;
+
+    for (auto& [netId, net] : networks_) {
+        spdlog::debug("[FLUID] tickFluidNetworks: net={} has {} nodes", netId, net.nodeIds.size());
+        // 1. Machine sources with live fluid available this tick.
+        std::vector<uint64_t> sources;
+        int32_t totalAvailable = 0;
+        uint32_t sourceFluidId = 0;
+        spdlog::debug("[FLUID] tickFluidNetworks: net={} scanning {} nodes for sources",
+                      netId, net.nodeIds.size());
+        for (uint64_t nid : net.nodeIds) {
+            auto ni = nodes_.find(nid);
+            if (ni == nodes_.end()) continue;
+            const PipeNode& node = ni->second;
+            spdlog::debug("[FLUID] tickFluidNetworks: net={} nid={} src={} buf={} cap={} flId={}",
+                          netId, nid, (int)node.isSource, node.fluidBuffer, node.fluidCapacity, node.fluidId);
+            if (node.fluidCapacity > 0 && node.fluidBuffer > 0 && node.isSource) {
+                sources.push_back(nid);
+                totalAvailable += node.fluidBuffer;
+                if (sourceFluidId == 0 && node.fluidId != 0) sourceFluidId = node.fluidId;
+            }
+        }
+        if (sources.empty() || totalAvailable <= 0) continue;
+
+        // 2. Pipe nodes (non-source, non-sink) with room, matching fluid type.
+        struct Room { uint64_t id; int32_t room; };
+        std::vector<Room> pipes;
+        int32_t totalRoom = 0;
+        for (uint64_t nid : net.nodeIds) {
+            auto ni = nodes_.find(nid);
+            if (ni == nodes_.end()) continue;
+            const PipeNode& node = ni->second;
+            if (node.fluidCapacity > 0 && !node.isSource && !node.isSink) {
+                int32_t room = node.fluidCapacity - node.fluidBuffer;
+                if (room <= 0) continue;
+                if (node.fluidId != 0 && sourceFluidId != 0 && node.fluidId != sourceFluidId) continue;
+                pipes.push_back({nid, room});
+                totalRoom += room;
+            }
+        }
+        if (pipes.empty()) continue;
+
+        // 3. Amount to push this tick (bounded by pipe room).
+        int32_t toDistribute = totalAvailable < totalRoom ? totalAvailable : totalRoom;
+        if (toDistribute <= 0) continue;
+
+        // 4. Even split across pipes, remainder to the first pipes.
+        int32_t perPipe = toDistribute / static_cast<int32_t>(pipes.size());
+        int32_t remainder = toDistribute % static_cast<int32_t>(pipes.size());
+        for (size_t i = 0; i < pipes.size(); ++i) {
+            int32_t give = perPipe + (i < static_cast<size_t>(remainder) ? 1 : 0);
+            give = give < pipes[i].room ? give : pipes[i].room;
+            if (give <= 0) continue;
+            auto ni = nodes_.find(pipes[i].id);
+            if (ni == nodes_.end()) continue;
+            PipeNode& node = ni->second;
+            node.fluidBuffer += give;
+            if (node.fluidId == 0 && sourceFluidId != 0) node.fluidId = sourceFluidId;
+            deltas[pipes[i].id] += give;
+        }
+
+        // 5. Drain sources proportionally to their available fluid.
+        int32_t remainingDebt = toDistribute;
+        for (size_t i = 0; i < sources.size(); ++i) {
+            uint64_t sid = sources[i];
+            auto ni = nodes_.find(sid);
+            if (ni == nodes_.end()) continue;
+            int32_t take;
+            if (i + 1 == sources.size()) {
+                take = remainingDebt;
+            } else {
+                take = static_cast<int32_t>(
+                    (static_cast<int64_t>(toDistribute) * ni->second.fluidBuffer) / totalAvailable);
+            }
+            if (take < 0) take = 0;
+            if (take > ni->second.fluidBuffer) take = ni->second.fluidBuffer;
+            ni->second.fluidBuffer -= take;
+            remainingDebt -= take;
+            deltas[sid] -= take;
+        }
+
+        // 6. Recompute network totals.
+        net.totalFluid = 0;
+        for (uint64_t nid : net.nodeIds) {
+            auto ni = nodes_.find(nid);
+            if (ni != nodes_.end()) net.totalFluid += ni->second.fluidBuffer;
+        }
+        net.fluidId = sourceFluidId;
+        net.isActive = true;
+    }
+
+    return deltas;
+}
+
+std::unordered_map<uint64_t, int32_t> PipeNetworkManager::drainFluidFromNetwork(
+    uint64_t networkId, uint32_t fluidId, int32_t amount) {
+    std::unordered_map<uint64_t, int32_t> deltas;
+    auto ni = networks_.find(networkId);
+    if (ni == networks_.end() || amount <= 0) return deltas;
+
+    PipeNetwork& net = ni->second;
+
+    // Collect pipe nodes (non-source, non-sink) with matching fluid and positive buffer.
+    struct DrainNode { uint64_t id; int32_t available; };
+    std::vector<DrainNode> pipes;
+    int32_t totalAvailable = 0;
+    for (uint64_t nid : net.nodeIds) {
+        auto nodeIt = nodes_.find(nid);
+        if (nodeIt == nodes_.end()) continue;
+        PipeNode& node = nodeIt->second;
+        // Accept pipes with fluidId that matches OR pipe has fluidId=0
+        // (machine sources placed as BLOCK_ID_FLUID_PIPE start with fluidId=0
+        // because the capacity gate in handleFluidNodeUpdate skips fluidId set).
+        bool matches = (node.fluidId == fluidId) || (node.fluidId == 0);
+        if (node.fluidCapacity > 0 && !node.isSource && !node.isSink &&
+            node.fluidBuffer > 0 && matches) {
+            pipes.push_back({nid, node.fluidBuffer});
+            totalAvailable += node.fluidBuffer;
+        }
+    }
+    if (pipes.empty() || totalAvailable <= 0) return deltas;
+
+    // If amount > totalAvailable, drain all pipes completely.
+    int32_t toDrain = amount < totalAvailable ? amount : totalAvailable;
+    int32_t remaining = toDrain;
+
+    for (size_t i = 0; i < pipes.size(); ++i) {
+        auto nodeIt = nodes_.find(pipes[i].id);
+        if (nodeIt == nodes_.end()) continue;
+        PipeNode& node = nodeIt->second;
+
+        int32_t take;
+        if (i + 1 == pipes.size()) {
+            take = remaining;  // last pipe takes whatever is left
+        } else {
+            take = static_cast<int32_t>(
+                (static_cast<int64_t>(toDrain) * pipes[i].available) / totalAvailable);
+        }
+        if (take < 0) take = 0;
+        if (take > node.fluidBuffer) take = node.fluidBuffer;
+        if (take <= 0) continue;
+
+        node.fluidBuffer -= take;
+        remaining -= take;
+        deltas[pipes[i].id] -= take;
+
+        // Clear fluidId if pipe is now empty and no other node in the network
+        // carries this fluid type.
+        if (node.fluidBuffer == 0) {
+            bool anySame = false;
+            for (uint64_t nid2 : net.nodeIds) {
+                auto it2 = nodes_.find(nid2);
+                if (it2 != nodes_.end() && it2->second.fluidId == fluidId && it2->second.fluidBuffer > 0) {
+                    anySame = true; break;
+                }
+            }
+            if (!anySame) node.fluidId = 0;
+        }
+    }
+
+    // Recompute network totals.
+    net.totalFluid = 0;
+    for (uint64_t nid : net.nodeIds) {
+        auto it = nodes_.find(nid);
+        if (it != nodes_.end()) net.totalFluid += it->second.fluidBuffer;
+    }
+    net.isActive = (net.totalFluid > 0);
+
+    return deltas;
+}
+
 const PipeNode* PipeNetworkManager::getNode(uint64_t nodeId) const {
     auto it = nodes_.find(nodeId);
     return it != nodes_.end() ? &it->second : nullptr;
@@ -471,6 +651,13 @@ PipeNetwork* PipeNetworkManager::getItemNetwork(uint64_t nodeId) {
 }
 
 void PipeNetworkManager::rebuildItemNetworks() {
+    // Full rebuild from nodes_/edges_: stale networks from previous ticks must
+    // not accumulate (each call used to append single-node networks, growing
+    // networks_ by one entry per node per tick — hundreds of duplicates, the
+    // "hundreds of networks with the same single node" symptom).
+    networks_.clear();
+    nodeToNetwork_.clear();
+
     std::unordered_set<uint64_t> visited;
     for (const auto& [nid, node] : nodes_) {
         if (visited.find(nid) != visited.end()) continue;
@@ -711,6 +898,8 @@ void PipeNetworkManager::setNodeFluid(uint64_t nodeId, int32_t fluid, int32_t ca
                                        uint32_t fluidId, bool isSource, bool isSink) {
     auto it = nodes_.find(nodeId);
     if (it == nodes_.end()) return;
+    spdlog::info("[SETFLUID] setNodeFluid({}, buf={}, cap={}, flId={}, src={})",
+                  nodeId, fluid, capacity, fluidId, isSource);
     it->second.fluidBuffer = fluid;
     it->second.fluidCapacity = capacity;
     it->second.fluidId = fluidId;

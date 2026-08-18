@@ -50,7 +50,7 @@ CHUNKD="$(BIN chunk_store chunkd)"
 GATEWAYD="$(BIN gateway gatewayd)"
 SIMCORED="$(BIN simulation_core simcored_exec)"
 CLIENT="${BUILD_DIR}/bin/gameclientd"
-PIPENETWORKD="$(BIN pipe_network pipenetworkd)"
+PIPENETWORKD="$(BIN pipe_network pipe_networkd)"
 SPATIALINDEXD="$(BIN spatial_index spatialindexd)"
 METADBD="${SCRIPT_DIR}/src/services/meta_db/metadbd"
 ENTITYSTATED="$(BIN entity_state_store entitystated)"
@@ -161,7 +161,7 @@ LAUNCH() {
 # ── start services ────────────────────────────────────────────────
 
 printf "\n${CYAN}═══ GTNH Platform ═══${NC}\n\n"
-
+#killall -9 pipe_networkd
 LAUNCH "routerd"        "${ROUTERD}"
 LAUNCH "chunkd"         "${CHUNKD}"         "${DB_DIR}"  5001  "127.0.0.1"  4000
 LAUNCH "gatewayd"       "${GATEWAYD}"       --router-port 4000  --port 7777
@@ -169,9 +169,9 @@ LAUNCH "reciped"        "${RECIPED}"        --router-port 4000
 LAUNCH "entitystated"   "${ENTITYSTATED}"
 LAUNCH "simcored"       "${SIMCORED}"       "127.0.0.1"  4000  "127.0.0.1"  5001 /home/su/src/local/gtnh-platform/data/recipes
 LAUNCH "metadbd"        "${METADBD}"
+LAUNCH "pipenetworkd"   "${PIPENETWORKD}"
 
 if $START_ALL; then
-    LAUNCH "pipenetworkd"  "${PIPENETWORKD}"
     LAUNCH "spatialindexd" "${SPATIALINDEXD}"
     LAUNCH "validationd"   "${VALIDATIOND}"
 fi

@@ -33,6 +33,13 @@ private:
   std::shared_ptr<FluidClient> fluidClient_;
   std::unordered_map<entt::entity, int32_t> burnEnergy_;
   std::unordered_map<entt::entity, uint16_t> burnFuel_;
+
+  // Throttle the always-on STEAM boiler registration. An idle boiler only needs
+  // to register once so adjacent pipes can attach; re-publish on a low-frequency
+  // heartbeat for late pipe placement instead of every tick.
+  uint64_t tickCount_ = 0;
+  std::unordered_map<entt::entity, uint64_t> lastSteamPublish_;
+  static constexpr uint64_t kSteamHeartbeatTicks = 40;  // ~2 s at 20 Hz
 };
 
 } // namespace simcore

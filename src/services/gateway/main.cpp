@@ -140,6 +140,7 @@ int main(int argc, char* argv[]) {
     gateway.subscribe("recipe.catalog.response");
     gateway.subscribe("recipe.item.response");
     gateway.subscribe("recipe.machine.response");
+    gateway.subscribe("fluid.pipe.state");
 
     spdlog::info("Gateway running — worker thread handles io_uring");
 
