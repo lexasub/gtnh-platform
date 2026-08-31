@@ -73,6 +73,43 @@ enum EnergyType : uint8 {
   ROTATION = 3,
 }
 
+// Transport channels are independent domains. A concrete material is carried
+// by the resource_id field on the operation/update that uses the channel.
+enum ResourceKind : uint8 {
+  FLUID = 0,
+  EU = 1,
+  HU = 2,
+  RU = 3,
+  ITEM = 4,
+}
+
+enum PortRole : uint8 {
+  NONE = 0,
+  SOURCE = 1,
+  SINK = 2,
+}
+
+enum FacePolicy : uint8 {
+  ALL_FACES = 0,
+  MASK = 1,
+}
+
+// Transport-facing identity and policy for one machine port. This is separate
+// from the machine ECS/entity ID: one owner may expose several ports.
+table ResourcePort {
+  port_id:uint64;
+  owner_id:uint64;
+  resource_kind:ResourceKind;
+  resource_id:uint32;
+  role:PortRole;
+  pos:Vec3i (required);
+  capacity:int32;
+  rate:int32;
+  epoch:uint64;
+  face_policy:FacePolicy;
+  face_mask:uint8;
+}
+
 enum ToolActionType : uint8 {
     MINE_BLOCK = 0,
     WRENCH_CYCLE = 1,

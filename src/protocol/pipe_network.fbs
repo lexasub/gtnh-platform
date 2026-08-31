@@ -137,18 +137,76 @@ table CableExplodedEvent {
 // Published on topic "fluid.node.update" whenever a fluid machine/pipe state changes
 // ---------------------------------------------------------------------------
 table FluidNodeUpdate {
-  node_id:uint64;               // unique node ID (from SimulationCore ECS)
+  node_id:uint64;               // legacy port identity (use port_id when set)
   pos:Vec3i (required);         // world position
-  fluid_id:uint32;              // fluid type (0 = empty)
+  fluid_id:uint32;              // concrete canonical fluid item ID (0 = empty)
   amount:int32;                 // current fluid amount (mB)
   capacity:int32;               // max capacity (mB)
   max_input:int32;              // max input per tick (mB/t)
   max_output:int32;             // max output per tick (mB/t)
   tier:int32;                   // tier (0=ULV..10=RE)
-  is_source:bool = false;       // generator/input node
-  is_sink:bool = false;         // consumer/output node
+  is_source:bool = false;       // legacy role flags
+  is_sink:bool = false;         // legacy role flags
   connected_nodes:[uint64];     // IDs of adjacent pipe/machine nodes
+  port_id:uint64 = 0;
+  owner_id:uint64 = 0;
+  epoch:uint64 = 0;
+  role:PortRole = NONE;
+  face_policy:FacePolicy = ALL_FACES;
+  face_mask:uint8 = 63;
 }
+
+// Generic typed registration/update. Domain-specific legacy messages remain
+// available during migration, but new producers should use this contract.
+table ResourcePortUpdate {
+  port:ResourcePort (required);
+  amount:int32;
+  connected_ports:[uint64];
+}
+
+table ResourcePortRemove {
+  port_id:uint64;
+  owner_id:uint64;
+  epoch:uint64;
+}
+
+// Exactly-once resource boundary operations. request_id makes retries safe.
+table ResourceDrainRequest {
+  request_id:uint64;
+  port_id:uint64;
+  resource_kind:ResourceKind;
+  resource_id:uint32;
+  amount:int32;
+}
+
+table ResourceDrainResponse {
+  request_id:uint64;
+  port_id:uint64;
+  resource_kind:ResourceKind;
+  resource_id:uint32;
+  accepted_amount:int32;
+}
+
+table ResourceConsumeRequest {
+  request_id:uint64;
+  port_id:uint64;
+  resource_kind:ResourceKind;
+  resource_id:uint32;
+  amount:int32;
+}
+
+table ResourceConsumeResponse {
+  request_id:uint64;
+  port_id:uint64;
+  resource_kind:ResourceKind;
+  resource_id:uint32;
+  accepted_amount:int32;
+  remaining:int32;
+}
+
+// Canonical typed port topics use these tables. `resource_id` is a packed
+// ItemId for FLUID/ITEM and zero for energy channels.
+
 
 // ---------------------------------------------------------------------------
 // Fluid check: request/response over topics
