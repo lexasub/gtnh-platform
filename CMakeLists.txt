@@ -60,6 +60,7 @@ find_package(lmdb REQUIRED)
 find_package(FastNoise2 REQUIRED)
 
 # Shared libraries
+add_subdirectory(src/common)
 add_subdirectory(src/libs)
 
 # Service subdirectories

@@ -49,6 +49,7 @@ target_include_directories(recipe_manager_lib PUBLIC
 add_dependencies(recipe_manager_lib recipe_lib_fbs)
 
 target_link_libraries(recipe_manager_lib PUBLIC
+    gtnh_common
     flatbuffers::flatbuffers
     spdlog::spdlog
     nlohmann_json::nlohmann_json
