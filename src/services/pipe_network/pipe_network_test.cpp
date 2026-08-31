@@ -122,6 +122,103 @@ static void test_add_node_with_id() {
 }
 
 // =========================================================================
+//  Typed resource port registration tests
+// =========================================================================
+
+static gtnh::common::ResourcePort make_test_port(
+    gtnh::common::ResourceKind kind, gtnh::common::PortRole role,
+    uint64_t epoch = 1) {
+    gtnh::common::ResourcePort port;
+    port.port_id = 7;
+    port.owner_id = 99;
+    port.resource_kind = kind;
+    port.resource_id = kind == gtnh::common::ResourceKind::FLUID ? 84 : 0;
+    port.role = role;
+    port.x = 10;
+    port.y = 20;
+    port.z = 30;
+    port.capacity = 1000;
+    port.rate = 100;
+    port.epoch = epoch;
+    return port;
+}
+
+static void test_typed_ports_independent_resource_domains() {
+    pipenet::PipeNetworkManager mgr;
+    auto fluid = make_test_port(gtnh::common::ResourceKind::FLUID,
+                                gtnh::common::PortRole::SOURCE);
+    auto energy = make_test_port(gtnh::common::ResourceKind::EU,
+                                 gtnh::common::PortRole::SINK);
+
+    CHECK(mgr.registerPort(fluid), "fluid port registers");
+    CHECK(mgr.registerPort(energy), "energy port registers independently");
+    CHECK_EQ(mgr.portCount(), size_t(2), "resource domains have independent keys");
+    CHECK(mgr.getPort(fluid.owner_id, fluid.resource_kind, fluid.port_id) != nullptr,
+          "fluid port is queryable");
+    CHECK(mgr.getPort(energy.owner_id, energy.resource_kind, energy.port_id) != nullptr,
+          "energy port is queryable");
+    CHECK_EQ(mgr.getPort(fluid.owner_id, fluid.resource_kind, fluid.port_id)->role,
+             gtnh::common::PortRole::SOURCE, "fluid role remains source");
+    CHECK_EQ(mgr.getPort(energy.owner_id, energy.resource_kind, energy.port_id)->role,
+             gtnh::common::PortRole::SINK, "energy role remains sink");
+    PASS();
+}
+
+static void test_typed_port_reregistration_is_idempotent() {
+    pipenet::PipeNetworkManager mgr;
+    auto port = make_test_port(gtnh::common::ResourceKind::FLUID,
+                               gtnh::common::PortRole::SOURCE);
+
+    CHECK(mgr.registerPort(port), "initial registration succeeds");
+    CHECK(mgr.registerPort(port), "same registration is an idempotent success");
+    CHECK_EQ(mgr.portCount(), size_t(1), "retry does not duplicate port");
+
+    auto newer = port;
+    newer.role = gtnh::common::PortRole::SINK;
+    newer.capacity = 2000;
+    newer.epoch = 2;
+    CHECK(mgr.registerPort(newer), "new epoch replaces registration");
+    CHECK_EQ(mgr.getPort(port.owner_id, port.resource_kind, port.port_id)->role,
+             gtnh::common::PortRole::SINK, "new role is visible");
+    CHECK_EQ(mgr.getPort(port.owner_id, port.resource_kind, port.port_id)->capacity,
+             2000, "new capacity is visible");
+
+    auto stale = newer;
+    stale.role = gtnh::common::PortRole::SOURCE;
+    stale.epoch = 1;
+    CHECK(!mgr.registerPort(stale), "stale epoch is rejected");
+    CHECK_EQ(mgr.getPort(port.owner_id, port.resource_kind, port.port_id)->role,
+             gtnh::common::PortRole::SINK, "stale update cannot overwrite state");
+    PASS();
+}
+
+static void test_typed_port_removal_cleanup() {
+    pipenet::PipeNetworkManager mgr;
+    auto fluid = make_test_port(gtnh::common::ResourceKind::FLUID,
+                                gtnh::common::PortRole::SOURCE);
+    auto energy = make_test_port(gtnh::common::ResourceKind::EU,
+                                 gtnh::common::PortRole::SINK);
+    CHECK(mgr.registerPort(fluid), "fluid port registers");
+    CHECK(mgr.registerPort(energy), "energy port registers");
+
+    CHECK(!mgr.removePort(fluid.owner_id, fluid.resource_kind, fluid.port_id, 2),
+          "wrong epoch does not remove port");
+    CHECK(mgr.removePort(fluid), "matching registration removes fluid port");
+    CHECK(!mgr.hasPort(fluid.owner_id, fluid.resource_kind, fluid.port_id),
+          "removed fluid port is absent");
+    CHECK(mgr.hasPort(energy.owner_id, energy.resource_kind, energy.port_id),
+          "removing one domain preserves another");
+    CHECK(!mgr.removePort(fluid), "repeated removal is harmless");
+
+    CHECK_EQ(mgr.removePortsForOwner(energy.owner_id), size_t(1),
+             "owner cleanup removes remaining ports");
+    CHECK_EQ(mgr.removePortsForOwner(energy.owner_id), size_t(0),
+             "repeated owner cleanup is harmless");
+    CHECK_EQ(mgr.portCount(), size_t(0), "all owner ports are gone");
+    PASS();
+}
+
+// =========================================================================
 //  Pipe wrench guidance tests (evaluatePipeWrench)
 // =========================================================================
 
@@ -404,6 +501,26 @@ static void test_energy_distribution_capacity_limited() {
 // =========================================================================
 //  Fluid distribution tests
 // =========================================================================
+
+static void test_fluid_transaction_replay_and_limits() {
+    pipenet::PipeNetworkManager mgr;
+    auto sink = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(sink, 100, 100, 2, false, true);
+
+    auto first = mgr.consumeFluid(sink, 77, 2, 60);
+    CHECK_EQ(first.accepted_amount, 60, "transaction accepts available pipe fluid");
+    CHECK_EQ(mgr.getNode(sink)->fluidBuffer, 40, "pipe buffer debited once");
+    auto replay = mgr.consumeFluid(sink, 77, 2, 60);
+    CHECK_EQ(replay.accepted_amount, 60, "duplicate returns cached amount");
+    CHECK_EQ(mgr.getNode(sink)->fluidBuffer, 40, "duplicate does not debit twice");
+    auto mismatch = mgr.consumeFluid(sink, 78, 3, 10);
+    CHECK(mismatch.blocked, "mismatched fluid is blocked");
+    CHECK_EQ(mgr.getNode(sink)->fluidBuffer, 40, "mismatch leaves buffer unchanged");
+    auto partial = mgr.consumeFluid(sink, 79, 2, 100);
+    CHECK_EQ(partial.accepted_amount, 40, "consume reports exact short fill");
+    CHECK_EQ(partial.remaining, 60, "consume reports remaining demand");
+    PASS();
+}
 
 static void test_fluid_distribution_simple() {
     pipenet::PipeNetworkManager mgr;
@@ -1376,6 +1493,11 @@ int main(int, char**) {
     TEST(rebuild_networks);
     TEST(add_node_with_id);
 
+    // Typed resource ports
+    TEST(typed_ports_independent_resource_domains);
+    TEST(typed_port_reregistration_is_idempotent);
+    TEST(typed_port_removal_cleanup);
+
     // Pipe wrench guidance
     TEST(wrench_isolated_pipe);
     TEST(wrench_pipe_to_pipe);
@@ -1397,6 +1519,7 @@ int main(int, char**) {
     TEST(energy_distribution_capacity_limited);
 
     // Fluid distribution
+    TEST(fluid_transaction_replay_and_limits);
     TEST(fluid_distribution_simple);
     TEST(fluid_distribution_capacity_limited);
     TEST(fluid_distribution_no_source);

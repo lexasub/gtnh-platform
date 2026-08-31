@@ -39,6 +39,82 @@ WrenchGuidance evaluatePipeWrench(
 PipeNetworkManager::PipeNetworkManager() = default;
 PipeNetworkManager::~PipeNetworkManager() = default;
 
+bool PipeNetworkManager::registerPort(const gtnh::common::ResourcePort& port) {
+    if (!port.valid() || port.owner_id == 0) return false;
+
+    PortKey key{port.owner_id, port.resource_kind, port.port_id};
+    auto it = ports_.find(key);
+    if (it == ports_.end()) {
+        ports_.emplace(key, port);
+        return true;
+    }
+
+    // Replaying an epoch is an update-in-place: it cannot create a duplicate,
+    // while retries with identical data remain observationally idempotent.
+    // Epochs are monotonic so delayed updates cannot overwrite current state.
+    if (port.epoch < it->second.epoch) return false;
+
+    it->second = port;
+    return true;
+}
+
+bool PipeNetworkManager::removePort(uint64_t ownerId,
+                                    gtnh::common::ResourceKind resourceKind,
+                                    gtnh::common::PortId portId,
+                                    uint64_t epoch) {
+    if (ownerId == 0 || portId == 0) return false;
+
+    PortKey key{ownerId, resourceKind, portId};
+    auto it = ports_.find(key);
+    if (it == ports_.end() || it->second.epoch != epoch) return false;
+    ports_.erase(it);
+    return true;
+}
+
+bool PipeNetworkManager::removePort(uint64_t ownerId,
+                                    gtnh::common::ResourceKind resourceKind,
+                                    gtnh::common::PortId portId) {
+    if (ownerId == 0 || portId == 0) return false;
+
+    PortKey key{ownerId, resourceKind, portId};
+    return ports_.erase(key) != 0;
+}
+
+size_t PipeNetworkManager::removePortsForOwner(uint64_t ownerId) {
+    size_t removed = 0;
+    for (auto it = ports_.begin(); it != ports_.end();) {
+        if (it->first.owner_id == ownerId) {
+            it = ports_.erase(it);
+            ++removed;
+        } else {
+            ++it;
+        }
+    }
+    return removed;
+}
+
+const gtnh::common::ResourcePort* PipeNetworkManager::getPort(
+    uint64_t ownerId, gtnh::common::ResourceKind resourceKind,
+    gtnh::common::PortId portId) const {
+    PortKey key{ownerId, resourceKind, portId};
+    auto it = ports_.find(key);
+    return it == ports_.end() ? nullptr : &it->second;
+}
+
+bool PipeNetworkManager::hasPort(uint64_t ownerId,
+                                 gtnh::common::ResourceKind resourceKind,
+                                 gtnh::common::PortId portId) const {
+    return getPort(ownerId, resourceKind, portId) != nullptr;
+}
+
+std::vector<gtnh::common::ResourcePort>
+PipeNetworkManager::getRegisteredPorts() const {
+    std::vector<gtnh::common::ResourcePort> result;
+    result.reserve(ports_.size());
+    for (const auto& [key, port] : ports_) result.push_back(port);
+    return result;
+}
+
 uint64_t PipeNetworkManager::addNode(int32_t x, int32_t y, int32_t z, uint16_t blockId) {
     uint64_t id = nextNodeId_++;
     PipeNode node{};
@@ -392,7 +468,86 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeEnergy(uint6
     return deltas;
 }
 
+FluidTransferResult PipeNetworkManager::consumeFluidUncached(uint64_t nodeId,
+                                                               uint64_t requestId,
+                                                               uint32_t fluidId,
+                                                               int32_t amount) {
+    FluidTransferResult result{requestId, nodeId, fluidId, 0, 0, false};
+    if (amount <= 0 || fluidId == 0) {
+        result.blocked = true;
+        result.remaining = amount > 0 ? amount : 0;
+        return result;
+    }
+
+    auto it = nodes_.find(nodeId);
+    if (it == nodes_.end() || it->second.fluidCapacity <= 0 ||
+        !it->second.isSink) {
+        result.blocked = true;
+        result.remaining = amount;
+        return result;
+    }
+
+    auto& node = it->second;
+    if (node.fluidId != 0 && node.fluidId != fluidId) {
+        result.blocked = true;
+        result.remaining = amount;
+        return result;
+    }
+
+    result.accepted_amount = (std::min)(amount, node.fluidBuffer);
+    node.fluidBuffer -= result.accepted_amount;
+    result.remaining = amount - result.accepted_amount;
+    if (node.fluidBuffer == 0) node.fluidId = 0;
+    return result;
+}
+
+FluidTransferResult PipeNetworkManager::consumeFluid(uint64_t nodeId,
+                                                      uint64_t requestId,
+                                                      uint32_t fluidId,
+                                                      int32_t amount) {
+    ++fluid_tick_;
+    expireFluidTransactions(fluid_tick_);
+    if (auto it = fluid_transactions_.find(requestId);
+        it != fluid_transactions_.end()) {
+        return it->second.result;
+    }
+
+    auto result = consumeFluidUncached(nodeId, requestId, fluidId, amount);
+    fluid_transactions_.emplace(requestId,
+                                 FluidTransaction{result, fluid_tick_ + kFluidTransactionTtl});
+    return result;
+}
+
+int32_t PipeNetworkManager::fluidAmount(uint64_t nodeId, uint32_t fluidId) const {
+    const auto it = nodes_.find(nodeId);
+    if (it == nodes_.end() ||
+        (it->second.fluidId != 0 && it->second.fluidId != fluidId)) {
+        return 0;
+    }
+    return it->second.fluidBuffer;
+}
+
+void PipeNetworkManager::expireFluidTransactions(uint64_t nowTick) {
+    for (auto it = fluid_transactions_.begin(); it != fluid_transactions_.end();) {
+        if (it->second.expires_at <= nowTick) {
+            it = fluid_transactions_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+size_t PipeNetworkManager::fluidTransactionCount() const {
+    return fluid_transactions_.size();
+}
+
 std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeFluid(uint64_t networkId, int32_t tickFluid) {
+    ++fluid_tick_;
+    expireFluidTransactions(fluid_tick_);
+
+    // Legacy distribution remains available for existing callers. Consume
+    // transactions are handled by consumeFluid() and never mirror owner state.
+
     std::unordered_map<uint64_t, int32_t> deltas;
     auto ni = networks_.find(networkId);
     if (ni == networks_.end() || tickFluid == 0) return deltas;

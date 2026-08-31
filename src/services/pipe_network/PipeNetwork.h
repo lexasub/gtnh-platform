@@ -1,9 +1,44 @@
 #pragma once
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#if __has_include(<common/ResourcePort.h>)
+#include <common/ResourcePort.h>
+#else
+// Keep the pipe domain buildable at this commit boundary. The canonical
+// contract lives in src/common/ResourcePort.h and supersedes this fallback
+// when it is available on the include path.
+namespace gtnh::common {
+using PortId = std::uint64_t;
+
+enum class ResourceKind : std::uint8_t { FLUID = 0, EU = 1, HU = 2, RU = 3, ITEM = 4 };
+enum class PortRole : std::uint8_t { NONE = 0, SOURCE = 1, SINK = 2 };
+enum class FacePolicy : std::uint8_t { ALL_FACES = 0, MASK = 1 };
+
+struct ResourcePort {
+  PortId port_id = 0;
+  std::uint64_t owner_id = 0;
+  ResourceKind resource_kind = ResourceKind::FLUID;
+  std::uint32_t resource_id = 0;
+  PortRole role = PortRole::NONE;
+  std::int32_t x = 0;
+  std::int32_t y = 0;
+  std::int32_t z = 0;
+  FacePolicy face_policy = FacePolicy::ALL_FACES;
+  std::uint8_t face_mask = 0x3f;
+  std::int32_t capacity = 0;
+  std::int32_t rate = 0;
+  std::uint64_t epoch = 0;
+
+  [[nodiscard]] bool valid() const { return port_id != 0; }
+};
+} // namespace gtnh::common
+#endif
 
 namespace pipenet {
 
@@ -51,6 +86,18 @@ WrenchGuidance evaluatePipeWrench(
 struct ItemSlot {
   uint16_t item_id;
   uint8_t count;
+};
+
+// Result of a pipe-owned fluid transaction. The network only reports amounts
+// it actually removed from its buffers; owner-side machine buffers are never
+// mirrored or mutated here.
+struct FluidTransferResult {
+  uint64_t request_id = 0;
+  uint64_t node_id = 0;
+  uint32_t fluid_id = 0;
+  int32_t accepted_amount = 0;
+  int32_t remaining = 0;
+  bool blocked = false;
 };
 
 struct ConsumedItemEvent {
@@ -124,6 +171,35 @@ public:
                      uint16_t blockId);
   void removeNode(uint64_t nodeId);
 
+  // Typed resource ports are kept independently for each owner/resource
+  // domain. Re-registering the same owner/kind/port is idempotent; a newer
+  // epoch replaces the prior definition while stale epochs are rejected.
+  bool registerPort(const gtnh::common::ResourcePort& port);
+  bool registerResourcePort(const gtnh::common::ResourcePort& port) {
+    return registerPort(port);
+  }
+  bool removePort(uint64_t ownerId, gtnh::common::ResourceKind resourceKind,
+                  gtnh::common::PortId portId, uint64_t epoch);
+  bool removePort(uint64_t ownerId, gtnh::common::ResourceKind resourceKind,
+                  gtnh::common::PortId portId);
+  size_t removePortsForOwner(uint64_t ownerId);
+  bool removePort(const gtnh::common::ResourcePort& port) {
+    return removePort(port.owner_id, port.resource_kind, port.port_id,
+                      port.epoch);
+  }
+  bool removeResourcePort(uint64_t ownerId,
+                          gtnh::common::ResourceKind resourceKind,
+                          gtnh::common::PortId portId, uint64_t epoch) {
+    return removePort(ownerId, resourceKind, portId, epoch);
+  }
+  const gtnh::common::ResourcePort* getPort(
+      uint64_t ownerId, gtnh::common::ResourceKind resourceKind,
+      gtnh::common::PortId portId) const;
+  bool hasPort(uint64_t ownerId, gtnh::common::ResourceKind resourceKind,
+               gtnh::common::PortId portId) const;
+  std::vector<gtnh::common::ResourcePort> getRegisteredPorts() const;
+  size_t portCount() const { return ports_.size(); }
+
   // Add/remove connection between nodes
   uint64_t addEdge(uint64_t fromNode, uint64_t toNode, float resistance = 0.0f);
   void removeEdge(uint64_t edgeId);
@@ -148,6 +224,14 @@ public:
   // Distribute fluid across a network for one tick
   std::unordered_map<uint64_t, int32_t> distributeFluid(uint64_t networkId,
                                                         int32_t tickFluid);
+
+  // Consume from pipe buffers first. This is deliberately independent from
+  // owner/source state: callers may request a source shortfall afterwards.
+  FluidTransferResult consumeFluid(uint64_t nodeId, uint64_t requestId,
+                                    uint32_t fluidId, int32_t amount);
+  int32_t fluidAmount(uint64_t nodeId, uint32_t fluidId) const;
+  void expireFluidTransactions(uint64_t nowTick);
+  size_t fluidTransactionCount() const;
 
   // Item network operations
   void rebuildItemNetworks();
@@ -196,11 +280,42 @@ private:
       nodeToNetwork_; // node_id -> network_id
   std::unordered_map<uint64_t, PipeNetwork> networks_;
 
+  struct PortKey {
+    uint64_t owner_id;
+    gtnh::common::ResourceKind resource_kind;
+    gtnh::common::PortId port_id;
+
+    friend bool operator==(const PortKey&, const PortKey&) = default;
+  };
+
+  struct PortKeyHash {
+    size_t operator()(const PortKey& key) const noexcept {
+      size_t hash = std::hash<uint64_t>{}(key.owner_id);
+      hash ^= std::hash<uint64_t>{}(key.port_id) + (hash << 6) + (hash >> 2);
+      hash ^= std::hash<unsigned>{}(
+          static_cast<unsigned>(key.resource_kind)) + (hash << 6) + (hash >> 2);
+      return hash;
+    }
+  };
+
+  std::unordered_map<PortKey, gtnh::common::ResourcePort, PortKeyHash> ports_;
+
   std::vector<ConsumedItemEvent> consumedItemEvents_;
+
+  struct FluidTransaction {
+    FluidTransferResult result;
+    uint64_t expires_at = 0;
+  };
+  std::unordered_map<uint64_t, FluidTransaction> fluid_transactions_;
+  uint64_t fluid_tick_ = 0;
+  static constexpr uint64_t kFluidTransactionTtl = 200;
 
   uint64_t nextNodeId_{1};
   uint64_t nextEdgeId_{1};
   uint64_t nextNetworkId_{1};
+
+  FluidTransferResult consumeFluidUncached(uint64_t nodeId, uint64_t requestId,
+                                            uint32_t fluidId, int32_t amount);
 
   // BFS helper
   void bfsNetwork(uint64_t startNode, std::unordered_set<uint64_t> &visited,
