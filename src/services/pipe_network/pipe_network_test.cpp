@@ -519,6 +519,16 @@ static void test_fluid_transaction_replay_and_limits() {
     auto partial = mgr.consumeFluid(sink, 79, 2, 100);
     CHECK_EQ(partial.accepted_amount, 40, "consume reports exact short fill");
     CHECK_EQ(partial.remaining, 60, "consume reports remaining demand");
+
+    // Request id zero is an uncorrelated request and must never alias a cached
+    // transaction. A reused non-zero id with a different tuple is rejected.
+    auto zero_first = mgr.consumeFluid(sink, 0, 2, 1);
+    auto zero_second = mgr.consumeFluid(sink, 0, 2, 1);
+    CHECK_EQ(zero_first.accepted_amount, 0, "zero-id request sees empty buffer");
+    CHECK_EQ(zero_second.accepted_amount, 0, "zero-id request is not cached");
+    auto conflict = mgr.consumeFluid(sink, 77, 2, 61);
+    CHECK(conflict.blocked, "reused request id with different amount is blocked");
+    CHECK_EQ(conflict.accepted_amount, 0, "conflicting replay cannot debit");
     PASS();
 }
 

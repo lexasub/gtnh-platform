@@ -507,14 +507,25 @@ FluidTransferResult PipeNetworkManager::consumeFluid(uint64_t nodeId,
                                                       int32_t amount) {
     ++fluid_tick_;
     expireFluidTransactions(fluid_tick_);
-    if (auto it = fluid_transactions_.find(requestId);
-        it != fluid_transactions_.end()) {
-        return it->second.result;
+    if (requestId != 0) {
+        if (auto it = fluid_transactions_.find(requestId);
+            it != fluid_transactions_.end()) {
+            if (it->second.result.node_id != nodeId ||
+                it->second.result.fluid_id != fluidId ||
+                it->second.requested_amount != amount) {
+                FluidTransferResult conflict{requestId, nodeId, fluidId, 0,
+                                             amount > 0 ? amount : 0, true};
+                return conflict;
+            }
+            return it->second.result;
+        }
     }
 
     auto result = consumeFluidUncached(nodeId, requestId, fluidId, amount);
-    fluid_transactions_.emplace(requestId,
-                                 FluidTransaction{result, fluid_tick_ + kFluidTransactionTtl});
+    if (requestId != 0) {
+        fluid_transactions_.emplace(
+            requestId, FluidTransaction{result, amount, fluid_tick_ + kFluidTransactionTtl});
+    }
     return result;
 }
 

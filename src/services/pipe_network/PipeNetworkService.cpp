@@ -21,6 +21,7 @@ struct CheckBridge {
 //   0=+X, 1=-X, 2=+Y, 3=-Y, 4=+Z, 5=-Z  (matches CableGraph / meta-bit convention).
 // meta == 0 ⇒ all six faces connected (0x3F).
 static constexpr int8_t FACE_DX[6] = { 1, -1, 0, 0, 0, 0};
+
 static constexpr int8_t FACE_DY[6] = { 0,  0, 1,-1, 0, 0};
 static constexpr int8_t FACE_DZ[6] = { 0,  0, 0, 0, 1,-1};
 
@@ -660,58 +661,103 @@ void PipeNetworkService::handleFluidCheckRequest(const std::vector<uint8_t>& dat
 
 void PipeNetworkService::handleFluidConsumeRequest(const std::vector<uint8_t>& data) {
     auto* req = flatbuffers::GetRoot<Protocol::FluidConsumeReq>(data.data());
-    if (!req || !req->pos()) return;
-    auto pit = protocol_to_mgr_.find(req->node_id());
-    if (pit == protocol_to_mgr_.end()) {
-        flatbuffers::FlatBufferBuilder fbb;
-        auto resp = Protocol::CreateFluidConsumeResp(fbb, 0, 0);
-        fbb.Finish(resp);
-        router_.Publish("fluid.consume.response", {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+    if (!req || !req->pos()) {
+        spdlog::warn("[PipeNet] invalid FluidConsumeReq");
         return;
     }
 
-    CheckBridge br{protocol_to_mgr_, network_manager_, node_states_, router_};
-    uint64_t mgr_id = pit->second;
-    int32_t total_source = 0;
-    int source_count = 0;
-    int32_t consumed = computeConsume(mgr_id, req->amount(), br, total_source, source_count);
-
-    if (consumed > 0 && total_source > 0) {
-        int32_t remaining_debt = consumed;
-        for (const auto* net : br.network_manager.getAllNetworks()) {
-            bool found = false;
-            for (uint64_t nid : net->nodeIds) if (nid == mgr_id) { found = true; break; }
-            if (!found) continue;
-            for (uint64_t nid : net->nodeIds) {
-                auto si = br.node_states.find(nid);
-                if (si == br.node_states.end() || !si->second.is_source) continue;
-                int32_t take = (source_count > 1)
-                    ? static_cast<int32_t>(static_cast<int64_t>(consumed) * si->second.energy / total_source)
-                    : (std::min)(remaining_debt, si->second.energy);
-                take = (std::min)(take, si->second.energy);
-                si->second.energy -= take;
-                remaining_debt -= take;
-
-                flatbuffers::FlatBufferBuilder fbb;
-                Protocol::Vec3i flowPos(req->pos()->x(), req->pos()->y(), req->pos()->z());
-                auto event = Protocol::CreateFluidFlowEvent(
-                    fbb, mgr_id, si->second.protocol_id, req->node_id(),
-                    req->fluid_id(), take, &flowPos, si->second.tier);
-                fbb.Finish(event);
-                router_.Publish("fluid.flow", {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
-            }
-            break;
+    auto pit = protocol_to_mgr_.find(req->node_id());
+    if (pit == protocol_to_mgr_.end()) {
+        // A request can race the node update on startup.  Position lookup keeps
+        // the response routable for ECS entity zero and for that small window.
+        auto mit = machine_nodes_.find(posKey(req->pos()->x(), req->pos()->y(), req->pos()->z()));
+        if (mit == machine_nodes_.end()) {
+            flatbuffers::FlatBufferBuilder fbb;
+            auto resp = Protocol::CreateFluidConsumeResp(fbb, 0, req->amount());
+            fbb.Finish(resp);
+            router_.Publish("fluid.consume.response",
+                {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+            return;
         }
+        pit = protocol_to_mgr_.emplace(req->node_id(), mit->second).first;
     }
 
-    int32_t remaining = 0;
-    auto sit = br.node_states.find(mgr_id);
-    if (sit != br.node_states.end()) remaining = sit->second.energy;
+    const uint64_t mgr_id = pit->second;
+    const uint32_t fluid_id = req->fluid_id();
+    const int32_t requested = req->amount();
+    if (requested <= 0 || fluid_id == 0) {
+        flatbuffers::FlatBufferBuilder fbb;
+        auto resp = Protocol::CreateFluidConsumeResp(fbb, 0, requested > 0 ? requested : 0);
+        fbb.Finish(resp);
+        router_.Publish("fluid.consume.response",
+            {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+        return;
+    }
+
+    // The manager owns pipe-buffer debits. The checked-in wire request has no
+    // request_id, so service-level retransmit correlation is not possible.
+    const auto pipe_result = network_manager_.consumeFluid(
+        mgr_id, req->node_id(), fluid_id, requested);
+    int32_t consumed = pipe_result.accepted_amount;
+    int32_t remaining_demand = pipe_result.remaining;
+
+    // A source is owner state, not a mirror of the pipe node.  Only debit the
+    // source snapshot for fluid that was not already present in pipe buffers.
+    // Publish one event per source so FluidFlowHandler can provide telemetry
+    // without mutating the owning ECS component.
+    if (remaining_demand > 0) {
+        const auto network = network_manager_.discoverNetwork(mgr_id);
+        std::vector<uint64_t> sources;
+        int32_t total_source = 0;
+        for (uint64_t nid : network) {
+            auto si = node_states_.find(nid);
+            if (si == node_states_.end() || !si->second.is_source) continue;
+            const auto* node = network_manager_.getNode(nid);
+            if (node && node->fluidId != 0 && node->fluidId != fluid_id) continue;
+            if (si->second.energy <= 0) continue;
+            sources.push_back(nid);
+            total_source += si->second.energy;
+        }
+
+        int32_t source_debt = (std::min)(remaining_demand, total_source);
+        int32_t left = source_debt;
+        for (size_t i = 0; i < sources.size() && left > 0; ++i) {
+            const uint64_t source_id = sources[i];
+            auto si = node_states_.find(source_id);
+            if (si == node_states_.end()) continue;
+            const int32_t take = (i + 1 == sources.size())
+                ? (std::min)(left, si->second.energy)
+                : (std::min)(left, static_cast<int32_t>(
+                    (static_cast<int64_t>(source_debt) * si->second.energy) / total_source));
+            if (take <= 0) continue;
+
+            si->second.energy -= take;
+            consumed += take;
+            left -= take;
+
+            const auto* source_node = network_manager_.getNode(source_id);
+            if (!source_node) continue;
+            Protocol::Vec3i source_pos(source_node->x, source_node->y, source_node->z);
+            flatbuffers::FlatBufferBuilder flow_builder;
+            auto event = Protocol::CreateFluidFlowEvent(
+                flow_builder, source_id,
+                si->second.protocol_id != 0 ? si->second.protocol_id : source_id,
+                0, fluid_id, take, &source_pos, si->second.tier);
+            flow_builder.Finish(event);
+            router_.Publish("fluid.flow", {flow_builder.GetBufferPointer(),
+                                             flow_builder.GetBufferPointer() + flow_builder.GetSize()});
+        }
+        remaining_demand = requested - consumed;
+    }
 
     flatbuffers::FlatBufferBuilder fbb;
-    auto resp = Protocol::CreateFluidConsumeResp(fbb, consumed, remaining);
+    auto resp = Protocol::CreateFluidConsumeResp(fbb, consumed, remaining_demand);
     fbb.Finish(resp);
-    router_.Publish("fluid.consume.response", {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+    router_.Publish("fluid.consume.response",
+        {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+    spdlog::debug("[PipeNet] fluid consume node={} fluid={} requested={} pipe={} total={} remaining={}",
+                  req->node_id(), fluid_id, requested, pipe_result.accepted_amount,
+                  consumed, remaining_demand);
 }
 
 void PipeNetworkService::handleItemNodeUpdate(const std::vector<uint8_t>& data) {

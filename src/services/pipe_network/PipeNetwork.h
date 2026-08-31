@@ -304,6 +304,7 @@ private:
 
   struct FluidTransaction {
     FluidTransferResult result;
+    int32_t requested_amount = 0;
     uint64_t expires_at = 0;
   };
   std::unordered_map<uint64_t, FluidTransaction> fluid_transactions_;
