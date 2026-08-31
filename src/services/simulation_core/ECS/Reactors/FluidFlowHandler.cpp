@@ -69,21 +69,24 @@ void FluidFlowHandler::handle(const std::vector<uint8_t>& data) {
         return;
     }
 
-    // Case 2: No FluidStorage, but has EnergyStorage with STEAM type — fluid-as-energy
-    // This is the CONSUMER side (e.g. macerator receives steam as energy).
-    // The flow event here means fluid arrived at the from_node, so energy.current
-    // should be INCREMENTED, not decremented.
+    // Case 2: STEAM EnergyStorage. A flow event with no destination is emitted
+    // for a source that PipeNetwork already debited, so mirror that debit in the
+    // owning solid boiler's ECS state. Consumer credit is performed exclusively
+    // by MachineSystem::onFluidConsumeResponse; crediting it here as well would
+    // mint steam whenever a source event is replayed.
     if (energy && energy->type == EnergyType::STEAM) {
-        energy->current += amount;
-        if (energy->current > energy->capacity) energy->current = energy->capacity;
-        if (mc && fluidClient_) {
-            fluidClient_->publishNodeUpdate(
-                from_node, mc->x, mc->y, mc->z,
-                fluid_id, energy->current, energy->capacity,
-                0, 0, energy->tier, false, true);
+        if (flow->to_node_id() == 0) {
+            energy->current -= amount;
+            if (energy->current < 0) energy->current = 0;
+            if (mc && fluidClient_) {
+                fluidClient_->publishNodeUpdate(
+                    from_node, mc->x, mc->y, mc->z,
+                    fluid_id, energy->current, energy->capacity,
+                    0, 0, energy->tier, true, false);
+            }
+            spdlog::trace("FluidFlowHandler: fluid {} x{} drained from STEAM EnergyStorage at node {} (remaining: {})",
+                          fluid_id, amount, from_node, energy->current);
         }
-        spdlog::trace("FluidFlowHandler: fluid {} x{} delivered as steam energy to node {} (total: {})",
-                      fluid_id, amount, from_node, energy->current);
         return;
     }
 

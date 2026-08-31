@@ -11,7 +11,7 @@ namespace simcore {
 
 namespace {
     inline bool isGenerator(uint16_t block_id) {
-        return block_id == ItemId::pack("1110:00:2") || block_id == ItemId::pack("1110:01:0");
+        return block_id == ItemId::pack("1110:00:2");
     }
 }
 
@@ -42,39 +42,6 @@ void GeneratorSystem::tick(float /*dt*/) {
         auto& energy = view.get<EnergyStorage>(ent);
 
         if (!isGenerator(machine.machine_id)) continue;
-
-        // Register the STEAM node so pipes can attach to a solid boiler even
-        // when idle/fuel-less. Throttle to a low-frequency heartbeat: register
-        // once, then re-publish every kSteamHeartbeatTicks for late pipe
-        // placement. Stops spamming PipeNetwork every tick (which, on id
-        // collision, also flooded "Duplicate node" warnings).
-        if (energy.type == EnergyType::STEAM) {
-            auto sit = lastSteamPublish_.find(ent);
-            bool publishSteam = (sit == lastSteamPublish_.end()) ||
-                                ((tickCount_ - sit->second) >= kSteamHeartbeatTicks);
-            if (publishSteam) {
-                if (pipeClient_) {
-                    pipeClient_->publishNodeUpdate(
-                        static_cast<uint64_t>(ent),
-                        static_cast<int32_t>(machine.x),
-                        static_cast<int32_t>(machine.y),
-                        static_cast<int32_t>(machine.z),
-                        energy.current, energy.capacity,
-                        energy.maxInput, energy.maxOutput,
-                        energy.tier, static_cast<int32_t>(energy.type),
-                        true, false);
-                }
-                if (fluidClient_) {
-                    fluidClient_->publishNodeUpdate(
-                        static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
-                        ItemId::pack("1111:11:1"),              // steam
-                        energy.current, energy.capacity,
-                        0, energy.maxOutput, energy.tier,
-                        true, false);                           // is_source=true
-                }
-                lastSteamPublish_[ent] = tickCount_;
-            }
-        }
 
         spdlog::debug("[GeneratorSystem] processing entity {} machine_id={} slots={} coal={} energy={}/{}",
                       static_cast<uint32_t>(ent), machine.machine_id,
@@ -138,36 +105,6 @@ void GeneratorSystem::tick(float /*dt*/) {
                 true,
                 false
             );
-        }
-
-        // STEAM generators (solid boiler) publish node update for PipeNetwork registration
-        if (pipeClient_ && energy.type == EnergyType::STEAM) {
-            pipeClient_->publishNodeUpdate(
-                static_cast<uint64_t>(ent),
-                static_cast<int32_t>(machine.x),
-                static_cast<int32_t>(machine.y),
-                static_cast<int32_t>(machine.z),
-                energy.current,
-                energy.capacity,
-                energy.maxInput,
-                energy.maxOutput,
-                energy.tier,
-                static_cast<int32_t>(energy.type),
-                true,
-                false
-            );
-
-            // Steam fluid source publish: only STEAM generators (solid boiler)
-            // expose a steam node. Heat generators must not register as a steam
-            // source, or a consumer's BFS would drain phantom steam from them.
-            if (fluidClient_) {
-                fluidClient_->publishNodeUpdate(
-                    static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
-                    ItemId::pack("1111:11:1"),              // steam
-                    energy.current, energy.capacity,
-                    0, energy.maxOutput, energy.tier,
-                    true, false);                           // is_source=true
-            }
         }
 
         if (remaining <= 0) {

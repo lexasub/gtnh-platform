@@ -190,7 +190,7 @@ void PipeNetworkService::tick() {
         if (!st.is_source) continue;
         const auto* n = network_manager_.getNode(mgrId);
         if (!n || n->fluidCapacity <= 0) continue;
-        network_manager_.setNodeFluid(mgrId, st.energy, st.capacity, n->fluidId,
+        network_manager_.setNodeFluid(mgrId, st.energy, st.capacity, st.fluid_id,
                                       st.is_source, st.is_sink);
     }
     spdlog::debug("[FLUID] tick: synced {} sources to PipeNode.fluidBuffer", 
@@ -216,10 +216,18 @@ void PipeNetworkService::tick() {
             Protocol::Vec3i pos(n->x, n->y, n->z);
             flatbuffers::FlatBufferBuilder fbb;
             int32_t tier = 0;
+            uint64_t source_proto = nid;
             auto stIt2 = node_states_.find(nid);
-            if (stIt2 != node_states_.end()) tier = stIt2->second.tier;
+            if (stIt2 != node_states_.end()) {
+                tier = stIt2->second.tier;
+                // from_node_id must be the machine's ECS entity id (protocol_id),
+                // not the manager id: FluidFlowHandler resolves the entity via
+                // reg_.valid(from_node). On an id collision the manager id is a
+                // fresh PipeNetwork-space value and never maps to the boiler.
+                if (stIt2->second.protocol_id != 0) source_proto = stIt2->second.protocol_id;
+            }
             auto event = Protocol::CreateFluidFlowEvent(
-                fbb, nid, nid, 0, n->fluidId, -delta, &pos, tier);
+                fbb, nid, source_proto, 0, n->fluidId, -delta, &pos, tier);
             fbb.Finish(event);
             router_.Publish("fluid.flow",
                 {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
@@ -302,7 +310,7 @@ void PipeNetworkService::tick() {
 }
 
 void PipeNetworkService::onRouterMessage(const std::string& topic, const std::vector<uint8_t>& data) {
-    spdlog::info("[MSG] topic={} size={}", topic, data.size());
+    spdlog::debug("[MSG] topic={} size={}", topic, data.size());
     if (topic == "energy.node.update") {
         handleNodeUpdate(data);
     } else if (topic == "energy.check.request") {
@@ -402,6 +410,28 @@ void PipeNetworkService::handleBlockChanged(const std::vector<uint8_t>& data) {
     bool isHeat = (block_id == BLOCK_ID_HEAT_PIPE);
     connectNodeNeighbors(nodeId, x, y, z, meta, isItem, isHeat, /*sourceIsPipe=*/true);
 
+    // BUGFIX (pipe edges): a pipe's edges were only rebuilt for the node being
+    // placed/removed. When a neighbouring pipe is broken and re-placed it gets a
+    // NEW node id (nextNodeId_++), so the surviving neighbour's edge still points
+    // at the dead id and the chain silently breaks ("steam stops at 2nd pipe").
+    // The machine (boiler) self-heals via per-tick fluid.node.update, but pipes
+    // have no such trigger — so also re-link every face-neighbour that is a pipe.
+    for (int f = 0; f < 6; ++f) {
+        uint64_t nKey = posKey(x + FACE_DX[f], y + FACE_DY[f], z + FACE_DZ[f]);
+        auto nit = pipe_nodes_.find(nKey);
+        if (nit == pipe_nodes_.end()) continue;
+        uint64_t nId = nit->second;
+        const auto* nNode = network_manager_.getNode(nId);
+        if (!nNode) continue;
+        bool nItem = (nNode->block_id == BLOCK_ID_ITEM_PIPE ||
+                      nNode->block_id == BLOCK_ID_DENSE_ITEM_PIPE);
+        bool nHeat = (nNode->block_id == BLOCK_ID_HEAT_PIPE);
+        uint8_t nMeta = pipe_meta_.count(nKey) ? pipe_meta_[nKey] : 0;
+        network_manager_.removeEdgesForNode(nId);
+        connectNodeNeighbors(nId, nNode->x, nNode->y, nNode->z, nMeta,
+                             nItem, nHeat, /*sourceIsPipe=*/true);
+    }
+
     network_manager_.rebuildItemNetworks();
 }
 
@@ -446,7 +476,7 @@ void PipeNetworkService::connectNodeNeighbors(uint64_t sourceNodeId,
             compatible = nn->fluidCapacity > 0;
         }
 
-        spdlog::info("[CONN] src={} (pipe={} item={} heat={}) face={} nei={} isPipe={} cap={} compatible={}",
+        spdlog::debug("[CONN] src={} (pipe={} item={} heat={}) face={} nei={} isPipe={} cap={} compatible={}",
                       sourceNodeId, sourceIsPipe, isItem, isHeat, f, nNode, nIsPipe,
                       nn->fluidCapacity, compatible);
 
@@ -455,14 +485,14 @@ void PipeNetworkService::connectNodeNeighbors(uint64_t sourceNodeId,
         if (nIsPipe) {
             uint8_t nMeta = pipe_meta_.count(nKey) ? pipe_meta_[nKey] : 0;
             bool connected = pipenet::pipeFacesConnected(sourceMeta, nMeta, f);
-            spdlog::info("[CONN] pipe-to-pipe: srcMeta={} nMeta={} face={} connected={}",
+            spdlog::debug("[CONN] pipe-to-pipe: srcMeta={} nMeta={} face={} connected={}",
                           sourceMeta, nMeta, f, connected);
             if (connected) {
                 network_manager_.addEdge(sourceNodeId, nNode);
             }
         } else {
             bool open = pipenet::pipeFaceOpen(sourceMeta, f);
-            spdlog::info("[CONN] pipe-to-machine: srcMeta={} face={} open={}",
+            spdlog::debug("[CONN] pipe-to-machine: srcMeta={} face={} open={}",
                           sourceMeta, f, open);
             if (open) {
                 network_manager_.addEdge(sourceNodeId, nNode);
@@ -711,18 +741,16 @@ void PipeNetworkService::handleFluidNodeUpdate(const std::vector<uint8_t>& data)
         if (protocol_id != 0) protocol_to_mgr_[protocol_id] = mgr_id;
         machine_nodes_[key] = mgr_id;
         spdlog::debug("Registered fluid node {} -> mgr {} at ({},{},{})", protocol_id, mgr_id, x, y, z);
-    } else {
-        // mgr_id was already resolved above (protocol_to_mgr_ or, for
-        // protocol_id==0 machines, the machine_nodes_ position fallback).
-        // Fluid-capacity upgrade: machines register via handleNodeUpdate as
-        // energy nodes (blockId=1, fluidCapacity=0). First fluid update lifts
-        // them into the fluid layer so the masked scan below forms pipe edges.
-        // Always set fluidId — without it sourceFluidId stays 0 and drain
-        // fluidId matching fails.
-        if (network_manager_.getNode(mgr_id)) {
-            network_manager_.setNodeFluid(mgr_id, update->amount(), update->capacity(),
-                                          update->fluid_id(), update->is_source(), update->is_sink());
-        }
+    }
+
+    // A FluidNodeUpdate is authoritative for the fluid layer regardless of
+    // whether the graph node was just created (fluid-first) or was previously
+    // registered by an energy update (energy-first).  addNodeWithId() only
+    // supplies a pipe-shaped default; setNodeFluid() is the only path that
+    // initializes fluidBuffer, fluidCapacity, fluidId, and source/sink flags.
+    if (network_manager_.getNode(mgr_id)) {
+        network_manager_.setNodeFluid(mgr_id, update->amount(), update->capacity(),
+                                      update->fluid_id(), update->is_source(), update->is_sink());
     }
 
     NodeState& st = node_states_[mgr_id];
@@ -730,10 +758,11 @@ void PipeNetworkService::handleFluidNodeUpdate(const std::vector<uint8_t>& data)
     st.energy = update->amount();
     st.capacity = update->capacity();
     st.tier = update->tier();
+    st.fluid_id = update->fluid_id();
     st.is_source = update->is_source();
     st.is_sink = update->is_sink();
 
-    spdlog::info("[FLUID] nodeNodeUpdate: node={} is_source={} is_sink={} amount={}/{} fluid={}",
+    spdlog::debug("[FLUID] nodeNodeUpdate: node={} is_source={} is_sink={} amount={}/{} fluid={}",
                   protocol_id, st.is_source, st.is_sink,
                   st.energy, st.capacity, update->fluid_id());
 
@@ -777,7 +806,7 @@ void PipeNetworkService::handleFluidConsumeRequest(const std::vector<uint8_t>& d
             spdlog::warn("[PIPE_TRACE] handleFluidConsumeRequest: node {} not in protocol_to_mgr_",
                          req->node_id());
             flatbuffers::FlatBufferBuilder fbb;
-            auto resp = Protocol::CreateFluidConsumeResp(fbb, 0, 0);
+            auto resp = Protocol::CreateFluidConsumeResp(fbb, 0, 0, req->node_id());
             fbb.Finish(resp);
             router_.Publish("fluid.consume.response", {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
             return;
@@ -788,8 +817,14 @@ void PipeNetworkService::handleFluidConsumeRequest(const std::vector<uint8_t>& d
     uint32_t fluidId = req->fluid_id();
     int32_t amount = req->amount();
 
-    spdlog::info("[PIPE_TRACE] handleFluidConsumeRequest: node={} mgr={} fluid={} amount={}",
+    spdlog::debug("[PIPE_TRACE] handleFluidConsumeRequest: node={} mgr={} fluid={} amount={}",
                  req->node_id(), mgr_id, fluidId, amount);
+
+    // Ensure the connected-component view is fresh before scanning for the
+    // sink's network. Placement/removal set the dirty flag; the next fluid tick
+    // (and every consume request) rebuilds from the final graph so the sink is
+    // never missing from a partially-built, fragmented topology.
+    network_manager_.rebuildNetworksIfDirty();
 
     // Find the network containing this sink node.
     uint64_t networkId = 0;
@@ -803,7 +838,9 @@ void PipeNetworkService::handleFluidConsumeRequest(const std::vector<uint8_t>& d
 
     int32_t consumed = 0;
     int32_t remaining = 0;
-    int32_t fromSource = 0;  // portion that came from source node_states_ (for flow event)
+    // Exact source debits are recorded separately so every FluidFlowEvent
+    // mirrors the amount that was credited to the consuming machine.
+    std::vector<std::pair<uint64_t, int32_t>> sourceDrains;
 
     if (networkId != 0) {
         // Drain from pipe buffers first (GTNH-style: machine pulls from pipe).
@@ -817,7 +854,7 @@ void PipeNetworkService::handleFluidConsumeRequest(const std::vector<uint8_t>& d
         // (the boiler's steam pool) so the machine still gets its steam.
         if (consumed < amount) {
             int32_t deficit = amount - consumed;
-            spdlog::info("[PIPE_TRACE] pipe drain insufficient: consumed={}/{} deficit={}",
+            spdlog::debug("[PIPE_TRACE] pipe drain insufficient: consumed={}/{} deficit={}",
                           consumed, amount, deficit);
             // Find sources with matching fluid in the same network.
             for (const auto* net : network_manager_.getAllNetworks()) {
@@ -833,33 +870,32 @@ void PipeNetworkService::handleFluidConsumeRequest(const std::vector<uint8_t>& d
                 }
                 if (totalSource <= 0) break;
 
-                fromSource = deficit < totalSource ? deficit : totalSource;
-                int32_t sourceRemaining = fromSource;
+                const int32_t requestedFromSources = (std::min)(deficit, totalSource);
+                int32_t sourceRemaining = requestedFromSources;
+                std::vector<uint64_t> matchingSources;
                 for (uint64_t nid : net->nodeIds) {
                     auto si = node_states_.find(nid);
                     if (si == node_states_.end() || !si->second.is_source) continue;
                     const auto* nn = network_manager_.getNode(nid);
                     if (nn && nn->fluidId != 0 && nn->fluidId != fluidId) continue;
-                    int32_t take = static_cast<int32_t>(
-                        (static_cast<int64_t>(fromSource) * si->second.energy) / totalSource);
-                    if (take < 0) take = 0;
-                    if (take > si->second.energy) take = si->second.energy;
+                    matchingSources.push_back(nid);
+                }
+
+                for (size_t index = 0; index < matchingSources.size(); ++index) {
+                    const uint64_t nid = matchingSources[index];
+                    auto si = node_states_.find(nid);
+                    if (si == node_states_.end()) continue;
+                    int32_t take = (index + 1 == matchingSources.size())
+                        ? sourceRemaining
+                        : static_cast<int32_t>(
+                            (static_cast<int64_t>(requestedFromSources) * si->second.energy) /
+                            totalSource);
+                    take = (std::min)(take, si->second.energy);
+                    if (take <= 0) continue;
                     si->second.energy -= take;
                     sourceRemaining -= take;
                     consumed += take;
-                    fromSource += take;
-                }
-                // Also drain from PipeNode.fluidBuffer on source node so the
-                // next tickFluidNetworks doesn't re-push the same steam.
-                for (uint64_t nid : net->nodeIds) {
-                    auto si = node_states_.find(nid);
-                    if (si == node_states_.end() || !si->second.is_source) continue;
-                    auto* pn = const_cast<pipenet::PipeNode*>(network_manager_.getNode(nid));
-                    if (pn && pn->fluidBuffer > 0) {
-                        int32_t take = (std::min)(pn->fluidBuffer, sourceRemaining);
-                        pn->fluidBuffer -= take;
-                        sourceRemaining -= take;
-                    }
+                    sourceDrains.emplace_back(nid, take);
                 }
                 break;
             }
@@ -874,64 +910,43 @@ void PipeNetworkService::handleFluidConsumeRequest(const std::vector<uint8_t>& d
             remaining = sit->second.capacity - sit->second.energy;
         }
 
-        // When the fallback drained from source node_states_, publish a flow
-        // event so FluidFlowHandler decrements SteamOutputComponent in ECS.
-        if (fromSource > 0) {
-            for (const auto* net : network_manager_.getAllNetworks()) {
-                if (!net || net->id != networkId) continue;
-                for (uint64_t nid : net->nodeIds) {
-                    auto si = node_states_.find(nid);
-                    if (si == node_states_.end() || !si->second.is_source) continue;
-                    const auto* nn = network_manager_.getNode(nid);
-                    if (!nn) continue;
-                    // Only publish if this source was actually drained for this
-                    // fluid type.  The PipeNode.fluidId may be 0 for machine
-                    // sources added via handleFluidNodeUpdate (the capacity gate
-                    // skipped the fluidId set), but the consumption is real.
-                    Protocol::Vec3i sourcePos(nn->x, nn->y, nn->z);
-                    flatbuffers::FlatBufferBuilder fbb;
-                    auto event = Protocol::CreateFluidFlowEvent(
-                        fbb, nid, nid, 0, fluidId,
-                        fromSource, &sourcePos,
-                        sit != node_states_.end() ? sit->second.tier : 0);
-                    fbb.Finish(event);
-                    router_.Publish("fluid.flow",
-                        {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
-                    break;  // one flow event per consume (don't double-drain)
-                }
-                break;
-            }
-        }
-
-        // Publish flow events for pipe drains so FluidFlowHandler can process
-        // steam-as-energy delivery at the sink (macerator).
-        for (const auto& [nid, delta] : pipeDeltas) {
-            if (delta >= 0) continue;
-            const auto* pn = network_manager_.getNode(nid);
-            if (!pn) continue;
-            Protocol::Vec3i flowPos(pn->x, pn->y, pn->z);
+        // Mirror every actual fallback debit into ECS.  A single aggregate
+        // event would debit the first boiler by steam supplied by other boilers.
+        for (const auto& [sourceId, drained] : sourceDrains) {
+            const auto* source = network_manager_.getNode(sourceId);
+            auto sourceState = node_states_.find(sourceId);
+            if (!source || sourceState == node_states_.end()) continue;
+            Protocol::Vec3i sourcePos(source->x, source->y, source->z);
             flatbuffers::FlatBufferBuilder fbb;
+            uint64_t source_proto = sourceId;
+            if (sourceState->second.protocol_id != 0)
+                source_proto = sourceState->second.protocol_id;
             auto event = Protocol::CreateFluidFlowEvent(
-                fbb, mgr_id, nid, req->node_id(),
-                fluidId, -delta, &flowPos, sit != node_states_.end() ? sit->second.tier : 0);
+                fbb, sourceId, source_proto, 0, fluidId, drained, &sourcePos,
+                sourceState->second.tier);
             fbb.Finish(event);
             router_.Publish("fluid.flow",
                 {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
         }
+
+        // Pipe-buffer drains are internal graph movement: pipes have no ECS
+        // owner, and consumer credit happens via FluidConsumeResp. Emitting
+        // flow events here would make FluidFlowHandler cast a pipe manager
+        // id to an unrelated entt::entity.
     }
 
     flatbuffers::FlatBufferBuilder fbb;
-    auto resp = Protocol::CreateFluidConsumeResp(fbb, consumed, remaining);
+    auto resp = Protocol::CreateFluidConsumeResp(fbb, consumed, remaining, req->node_id());
     fbb.Finish(resp);
     router_.Publish("fluid.consume.response", {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
 
-    spdlog::info("handleFluidConsumeRequest: node={} fluid={} requested={} consumed={} (from pipes+source)",
+    spdlog::debug("handleFluidConsumeRequest: node={} fluid={} requested={} consumed={} (from pipes+source)",
                   req->node_id(), fluidId, amount, consumed);
 
     // Check if steam arrived at sink — prove the pipeline is working.
     auto sit = node_states_.find(mgr_id);
     if (sit != node_states_.end()) {
-        spdlog::info("[PIPE_TRACE] consume: sink {} energy={}/{} (capacity={}) consumed={}",
+        spdlog::debug("[PIPE_TRACE] consume: sink {} energy={}/{} (capacity={}) consumed={}",
                      mgr_id, sit->second.energy, sit->second.capacity, 
                      sit != node_states_.end() ? sit->second.capacity : 0, consumed);
     } else {

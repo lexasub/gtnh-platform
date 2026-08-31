@@ -25,6 +25,7 @@ struct NodeState {
   int32_t max_output = 0;
   int32_t tier = 0;
   int32_t type = 0;
+  uint32_t fluid_id = 0;
   bool is_source = false;
   bool is_sink = false;
 };

@@ -26,6 +26,7 @@ int main(int argc, char** argv) {
     metrics.install();
 
     spdlog::set_default_logger(spdlog::stdout_color_mt("pipe_networkd"));
+    spdlog::set_level(spdlog::level::debug);
 
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);

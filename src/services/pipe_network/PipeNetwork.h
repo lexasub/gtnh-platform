@@ -139,6 +139,13 @@ public:
   // Recalculate all networks (BFS from unvisited nodes)
   void rebuildNetworks();
 
+  // Recalculate networks only if a topology mutation happened since the last
+  // rebuild. Deferred rebuild keeps the connected-component view consistent
+  // (no fragmented intermediate states observed by ticks or consume requests).
+  void rebuildNetworksIfDirty() {
+    if (networksDirty_) rebuildNetworks();
+  }
+
   // Distribute energy across a network for one tick
   // Returns map of node_id -> energy_delta (positive = received, negative =
   // sent)
@@ -216,6 +223,12 @@ private:
   uint64_t nextNodeId_{1};
   uint64_t nextEdgeId_{1};
   uint64_t nextNetworkId_{1};
+
+  // Set by any topology mutation; rebuildNetworks() is deferred to the next
+  // tick (lazy) so a placement that touches N edges produces ONE rebuild of the
+  // final connected graph instead of N fragmented intermediate ones. This is
+  // what keeps tickFluidNetworks() from seeing a torn/split network mid-build.
+  bool networksDirty_ = true;
 
   // BFS helper
   void bfsNetwork(uint64_t startNode, std::unordered_set<uint64_t> &visited,

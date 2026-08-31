@@ -475,6 +475,47 @@ static void test_fluid_distribution_no_source() {
     PASS();
 }
 
+static void test_fluid_repro_chain_4_vert() {
+    // REPRO: boiler source + chain of pipes, horizontal AND vertical. User reports
+    // steam stops at the 2nd pipe and vertical is empty.
+    pipenet::PipeNetworkManager mgr;
+    uint64_t boiler = mgr.addNode(0, 0, 0, 61);   // source at (0,0,0)
+    uint64_t p1h    = mgr.addNode(1, 0, 0, 61);   // horizontal chain
+    uint64_t p2h    = mgr.addNode(2, 0, 0, 61);
+    uint64_t p3h    = mgr.addNode(3, 0, 0, 61);
+    uint64_t p1v    = mgr.addNode(0, 1, 0, 61);   // vertical chain (up)
+    uint64_t p2v    = mgr.addNode(0, 2, 0, 61);
+
+    // edges boiler->p1h->p2h->p3h  and  boiler->p1v->p2v
+    mgr.addEdge(boiler, p1h);
+    mgr.addEdge(p1h, p2h);
+    mgr.addEdge(p2h, p3h);
+    mgr.addEdge(boiler, p1v);
+    mgr.addEdge(p1v, p2v);
+
+    mgr.setNodeFluid(boiler, 5000, 5000, 84, true, false);  // big source
+    for (uint64_t p : {p1h,p2h,p3h,p1v,p2v})
+        mgr.setNodeFluid(p, 0, 1000, 0, false, false);
+
+    mgr.rebuildNetworks();
+
+    // Run several ticks so pipe->pipe propagation has time.
+    for (int i = 0; i < 5; ++i) mgr.tickFluidNetworks();
+
+    printf("REPRO buf: p1h=%d p2h=%d p3h=%d | p1v=%d p2v=%d | boiler=%d\n",
+           mgr.getNode(p1h)->fluidBuffer, mgr.getNode(p2h)->fluidBuffer,
+           mgr.getNode(p3h)->fluidBuffer, mgr.getNode(p1v)->fluidBuffer,
+           mgr.getNode(p2v)->fluidBuffer, mgr.getNode(boiler)->fluidBuffer);
+
+    bool allConnected = mgr.discoverNetwork(p3h).size() > 1 &&
+                        mgr.discoverNetwork(p2v).size() > 1;
+    CHECK(allConnected, "p3h and p2v must be reachable from boiler (same network)");
+    // Regression: the far horizontal and vertical pipe must have received fluid.
+    CHECK_GT(mgr.getNode(p3h)->fluidBuffer, 0, "3rd horizontal pipe must fill");
+    CHECK_GT(mgr.getNode(p2v)->fluidBuffer, 0, "2nd vertical pipe must fill");
+    PASS();
+}
+
 // =========================================================================
 //  Fluid buffering tests (tickFluidNetworks: pipes fill even with no sink)
 // =========================================================================
@@ -1715,6 +1756,7 @@ int main(int, char**) {
     // Integration-style
     TEST(block_place_auto_discovery);
     TEST(machine_to_pipe_to_machine);
+    TEST(fluid_repro_chain_4_vert);
 
     // Per-face mask support (item/fluid pipe disconnect via wrench)
     TEST(pipe_node_meta);

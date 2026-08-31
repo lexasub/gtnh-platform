@@ -193,7 +193,43 @@ void MachineSystem::tick(float /*dt*/) {
         auto& energy = view.get<EnergyStorage>(ent);
 
         if (machine.managed_externally) continue;
+
         if (progress.recipe_id.empty()) {
+            // Idle steam machine: still publish its sink to PipeNetwork so the
+            // network routes/drains steam toward it and pre-charges the internal
+            // buffer (GTNH-style: a machine holds a steam pool and draws it down
+            // during a recipe). Without this an idle steam machine would never
+            // appear in PipeNetwork and its pipes would fill/block with no
+            // consumer. Dedup via pendingFluidConsumes_ so onFluidConsumeResponse
+            // credits the right entity, and request only the remaining room
+            // (energy_capacity is the machine's steam pool size).
+            if (energy.type == EnergyType::STEAM) {
+                uint64_t node_id = static_cast<uint64_t>(ent);
+                if (fluidClient_ &&
+                    energy.current < energy.capacity &&
+                    pendingFluidConsumes_.find(node_id) == pendingFluidConsumes_.end()) {
+                    fluidClient_->publishNodeUpdate(
+                        node_id,
+                        static_cast<int32_t>(machine.x),
+                        static_cast<int32_t>(machine.y),
+                        static_cast<int32_t>(machine.z),
+                        ItemId::pack("1111:11:1"),
+                        energy.current,
+                        energy.capacity,
+                        0, 0, energy.tier, false, true);   // sink/neutral
+                    int32_t need = static_cast<int32_t>(energy.capacity - energy.current);
+                    fluidClient_->sendFluidRequest(
+                        node_id,
+                        static_cast<int32_t>(machine.x),
+                        static_cast<int32_t>(machine.y),
+                        static_cast<int32_t>(machine.z),
+                        ItemId::pack("1111:11:1"),
+                        need);
+                    pendingFluidConsumes_[node_id] = need;
+                    spdlog::debug("Steam machine at entity {} pre-charging {} steam (buffer {}/{})",
+                                  static_cast<uint32_t>(ent), need, energy.current, energy.capacity);
+                }
+            }
             continue;
         }
 
@@ -542,35 +578,35 @@ void MachineSystem::onConsumeResponse(uint64_t node_id, int32_t consumed, int32_
                   progress->recipe_id, static_cast<uint32_t>(oldest_ent), consumed, energy->current);
     pendingConsumes_.erase(pendingConsumes_.begin());
 }
-void MachineSystem::onFluidConsumeResponse(int32_t consumed) {
+void MachineSystem::onFluidConsumeResponse(uint64_t node_id, int32_t consumed) {
      if (consumed <= 0) {
-         if (!pendingFluidConsumes_.empty()) {
-             pendingFluidConsumes_.erase(pendingFluidConsumes_.begin());
-             if (pendingFluidConsumes_.empty()) pendingFluidConsumes_.clear();
-         }
+         pendingFluidConsumes_.erase(node_id);
          return;
      }
 
-     // FluidConsumeResp carries no node id: process in FIFO order
-     if (pendingFluidConsumes_.empty()) {
+     // Credit the exact requesting node: FluidConsumeResp carries node_id, and
+     // with idle pre-charge several steam machines can have concurrent requests
+     // in pendingFluidConsumes_ (unordered — begin() is not FIFO).
+     auto it = pendingFluidConsumes_.find(node_id);
+     if (it == pendingFluidConsumes_.end()) {
+         spdlog::debug("FluidConsumeResp for unknown node {} (stale request), ignored", node_id);
          return;
      }
 
-     // Get oldest pending entity
-     entt::entity oldest_ent = static_cast<entt::entity>(pendingFluidConsumes_.begin()->first);
-     auto* machine = reg_.try_get<MachineComponent>(oldest_ent);
-     auto* progress = reg_.try_get<RecipeProgress>(oldest_ent);
-     auto* energy = reg_.try_get<EnergyStorage>(oldest_ent);
+     entt::entity target = static_cast<entt::entity>(node_id);
+     auto* machine = reg_.try_get<MachineComponent>(target);
+     auto* progress = reg_.try_get<RecipeProgress>(target);
+     auto* energy = reg_.try_get<EnergyStorage>(target);
      if (!machine || !progress || !energy) {
-         pendingFluidConsumes_.erase(pendingFluidConsumes_.begin());
+         pendingFluidConsumes_.erase(it);
          return;
      }
 
      energy->current = (std::min)(simcore::add_sat(energy->current, consumed), energy->capacity);
 
      spdlog::debug("Machine {} at entity {} received {} steam from PipeNetwork (total: {})",
-                   progress->recipe_id, static_cast<uint32_t>(oldest_ent), consumed, energy->current);
-     pendingFluidConsumes_.erase(pendingFluidConsumes_.begin());
+                   progress->recipe_id, static_cast<uint32_t>(target), consumed, energy->current);
+     pendingFluidConsumes_.erase(it);
  }
 
 } // namespace simcore

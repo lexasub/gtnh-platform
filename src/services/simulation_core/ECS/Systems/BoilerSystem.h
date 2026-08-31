@@ -10,7 +10,9 @@
 #include "ISystem.h"
 #include "MachineRegistry.h"
 #include <entt/entt.hpp>
+#include <cstdint>
 #include <memory>
+#include <unordered_map>
 
 namespace simcore {
 
@@ -30,6 +32,10 @@ private:
   std::shared_ptr<IEventPublisher> events_;
   std::shared_ptr<PipeEnergyClient> pipeClient_;
   std::shared_ptr<FluidClient> fluidClient_;
+
+  // Solid-fuel boiler (1110:01:0) per-entity burn state:
+  // remaining burn energy (steam units) of the currently burning fuel item.
+  std::unordered_map<entt::entity, int32_t> burnEnergy_;
 };
 
 } // namespace simcore

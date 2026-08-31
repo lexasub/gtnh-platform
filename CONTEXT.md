@@ -52,3 +52,75 @@ _Avoid_: дедуп «consumed=0» на повтор, query-of-intent прото
 **MachineStateStore**:
 Клиентский типизированный стор: декодирует сетевые сообщения один раз, держит состояние по позиции; окна машин читают готовое состояние и не знают протокол. Staleness-политика — деталь реализации стора.
 _Avoid_: парсинг FlatBuffers в каждом окне
+
+---
+
+## Конкретные сущности: пар, трубы, одноблочный бойлер
+
+Выше — абстрактная модель учёта. Ниже — как эти термины **заявлены в реестрах** и какие
+блоки им соответствуют. Идентификаторы — истина из `data/registry/*` (ADR-0002); если код
+расходится с реестром, код побеждает (помечено *статус*).
+
+### Реестр
+
+| Сущность | ID / значение | Файл | Роль |
+|----------|---------------|------|------|
+| Пар (steam) | `fluid_id = 2`, `EnergyType::STEAM` | `fluids.csv`, `machines.yaml` | Газ (density 0.6), источник пара-энергии |
+| Вода (water) | `fluid_id = 1` | `fluids.csv` | Вход бойлера |
+| `fluid_pipe` | `1111:10:0`, tier 0, flow 100 | `pipes.csv` | Труба для жидкостей/пара |
+| `dense_fluid_pipe` | `1111:10:3`, tier 1, flow 400 | `pipes.csv` | Плотная жидкостная (4× поток) |
+| `steam_solid_boiler` (одноблочный) | `1110:01:0` | `machines.yaml` | Жжёт твёрдое топливо → `STEAM`, cap 10000 мБ, max_out 32/тик |
+| `steam_heat_boiler` | `1110:01:1` | `machines.yaml` | Конвертер: соседний `HEAT` → `STEAM` (без воды) |
+
+**Одноблочный бойлер ≠ Large Steam Boiler.** `steam_solid_boiler` — один блок (без паттерна);
+Large Steam Boiler (`LargeBoilerSystem`) — мультиблок 3×3×4 из `doc/archive/EPICS/7-.../D-Large-Boiler.md`.
+Здесь область — только `steam_solid_boiler`.
+
+### Как сущности ложатся на модель учёта
+
+- **Пар как Fluid** (`fluidId=2`) живёт в **TransitBuffer** труб (`PipeNode.fluidBuffer`, мБ).
+  Транспортируется через `fluid_pipe`-сеть. Владелец буфера — `pipe_network`.
+- **Пар как Energy** (`EnergyType::STEAM`) живёт в **MachinePool** машины
+  (`EnergyStorage`/`NodeState.energy`). Владелец пула — `simcore` (ECS).
+- `steam_solid_boiler` — **source** пара: жжёт топливо, публикует `fluid.node.update`
+  (`is_source=true`, `fluidId=2`), льёт в трубы через Top-up.
+- Пар-потребители (`energy_in: STEAM`) — **sink**: публикуют sink всегда (при наличии
+  вместимости), тянут пар через `fluid.consume.request` → сетевой `drain.request` → Accepted.
+- Пересечение границы «сеть ↔ машина» — транзакция **DrainRequest/Accepted** (ADR-0003).
+  `Check` — read-only пробник.
+
+### Блок-идентичность (ADR-0002)
+
+- Истина = `data/registry/{pipes.csv,fluids.csv,machines.yaml}`. Добавить трубу = правка CSV.
+- `block_registry` (`src/libs/block_registry/`) — парсер реестров в рантайме — **не реализован**
+  (Proposed). `pipe_network` и `game_client` пока держат **ручные дубли** таблиц (уже давал
+  продакшн-десинк, постмортем 2026-08-11).
+- Face-биты meta (`0=+X,1=-X,2=+Y,3=-Y,4=+Z,5=-Z`, `meta==0 ⇒ 0x3F`) — **wire-контракт**,
+  не серверное состояние; клиент строит меш трубы из чанка.
+
+### Клиент (ADR-0001)
+
+- Окно бойлера читает состояние через **MachineStateStore** — не знает протокол само.
+- Клиент не владеет авторитетным состоянием бойлера/труб; staleness — эвристика отображения.
+
+### Статус реализации
+
+- `PipeNetworkManager`/`PipeNetworkService`: `setNodeFluid`, `tickFluidNetworks`,
+  `drainFluidFromNetwork`, `fluid.*` топики — ✅ реализовано.
+- `fluid_pipe`/`dense_fluid_pipe` заявлены в `pipes.csv` — ✅; `PipeMeshBuilder` рендерит
+  `fluid_pipe` — ✅.
+- `steam_solid_boiler` заявлен в `machines.yaml`; логика STEAM в `BoilerSystem` — ✅ декларация,
+  сжигание твёрдого топлива → STEAM проверить по `BoilerSystem.cpp`.
+- ADR-0003 миграция: зеркальный дебет через `fluid.flow` (вместо чистого response-канала)
+  **ещё не выпилен** — tech-debt, не блокирует транспорт.
+- Гэпы из доки (раздел B транспорта): бесконечный источник воды ❌, гравитация жидкости ❌,
+  `fluidId` в рецептах `RecipeManager` — частично.
+
+### Ссылки
+
+- `docs/adr/0001-server-authoritative-client.md`, `0002-domain-scoped-block-registries.md`,
+  `0003-reqresp-fluid-accounting.md` — архитектура учёта и реестров.
+- `doc/archive/EPICS/5-transport-pipes-cables/5-transport-pipes-cables.md` — раздел B (Fluid Pipes).
+- `doc/archive/EPICS/0-foundation-energy-fluids/0-foundation-energy-fluids.md` — FluidStack, STEAM.
+- `src/services/pipe_network/PipeNetwork.{h,cpp}`, `PipeNetworkService.cpp`.
+- `src/services/simulation_core/ECS/Systems/BoilerSystem.{h,cpp}`.

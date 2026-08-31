@@ -37,7 +37,7 @@ public:
   void tick(float dt) override;
   void onConsumeResponse(uint64_t node_id = 0, int32_t consumed = 0,
                          int32_t remaining = 0);
-  void onFluidConsumeResponse(int32_t consumed);
+  void onFluidConsumeResponse(uint64_t node_id, int32_t consumed);
 
   // TODO(perf): force-publishing every machine every 10 ticks (~0.5s) is
   // O(#machines) traffic per interval — temporary measure so late-connecting

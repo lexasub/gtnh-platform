@@ -185,6 +185,7 @@ table FluidConsumeReq {
 table FluidConsumeResp {
   consumed:int32;               // actually consumed (mB)
   remaining:int32;              // fluid left after consumption (mB)
+  node_id:uint64;               // consuming node (protocol id) — routes the credit
 }
 
 // ---------------------------------------------------------------------------

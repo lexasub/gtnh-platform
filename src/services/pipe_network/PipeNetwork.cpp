@@ -88,7 +88,7 @@ uint64_t PipeNetworkManager::addNode(int32_t x, int32_t y, int32_t z, uint16_t b
     }
 
     nodes_[id] = node;
-    rebuildNetworks();
+    networksDirty_ = true;
     return id;
 }
 
@@ -141,7 +141,7 @@ bool PipeNetworkManager::addNodeWithId(uint64_t id, int32_t x, int32_t y, int32_
     }
 
     nodes_[id] = node;
-    rebuildNetworks();
+    networksDirty_ = true;
     return true;
 }
 
@@ -156,7 +156,7 @@ void PipeNetworkManager::removeNode(uint64_t nodeId) {
         }
     }
     nodes_.erase(it);
-    rebuildNetworks();
+    networksDirty_ = true;
 }
 
 uint64_t PipeNetworkManager::addEdge(uint64_t fromNode, uint64_t toNode, float resistance) {
@@ -172,13 +172,13 @@ uint64_t PipeNetworkManager::addEdge(uint64_t fromNode, uint64_t toNode, float r
     uint64_t id = nextEdgeId_++;
     InternalEdge edge{id, fromNode, toNode, resistance};
     edges_[id] = edge;
-    rebuildNetworks();
+    networksDirty_ = true;
     return id;
 }
 
 void PipeNetworkManager::removeEdge(uint64_t edgeId) {
     edges_.erase(edgeId);
-    rebuildNetworks();
+    networksDirty_ = true;
 }
 
 void PipeNetworkManager::setNodeMeta(uint64_t nodeId, uint8_t meta) {
@@ -195,7 +195,7 @@ void PipeNetworkManager::removeEdgesForNode(uint64_t nodeId) {
             ++it;
         }
     }
-    rebuildNetworks();
+    networksDirty_ = true;
 }
 
 void PipeNetworkManager::bfsNetwork(uint64_t startNode, std::unordered_set<uint64_t>& visited,
@@ -219,6 +219,9 @@ void PipeNetworkManager::bfsNetwork(uint64_t startNode, std::unordered_set<uint6
         if (ai == adjacency.end()) continue;
 
         for (uint64_t neighbor : ai->second) {
+            // Stale edges may reference removed ids; never let a dead node
+            // join (or bridge) a live component.
+            if (nodes_.find(neighbor) == nodes_.end()) continue;
             if (visited.find(neighbor) == visited.end()) {
                 visited.insert(neighbor);
                 q.push(neighbor);
@@ -251,6 +254,7 @@ std::vector<uint64_t> PipeNetworkManager::discoverNetwork(uint64_t startNodeId) 
         if (ai == adjacency.end()) continue;
 
         for (uint64_t neighbor : ai->second) {
+            if (nodes_.find(neighbor) == nodes_.end()) continue;
             if (visited.find(neighbor) == visited.end()) {
                 visited.insert(neighbor);
                 q.push(neighbor);
@@ -261,10 +265,11 @@ std::vector<uint64_t> PipeNetworkManager::discoverNetwork(uint64_t startNodeId) 
 }
 
 void PipeNetworkManager::rebuildNetworks() {
+    networksDirty_ = false;
     nodeToNetwork_.clear();
     networks_.clear();
 
-    spdlog::info("[FLUID] rebuildNetworks: {} nodes, {} edges", nodes_.size(), edges_.size());
+    spdlog::debug("[FLUID] rebuildNetworks: {} nodes, {} edges", nodes_.size(), edges_.size());
 
     std::unordered_set<uint64_t> visited;
 
@@ -285,11 +290,11 @@ void PipeNetworkManager::rebuildNetworks() {
         net.fluidId = 0;
         net.isActive = false;
 
-        spdlog::info("[FLUID] rebuildNetworks: net={} nodes=[", netId);
+        spdlog::debug("[FLUID] rebuildNetworks: net={} nodes=[", netId);
         for (size_t i = 0; i < component.size(); ++i) {
-            spdlog::info("  {}", component[i]);
+            spdlog::debug("  {}", component[i]);
         }
-        spdlog::info("]");
+        spdlog::debug("]");
 
         uint32_t firstFluidId = 0;
         bool fluidMixed = false;
@@ -454,6 +459,12 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeFluid(uint64
 std::unordered_map<uint64_t, int32_t> PipeNetworkManager::tickFluidNetworks() {
     std::unordered_map<uint64_t, int32_t> deltas;
 
+    // Deferred rebuild: only recompute the connected components once, here at
+    // the start of the tick, from the final graph. Placement/removal set the
+    // dirty flag instead of rebuilding per edge, so the tick never observes a
+    // partially-built, fragmented topology.
+    if (networksDirty_) rebuildNetworks();
+
     for (auto& [netId, net] : networks_) {
         spdlog::debug("[FLUID] tickFluidNetworks: net={} has {} nodes", netId, net.nodeIds.size());
         // 1. Machine sources with live fluid available this tick.
@@ -497,6 +508,10 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::tickFluidNetworks() {
         // 3. Amount to push this tick (bounded by pipe room).
         int32_t toDistribute = totalAvailable < totalRoom ? totalAvailable : totalRoom;
         if (toDistribute <= 0) continue;
+
+        // DIAG: single summary line per net per tick (temporarily at info).
+        spdlog::debug("[FLUID] tick net={} sourceFluid={} pipes={} distribute={} avail={} room={}",
+                     netId, sourceFluidId, (int)pipes.size(), toDistribute, totalAvailable, totalRoom);
 
         // 4. Even split across pipes, remainder to the first pipes.
         int32_t perPipe = toDistribute / static_cast<int32_t>(pipes.size());
@@ -543,6 +558,41 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::tickFluidNetworks() {
         net.isActive = true;
     }
 
+    // Inter-pipe equalization (connected-vessels relaxation): shift fluid from the
+    // fuller of two adjacent pipe nodes toward the emptier so it does not strand in
+    // one block. Runs after the source push; converges over successive ticks.
+    // Deltas are emitted only on the receiver: PipeNetworkService::tick() treats a
+    // negative delta as a machine source, so a negative pipe delta would publish a
+    // fluid.flow whose entity id FluidFlowHandler drops.
+    constexpr int kLevelingPasses = 4;
+    for (int pass = 0; pass < kLevelingPasses; ++pass) {
+        for (const auto& [eid, edge] : edges_) {
+            auto ait = nodes_.find(edge.fromNode);
+            auto bit = nodes_.find(edge.toNode);
+            if (ait == nodes_.end() || bit == nodes_.end()) continue;
+            PipeNode& a = ait->second;
+            PipeNode& b = bit->second;
+            if (a.isSource || a.isSink || b.isSource || b.isSink) continue;
+            // same fluid type only, or fill an untyped (fluidId==0) pipe
+            if (a.fluidId != 0 && b.fluidId != 0 && a.fluidId != b.fluidId) continue;
+            uint32_t fid = a.fluidId != 0 ? a.fluidId : b.fluidId;
+            if (fid == 0) continue;  // nothing to move
+            PipeNode& hi = (a.fluidBuffer >= b.fluidBuffer) ? a : b;
+            PipeNode& lo = (a.fluidBuffer >= b.fluidBuffer) ? b : a;
+            if (hi.fluidBuffer == lo.fluidBuffer) continue;
+            int32_t move = (hi.fluidBuffer - lo.fluidBuffer) / 2;
+            if (move <= 0) continue;
+            int32_t room = lo.fluidCapacity - lo.fluidBuffer;
+            if (room <= 0) continue;
+            if (move > hi.fluidBuffer) move = hi.fluidBuffer;
+            if (move > room) move = room;
+            hi.fluidBuffer -= move;
+            lo.fluidBuffer += move;
+            if (lo.fluidId == 0 && hi.fluidId != 0) lo.fluidId = hi.fluidId;
+            deltas[lo.id] += move;
+        }
+    }
+
     return deltas;
 }
 
@@ -562,9 +612,9 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::drainFluidFromNetwork(
         auto nodeIt = nodes_.find(nid);
         if (nodeIt == nodes_.end()) continue;
         PipeNode& node = nodeIt->second;
-        // Accept pipes with fluidId that matches OR pipe has fluidId=0
-        // (machine sources placed as BLOCK_ID_FLUID_PIPE start with fluidId=0
-        // because the capacity gate in handleFluidNodeUpdate skips fluidId set).
+        // Accept pipes with fluidId that matches OR an untyped empty pipe.
+        // The latter is a valid destination until its first matching source flow
+        // assigns the network fluid type.
         bool matches = (node.fluidId == fluidId) || (node.fluidId == 0);
         if (node.fluidCapacity > 0 && !node.isSource && !node.isSink &&
             node.fluidBuffer > 0 && matches) {
@@ -898,7 +948,7 @@ void PipeNetworkManager::setNodeFluid(uint64_t nodeId, int32_t fluid, int32_t ca
                                        uint32_t fluidId, bool isSource, bool isSink) {
     auto it = nodes_.find(nodeId);
     if (it == nodes_.end()) return;
-    spdlog::info("[SETFLUID] setNodeFluid({}, buf={}, cap={}, flId={}, src={})",
+    spdlog::debug("[SETFLUID] setNodeFluid({}, buf={}, cap={}, flId={}, src={})",
                   nodeId, fluid, capacity, fluidId, isSource);
     it->second.fluidBuffer = fluid;
     it->second.fluidCapacity = capacity;

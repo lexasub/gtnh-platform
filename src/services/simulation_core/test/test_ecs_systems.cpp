@@ -25,6 +25,7 @@
 #include "ECS/Systems/MachineSystem.h"
 #include "ECS/Systems/CreativeGeneratorSystem.h"
 #include "ECS/Systems/BoilerSystem.h"
+#include "ECS/Reactors/FluidFlowHandler.h"
 #include "ECS/Systems/BatteryBufferSystem.h"
 #include "ECS/Systems/DrillSystem.h"
 #include "ECS/components/DrillComponent.h"
@@ -36,6 +37,7 @@
 #include "Actions/SetBlockCASHandler.h"
 #include "Storage/IBlockRepository.h"
 #include "core_generated.h"
+#include "pipe_network_generated.h"
 #include <flatbuffers/flatbuffers.h>
 #include <common/ItemId.h>
 
@@ -662,7 +664,7 @@ static void test_MachineSystem_steam_machine_requests_fluid() {
 
     CHECK_EQ(reg.get<simcore::EnergyStorage>(ent).current, 0,
              "no credit before response");
-    sys.onFluidConsumeResponse(20);
+    sys.onFluidConsumeResponse(static_cast<uint64_t>(ent), 20);
     CHECK_EQ(reg.get<simcore::EnergyStorage>(ent).current, 20,
              "positive response credits 20 steam");
 
@@ -673,11 +675,11 @@ static void test_MachineSystem_steam_machine_requests_fluid() {
     sys.tick(0.05f);
     CHECK_GT(fluid->publish_calls, pub_before,
              "re-requests fluid after positive credit");
-    sys.onFluidConsumeResponse(-1);
+    sys.onFluidConsumeResponse(static_cast<uint64_t>(ent), -1);
     CHECK_EQ(reg.get<simcore::EnergyStorage>(ent).current, 0,
              "negative response does not credit energy");
     int cred_before = reg.get<simcore::EnergyStorage>(ent).current;
-    sys.onFluidConsumeResponse(5);
+    sys.onFluidConsumeResponse(static_cast<uint64_t>(ent), 5);
     CHECK_EQ(reg.get<simcore::EnergyStorage>(ent).current, cred_before,
              "no credit when no pending node exists");
 
@@ -1042,24 +1044,65 @@ static void test_BoilerSystem_heat_pipe_replenish_request() {
     PASS();
 }
 
-static void test_GeneratorSystem_solid_boiler_produces_steam() {
+static void test_FluidFlowHandler_solid_boiler_source_flow_drains_steam() {
+    entt::registry reg;
+    // IMPORTANT: handle() rejects from_node_id == 0 (it means "generation", not a
+    // concrete entity). reg.create() returns 0 for the first entity, so create a
+    // throwaway first to get a non-zero boiler entity id. Without this the event is
+    // dropped before the debit branch and the test would pass vacuously.
+    auto throwaway = reg.create();
+    (void)throwaway;
+    auto ent = reg.create();
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:0"), 0, 12, 64, 34, 1);
+    reg.emplace<simcore::EnergyStorage>(ent, 1000, 400, 0, 32, 1, EnergyType::STEAM);
+    assert(static_cast<uint64_t>(ent) != 0);
+
+    simcore::FluidFlowHandler handler(reg, nullptr);
+    flatbuffers::FlatBufferBuilder fbb;
+    Protocol::Vec3i pos(12, 64, 34);
+    auto event = Protocol::CreateFluidFlowEvent(
+        fbb, static_cast<uint64_t>(ent), static_cast<uint64_t>(ent), 0,
+        ItemId::pack("1111:11:1"), 125, &pos, 1);
+    fbb.Finish(event);
+    std::vector<uint8_t> payload(fbb.GetBufferPointer(),
+                                 fbb.GetBufferPointer() + fbb.GetSize());
+
+    handler.handle(payload);
+
+    CHECK_EQ(reg.get<simcore::EnergyStorage>(ent).current, 275,
+             "outgoing source flow must debit the solid boiler by the transferred steam");
+    PASS();
+}
+
+static void test_BoilerSystem_solid_boiler_produces_steam() {
     setupMachineRegistry();
     entt::registry reg;
     auto events = std::make_shared<MockEventPublisher>();
     auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(std::make_shared<simcore::IoUringRouterClient>());
-    simcore::GeneratorSystem sys(reg, events, pipeClient);
+    simcore::BoilerSystem sys(reg, events, pipeClient);
 
     auto ent = reg.create();
     reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:0"), 0, 200, 64, 200, 4);
+    // EnergyStorage carries the boiler's max STEAM output rate (maxOutput); the
+    // solid boiler makes its own heat, so type is STEAM and no HEAT intake exists.
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 0, 0, 32, 0, EnergyType::STEAM);
     simcore::InventoryContainer container(0, 2, {{ItemId::pack("0:11110:2"), 1, 0}});
     reg.emplace<simcore::InventoryContainer>(ent, container);
+    // Solid boiler stores produced STEAM here (not in EnergyStorage.current,
+    // unlike the heat boiler which keeps the synced HEAT buffer in current).
+    simcore::SteamOutputComponent steam;
+    steam.steam_capacity = 1000;
+    reg.emplace<simcore::SteamOutputComponent>(ent, steam);
 
     sys.tick(0.05f);
-    auto& energy = reg.get<simcore::EnergyStorage>(ent);
 
-    CHECK_GT(energy.current, 0, "solid boiler should produce STEAM from fuel (no water)");
-    CHECK_EQ(static_cast<int>(energy.type), static_cast<int>(EnergyType::STEAM), "produced energy type should be STEAM");
+    auto& steamOut = reg.get<simcore::SteamOutputComponent>(ent);
+    auto& containerOut = reg.get<simcore::InventoryContainer>(ent);
+
+    CHECK_GT(steamOut.steam_stored, 0, "solid boiler should produce STEAM from fuel (no water)");
+    CHECK_EQ(events->last_machine_id, ItemId::pack("1110:01:0"), "machine_id should be steam_solid_boiler");
+    CHECK_GT(events->last_steam_current, 0, "BlockEntityUpdate should carry steam_current");
+    CHECK_EQ(containerOut.slots[0].count, 0, "fuel slot should be consumed when igniting");
 
     PASS();
 }
@@ -1076,7 +1119,8 @@ void test_ecs_systems() {
     TEST(GeneratorSystem_full_storage_skips);
     TEST(BoilerSystem_heat_boiler_produces_steam_no_water);
     TEST(BoilerSystem_heat_pipe_replenish_request);
-    TEST(GeneratorSystem_solid_boiler_produces_steam);
+    TEST(FluidFlowHandler_solid_boiler_source_flow_drains_steam);
+    TEST(BoilerSystem_solid_boiler_produces_steam);
     TEST(AdjacencyTransferSystem_adjacent_transfer);
     TEST(AdjacencyTransferSystem_non_adjacent_no_transfer);
     TEST(MachineSystem_idle_no_recipe);

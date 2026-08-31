@@ -213,7 +213,7 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
             } else if (topic == "fluid.consume.response") {
                 auto* resp = flatbuffers::GetRoot<Protocol::FluidConsumeResp>(data.data());
                 if (!resp || !machineSystem) return;
-                machineSystem->onFluidConsumeResponse(resp->consumed());
+                machineSystem->onFluidConsumeResponse(resp->node_id(), resp->consumed());
 
             } else if (topic == "item.transfer.response") {
                 auto* resp = flatbuffers::GetRoot<Protocol::ItemTransferResp>(data.data());
