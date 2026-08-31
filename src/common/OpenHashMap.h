@@ -62,31 +62,30 @@ public:
         entries_[idx].key = SentinelKey;
         entries_[idx].value = Value{};
         --size_;
-        // Robin Hood deletion: re-probe displaced entries past this slot.
-        // An entry is "displaced" if its ideal position is between its current
-        // position and the deleted slot (circularly), meaning it was pushed
-        // forward during insertion and the gap behind it now breaks its probe chain.
-        uint32_t next = (idx + 1) & mask_;
-        while (entries_[next].key != SentinelKey) {
-          uint32_t ideal = hash(entries_[next].key);
-          bool displaced =
-              (ideal <= idx) ? (next > ideal && next <= idx)
-                             : (next > ideal || next <= idx);
-          if (!displaced)
+        // Backward-shift deletion: close the probe-chain hole left by the erased
+        // slot by sliding each following entry back into the gap when the gap lies
+        // on that entry's probe path [ideal, next] (circularly). Keep scanning
+        // after entries that cannot move: a later displaced entry may still close
+        // the gap. The bound also handles erasing from a completely full table,
+        // where no empty slot exists to terminate the scan until the hole wraps.
+        uint32_t hole = idx;
+        uint32_t next = (hole + 1) & mask_;
+        for (int scanned = 0; scanned < Capacity - 1; ++scanned) {
+          if (entries_[next].key == SentinelKey)
             break;
-          Entry boot = entries_[next];
-          entries_[next].key = SentinelKey;
-          entries_[next].value = Value{};
-          uint32_t ins = ideal;
-          for (int j = 0; j < Capacity; ++j) {
-            if (entries_[ins].key == SentinelKey) {
-              entries_[ins] = boot;
-              break;
-            }
-            ins = (ins + 1) & mask_;
+          uint32_t ideal = hash(entries_[next].key);
+          bool on_path = (ideal <= next) ? (ideal <= hole && hole <= next)
+                                         : (hole >= ideal || hole <= next);
+          if (on_path) {
+            entries_[hole] = entries_[next];
+            entries_[next].key = SentinelKey;
+            entries_[next].value = Value{};
+            hole = next;
           }
           next = (next + 1) & mask_;
         }
+        // If the table was full, the scan has wrapped back to the hole. It is
+        // already empty and needs no further cleanup.
         return true;
       }
       idx = (idx + 1) & mask_;
