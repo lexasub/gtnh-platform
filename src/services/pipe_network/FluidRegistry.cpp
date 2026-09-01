@@ -23,9 +23,18 @@ void FluidRegistry::initDefaults() {
     if (initialized_) return;
     initialized_ = true;
 
-    // IDs from data/registry/items.csv (prefix notation):
+    // IDs from data/registry/items.csv (prefix notation). The Steam id comes
+    // from the shared canonical registry when one loads; otherwise the pinned
+    // constant that registry_test keeps equal to the resolved value is used,
+    // so steam properties are always registered under the canonical id.
+    gtnh::common::Registry shared;
+    uint16_t steam_id = gtnh::common::steamItemId();
+    if (shared.load("data/registry")) {
+        const uint16_t resolved = shared.steamItemId();
+        if (resolved != 0) steam_id = resolved;
+    }
     registerFluid({ItemId::pack("1111:11:0"), "water",          1.0f,  1.0f, 373});
-    registerFluid({gtnh::common::steamItemId(), "steam",          0.6f,  0.3f, 473});
+    registerFluid({steam_id,                  "steam",          0.6f,  0.3f, 473});
     registerFluid({ItemId::pack("1111:11:2"), "sulfuric_acid",  1.84f, 24.0f, 610});
 
     // Bucket items

@@ -34,7 +34,8 @@ public:
                 std::shared_ptr<PlayerInventoryStore> invStore = nullptr,
                 std::shared_ptr<IoUringRouterClient> router = nullptr,
                 std::shared_ptr<FluidClient> fluidClient = nullptr,
-                std::shared_ptr<CraftReservationClient> reservations = nullptr);
+                std::shared_ptr<CraftReservationClient> reservations = nullptr,
+                std::uint16_t steam_item_id = 0);
 
   void tick(float dt) override;
   void onConsumeResponse(uint64_t node_id = 0, int32_t consumed = 0,
@@ -73,6 +74,9 @@ private:
   std::shared_ptr<IoUringRouterClient> router_;
   std::shared_ptr<FluidClient> fluidClient_;
   std::shared_ptr<CraftReservationClient> reservations_;
+  // Registry-resolved Steam item id; 0 (registry unavailable) fails closed:
+  // the legacy steam path never requests steam, so the recipe stays pending.
+  std::uint16_t steam_item_id_ = 0;
   std::unordered_map<uint64_t, int32_t> pendingConsumes_;
   std::unordered_map<uint64_t, int32_t> pendingFluidConsumes_;
   std::unordered_map<uint64_t, uint64_t> lastInventoryHash_;

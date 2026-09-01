@@ -2,7 +2,6 @@
 #include "HeatConstants.h"
 #include "Network/FluidClient.h"
 #include <common/ItemId.h>
-#include <common/Registry.h>
 #include <common/ResourcePortClient.h>
 #include <spdlog/spdlog.h>
 #include "../components/HeatIntakeComponent.h"
@@ -15,9 +14,10 @@ BoilerSystem::BoilerSystem(entt::registry& reg,
                            std::shared_ptr<IEventPublisher> events,
                            std::shared_ptr<PipeEnergyClient> pipeClient,
                            std::shared_ptr<FluidClient> fluidClient,
-                           std::shared_ptr<gtnh::common::IResourcePortClient> portClient)
+                           std::shared_ptr<gtnh::common::IResourcePortClient> portClient,
+                           std::uint16_t steam_item_id)
     : reg_(reg), events_(events), pipeClient_(pipeClient), fluidClient_(fluidClient),
-      portClient_(portClient)
+      portClient_(portClient), steam_id_(steam_item_id)
 {
 }
 
@@ -36,8 +36,11 @@ void BoilerSystem::tick(float /*dt*/) {
 
         // Register/refresh pipe nodes every tick — a cold or steam-full boiler
         // must still exist in the pipe network, or pipes can never attach to it.
+        // Fail-closed: without a resolved Steam id the produced steam could
+        // never be identified or drained, so no heat is converted.
         int32_t maxOut = 0;
-        if (heatIntake.heat_stored > 0 && steam.steam_stored < steam.steam_capacity) {
+        if (steam_id_ != 0 && heatIntake.heat_stored > 0 &&
+            steam.steam_stored < steam.steam_capacity) {
             double toConvert = std::min({
                 static_cast<double>(HeatConstants::CONVERSION_RATE),
                 static_cast<double>(heatIntake.heat_stored),
@@ -97,10 +100,10 @@ void BoilerSystem::tick(float /*dt*/) {
                     needed);
             }
         }
-        if (fluidClient_) {
+        if (fluidClient_ && steam_id_ != 0) {
             fluidClient_->publishNodeUpdate(
                 static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
-                gtnh::common::steamItemId(),              // steam fluid id
+                steam_id_,                               // steam fluid id
                 static_cast<int32_t>(steam.steam_stored),
                 static_cast<int32_t>(steam.steam_capacity),
                 0, maxOut, energy.tier,
@@ -126,16 +129,16 @@ void BoilerSystem::tick(float /*dt*/) {
                 heatIntake.heat_capacity,
                 HeatConstants::HEAT_SINK_REPLENISH_TARGET,
                 port_epochs_.EpochOf(owner, BoilerPorts::kBoilerHuSinkPortId));
-            const gtnh::common::ResourcePort steam_source =
-                BoilerPorts::MakeSteamSourcePort(
-                    owner, px, py, pz,
-                    static_cast<std::int32_t>(steam.steam_capacity),
-                    HeatConstants::CONVERSION_RATE,
-                    port_epochs_.EpochOf(owner, BoilerPorts::kBoilerSteamSourcePortId));
-
             portClient_->PublishPortRegister(hu_sink, 0);  // HU: no resource id
-            portClient_->PublishPortRegister(steam_source,
-                                             gtnh::common::steamItemId());
+            if (steam_id_ != 0) {
+                const gtnh::common::ResourcePort steam_source =
+                    BoilerPorts::MakeSteamSourcePort(
+                        owner, px, py, pz,
+                        static_cast<std::int32_t>(steam.steam_capacity),
+                        HeatConstants::CONVERSION_RATE,
+                        port_epochs_.EpochOf(owner, BoilerPorts::kBoilerSteamSourcePortId));
+                portClient_->PublishPortRegister(steam_source, steam_id_);
+            }
         }
     }
 }

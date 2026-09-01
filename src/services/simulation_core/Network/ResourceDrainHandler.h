@@ -40,7 +40,8 @@ public:
   using PublishFn = std::function<bool(const char* topic,
                                        const std::vector<std::uint8_t>& payload)>;
 
-  ResourceDrainHandler(entt::registry& reg, PublishFn publish);
+  ResourceDrainHandler(entt::registry& reg, PublishFn publish,
+                       std::uint16_t steam_item_id);
 
   // -- TopicDispatcher entry points (one object, three topics) --------------
 
@@ -79,6 +80,9 @@ private:
 
   entt::registry& reg_;
   PublishFn publish_;
+  // Registry-resolved Steam item id; 0 (registry unavailable) fails closed:
+  // SteamOutputComponent buffers accept no drain.
+  std::uint16_t steam_id_ = 0;
   std::unordered_map<gtnh::common::PortId, gtnh::common::ResourcePort> ports_;
   std::unordered_map<std::uint64_t, ReplayEntry> replay_;
   std::deque<std::uint64_t> replay_order_;

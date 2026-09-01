@@ -3,8 +3,6 @@
 #include "ECS/components/FluidStorage.h"
 #include "ECS/components/SteamOutputComponent.h"
 
-#include <common/Registry.h>
-
 #include <algorithm>
 #include <cmath>
 #include <spdlog/spdlog.h>
@@ -60,8 +58,9 @@ std::vector<std::uint8_t> serializePortRemove(std::uint64_t owner_id,
 
 } // namespace
 
-ResourceDrainHandler::ResourceDrainHandler(entt::registry& reg, PublishFn publish)
-    : reg_(reg), publish_(std::move(publish)) {}
+ResourceDrainHandler::ResourceDrainHandler(entt::registry& reg, PublishFn publish,
+                                           std::uint16_t steam_item_id)
+    : reg_(reg), publish_(std::move(publish)), steam_id_(steam_item_id) {}
 
 void ResourceDrainHandler::handlePortRegister(const std::vector<std::uint8_t>& data) {
     gtnh::common::ResourcePort port;
@@ -235,10 +234,11 @@ std::int32_t ResourceDrainHandler::drainSteamOutput(
     entt::entity entity, const ResourceTransferRequest& request, std::int32_t rate_limit) {
     auto& steam = reg_.get<SteamOutputComponent>(entity);
     // SteamOutputComponent stores steam implicitly: the only fluid it can
-    // drain is the canonical Steam item id.
-    if (request.resource_id != gtnh::common::steamItemId()) {
+    // drain is the carried registry-resolved Steam id. Fail closed on 0 so a
+    // zero resource_id request can never match.
+    if (steam_id_ == 0 || request.resource_id != steam_id_) {
         spdlog::debug("ResourceDrainHandler: steam buffer fluid mismatch: request {} != steam {}",
-                      request.resource_id, gtnh::common::steamItemId());
+                      request.resource_id, steam_id_);
         return 0;
     }
     const double available = std::floor(std::max(0.0, steam.steam_stored));

@@ -93,13 +93,14 @@ void spawnECSSystems(std::shared_ptr<simcore::ChunkStoreRepository> blockReposit
                      std::shared_ptr<simcore::PipeEnergyClient> pipeEnergyClient,
                      std::shared_ptr<simcore::FluidClient> fluidClient,
                      std::shared_ptr<simcore::SimulationEngine> simulationEngine,
-                     std::shared_ptr<gtnh::common::IResourcePortClient> resourcePortClient) {
+                     std::shared_ptr<gtnh::common::IResourcePortClient> resourcePortClient,
+                     std::uint16_t steam_item_id) {
     // TODO - may be lazy start - on use
     simulationEngine->registerSystem(std::make_unique<simcore::CoolantSystem>(simulationEngine->reg()));
     simulationEngine->registerSystem(std::make_unique<simcore::ExplosionSystem>(simulationEngine->reg(), eventPublisher));
-    simulationEngine->registerSystem(std::make_unique<simcore::GeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient));
+    simulationEngine->registerSystem(std::make_unique<simcore::GeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient, steam_item_id));
     simulationEngine->registerSystem(std::make_unique<simcore::CreativeGeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
-    simulationEngine->registerSystem(std::make_unique<simcore::BoilerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient, resourcePortClient));
+    simulationEngine->registerSystem(std::make_unique<simcore::BoilerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient, resourcePortClient, steam_item_id));
     simulationEngine->registerSystem(std::make_unique<simcore::TransformerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
     simulationEngine->registerSystem(std::make_unique<simcore::DrillSystem>(simulationEngine->reg(), blockRepository, eventPublisher, pipeEnergyClient));
     simulationEngine->registerSystem(std::make_unique<simcore::RotareGeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
@@ -215,20 +216,27 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // ── Shared canonical registry ──────────────────────────────────────────
+    // Loaded once for the whole service lifetime: recipe validation (4.1.3)
+    // uses it below, and the Steam id is resolved here exactly once and
+    // carried into every system that advertises or drains steam. A validation
+    // failure is a hard startup error before the service serves.
+    gtnh::common::Registry sharedRegistry;
+    const bool registryLoaded = sharedRegistry.load("data/registry");
+    if (!registryLoaded) {
+        for (const auto& err : sharedRegistry.errors()) {
+            spdlog::error("Shared registry: {}", err);
+        }
+        spdlog::warn("Shared registry failed to load; recipe validation runs without it");
+    }
+    // Fail-closed steam identity: 0 when the registry or its fluids.csv
+    // mapping is missing; steam systems treat 0 as "no production".
+    const std::uint16_t steam_item_id = sharedRegistry.steamItemId();
+
     // ── Recipe resource validation (4.1.3/4.4.4) ─────────────────────────
     // Runs after the runtime multiblock class registration so EBF/LCR
-    // recipes validate against their machine classes. The shared CSV
-    // registry resolves steam and fluid identities canonically; a validation
-    // failure is a hard startup error before the service serves.
+    // recipes validate against their machine classes.
     {
-        gtnh::common::Registry sharedRegistry;
-        const bool registryLoaded = sharedRegistry.load("data/registry");
-        if (!registryLoaded) {
-            for (const auto& err : sharedRegistry.errors()) {
-                spdlog::error("Shared registry: {}", err);
-            }
-            spdlog::warn("Shared registry failed to load; recipe validation runs without it");
-        }
         const auto errors = recipeManager->validateResourceRequirements(
             registryLoaded ? &sharedRegistry : nullptr);
         if (!errors.empty()) {
@@ -304,7 +312,8 @@ int main(int argc, char* argv[]) {
         [routerClient](const char* topic, const std::vector<uint8_t>& payload) {
             routerClient->Publish(topic, payload);
             return true;
-        });
+        },
+        steam_item_id);
 
     // Craft orchestration client (refactor-fluid-port-accounting 4.2.x):
     // publishes typed consume requests for PendingCraft reservations and
@@ -431,7 +440,8 @@ int main(int argc, char* argv[]) {
     {
         auto ms = std::make_unique<simcore::MachineSystem>(
             simulationEngine->reg(), recipeManager, eventPublisher, pipeEnergyClient, itemClient,
-            chestSessions, inventoryStore, routerClient, fluidClient, craftReservations);
+            chestSessions, inventoryStore, routerClient, fluidClient, craftReservations,
+            steam_item_id);
         machineSystemRaw = ms.get();
         simulationEngine->registerSystem(std::move(ms));
     }
@@ -442,7 +452,7 @@ int main(int argc, char* argv[]) {
         batteryBufferRaw = bbs.get();
         simulationEngine->registerSystem(std::move(bbs));
     }
-    spawnECSSystems(blockRepository, eventPublisher, pipeEnergyClient, fluidClient, simulationEngine, resourcePortClient);
+    spawnECSSystems(blockRepository, eventPublisher, pipeEnergyClient, fluidClient, simulationEngine, resourcePortClient, steam_item_id);
 
     simulationEngine->registerSystem(std::make_unique<simcore::EBFSystem>(
         simulationEngine->reg(), simulationEngine->getControllers(),
@@ -504,7 +514,6 @@ int main(int argc, char* argv[]) {
     msgDeps.routerClient = routerClient;
     msgDeps.eventPublisher = eventPublisher;
     msgDeps.pipeEnergyClient = pipeEnergyClient;
-    msgDeps.fluidClient = fluidClient;
     msgDeps.itemClient = itemClient;
     msgDeps.inventoryStore = inventoryStore;
     msgDeps.entityStateClient = entityStateClient;

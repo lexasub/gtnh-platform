@@ -1,7 +1,6 @@
 #include "GeneratorSystem.h"
 #include "Network/FluidClient.h"
 #include "../../common/ItemId.h"
-#include "../../common/Registry.h"
 #include "../../libs/machine_registry/MachineRegistry.h"
 #include "../components/HeatIntakeComponent.h"
 #include "../components/SteamOutputComponent.h"
@@ -28,8 +27,10 @@ const std::unordered_map<uint16_t, int32_t>& GeneratorSystem::FuelValues() {
 GeneratorSystem::GeneratorSystem(entt::registry& reg,
                                  std::shared_ptr<IEventPublisher> events,
                                  std::shared_ptr<PipeEnergyClient> pipeClient,
-                                 std::shared_ptr<FluidClient> fluidClient)
-    : reg_(reg), events_(events), pipeClient_(pipeClient), fluidClient_(fluidClient)
+                                 std::shared_ptr<FluidClient> fluidClient,
+                                 std::uint16_t steam_item_id)
+    : reg_(reg), events_(events), pipeClient_(pipeClient), fluidClient_(fluidClient),
+      steam_id_(steam_item_id)
 {
 }
 
@@ -42,6 +43,11 @@ void GeneratorSystem::tick(float /*dt*/) {
         auto& energy = view.get<EnergyStorage>(ent);
 
         if (!isGenerator(machine.machine_id)) continue;
+
+        // Fail-closed: without a resolved Steam id the produced steam could
+        // never be identified or drained — do not burn fuel into a stranded
+        // buffer and do not advertise a steam source.
+        if (energy.type == EnergyType::STEAM && steam_id_ == 0) continue;
 
         // Register the STEAM node every tick (even when idle/fuel-less) so pipes
         // can attach to a solid boiler that is not currently burning.
@@ -60,7 +66,7 @@ void GeneratorSystem::tick(float /*dt*/) {
             if (fluidClient_) {
                 fluidClient_->publishNodeUpdate(
                     static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
-                    gtnh::common::steamItemId(),              // steam
+                    steam_id_,                                // steam
                     energy.current, energy.capacity,
                     0, energy.maxOutput, energy.tier,
                     true, false);                           // is_source=true
@@ -154,7 +160,7 @@ void GeneratorSystem::tick(float /*dt*/) {
             if (fluidClient_) {
                 fluidClient_->publishNodeUpdate(
                     static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
-                    gtnh::common::steamItemId(),              // steam
+                    steam_id_,                                // steam
                     energy.current, energy.capacity,
                     0, energy.maxOutput, energy.tier,
                     true, false);                           // is_source=true

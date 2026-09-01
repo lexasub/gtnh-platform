@@ -117,12 +117,12 @@ private:
   std::vector<DropDefinition> drops_;
   std::vector<std::string> errors_;
 };
-// DEPRECATED back-compat constant for call sites that do not yet hold a
-// loaded Registry (SimulationCore systems, PipeNetwork FluidRegistry).  The
-// canonical accessor is Registry::steamItemId(), which resolves the items.csv
-// row and its fluids.csv mapping at runtime.  registry_test pins this
-// constant to the registry-resolved value; remove it when the remaining call
-// sites migrate to a loaded Registry (tasks 1.4.2/1.4.3).
+// Pinned Steam identity for callers that do not hold a loaded Registry:
+// the recipe-validation cross-check in RecipeManager, tests, and the
+// FluidRegistry fallback. registry_test keeps this constant equal to
+// Registry::steamItemId() resolved from items.csv + fluids.csv. Systems that
+// advertise or drain steam must resolve the id once via Registry::steamItemId()
+// and carry it, never call this constant per site.
 inline constexpr std::uint16_t steamItemId() noexcept {
   return ItemId::pack("1111:11:1");
 }

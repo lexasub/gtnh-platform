@@ -146,7 +146,8 @@ struct DrainFixture {
             }
             return true;
         };
-        handler = std::make_shared<simcore::ResourceDrainHandler>(reg, sink);
+        handler = std::make_shared<simcore::ResourceDrainHandler>(
+            reg, sink, gtnh::common::steamItemId());
         static_cast<void>(reg.create()); // dummy: occupies entity id 0
         machine = reg.create();
     }

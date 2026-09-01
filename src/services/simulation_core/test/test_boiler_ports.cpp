@@ -187,7 +187,8 @@ static void test_BoilerSystem_publishes_both_ports_idempotently() {
   entt::registry reg;
   auto events = std::make_shared<NullEventPublisher>();
   auto port_client = std::make_shared<RecordingPortClient>();
-  simcore::BoilerSystem sys(reg, events, nullptr, nullptr, port_client);
+  simcore::BoilerSystem sys(reg, events, nullptr, nullptr, port_client,
+                              gtnh::common::steamItemId());
 
   const auto ent = MakeBoiler(reg);
   const std::uint64_t owner = static_cast<std::uint64_t>(ent);
@@ -244,7 +245,8 @@ static void test_BoilerSystem_epoch_replacement_per_port() {
   entt::registry reg;
   auto events = std::make_shared<NullEventPublisher>();
   auto port_client = std::make_shared<RecordingPortClient>();
-  simcore::BoilerSystem sys(reg, events, nullptr, nullptr, port_client);
+  simcore::BoilerSystem sys(reg, events, nullptr, nullptr, port_client,
+                              gtnh::common::steamItemId());
 
   const auto ent = MakeBoiler(reg);
   const std::uint64_t owner = static_cast<std::uint64_t>(ent);

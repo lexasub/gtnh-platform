@@ -78,6 +78,7 @@ if(BUILD_TESTING)
     add_dependencies(pipe_network_test pipenet_fbs)
 
     target_link_libraries(pipe_network_test PRIVATE
+        gtnh_common
         flatbuffers::flatbuffers
         spdlog::spdlog
         asio::asio

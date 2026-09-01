@@ -31,7 +31,8 @@ public:
   BoilerSystem(entt::registry &reg, std::shared_ptr<IEventPublisher> events,
                std::shared_ptr<PipeEnergyClient> pipeClient,
                std::shared_ptr<FluidClient> fluidClient = nullptr,
-               std::shared_ptr<gtnh::common::IResourcePortClient> portClient = nullptr);
+               std::shared_ptr<gtnh::common::IResourcePortClient> portClient = nullptr,
+               std::uint16_t steam_item_id = 0);
 
   void tick(float dt) override;
 
@@ -50,6 +51,9 @@ private:
   // updates until the typed path is end-to-end.
   std::shared_ptr<gtnh::common::IResourcePortClient> portClient_;
   BoilerPorts::PortEpochBook port_epochs_;
+  // Registry-resolved Steam item id; 0 (registry unavailable) fails closed:
+  // no conversion, no steam advertisement.
+  std::uint16_t steam_id_ = 0;
 };
 
 } // namespace simcore

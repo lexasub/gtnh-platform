@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include <entt/entt.hpp>
+#include <common/Registry.h>
 
 #include "Network/clients/IoUringRouterClient.h"
 #include "ECS/SimulationEngine.h"
@@ -638,9 +639,12 @@ static void test_MachineSystem_steam_machine_requests_fluid() {
 
     auto fluid = std::make_shared<MockFluidClient>();
 
-    // fluidClient is the 9th (last) ctor parameter.
+    // fluidClient is the 9th ctor parameter; steam id is the 10th (fail-closed
+    // when 0 — tests use the pinned constant that registry_test keeps equal to
+    // the registry-resolved id).
     simcore::MachineSystem sys(reg, recipes, events, pipeClient,
-                               nullptr, nullptr, nullptr, nullptr, fluid);
+                               nullptr, nullptr, nullptr, nullptr, fluid,
+                               nullptr, gtnh::common::steamItemId());
 
     const uint16_t kBlock = 9001;
     auto ent = reg.create();
@@ -982,7 +986,8 @@ static void test_BoilerSystem_heat_boiler_produces_steam_no_water() {
     entt::registry reg;
     auto events = std::make_shared<MockEventPublisher>();
     auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(std::make_shared<simcore::IoUringRouterClient>());
-    simcore::BoilerSystem sys(reg, events, pipeClient);
+    simcore::BoilerSystem sys(reg, events, pipeClient, nullptr, nullptr,
+                              gtnh::common::steamItemId());
 
     auto ent = reg.create();
     reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:1"), 0, 100, 64, 100, 1);
@@ -1017,7 +1022,8 @@ static void test_BoilerSystem_heat_pipe_replenish_request() {
     entt::registry reg;
     auto events = std::make_shared<MockEventPublisher>();
     auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(std::make_shared<simcore::IoUringRouterClient>());
-    simcore::BoilerSystem sys(reg, events, pipeClient);
+    simcore::BoilerSystem sys(reg, events, pipeClient, nullptr, nullptr,
+                              gtnh::common::steamItemId());
 
     auto ent = reg.create();
     reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:1"), 0, 100, 64, 100, 1);
@@ -1047,7 +1053,8 @@ static void test_GeneratorSystem_solid_boiler_produces_steam() {
     entt::registry reg;
     auto events = std::make_shared<MockEventPublisher>();
     auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(std::make_shared<simcore::IoUringRouterClient>());
-    simcore::GeneratorSystem sys(reg, events, pipeClient);
+    simcore::GeneratorSystem sys(reg, events, pipeClient, nullptr,
+                                 gtnh::common::steamItemId());
 
     auto ent = reg.create();
     reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:0"), 0, 200, 64, 200, 4);
