@@ -24,6 +24,8 @@ public:
   [[nodiscard]] bool IsRecipeInspectOpen() const;
   void DoToggleQuestBook();
   void DoToggleConsole();
+  void DoTogglePipeFluidOverlay();
+  [[nodiscard]] bool PipeFluidOverlayOn() const;
 
   // Direct call (from UI clicks, not keybindings)
   void SpawnItem(uint16_t itemId, uint8_t count, int16_t targetSlot = -1);
@@ -33,4 +35,7 @@ private:
   UIManager *uiMgr_ = nullptr;
   NetClient *netClient_ = nullptr;
   InventoryState *playerInv_ = nullptr;
+  // Persistent pipe fluid debug overlay (toggle_pipe_fluid_overlay, default
+  // L). Read by GameClient each frame via uiMgr_.GetActions().
+  bool pipeFluidOverlayOn_ = false;
 };

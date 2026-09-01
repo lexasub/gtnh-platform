@@ -19,6 +19,7 @@
 #include "common/ItemId.h"
 #include "data/registry/ToolIds.h"
 #include "World/WrenchingSide.h"
+#include "Render/PipeFluidOverlay.h"
 #include <limits>
 
 GameClient::GameClient()
@@ -516,6 +517,30 @@ void GameClient::Run() {
                 }
                 frd.ext.wrenchConnectable[i] = connectable;
             }
+        }
+
+        // Pipe fluid overlay: highlight the connected faces of the targeted
+        // fluid pipe. The mask comes from the SAME PipeMeshBuilder::
+        // detectConnections the chunk mesh builder uses, so the overlay always
+        // matches the rendered connections. Read-only: no client→server
+        // requests; the debug text is read from ResourceBufferStateStore by
+        // the ImGui overlay.
+        frd.ext.showPipeFluidOverlay = pipe_fluid_overlay::ShouldShowOverlay(
+            uiMgr_.GetActions().PipeFluidOverlayOn(), interaction_.HasHighlight(),
+            highlightedBlockId);
+        if (frd.ext.showPipeFluidOverlay) {
+            const PipeType pipeType = blockIdToPipeType(highlightedBlockId);
+            frd.ext.pipeFluidIsDense = (pipeType == PipeType::DENSE_FLUID_PIPE);
+            static PipeMeshBuilder pipeOverlayBuilder;
+            const FaceMask mask = pipeOverlayBuilder.detectConnections(
+                hb.x, hb.y, hb.z, pipeType,
+                [&](int32_t bx, int32_t by, int32_t bz) {
+                    return world_.GetBlockAt(BlockPos{bx, by, bz});
+                },
+                [&](int32_t bx, int32_t by, int32_t bz) {
+                    return world_.GetMetaAt(BlockPos{bx, by, bz});
+                });
+            pipe_fluid_overlay::ConnectableFromMask(mask, frd.ext.pipeFluidConnectable);
         }
 
         renderBridge_.SubmitFrame(frd);

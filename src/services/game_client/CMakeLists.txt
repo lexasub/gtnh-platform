@@ -351,4 +351,28 @@ if(BUILD_TESTING)
     )
     add_dependencies(gameclient_resource_buffer_state_test game_client_fbs)
     add_test(NAME gameclient_resource_buffer_state_test COMMAND gameclient_resource_buffer_state_test)
+
+    # Pipe fluid overlay logic (openspec add-pipe-fluid-overlay): overlay gate,
+    # per-face mask mapping over detectConnections, authoritative display text
+    # (unknown/stale, never fabricated zero), read-only structural guard.
+    add_executable(gameclient_pipe_fluid_overlay_test
+        tests/PipeFluidOverlay_test.cpp
+        Render/PipeMeshBuilder.cpp
+        Network/ResourceBufferStateStore.cpp
+        Crafting/ClientItemRegistry.cpp
+    )
+    target_compile_definitions(gameclient_pipe_fluid_overlay_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+    )
+    target_include_directories(gameclient_pipe_fluid_overlay_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/services
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    target_link_libraries(gameclient_pipe_fluid_overlay_test PRIVATE
+        glm::glm
+        spdlog::spdlog
+    )
+    add_dependencies(gameclient_pipe_fluid_overlay_test game_client_fbs)
+    add_test(NAME gameclient_pipe_fluid_overlay_test COMMAND gameclient_pipe_fluid_overlay_test)
 endif()

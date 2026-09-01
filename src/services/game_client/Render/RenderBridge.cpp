@@ -1,5 +1,6 @@
 #include "Render/RenderBridge.h"
 #include "Render/WrenchOverlay.h"
+#include "Render/PipeFluidOverlay.h"
 #include "Render/MinimapWorldAdapter.h"
 #include "World/World.h"
 #include "Camera/Camera.h"
@@ -120,6 +121,28 @@ void RenderBridge::ImGuiOverlay(const renderlib::FrameRenderData& frame) {
     ImGui::Text("held=0x%04X wrenchOverlay=%d hlBlock=0x%04X",
                 frame.ext.heldItemId, frame.ext.showWrenchOverlay ? 1 : 0,
                 frame.ext.highlightedBlockId);
+    ImGui::Text("pipeOverlay=%s highlight=%s",
+                frame.ext.showPipeFluidOverlay ? "ON" : "OFF",
+                frame.ext.hasHighlight ? "yes" : "no");
+    if (frame.ext.showPipeFluidOverlay) {
+        const BlockPos pipePos{frame.ext.highlightedBlock.x,
+                               frame.ext.highlightedBlock.y,
+                               frame.ext.highlightedBlock.z};
+        const PipeContentsStateStore::Entry* contentsEntry = nullptr;
+        const ResourceBufferStateStore::Entry* stateEntry = nullptr;
+        if (g_uiMgr) {
+            if (auto* store = g_uiMgr->GetPipeContentsStore())
+                contentsEntry = store->FindAt(pipePos);
+            if (auto* store = g_uiMgr->GetResourceBufferStore())
+                stateEntry = store->FindAt(pipePos);
+        }
+        char line[128];
+        if (contentsEntry)
+            pipe_fluid_overlay::FormatStateText(line, sizeof(line), contentsEntry);
+        else
+            pipe_fluid_overlay::FormatStateText(line, sizeof(line), stateEntry);
+        ImGui::Text("pipe (%d,%d,%d): %s", pipePos.x, pipePos.y, pipePos.z, line);
+    }
     ImGui::End();
 
     if (!g_uiMgr || !g_uiMgr->AnyOpen()) {
@@ -307,6 +330,28 @@ void RenderBridge::ImGuiOverlay(const renderlib::FrameRenderData& frame) {
         }
     }
 
+    // ---- Pipe fluid overlay: fluid-tinted quads on the pipe's connected faces ----
+    if (frame.ext.showPipeFluidOverlay) {
+        const uint32_t fillCol = frame.ext.pipeFluidIsDense
+                                     ? IM_COL32(90, 180, 255, 140)
+                                     : IM_COL32(60, 130, 235, 85);
+        const uint32_t edgeCol = frame.ext.pipeFluidIsDense
+                                     ? IM_COL32(150, 215, 255, 220)
+                                     : IM_COL32(110, 175, 250, 180);
+        for (int f = 0; f < 6; ++f) {
+            if (!frame.ext.pipeFluidConnectable[f]) continue;
+            // kFaceCorners is reused for screen-space projection only — the
+            // mask itself comes from detectConnections in GameClient.
+            const int* fc = wrench_overlay::kFaceCorners[f];
+            const ImVec2 p0 = screen[fc[0]];
+            const ImVec2 p1 = screen[fc[1]];
+            const ImVec2 p2 = screen[fc[2]];
+            const ImVec2 p3 = screen[fc[3]];
+            dl->AddQuadFilled(p0, p1, p2, p3, fillCol);
+            dl->AddQuad(p0, p1, p2, p3, edgeCol, 2.0f);
+        }
+    }
+
     // ---- Block name label (above highlighted block) ----
     if (frame.ext.highlightedBlockId != 0) {
         std::string_view name = ItemRegistry::GetName(frame.ext.highlightedBlockId);
@@ -329,6 +374,37 @@ void RenderBridge::ImGuiOverlay(const renderlib::FrameRenderData& frame) {
                             ImVec2(sx - textSize.x * 0.5f, sy - textSize.y),
                             IM_COL32(255, 255, 255, 255), name.data(), name.data() + name.size());
             }
+        }
+    }
+
+    // ---- Pipe fluid overlay debug text (below the block-name label) ----
+    // Read-only: values come only from ResourceBufferStateStore::FindAt(); no
+    // current snapshot renders as unknown/stale — never a fabricated zero.
+    if (frame.ext.showPipeFluidOverlay) {
+        const ResourceBufferStateStore::Entry* stateEntry = nullptr;
+        if (g_uiMgr) {
+            if (auto* store = g_uiMgr->GetResourceBufferStore()) {
+                stateEntry = store->FindAt(BlockPos{hb.x, hb.y, hb.z});
+            }
+        }
+        char line[128];
+        pipe_fluid_overlay::FormatStateText(line, sizeof(line), stateEntry);
+
+        glm::vec3 labelPos(hb.x + 0.5f, hb.y + 1.3f, hb.z + 0.5f);
+        glm::vec4 clip = vp * glm::vec4(labelPos, 1.0f);
+        if (clip.w > 0.0f) {
+            glm::vec3 ndc = glm::vec3(clip) / clip.w;
+            const float sx = (ndc.x * 0.5f + 0.5f) * sw;
+            const float sy = (-ndc.y * 0.5f + 0.5f) * sh;
+            const ImVec2 textSize = ImGui::CalcTextSize(line);
+            const float padding = 6.0f;
+            const float top = sy + 10.0f;  // just below the block-name label box
+            const ImVec2 bgMin(sx - textSize.x * 0.5f - padding, top);
+            const ImVec2 bgMax(sx + textSize.x * 0.5f + padding, top + textSize.y + padding);
+            dl->AddRectFilled(bgMin, bgMax, IM_COL32(0, 25, 45, 180), 6.0f);
+            dl->AddRect(bgMin, bgMax, IM_COL32(110, 175, 250, 90), 6.0f);
+            dl->AddText(ImVec2(sx - textSize.x * 0.5f, top + padding * 0.5f),
+                        IM_COL32(170, 215, 255, 255), line);
         }
     }
 

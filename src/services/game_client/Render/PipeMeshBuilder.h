@@ -6,10 +6,13 @@
 #include <cstdint>
 #include <functional>
 
+// Keep the pipe offsets aligned with data/registry/items.csv.  The registry
+// order is fluid, item, dense-item, dense-fluid, heat; these values are part
+// of the packed block IDs and must not be reordered independently.
 enum class PipeType : uint8_t {
+  FLUID_PIPE,
   ITEM_PIPE,
   DENSE_ITEM_PIPE,
-  FLUID_PIPE,
   DENSE_FLUID_PIPE,
   HEAT_PIPE,
   CABLE_TIN,

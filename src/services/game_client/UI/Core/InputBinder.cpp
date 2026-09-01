@@ -41,6 +41,7 @@ void InputBinder::registerDefaults() {
     Bind(GLFW_KEY_E,       "INVENTORY");
     Bind(GLFW_KEY_TAB,     "CREATIVE_MENU");
     Bind(GLFW_KEY_F4,      "toggle_console");
+    Bind(GLFW_KEY_L,       "toggle_pipe_fluid_overlay");
     for (int i = 0; i < 9; ++i)
         Bind(GLFW_KEY_1 + i, "hotbar_" + std::to_string(i));
     Bind(GLFW_KEY_0, "hotbar_9");

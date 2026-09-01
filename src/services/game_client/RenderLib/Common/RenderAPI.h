@@ -91,6 +91,14 @@ struct FrameExt {
   // handler uses, so the overlay's grid and the click's hit-test can never
   // pick different faces.
   uint8_t wrenchSideHit = 0xFF;
+  // Pipe fluid overlay (toggle_pipe_fluid_overlay, default L): fluid-tinted
+  // quads on the connected faces of the targeted FLUID_PIPE/DENSE_FLUID_PIPE.
+  // pipeFluidConnectable[i] = face i (0=+X,1=-X,2=+Y,3=-Y,4=+Z,5=-Z) is
+  // connected, from the same detectConnections the mesh builder uses.
+  // Strictly read-only debug: the overlay never sends client→server requests.
+  bool showPipeFluidOverlay = false;
+  bool pipeFluidConnectable[6] = {false, false, false, false, false, false};
+  bool pipeFluidIsDense = false;
   uint16_t heldItemId = 0;
   size_t chunkCount = 0;
   size_t meshCount = 0;
