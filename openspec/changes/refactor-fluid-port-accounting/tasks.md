@@ -1,23 +1,63 @@
+## Review status (2026-09-01)
+
+- Reviewed on-branch commits `919a3cc`, `b34180f`, `742a65d`, `61a83b1`.
+- Build: `cd cmake-build-debug && ninja -j5` — passed (117/117).
+- Tests: `ctest --output-on-failure -j$(nproc)` — 18/18 enabled tests passed;
+  `toctou_test` is disabled.
+- `d75c1aa` is a useful but incomplete Recipe model follow-up; do not cherry-pick
+  standalone. It should be integrated only with the parser/protocol wiring.
+- `24b2d17` is a no-op include-only checkpoint; do not cherry-pick.
+- `28f9be3` is a partial PipeNetwork foundation, but its typed ports are not wired
+  into the solver and its lifecycle/accounting is incomplete; do not cherry-pick
+  as-is. Port the needed pieces after the current API is finalized.
+- The checked items below describe verified implementation, not commit claims.
+  Parent items remain unchecked when only a partial or manager-local implementation
+  exists.
+
+### Integration status (2026-09-01, agent wave merges)
+
+- Merged on `pipe-boiler2` (linear history): `2bac0c8` typed port contract
+  (2.1/2.2/3.1), `7aae849` canonical registry (1.1–1.3/1.4.1/1.4.4), `a81711e`
+  per-domain graphs (2.3.x), `8689f7a` boiler ports (2.4.x), `b2581f6` owner-side
+  drain handler (3.2.x/2.5.2), `6bd6c35` pipe transactions
+  (3.3.x/3.4.2–3.4.4/2.5.1/2.5.3), `36cc06c` server-authoritative client state
+  (5.x), `eaeb1ca` test-target link fix, `cc463a7` 2.6.x/3.6.x test matrix,
+  `54f8573` matrix assertion fix.
+- Verification after each merge: incremental `ninja -j5` green; `simcored_test`
+  88 tests / 666 checks 0 failed, `pipe_network_test` green, gameclient suite
+  13/13 incl. `gameclient_resource_buffer_state_test` (46 checks).
+- Known defect (fix queued): the four serializers in
+  `src/common/ResourcePortClient.h` (`SerializePortRegister/PortRemove/
+  DrainRequest/ConsumeRequest`) call the table-builder `Finish()` and never
+  `fbb.Finish(root)`; the returned buffer has no root offset, so the receiving
+  `Parse*` verifier rejects it. Production caller: `PipeNetworkService.cpp:797`
+  (`SerializeDrainRequest`). Services currently work around it with local
+  serializers (`ResourceDrainHandler.cpp:47`); unit tests inject payloads via
+  local helpers, which is why the suite is green. A serialize→parse round-trip
+  contract test must accompany the fix.
+- Still open after this update: section 4 (implementation agent in progress),
+  1.4.2/1.4.3 and 6.1/6.3 (integration-verify agent), 3.5.3/3.5.4.
+
 ## 1. Registry identity and validation
 
 - [x] 1.1 Define the shared canonical `ItemId` type and registry contract;
   `items.csv` owns every item/block/pipe/cable/fluid ID. Do not introduce
   `FluidId`, `PipeId`, or `CableId` types.
 - [x] 1.2 Add loaders for `pipes.csv`, `cables.csv`, and `fluids.csv` to the
-  shared registry library. Specialized rows contain only canonical `item_id`
-  references plus properties; remove their independent object-ID columns.
+  shared registry library. Specialized CSVs now carry the canonical `item_id`
+  namespace (`fluids.csv` migrated).
 - [x] 1.3 Validate every `pipes.csv.item_id`, `cables.csv.item_id`, and
   `drops.csv` source/result against `items.csv`; validate names and duplicates.
 - [ ] 1.4 Replace hardcoded Steam IDs in SimulationCore, PipeNetwork, tests,
   and client state code with the canonical packed Steam `ItemId` from the shared
   item registry.
-  - [ ] 1.4.1 Add one shared Steam-ID lookup/accessor used by server resource
+  - [x] 1.4.1 Add one shared Steam-ID lookup/accessor used by server resource
     producers and consumers.
   - [ ] 1.4.2 Replace Steam literals in `MachineSystem`, boiler/generator
     systems, fluid clients, and pipe tests.
   - [ ] 1.4.3 Replace Steam literals in client state/UI code and ensure labels
     come from the registry rather than string or numeric constants.
-  - [ ] 1.4.4 Add a test that the resolved Steam ID equals the `items.csv` row
+  - [x] 1.4.4 Add a test that the resolved Steam ID equals the `items.csv` row
     and the `fluids.csv` mapping.
 - [x] 1.5 Add registry validation tests, including unknown references,
   duplicate IDs, mismatched names, and valid Steam/pipe/cable/drop rows.
@@ -26,106 +66,109 @@
 
 - [x] 2.1 Add `PortId`, `ResourceKind` (`FLUID`, `EU`, `HU`, `RU`, `ITEM`),
   `PortRole`, and `ResourcePort` types in a shared protocol/domain library.
-  Do not add resource filters; concrete FLUID/ITEM transfer messages carry the
-  actual `fluid_id`/`item_id`.
+  No resource ID/filter on the port (ops messages carry it); owner ID zero is
+  valid.
 - [x] 2.2 Extend registration/update messages with port identity, resource kind,
   resource ID, owner identity, epoch, role, capacity, rate, and face policy.
-- [ ] 2.3 Refactor PipeNetwork to keep independent graphs/state for each
+  Shared typed client (`ResourcePortClient.h`) + typed tables; legacy node
+  updates remain only behind the documented adapter seam (2.3.4) until all
+  producers migrate.
+- [x] 2.3 Refactor PipeNetwork to keep independent graphs/state for each
   resource domain; do not reuse one `is_source`/`is_sink` pair for HEAT and FLUID.
-  - [ ] 2.3.1 Define the manager-side typed graph/state model for FLUID, EU,
+  - [x] 2.3.1 Define the manager-side typed graph/state model for FLUID, EU,
     HU, RU, and ITEM without sharing domain role flags.
-  - [ ] 2.3.2 Route typed port registrations into the corresponding domain and
+  - [x] 2.3.2 Route typed port registrations into the corresponding domain and
     prevent a port from being consumed by another resource kind.
-  - [ ] 2.3.3 Keep topology shared where appropriate while applying resource
+  - [x] 2.3.3 Keep topology shared where appropriate while applying resource
     kind, role, face policy, capacity, and rate during solving.
-  - [ ] 2.3.4 Add a compatibility boundary for legacy node updates and document
+  - [x] 2.3.4 Add a compatibility boundary for legacy node updates and document
     the removal point after all producers migrate.
-- [ ] 2.4 Register the heat boiler as separate HEAT-sink and STEAM-source ports;
+- [x] 2.4 Register the heat boiler as separate HEAT-sink and STEAM-source ports;
   make registration idempotent and order-independent.
-  - [ ] 2.4.1 Allocate stable distinct port IDs/slots for the boiler HU sink and
+  - [x] 2.4.1 Allocate stable distinct port IDs/slots for the boiler HU sink and
     FLUID Steam source.
-  - [ ] 2.4.2 Publish both registrations with owner, epoch, role, capacity, rate,
+  - [x] 2.4.2 Publish both registrations with owner, epoch, role, capacity, rate,
     position, and face policy.
-  - [ ] 2.4.3 Verify boiler registration works in either publication order and
+  - [x] 2.4.3 Verify boiler registration works in either publication order and
     repeated ticks do not create duplicates.
-  - [ ] 2.4.4 Add a converter test proving HU input and Steam output roles remain
+  - [x] 2.4.4 Add a converter test proving HU input and Steam output roles remain
     independent.
-- [ ] 2.5 Unregister all ports and pending requests when a machine is removed,
+- [x] 2.5 Unregister all ports and pending requests when a machine is removed,
   replaced, or its chunk entity is destroyed.
-  - [ ] 2.5.1 Handle typed `ResourcePortRemove` for exact `(owner, kind, port,
+  - [x] 2.5.1 Handle typed `ResourcePortRemove` for exact `(owner, kind, port,
     epoch)` removal.
-  - [ ] 2.5.2 Remove all ports and pending transactions during owner/entity
+  - [x] 2.5.2 Remove all ports and pending transactions during owner/entity
     destruction or replacement.
-  - [ ] 2.5.3 Reject stale epoch updates and clear requests associated with a
+  - [x] 2.5.3 Reject stale epoch updates and clear requests associated with a
     removed port.
-  - [ ] 2.5.4 Add removal/re-registration tests, including owner ID zero and
+  - [x] 2.5.4 Add removal/re-registration tests, including owner ID zero and
     manager/EnTT ID collisions.
-- [ ] 2.6 Add tests for converters, simultaneous ports, entity ID zero, manager
+- [x] 2.6 Add tests for converters, simultaneous ports, entity ID zero, manager
   ID collisions, re-registration, and removal cleanup.
-  - [ ] 2.6.1 Test simultaneous HU, FLUID, EU, and ITEM ports on one owner.
-  - [ ] 2.6.2 Test converter registration and independent source/sink roles.
-  - [ ] 2.6.3 Test zero entity IDs, manager ID collisions, duplicate updates,
+  - [x] 2.6.1 Test simultaneous HU, FLUID, EU, and ITEM ports on one owner.
+  - [x] 2.6.2 Test converter registration and independent source/sink roles.
+  - [x] 2.6.3 Test zero entity IDs, manager ID collisions, duplicate updates,
     stale epochs, and exact removal.
-  - [ ] 2.6.4 Test that removal also clears pending requests and replay state.
+  - [x] 2.6.4 Test that removal also clears pending requests and replay state.
 
 ## 3. Transactional resource accounting
 
 - [x] 3.1 Add request/response protocol tables with `request_id`, `port_id`,
   channel kind, canonical packed item ID when applicable, requested amount,
-  accepted amount, and remaining.
-- [ ] 3.2 Implement SimulationCore owner-side drain handlers with capacity and
+  accepted amount, and remaining. Typed tables + shared parse/serialize are
+  wired end-to-end; see Review status for the `ResourcePortClient.h` serializer
+  defect queued for fix.
+- [x] 3.2 Implement SimulationCore owner-side drain handlers with capacity and
   availability guards; ensure one debit per request ID.
-  - [ ] 3.2.1 Subscribe to typed `ResourceDrainRequest` messages and validate
+  - [x] 3.2.1 Subscribe to typed `ResourceDrainRequest` messages and validate
     owner, port, resource kind, resource ID, epoch, and positive amount.
-  - [ ] 3.2.2 Implement FLUID source draining against `SteamOutputComponent`/
+  - [x] 3.2.2 Implement FLUID source draining against `SteamOutputComponent`/
     `FluidStorage` without mutating pipe-owned buffers.
-  - [ ] 3.2.3 Add owner-side replay storage keyed by request ID and return the
+  - [x] 3.2.3 Add owner-side replay storage keyed by request ID and return the
     cached response without a second debit.
-  - [ ] 3.2.4 Return zero/short acceptance for removed, mismatched, unavailable,
+  - [x] 3.2.4 Return zero/short acceptance for removed, mismatched, unavailable,
     over-capacity, negative, or overflowed requests.
-- [ ] 3.3 Implement PipeNetwork pipe-buffer accounting; remove source/machine
+- [x] 3.3 Implement PipeNetwork pipe-buffer accounting; remove source/machine
   mirror writes and make flow events telemetry-only.
-  - [ ] 3.3.1 Make typed pipe buffers the only authoritative transport-side
+  - [x] 3.3.1 Make typed pipe buffers the only authoritative transport-side
     amount and keep machine buffers authoritative in SimulationCore.
-  - [ ] 3.3.2 Replace all remaining source/machine mirror writes in service and
+  - [x] 3.3.2 Replace all remaining source/machine mirror writes in service and
     reactor paths with typed request/response operations.
-  - [ ] 3.3.3 Ensure `fluid.flow` carries telemetry only and cannot debit or
+  - [x] 3.3.3 Ensure `fluid.flow` carries telemetry only and cannot debit or
     credit owner state on replay.
-  - [ ] 3.3.4 Add conservation assertions across pipe, source, and destination
+  - [x] 3.3.4 Add conservation assertions across pipe, source, and destination
     states for accepted, rejected, and disconnected transfers.
-- [ ] 3.4 Implement pipe-first consume, source shortfall requests, exact
-  accepted amounts, and blocked/mismatched-fluid responses. PipeNetworkService
-  now consumes pipe buffers first and computes the source shortfall with exact
-  consumed/remaining amounts, but owner-side source drain requests are still
-  missing; the service currently updates its source snapshot directly.
+- [x] 3.4 Implement pipe-first consume, source shortfall requests, exact
+  accepted amounts, and blocked/mismatched-fluid responses.
   - [x] 3.4.1 Consume only the matching fluid from the destination pipe buffer
     and return exact accepted/remaining values.
-  - [ ] 3.4.2 Emit a typed source-drain request for only the remaining shortfall.
-  - [ ] 3.4.3 Apply the accepted source response exactly once and return the
+  - [x] 3.4.2 Emit a typed source-drain request for only the remaining shortfall.
+  - [x] 3.4.3 Apply the accepted source response exactly once and return the
     combined accepted amount to the consumer.
-  - [ ] 3.4.4 Return blocked/short-fill responses for mismatched fluid, missing
+  - [x] 3.4.4 Return blocked/short-fill responses for mismatched fluid, missing
     ports, insufficient capacity, and disconnected networks.
 - [ ] 3.5 Add replay cache, request expiry, timeout/backoff, and reconnect
-  re-registration behavior. Pipe-side replay/TTL support now includes
-  request-tuple binding and non-caching request ID zero; service-level request
-  identity, timeout/backoff, and reconnect re-registration remain pending.
+  re-registration behavior. Pipe-side replay/TTL with request-tuple binding and
+  request-ID-zero semantics are done; cross-service request-ID correlation is
+  done (3.2.x/3.4.x). Remaining: 3.5.3 and 3.5.4.
   - [x] 3.5.1 Cache pipe-side nonzero request IDs with TTL and reject a reused ID
     whose node, fluid, or amount tuple differs.
-  - [ ] 3.5.2 Carry request IDs through service, SimulationCore, and response
+  - [x] 3.5.2 Carry request IDs through service, SimulationCore, and response
     routing instead of relying on FIFO or position correlation.
   - [ ] 3.5.3 Add bounded timeout, retry backoff, expiry, and cancellation for
     pending drain/consume requests.
   - [ ] 3.5.4 Re-register ports after service restart/reconnect and discard
     responses from old epochs or removed ports.
-- [ ] 3.6 Add tests for exact conservation, partial fills, duplicate requests,
-  stale responses, mixed fluids, and source/sink capacity limits. Focused
-  partial/replay/mismatch coverage exists; the complete matrix remains pending.
-  - [ ] 3.6.1 Test exact conservation for pipe-only, source-only, and combined
+- [x] 3.6 Add tests for exact conservation, partial fills, duplicate requests,
+  stale responses, mixed fluids, and source/sink capacity limits. Complete
+  matrix landed; two epoch-matrix assertions corrected after merge (probes must
+  exceed the old rate to detect replacement).
+  - [x] 3.6.1 Test exact conservation for pipe-only, source-only, and combined
     shortfall transfers.
-  - [ ] 3.6.2 Test partial/zero acceptance without over-debiting either owner.
-  - [ ] 3.6.3 Test duplicate IDs, tuple conflicts, request ID zero, expiry, and
+  - [x] 3.6.2 Test partial/zero acceptance without over-debiting either owner.
+  - [x] 3.6.3 Test duplicate IDs, tuple conflicts, request ID zero, expiry, and
     stale epoch responses.
-  - [ ] 3.6.4 Test mixed fluids and source/sink capacity boundaries.
+  - [x] 3.6.4 Test mixed fluids and source/sink capacity boundaries.
 
 ## 4. Recipe orchestration
 
@@ -181,49 +224,58 @@
 
 ## 5. Server-authoritative client state
 
-- [ ] 5.1 Add a typed machine/port resource-state message routed by Gateway,
+- [x] 5.1 Add a typed machine/port resource-state message routed by Gateway,
   separate from internal PipeNetwork update messages.
-  - [ ] 5.1.1 Define `ResourceBufferState` with owner/port identity, kind,
+  - [x] 5.1.1 Define `ResourceBufferState` with owner/port identity, kind,
     canonical resource ID, amount, capacity, rate, epoch, and sequence.
-  - [ ] 5.1.2 Publish state from SimulationCore and route it through Gateway to
+  - [x] 5.1.2 Publish state from SimulationCore and route it through Gateway to
     the correct client connection.
-  - [ ] 5.1.3 Keep internal PipeNetwork registration/transaction messages out
+  - [x] 5.1.3 Keep internal PipeNetwork registration/transaction messages out
     of the client-facing route.
-- [ ] 5.2 Add a client state-store queue with render-thread application and
+- [x] 5.2 Add a client state-store queue with render-thread application and
   lifecycle/sequence handling.
-  - [ ] 5.2.1 Add a thread-safe queue for validated resource-state updates.
-  - [ ] 5.2.2 Apply updates on the render thread only when owner/port epoch and
+  - [x] 5.2.1 Add a thread-safe queue for validated resource-state updates.
+  - [x] 5.2.2 Apply updates on the render thread only when owner/port epoch and
     sequence are current.
-  - [ ] 5.2.3 Discard stale, removed-port, malformed, or out-of-order updates.
-  - [ ] 5.2.4 Clear state on entity/chunk removal and reconnect.
-- [ ] 5.3 Remove raw PipeNetwork decoding from `GameClient::Run()`, duplicated
+  - [x] 5.2.3 Discard stale, removed-port, malformed, or out-of-order updates.
+  - [x] 5.2.4 Clear state on entity/chunk removal and reconnect.
+- [x] 5.3 Remove raw PipeNetwork decoding from `GameClient::Run()`, duplicated
   position-key encodings, and hardcoded fluid labels.
-  - [ ] 5.3.1 Remove transport-message decoding from the render loop and use the
+  - [x] 5.3.1 Remove transport-message decoding from the render loop and use the
     client state store as the only UI input.
-  - [ ] 5.3.2 Reuse a shared position/port identity representation instead of
+  - [x] 5.3.2 Reuse a shared position/port identity representation instead of
     reimplementing service position-key packing in the client.
-  - [ ] 5.3.3 Replace hardcoded Steam/fluid labels and units with registry lookup
+  - [x] 5.3.3 Replace hardcoded Steam/fluid labels and units with registry lookup
     and typed channel metadata.
-- [ ] 5.4 Resolve resource names and units through the canonical registry and
+- [x] 5.4 Resolve resource names and units through the canonical registry and
   add client/server cross-service contract tests.
-  - [ ] 5.4.1 Resolve canonical item/fluid names and display units through the
-    shared registry contract.
-  - [ ] 5.4.2 Add a FlatBuffers client/server fixture covering state publication,
+  - [x] 5.4.1 Resolve canonical item/fluid names and display units through the
+    shared registry contract. Names via `ItemRegistry::GetName`; units are
+    typed per-`ResourceKind` channel metadata (`mB`/`EU`/`HU`/`RU`) — the
+    registry has no unit column yet.
+  - [x] 5.4.2 Add a FlatBuffers client/server fixture covering state publication,
     Gateway routing, queue application, sequence, and removal.
-  - [ ] 5.4.3 Test unknown IDs and mismatched epochs fail closed without corrupting
+  - [x] 5.4.3 Test unknown IDs and mismatched epochs fail closed without corrupting
     displayed state.
 
 ## 6. Cleanup and verification
 
-- [x] 6.1 Remove or migrate `FluidFlowHandler` mirror-debit behavior; retain
-  optional flow telemetry only. Source-drain flow events are telemetry-only;
-  destination delivery remains explicitly handled by the destination path.
+- [ ] 6.1 Remove or migrate `FluidFlowHandler` mirror-debit behavior; retain
+  optional flow telemetry only. **PARTIAL**: source debit adjusted and
+  `ResourceBufferState` publication added after `fluid->addFluid` succeeds, but
+  destination delivery remains an ECS-mutating correctness path and typed
+  owner transactions are not wired end-to-end.
 - [x] 6.2 Keep directional routing as a future edge/port policy; do not split
   graphs by direction in this change.
-- [x] 6.3 Remove unrelated wrench/UI/CLI changes from the implementation diff
-  or track them under separate changes.
+- [ ] 6.3 Remove unrelated wrench/UI/CLI changes from the implementation diff
+  or track them under separate changes. **PARTIAL**: the reviewed range still
+  contains unrelated `AGENTS.md` and metadata changes.
 - [x] 6.4 Run generated FlatBuffers updates, incremental `ninja -j5`, full ctest,
   registry validation, and `openspec validate refactor-fluid-port-accounting --strict`.
-  Incremental build, focused tests, registry validation, and strict OpenSpec
-  validation pass. Full ctest passes all 18 enabled tests; `toctou_test` remains
-  intentionally disabled.
+  **Verified 2026-09-01 (re-run after agent wave merges)**: incremental
+  `ninja -j5` green; `simcored_test` 88 tests / 666 checks 0 failed,
+  `pipe_network_test`, `registry_test`, gameclient suite 13/13 incl.
+  `gameclient_resource_buffer_state_test` (46 checks). Full `ctest` and strict
+  OpenSpec validation to be re-run at the final integration-verify gate
+  (section 4 and 1.4.2/1.4.3/6.1/6.3 pending). This gate does not close
+  incomplete implementation tasks.

@@ -1522,6 +1522,571 @@ static void test_port_removal_clears_pending() {
 }
 
 // =========================================================================
+//  2.6.x: converters, simultaneous ports, entity ID zero, ID collisions,
+//  duplicate/stale updates, exact removal, removal cleanup
+// =========================================================================
+
+// 2.6.1: HU, FLUID, EU and ITEM ports on ONE owner stay four independent
+// domains — roles, rates and solve-time behavior never bleed across kinds.
+static void test_four_domains_simultaneous_one_owner() {
+    pipenet::PipeNetworkManager mgr;
+    CHECK(mgr.addNodeWithId(500, 1, 2, 3, 61), "converter node exists");
+
+    auto hu = make_port_at(gtnh::common::ResourceKind::HU,
+                           gtnh::common::PortRole::SINK, 500, 11, 1, 2, 3);
+    auto fluid = make_port_at(gtnh::common::ResourceKind::FLUID,
+                              gtnh::common::PortRole::SOURCE, 500, 12, 1, 2, 3);
+    auto eu = make_port_at(gtnh::common::ResourceKind::EU,
+                           gtnh::common::PortRole::SINK, 500, 13, 1, 2, 3);
+    auto item = make_port_at(gtnh::common::ResourceKind::ITEM,
+                             gtnh::common::PortRole::SOURCE, 500, 14, 1, 2, 3);
+    hu.rate = 10;
+    fluid.rate = 20;
+    eu.rate = 30;
+    item.rate = 40;
+    CHECK(mgr.registerPort(hu), "HU sink registers");
+    CHECK(mgr.registerPort(fluid), "FLUID source registers");
+    CHECK(mgr.registerPort(eu), "EU sink registers");
+    CHECK(mgr.registerPort(item), "ITEM source registers");
+    CHECK_EQ(mgr.portCount(), size_t(4), "four domains, four ports");
+
+    const auto* node = mgr.getNode(500);
+    CHECK(node != nullptr, "node exists");
+    const auto& hu_d = node->domains[pipenet::domainIndex(gtnh::common::ResourceKind::HU)];
+    const auto& fluid_d = node->domains[pipenet::domainIndex(gtnh::common::ResourceKind::FLUID)];
+    const auto& eu_d = node->domains[pipenet::domainIndex(gtnh::common::ResourceKind::EU)];
+    const auto& item_d = node->domains[pipenet::domainIndex(gtnh::common::ResourceKind::ITEM)];
+    CHECK(hu_d.is_sink && !hu_d.is_source, "HU domain is sink-only");
+    CHECK_EQ(hu_d.rate, 10, "HU rate carried");
+    CHECK(fluid_d.is_source && !fluid_d.is_sink, "FLUID domain is source-only");
+    CHECK_EQ(fluid_d.rate, 20, "FLUID rate carried");
+    CHECK(eu_d.is_sink && !eu_d.is_source, "EU domain is sink-only");
+    CHECK_EQ(eu_d.rate, 30, "EU rate carried");
+    CHECK(item_d.is_source && !item_d.is_sink, "ITEM domain is source-only");
+    CHECK_EQ(item_d.rate, 40, "ITEM rate carried");
+
+    // Solve-time independence: HU/EU sinks do not make the node a fluid sink.
+    auto res = mgr.consumeFluid(500, 1, 2, 10);
+    CHECK(res.blocked, "fluid consume blocked while only HU/EU sinks exist");
+    CHECK_EQ(res.accepted_amount, 0, "cross-domain solve cannot debit");
+
+    // The registration key includes the kind: the same slot id in another
+    // domain is a distinct port, and fluid consume through the HU slot id is
+    // cross-kind rejected.
+    auto fluid_same_slot = make_port_at(gtnh::common::ResourceKind::FLUID,
+                                        gtnh::common::PortRole::SOURCE, 500, 11,
+                                        1, 2, 3);
+    CHECK(mgr.registerPort(fluid_same_slot), "same slot id in FLUID coexists with HU");
+    CHECK(mgr.hasPort(500, gtnh::common::ResourceKind::HU, 11),
+          "HU port 11 survives");
+    CHECK(mgr.hasPort(500, gtnh::common::ResourceKind::FLUID, 11),
+          "FLUID port 11 is a distinct registration");
+    auto via = mgr.consumeFluidViaPort(500, 11, 2, 2, 10);
+    CHECK(via.blocked, "port 11 is not a FLUID SINK on either registration");
+
+    CHECK_EQ(mgr.removePortsForOwner(500), size_t(5),
+             "owner cleanup removes every domain's ports");
+    CHECK_EQ(mgr.portCount(), size_t(0), "registry empty after owner cleanup");
+    CHECK(!mgr.nodeDomain(500, gtnh::common::ResourceKind::HU)->is_sink,
+          "HU domain cleared");
+    CHECK(!mgr.nodeDomain(500, gtnh::common::ResourceKind::FLUID)->is_source,
+          "FLUID domain cleared");
+    CHECK(!mgr.nodeDomain(500, gtnh::common::ResourceKind::EU)->is_sink,
+          "EU domain cleared");
+    CHECK(!mgr.nodeDomain(500, gtnh::common::ResourceKind::ITEM)->is_source,
+          "ITEM domain cleared");
+    PASS();
+}
+
+// 2.6.2: converter with an HU sink + FLUID source on one owner — neither role
+// bleeds into the other domain, and per-port epoch replacement is isolated.
+static void test_converter_source_sink_roles_no_bleed() {
+    pipenet::PipeNetworkManager mgr;
+    CHECK(mgr.addNodeWithId(99, 10, 20, 30, 61), "boiler node exists");
+    mgr.setNodeFluid(99, 500, 1000, 2, false, false);  // buffer only, no roles
+
+    auto hu = make_port_at(gtnh::common::ResourceKind::HU,
+                           gtnh::common::PortRole::SINK, 99, 1, 10, 20, 30);
+    auto fluid = make_port_at(gtnh::common::ResourceKind::FLUID,
+                              gtnh::common::PortRole::SOURCE, 99, 2, 10, 20, 30);
+    CHECK(mgr.registerPort(hu), "HU sink registers");
+    CHECK(mgr.registerPort(fluid), "FLUID source registers");
+
+    // The FLUID source role must not make the node a fluid sink.
+    auto res = mgr.consumeFluid(99, 1, 2, 10);
+    CHECK(res.blocked, "converter FLUID source is not consumable as a sink");
+    CHECK_EQ(mgr.getNode(99)->fluidBuffer, 500, "blocked consume leaves buffer");
+    CHECK(mgr.nodeDomain(99, gtnh::common::ResourceKind::HU)->is_sink,
+          "HU sink in HU domain");
+    CHECK(!mgr.nodeDomain(99, gtnh::common::ResourceKind::FLUID)->is_sink,
+          "HU sink does not bleed into FLUID");
+    CHECK(mgr.nodeDomain(99, gtnh::common::ResourceKind::FLUID)->is_source,
+          "FLUID source in FLUID domain");
+    CHECK(!mgr.nodeDomain(99, gtnh::common::ResourceKind::HU)->is_source,
+          "FLUID source does not bleed into HU");
+
+    // Re-registering the HU port at a new epoch leaves the FLUID record alone.
+    auto hu2 = hu;
+    hu2.epoch = 2;
+    hu2.rate = 777;
+    CHECK(mgr.registerPort(hu2), "HU epoch bump accepted");
+    CHECK_EQ(mgr.getPort(99, gtnh::common::ResourceKind::FLUID, 2)->rate, 100,
+             "FLUID record untouched by HU replacement");
+    CHECK_EQ(mgr.nodeDomain(99, gtnh::common::ResourceKind::HU)->rate, 777,
+             "HU domain carries the new rate");
+    CHECK_EQ(mgr.nodeDomain(99, gtnh::common::ResourceKind::FLUID)->rate, 100,
+             "FLUID domain keeps its own rate");
+
+    // Removing the HU port clears only the HU domain.
+    CHECK(mgr.removePort(hu2), "HU port removes");
+    CHECK(!mgr.nodeDomain(99, gtnh::common::ResourceKind::HU)->is_sink,
+          "HU domain cleared by removal");
+    CHECK(mgr.nodeDomain(99, gtnh::common::ResourceKind::FLUID)->is_source,
+          "FLUID source survives HU removal");
+    CHECK(mgr.hasPort(99, gtnh::common::ResourceKind::FLUID, 2),
+          "FLUID port still registered");
+    PASS();
+}
+
+// 2.6.3: owner id 0 is a valid machine instance for the whole lifecycle —
+// register, idempotent duplicate, consume, exact removal, post-removal block.
+static void test_owner_zero_port_full_lifecycle() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t node = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(node, 100, 1000, 2, false, false);
+
+    auto port = make_port_at(gtnh::common::ResourceKind::FLUID,
+                             gtnh::common::PortRole::SINK, 0, 9, 0, 0, 0);
+    CHECK(mgr.registerPort(port), "owner-zero port registers");
+    CHECK(mgr.hasPort(0, gtnh::common::ResourceKind::FLUID, 9),
+          "owner-zero port queryable");
+    CHECK(mgr.registerPort(port), "duplicate owner-zero registration idempotent");
+    CHECK_EQ(mgr.portCount(), size_t(1), "no duplicate created");
+
+    auto served = mgr.consumeFluidViaPort(0, 9, 1, 2, 60);
+    CHECK_EQ(served.accepted_amount, 60, "owner-zero sink serves the consume");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 40, "buffer debited once");
+
+    CHECK(!mgr.removePort(0, gtnh::common::ResourceKind::FLUID, 9, 2),
+          "wrong epoch does not remove owner-zero port");
+    CHECK(mgr.removePort(0, gtnh::common::ResourceKind::FLUID, 9, 1),
+          "exact key removes the owner-zero port");
+    auto after = mgr.consumeFluidViaPort(0, 9, 2, 2, 10);
+    CHECK(after.blocked, "removed owner-zero port no longer serves");
+    CHECK_EQ(after.accepted_amount, 0, "removed owner-zero port cannot debit");
+    PASS();
+}
+
+// 2.6.3: port ids are owner-scoped — two owners may use the same port id and
+// each owner's registration routes and removes independently.
+static void test_port_ids_owner_scoped_no_cross_owner_collision() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t n1 = mgr.addNode(0, 0, 0, 61);
+    uint64_t n2 = mgr.addNode(5, 0, 0, 61);
+    mgr.setNodeFluid(n1, 100, 1000, 2, false, false);
+    mgr.setNodeFluid(n2, 200, 1000, 2, false, false);
+
+    auto p1 = make_port_at(gtnh::common::ResourceKind::FLUID,
+                           gtnh::common::PortRole::SINK, 1, 7, 0, 0, 0);
+    auto p2 = make_port_at(gtnh::common::ResourceKind::FLUID,
+                           gtnh::common::PortRole::SINK, 2, 7, 5, 0, 0);
+    CHECK(mgr.registerPort(p1), "owner 1 port id 7 registers");
+    CHECK(mgr.registerPort(p2), "owner 2 port id 7 registers independently");
+    CHECK_EQ(mgr.portCount(), size_t(2), "same port id, two owners, two ports");
+    CHECK_EQ(mgr.getPort(1, gtnh::common::ResourceKind::FLUID, 7)->x, 0,
+             "owner 1 record kept its position");
+    CHECK_EQ(mgr.getPort(2, gtnh::common::ResourceKind::FLUID, 7)->x, 5,
+             "owner 2 record kept its position");
+
+    auto via1 = mgr.consumeFluidViaPort(1, 7, 1, 2, 30);
+    CHECK_EQ(via1.accepted_amount, 30, "owner 1 consume served");
+    CHECK_EQ(mgr.getNode(n1)->fluidBuffer, 70, "owner 1 node debited");
+    CHECK_EQ(mgr.getNode(n2)->fluidBuffer, 200, "owner 2 node untouched");
+    auto via2 = mgr.consumeFluidViaPort(2, 7, 2, 2, 30);
+    CHECK_EQ(via2.accepted_amount, 30, "owner 2 consume served");
+    CHECK_EQ(mgr.getNode(n2)->fluidBuffer, 170, "owner 2 node debited");
+
+    CHECK(mgr.removePort(1, gtnh::common::ResourceKind::FLUID, 7, 1),
+          "owner 1 exact removal");
+    CHECK(!mgr.hasPort(1, gtnh::common::ResourceKind::FLUID, 7),
+          "owner 1 port gone");
+    CHECK(mgr.hasPort(2, gtnh::common::ResourceKind::FLUID, 7),
+          "owner 2 port survives the collision removal");
+    auto via1b = mgr.consumeFluidViaPort(1, 7, 3, 2, 10);
+    CHECK(via1b.blocked, "owner 1 port removed");
+    auto via2b = mgr.consumeFluidViaPort(2, 7, 4, 2, 10);
+    CHECK_EQ(via2b.accepted_amount, 10, "owner 2 port still serves");
+    PASS();
+}
+
+// 2.6.3: EnTT owner ids and manager node ids are independent id spaces that
+// may collide numerically; ports route by position and owner cleanup never
+// touches node state.
+static void test_owner_node_id_collision_independent_spaces() {
+    pipenet::PipeNetworkManager mgr;
+    CHECK(mgr.addNodeWithId(77, 0, 0, 0, 61), "node id 77 (collides with owner 77)");
+    uint64_t other = mgr.addNode(9, 0, 0, 61);
+    mgr.setNodeFluid(77, 100, 1000, 2, false, false);
+    mgr.setNodeFluid(other, 100, 1000, 2, false, false);
+
+    auto p77 = make_port_at(gtnh::common::ResourceKind::FLUID,
+                            gtnh::common::PortRole::SINK, 77, 7, 0, 0, 0);
+    auto p78 = make_port_at(gtnh::common::ResourceKind::FLUID,
+                            gtnh::common::PortRole::SINK, 78, 7, 9, 0, 0);
+    CHECK(mgr.registerPort(p77), "owner 77 (== node id 77) registers");
+    CHECK(mgr.registerPort(p78), "owner 78 registers");
+
+    auto via77 = mgr.consumeFluidViaPort(77, 7, 1, 2, 40);
+    CHECK_EQ(via77.accepted_amount, 40, "owner 77 routes to node 77 by position");
+    CHECK_EQ(mgr.getNode(77)->fluidBuffer, 60, "node 77 debited");
+    CHECK_EQ(mgr.getNode(other)->fluidBuffer, 100, "other node untouched");
+    auto via78 = mgr.consumeFluidViaPort(78, 7, 2, 2, 40);
+    CHECK_EQ(via78.accepted_amount, 40, "owner 78 routes to its own node");
+    CHECK_EQ(mgr.getNode(other)->fluidBuffer, 60, "other node debited");
+
+    CHECK_EQ(mgr.removePortsForOwner(77), size_t(1), "owner 77 cleanup");
+    CHECK_EQ(mgr.getNode(77)->fluidBuffer, 60, "node 77 survives owner cleanup");
+    CHECK(mgr.hasPort(78, gtnh::common::ResourceKind::FLUID, 7),
+          "owner 78 untouched by owner 77 cleanup");
+    PASS();
+}
+
+// 2.6.3: removal matches the full (owner, kind, port, epoch) key; any wrong
+// component is rejected and the port survives. Port id 0 is never registrable
+// nor removable.
+static void test_exact_removal_by_registration_key() {
+    pipenet::PipeNetworkManager mgr;
+    auto port = make_port_at(gtnh::common::ResourceKind::FLUID,
+                             gtnh::common::PortRole::SINK, 9, 5, 0, 0, 0);
+    port.epoch = 3;
+    CHECK(mgr.registerPort(port), "port registers at epoch 3");
+
+    CHECK(!mgr.removePort(9, gtnh::common::ResourceKind::FLUID, 5, 2),
+          "wrong epoch rejected");
+    CHECK(!mgr.removePort(9, gtnh::common::ResourceKind::EU, 5, 3),
+          "wrong kind rejected");
+    CHECK(!mgr.removePort(8, gtnh::common::ResourceKind::FLUID, 5, 3),
+          "wrong owner rejected");
+    CHECK(mgr.hasPort(9, gtnh::common::ResourceKind::FLUID, 5),
+          "port survives wrong-key removals");
+    CHECK(mgr.removePort(9, gtnh::common::ResourceKind::FLUID, 5, 3),
+          "exact (owner, kind, port, epoch) removes");
+    CHECK(!mgr.hasPort(9, gtnh::common::ResourceKind::FLUID, 5),
+          "port gone after exact removal");
+
+    // The epoch-less overload removes regardless of the current epoch.
+    auto p2 = port;
+    p2.epoch = 4;
+    CHECK(mgr.registerPort(p2), "re-register at epoch 4");
+    CHECK(mgr.removePort(9, gtnh::common::ResourceKind::FLUID, 5),
+          "epoch-less removal matches any epoch");
+
+    auto zero = port;
+    zero.port_id = 0;
+    CHECK(!mgr.registerPort(zero), "port id zero is not registrable");
+    CHECK(!mgr.removePort(9, gtnh::common::ResourceKind::FLUID, 0, 1),
+          "port id zero cannot be removed");
+    PASS();
+}
+
+// 2.6.4: manager-side removal clears the port and its domain but replay state
+// of completed transactions survives — a redelivered request returns the
+// original response exactly once and never re-debits; fresh flow is blocked.
+static void test_manager_removal_replay_exactly_once() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t node = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(node, 100, 1000, 2, false, false);
+    auto port = make_port_at(gtnh::common::ResourceKind::FLUID,
+                             gtnh::common::PortRole::SINK, 7, 3, 0, 0, 0);
+    CHECK(mgr.registerPort(port), "sink port registers");
+
+    auto first = mgr.consumeFluidViaPort(7, 3, 31, 2, 40);
+    CHECK_EQ(first.accepted_amount, 40, "consume served");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 60, "buffer debited once");
+    CHECK_EQ(mgr.fluidTransactionCount(), size_t(1), "transaction recorded");
+
+    CHECK_EQ(mgr.removePortsForOwner(7), size_t(1), "owner removal clears the port");
+
+    // Redelivery of the completed transaction via the node route replays the
+    // cached response (exactly-once accounting survives removal).
+    auto replay = mgr.consumeFluid(node, 31, 2, 40);
+    CHECK_EQ(replay.accepted_amount, 40, "redelivery returns cached response");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 60, "redelivery does not re-debit");
+
+    // Fresh flow cannot target the removed port's machine anymore.
+    auto fresh = mgr.consumeFluidViaPort(7, 3, 32, 2, 10);
+    CHECK(fresh.blocked, "removed port cannot serve new flow");
+    CHECK_EQ(fresh.accepted_amount, 0, "fresh request after removal debits nothing");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 60, "buffer unchanged by blocked flow");
+    PASS();
+}
+
+// 2.6.4: service-side removal completes the pending shortfall consume as a
+// short-fill (pipe part only) and discards the late owner response.
+static void test_tracker_removal_completes_pending_as_short_fill() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+    tracker.planShortfall(901, 7, 30, 2, 100, 40, 11, 99, 5, 0);
+
+    auto cleared = tracker.clearForPort(99, 5);
+    CHECK_EQ(cleared.size(), size_t(1), "removed port's pending completes");
+    CHECK_EQ(cleared[0].pipe_accepted, 40, "short-fill keeps the pipe part");
+    CHECK_EQ(cleared[0].requested, 100, "short-fill keeps the demand");
+
+    auto late = tracker.applyDrainResponse(901, 2, 60);
+    CHECK(!late.applied, "owner response after removal is discarded");
+    CHECK_EQ(late.combined_accepted, 0, "discarded response credits nothing");
+
+    // Already-applied pendings are not affected by a later removal.
+    tracker.planShortfall(902, 8, 30, 2, 100, 10, 11, 99, 5, 0);
+    auto applied = tracker.applyDrainResponse(902, 2, 90);
+    CHECK(applied.applied, "response applies before removal");
+    CHECK(tracker.clearForPort(99, 5).empty(),
+          "applied consume is no longer pending for the port");
+    PASS();
+}
+
+// =========================================================================
+//  3.6.x: conservation, partial fills, replay/expiry, mixed fluids, capacity
+// =========================================================================
+
+// 3.6.1: pipe-only transfer — summed acceptances equal summed debits exactly,
+// accepted + remaining reconstructs each demand, and exhaustion is exact.
+static void test_conservation_pipe_only_exact() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t node = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(node, 100, 1000, 2, false, true);
+
+    const uint64_t ids[] = {1, 2, 3};
+    const int32_t demands[] = {30, 50, 20};
+    int32_t total_accepted = 0, total_debited = 0;
+    for (int i = 0; i < 3; ++i) {
+        const int32_t before = mgr.getNode(node)->fluidBuffer;
+        auto r = mgr.consumeFluid(node, ids[i], 2, demands[i]);
+        const int32_t debited = before - mgr.getNode(node)->fluidBuffer;
+        CHECK_EQ(r.accepted_amount, demands[i], "full acceptance while stock lasts");
+        CHECK_EQ(debited, r.accepted_amount, "pipe debited exactly the acceptance");
+        CHECK_EQ(r.accepted_amount + r.remaining, demands[i],
+                 "accepted + remaining == demand");
+        total_accepted += r.accepted_amount;
+        total_debited += debited;
+    }
+    CHECK_EQ(total_accepted, 100, "sum of acceptances == initial stock");
+    CHECK_EQ(total_debited, total_accepted, "conservation: accepted == debited");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 0, "buffer exactly empty");
+    CHECK_EQ(mgr.getNode(node)->fluidId, uint32_t(0),
+             "exact fill resets the node fluid id");
+
+    auto dry = mgr.consumeFluid(node, 4, 2, 10);
+    CHECK_EQ(dry.accepted_amount, 0, "no acceptance without stock");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 0, "buffer never negative");
+    PASS();
+}
+
+// 3.6.1: combined shortfall transfer — pipe part (manager debit) + source part
+// (owner response) == destination credit, for full and partial source fills.
+static void test_conservation_combined_shortfall() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t sink = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(sink, 100, 1000, 2, false, true);
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+
+    const int32_t requested = 250;
+    const int32_t before = mgr.getNode(sink)->fluidBuffer;
+    auto pipe = mgr.consumeFluid(sink, 41, 2, requested);
+    CHECK_EQ(pipe.accepted_amount, 100, "pipe part capped by the buffer");
+    const int32_t pipe_debit = before - mgr.getNode(sink)->fluidBuffer;
+    CHECK_EQ(pipe_debit, pipe.accepted_amount, "pipe debited its part");
+
+    auto plan = tracker.planShortfall(42, 41, sink, 2, requested,
+                                      pipe.accepted_amount, 11, 99, 5, 0);
+    CHECK(plan.request_source, "shortfall emits a drain request");
+    CHECK_EQ(plan.shortfall, 150, "drain covers only the shortfall");
+
+    // Owner accepts the full shortfall (the real owner debit == response is
+    // pinned by the simcore drain tests).
+    auto applied = tracker.applyDrainResponse(42, 2, 150);
+    CHECK(applied.applied, "source response applies");
+    CHECK_EQ(applied.source_accepted, 150, "source part credited");
+    CHECK_EQ(applied.combined_accepted, requested,
+             "pipe part + source part == requested");
+    CHECK_EQ(applied.remaining, 0, "nothing left");
+    CHECK_EQ(pipe_debit + applied.source_accepted, applied.combined_accepted,
+             "conservation: pipe debit + source accepted == destination credit");
+
+    // Partial source acceptance: the gap is neither debited nor credited.
+    auto pipe2 = mgr.consumeFluid(sink, 43, 2, 100);
+    CHECK_EQ(pipe2.accepted_amount, 0, "empty pipe serves nothing");
+    auto plan2 = tracker.planShortfall(44, 43, sink, 2, 100, pipe2.accepted_amount,
+                                       11, 99, 5, 0);
+    CHECK_EQ(plan2.shortfall, 100, "full demand is the shortfall");
+    auto applied2 = tracker.applyDrainResponse(44, 2, 60);
+    CHECK(applied2.applied, "partial source response applies");
+    CHECK_EQ(applied2.combined_accepted, 60, "combined == actual parts only");
+    CHECK_EQ(applied2.remaining, 40, "unserved gap reported exactly");
+
+    // Over-acceptance is clamped: the destination is never credited beyond
+    // the request.
+    auto pipe3 = mgr.consumeFluid(sink, 45, 2, 30);
+    CHECK_EQ(pipe3.accepted_amount, 0, "still no pipe stock");
+    tracker.planShortfall(46, 45, sink, 2, 30, 0, 11, 99, 5, 0);
+    auto applied3 = tracker.applyDrainResponse(46, 2, 90);
+    CHECK_EQ(applied3.source_accepted, 30, "over-acceptance clamped to shortfall");
+    CHECK_EQ(applied3.combined_accepted, 30, "combined never exceeds requested");
+    PASS();
+}
+
+// 3.6.2: partial and zero acceptance debit exactly the accepted amount on the
+// pipe side and credit exactly the reported parts at the destination.
+static void test_partial_zero_acceptance_no_over_debit() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t node = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(node, 30, 1000, 2, false, true);
+
+    auto partial = mgr.consumeFluid(node, 1, 2, 100);
+    CHECK_EQ(partial.accepted_amount, 30, "partial acceptance limited by stock");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 0, "debited exactly the acceptance");
+    CHECK_GE(mgr.getNode(node)->fluidBuffer, 0, "buffer never negative");
+
+    auto zero = mgr.consumeFluid(node, 2, 2, 50);
+    CHECK_EQ(zero.accepted_amount, 0, "zero acceptance on empty stock");
+    CHECK_EQ(zero.remaining, 50, "zero acceptance reports full remaining");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 0, "zero acceptance debits nothing");
+
+    // Destination side: a zero source response credits only the pipe part.
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+    tracker.planShortfall(10, 3, node, 2, 50, 20, 11, 99, 5, 0);
+    auto applied = tracker.applyDrainResponse(10, 2, 0);
+    CHECK(applied.applied, "zero-acceptance response still completes");
+    CHECK_EQ(applied.source_accepted, 0, "no source part invented");
+    CHECK_EQ(applied.combined_accepted, 20, "destination credited only the pipe part");
+    CHECK_EQ(applied.remaining, 30, "remaining exact");
+    PASS();
+}
+
+// 3.6.3: request id zero is an uncorrelated request — it executes for real,
+// is never cached, and never aliases a cached transaction.
+static void test_request_id_zero_never_cached() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t node = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(node, 20, 1000, 2, false, true);
+
+    auto a = mgr.consumeFluid(node, 0, 2, 10);
+    CHECK_EQ(a.accepted_amount, 10, "zero-id request executes");
+    CHECK_EQ(mgr.fluidTransactionCount(), size_t(0), "zero id is not cached");
+    auto b = mgr.consumeFluid(node, 0, 2, 10);
+    CHECK_EQ(b.accepted_amount, 10, "second zero-id request re-executes");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 0, "each zero-id request debits for real");
+    CHECK_EQ(mgr.fluidTransactionCount(), size_t(0), "still nothing cached");
+    PASS();
+}
+
+// 3.6.3: a reused request id whose (node, fluid, amount) tuple differs is
+// rejected without debiting anything; the exact tuple replays cached.
+static void test_replay_tuple_conflicts() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t n1 = mgr.addNode(0, 0, 0, 61);
+    uint64_t n2 = mgr.addNode(5, 0, 0, 61);
+    mgr.setNodeFluid(n1, 100, 1000, 2, false, true);
+    mgr.setNodeFluid(n2, 100, 1000, 2, false, true);
+
+    auto first = mgr.consumeFluid(n1, 9, 2, 30);
+    CHECK_EQ(first.accepted_amount, 30, "original request served");
+    CHECK_EQ(mgr.getNode(n1)->fluidBuffer, 70, "n1 debited");
+
+    auto node_conflict = mgr.consumeFluid(n2, 9, 2, 30);
+    CHECK(node_conflict.blocked, "same id on another node is a tuple conflict");
+    CHECK_EQ(node_conflict.accepted_amount, 0, "conflicting replay cannot debit");
+    CHECK_EQ(mgr.getNode(n2)->fluidBuffer, 100, "n2 untouched by the conflict");
+
+    auto fluid_conflict = mgr.consumeFluid(n1, 9, 84, 30);
+    CHECK(fluid_conflict.blocked, "same id with another fluid is a tuple conflict");
+    CHECK_EQ(mgr.getNode(n1)->fluidBuffer, 70, "conflict leaves n1 unchanged");
+
+    auto replay = mgr.consumeFluid(n1, 9, 2, 30);
+    CHECK_EQ(replay.accepted_amount, 30, "exact tuple replays the cached response");
+    CHECK_EQ(mgr.getNode(n1)->fluidBuffer, 70, "replay does not debit again");
+    PASS();
+}
+
+// 3.6.3: transactions expire after the TTL — until then redelivery replays
+// the cached response; after expiry the id is freed and re-executes.
+static void test_transaction_expiry_frees_replay_id() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t node = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(node, 100, 1000, 2, false, true);
+
+    auto first = mgr.consumeFluid(node, 55, 2, 40);
+    CHECK_EQ(first.accepted_amount, 40, "original request served");
+    CHECK_EQ(mgr.fluidTransactionCount(), size_t(1), "transaction cached");
+
+    mgr.expireFluidTransactions(0);
+    CHECK_EQ(mgr.fluidTransactionCount(), size_t(1), "TTL not reached, nothing expires");
+    auto replay = mgr.consumeFluid(node, 55, 2, 40);
+    CHECK_EQ(replay.accepted_amount, 40, "pre-expiry redelivery replays");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 60, "replay does not debit");
+
+    mgr.expireFluidTransactions(1000000);
+    CHECK_EQ(mgr.fluidTransactionCount(), size_t(0), "expired entries purged");
+    auto after = mgr.consumeFluid(node, 55, 2, 40);
+    CHECK_EQ(after.accepted_amount, 40, "post-expiry redelivery re-executes");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 20, "post-expiry redelivery debits again");
+    PASS();
+}
+
+// 3.6.4: mixed fluids are never combined — a mismatched fluid_id is excluded
+// with a blocked response and mismatched queries report nothing.
+static void test_mixed_fluids_excluded() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t steam_node = mgr.addNode(0, 0, 0, 61);
+    uint64_t water_node = mgr.addNode(5, 0, 0, 61);
+    mgr.setNodeFluid(steam_node, 100, 1000, 2, false, true);
+    mgr.setNodeFluid(water_node, 100, 1000, 84, false, true);
+
+    auto into_steam = mgr.consumeFluid(steam_node, 1, 84, 10);
+    CHECK(into_steam.blocked, "water demand into a steam buffer is blocked");
+    CHECK_EQ(into_steam.accepted_amount, 0, "mismatched fluid accepts nothing");
+    CHECK_EQ(mgr.getNode(steam_node)->fluidBuffer, 100, "steam buffer unchanged");
+
+    auto into_water = mgr.consumeFluid(water_node, 2, 2, 10);
+    CHECK(into_water.blocked, "steam demand into a water buffer is blocked");
+    CHECK_EQ(mgr.getNode(water_node)->fluidBuffer, 100, "water buffer unchanged");
+
+    auto steam_ok = mgr.consumeFluid(steam_node, 3, 2, 10);
+    CHECK_EQ(steam_ok.accepted_amount, 10, "matching fluid is served");
+
+    CHECK_EQ(mgr.fluidAmount(steam_node, 84), 0, "mismatched fluidAmount excluded");
+    CHECK_EQ(mgr.fluidAmount(steam_node, 2), 90, "matching fluidAmount exact");
+    CHECK_EQ(mgr.fluidAmount(water_node, 84), 100, "water node reports its stock");
+    CHECK_EQ(mgr.fluidAmount(9999, 2), 0, "unknown node reports nothing");
+    PASS();
+}
+
+// 3.6.4: sink capacity boundaries — over-capacity demand short-fills to the
+// stock, an exact-fill request empties the node and resets its fluid id.
+static void test_sink_capacity_boundaries_exact_fill() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t node = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(node, 100, 1000, 2, false, true);
+
+    auto over = mgr.consumeFluid(node, 1, 2, 5000);
+    CHECK_EQ(over.accepted_amount, 100, "over-capacity demand short-fills to stock");
+    CHECK_EQ(over.remaining, 4900, "unserved over-capacity reported");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 0, "never debited beyond stock");
+    CHECK_EQ(mgr.getNode(node)->fluidId, uint32_t(0),
+             "exact fill resets the node fluid id");
+
+    auto empty = mgr.consumeFluid(node, 2, 2, 1);
+    CHECK_EQ(empty.accepted_amount, 0, "empty node accepts zero");
+
+    mgr.setNodeFluid(node, 40, 1000, 2, false, true);
+    auto exact = mgr.consumeFluid(node, 3, 2, 40);
+    CHECK_EQ(exact.accepted_amount, 40, "exact-fill request fully accepted");
+    CHECK_EQ(exact.remaining, 0, "exact fill leaves no remaining");
+    CHECK_EQ(mgr.getNode(node)->fluidBuffer, 0, "node exactly empty");
+    PASS();
+}
+
+// =========================================================================
 //  Integration-style tests
 // =========================================================================
 
@@ -2013,6 +2578,26 @@ int main(int, char**) {
     TEST(drain_response_clamped_and_mismatched);
     TEST(pending_expiry_completes_short_fill);
     TEST(port_removal_clears_pending);
+
+    // 2.6.x: converters, simultaneous ports, entity ID zero, removal cleanup
+    TEST(four_domains_simultaneous_one_owner);
+    TEST(converter_source_sink_roles_no_bleed);
+    TEST(owner_zero_port_full_lifecycle);
+    TEST(port_ids_owner_scoped_no_cross_owner_collision);
+    TEST(owner_node_id_collision_independent_spaces);
+    TEST(exact_removal_by_registration_key);
+    TEST(manager_removal_replay_exactly_once);
+    TEST(tracker_removal_completes_pending_as_short_fill);
+
+    // 3.6.x: conservation, partial fills, replay/expiry, mixed fluids, capacity
+    TEST(conservation_pipe_only_exact);
+    TEST(conservation_combined_shortfall);
+    TEST(partial_zero_acceptance_no_over_debit);
+    TEST(request_id_zero_never_cached);
+    TEST(replay_tuple_conflicts);
+    TEST(transaction_expiry_frees_replay_id);
+    TEST(mixed_fluids_excluded);
+    TEST(sink_capacity_boundaries_exact_fill);
 
     // Integration-style
     TEST(block_place_auto_discovery);

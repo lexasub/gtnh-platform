@@ -9,6 +9,7 @@
 
 #include <common/Registry.h>
 #include <common/ResourcePortClient.h>
+#include <services/pipe_network/PipeConsumeTransactions.h>
 
 #include <entt/entt.hpp>
 #include <cstdint>
@@ -406,6 +407,344 @@ void test_replay_cache_is_bounded() {
     CHECK_EQ(fluid.amount, expected_after_fill - 1, "recent request still replay-cached");
 }
 
+// -- 2.6.3: epoch update matrix on the owner-side registry --------------------
+
+void test_handler_port_epoch_update_matrix() {
+    DrainFixture fx;
+    auto& fluid = fx.reg.emplace<simcore::FluidStorage>(fx.machine, kWaterId,
+                                                        100000, 200000, 0, 100000);
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+    auto base = makeFluidPort(71, owner, PortRole::SOURCE, /*rate=*/10,
+                              /*capacity=*/200000);
+    base.epoch = 1;
+    fx.registerPort(base, kWaterId);
+
+    fx.traffic.clear();
+    fx.drain(1, 71, kWaterId, 50);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 10, "epoch 1 rate applied");
+
+    // Same-epoch re-registration is idempotent: same policy, no duplicate.
+    fx.registerPort(base, kWaterId);
+    fx.drain(2, 71, kWaterId, 50);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 10, "same epoch keeps policy");
+
+    // A newer epoch replaces the policy.
+    auto newer = base;
+    newer.epoch = 2;
+    newer.rate = 100;
+    fx.registerPort(newer, kWaterId);
+    // Probe above the old rate (10) but at the new rate (100): accepted must
+    // equal the new rate, proving the policy was replaced.
+    fx.drain(3, 71, kWaterId, 150);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 100, "newer epoch replaces policy");
+
+    // A stale epoch is rejected: policy stays at epoch 2.
+    auto stale = base;
+    stale.epoch = 1;
+    stale.rate = 1000;
+    fx.registerPort(stale, kWaterId);
+    // Same probe: if the stale rate (1000) were wrongly applied, accepted
+    // would be 150, not 100.
+    fx.drain(4, 71, kWaterId, 150);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 100, "stale epoch cannot replace policy");
+
+    CHECK_EQ(fluid.amount, 100000 - 10 - 10 - 100 - 100,
+             "each distinct request debited exactly once");
+}
+
+// -- 2.6.3 + 2.6.4: exact-key removal; wrong keys keep port AND replay --------
+
+void test_handler_exact_removal_key_matrix() {
+    DrainFixture fx;
+    auto& fluid = fx.reg.emplace<simcore::FluidStorage>(fx.machine, kWaterId,
+                                                        100, 200, 0, 100);
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+    fx.registerPort(makeFluidPort(81, owner, PortRole::SOURCE, 0, 200), kWaterId);
+
+    fx.traffic.clear();
+    fx.drain(1, 81, kWaterId, 30);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 30, "drain before removal");
+    CHECK_EQ(fluid.amount, 70, "debited once");
+
+    // Wrong epoch / kind / owner: port and its replay entry survive.
+    fx.handler->handlePortRemove(serializePortRemove(owner, ResourceKind::FLUID, 81, 2));
+    fx.handler->handlePortRemove(serializePortRemove(owner, ResourceKind::HU, 81, 1));
+    fx.handler->handlePortRemove(serializePortRemove(owner + 1, ResourceKind::FLUID, 81, 1));
+    fx.drain(2, 81, kWaterId, 10);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 10, "wrong-key removals keep the port");
+    fx.drain(1, 81, kWaterId, 30);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 30, "replay intact after wrong-key removal");
+    CHECK_EQ(fluid.amount, 60, "replay did not debit again");
+
+    // Exact (owner, kind, port, epoch) removes the port and purges its replay.
+    fx.handler->handlePortRemove(serializePortRemove(owner, ResourceKind::FLUID, 81, 1));
+    fx.drain(3, 81, kWaterId, 10);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "exact key removes the port");
+    fx.drain(1, 81, kWaterId, 30);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "replay entry purged by exact removal");
+    CHECK_EQ(fluid.amount, 60, "no debit after removal");
+}
+
+// -- 2.6.4: owner-destruction cleanup scope -----------------------------------
+
+void test_handler_remove_owner_ports_without_ports_is_harmless() {
+    DrainFixture fx;
+    fx.traffic.clear();
+    fx.handler->removeOwnerPorts(0xDEAD);
+    CHECK(fx.traffic.port_removes.empty(), "no publishes without ports");
+    CHECK(fx.traffic.drain_responses.empty(), "no responses without ports");
+}
+
+void test_handler_owner_removal_scoped_to_owner_replay() {
+    DrainFixture fx;
+    auto& a = fx.reg.emplace<simcore::FluidStorage>(fx.machine, kWaterId, 100, 200, 0, 100);
+    const auto owner_a = static_cast<std::uint64_t>(fx.machine);
+    auto other = fx.reg.create();
+    auto& b = fx.reg.emplace<simcore::FluidStorage>(other, kWaterId, 100, 200, 0, 100);
+    const auto owner_b = static_cast<std::uint64_t>(other);
+    fx.registerPort(makeFluidPort(91, owner_a, PortRole::SOURCE, 0, 200), kWaterId);
+    fx.registerPort(makeFluidPort(92, owner_b, PortRole::SOURCE, 0, 200), kWaterId);
+
+    fx.traffic.clear();
+    fx.drain(1, 91, kWaterId, 20);
+    fx.drain(2, 92, kWaterId, 20);
+    CHECK_EQ(a.amount, 80, "owner A debited");
+    CHECK_EQ(b.amount, 80, "owner B debited");
+
+    fx.handler->removeOwnerPorts(owner_a);
+
+    // Owner A: replay purged — request 1 re-evaluates against the removed port.
+    fx.drain(1, 91, kWaterId, 20);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "A replay purged by owner removal");
+    // Owner B: replay intact — request 2 returns the cached response.
+    fx.drain(2, 92, kWaterId, 20);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 20, "B replay survives A removal");
+    CHECK_EQ(b.amount, 80, "B replay did not debit again");
+    CHECK_EQ(a.amount, 80, "A not debited after removal");
+}
+
+// -- 3.6.1: source-only conservation + combined shortfall conservation --------
+
+void test_source_drain_conservation_exact() {
+    DrainFixture fx;
+    auto& fluid = fx.reg.emplace<simcore::FluidStorage>(fx.machine, kWaterId,
+                                                        100, 200, 0, 100);
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+    fx.registerPort(makeFluidPort(101, owner, PortRole::SOURCE, 0, 200), kWaterId);
+
+    fx.traffic.clear();
+    std::int32_t total_accepted = 0, total_debited = 0;
+    const std::int32_t demands[] = {30, 50, 100};
+    for (std::int32_t i = 0; i < 3; ++i) {
+        const std::int32_t before = fluid.amount;
+        fx.drain(static_cast<std::uint64_t>(i + 1), 101, kWaterId, demands[i]);
+        const std::int32_t accepted = fx.lastResponse().accepted_amount;
+        CHECK_GE(accepted, 0, "acceptance never negative");
+        CHECK_EQ(before - fluid.amount, accepted, "debit == accepted per request");
+        total_accepted += accepted;
+        total_debited += before - fluid.amount;
+    }
+    CHECK_EQ(total_accepted, 100, "final short drain caps at availability");
+    CHECK_EQ(total_accepted, total_debited, "conservation: accepted == debited");
+    CHECK_EQ(fluid.amount, 0, "buffer drained to exactly zero");
+    CHECK_GE(fluid.amount, 0, "buffer never negative");
+
+    // Steam path: fractional storage drains its floor exactly.
+    auto boiler = fx.reg.create();
+    auto& steam = fx.reg.emplace<simcore::SteamOutputComponent>(boiler);
+    steam.steam_stored = 40.5;
+    steam.steam_capacity = 100.0;
+    fx.registerPort(makeFluidPort(102, static_cast<std::uint64_t>(boiler),
+                                  PortRole::SOURCE, 0, 200), kSteamId);
+    fx.drain(10, 102, kSteamId, 100);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 40, "steam drains its floor amount");
+    CHECK_EQ(steam.steam_stored, 0.5, "fractional remainder preserved");
+}
+
+// Combined shortfall conservation across the real owner handler (source debit)
+// and the service tracker (destination credit): pipe part + source part ==
+// destination credit, and replay on either leg cannot move amounts twice.
+void test_combined_shortfall_conservation() {
+    DrainFixture fx;
+    auto& fluid = fx.reg.emplace<simcore::FluidStorage>(fx.machine, kWaterId,
+                                                        200, 400, 0, 200);
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+    fx.registerPort(makeFluidPort(151, owner, PortRole::SOURCE, 0, 400), kWaterId);
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+
+    // Pipe part already served by PipeNetwork (its debit guarantee is pinned
+    // by pipe_network_test); the shortfall goes to the real owner handler.
+    const std::int32_t requested = 200;
+    const std::int32_t pipe_accepted = 80;
+
+    fx.traffic.clear();
+    auto plan = tracker.planShortfall(
+        /*drain_request_id=*/1001, /*consume_request_id=*/7, /*sink_node_id=*/30,
+        kWaterId, requested, pipe_accepted, /*source_node_id=*/11, owner,
+        /*source_port_id=*/151, /*now_tick=*/0);
+    CHECK(plan.request_source, "shortfall emits a drain request");
+    CHECK_EQ(plan.shortfall, 120, "only the shortfall is requested");
+
+    fx.drain(plan.drain_request_id, 151, kWaterId, plan.shortfall);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 120, "owner accepts the full shortfall");
+    CHECK_EQ(fluid.amount, 80, "source debited exactly its acceptance");
+
+    auto applied = tracker.applyDrainResponse(plan.drain_request_id, kWaterId,
+                                              fx.lastResponse().accepted_amount);
+    CHECK(applied.applied, "response applies once");
+    CHECK_EQ(applied.source_accepted, 120, "source part credited");
+    CHECK_EQ(applied.combined_accepted, requested, "pipe part + source part == requested");
+    CHECK_EQ(applied.remaining, 0, "nothing left");
+    CHECK_EQ(pipe_accepted + (200 - fluid.amount), applied.combined_accepted,
+             "conservation: total accepted == total debited across pipe + source");
+
+    // Replay on both legs: no second debit, no second credit.
+    fx.drain(plan.drain_request_id, 151, kWaterId, plan.shortfall);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 120, "drain replay returns cached response");
+    CHECK_EQ(fluid.amount, 80, "drain replay does not debit twice");
+    auto replay_apply = tracker.applyDrainResponse(plan.drain_request_id, kWaterId, 120);
+    CHECK(!replay_apply.applied, "response replay ignored");
+
+    // Partial source acceptance: the gap is neither debited nor credited.
+    auto plan2 = tracker.planShortfall(1002, 8, 30, kWaterId, 100, 0, 11, owner, 151, 0);
+    CHECK_EQ(plan2.shortfall, 100, "full demand is the shortfall");
+    fx.drain(plan2.drain_request_id, 151, kWaterId, plan2.shortfall);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 80, "owner short-accepts at availability");
+    CHECK_EQ(fluid.amount, 0, "source debited only what it has");
+    auto applied2 = tracker.applyDrainResponse(plan2.drain_request_id, kWaterId,
+                                               fx.lastResponse().accepted_amount);
+    CHECK_EQ(applied2.combined_accepted, 80, "combined == pipe + actual source part");
+    CHECK_EQ(applied2.remaining, 20, "unserved gap reported exactly");
+    CHECK_GE(fluid.amount, 0, "source never over-debited");
+}
+
+// -- 3.6.2: partial acceptance bounds on the owner side -----------------------
+
+void test_drain_partial_acceptance_bounds() {
+    DrainFixture fx;
+    // maxOutput caps every debit; repeated partial drains sum exactly.
+    auto& fluid = fx.reg.emplace<simcore::FluidStorage>(fx.machine, kWaterId,
+                                                        25, 200, 0, 10);
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+    fx.registerPort(makeFluidPort(111, owner, PortRole::SOURCE, 0, 200), kWaterId);
+
+    fx.traffic.clear();
+    std::int32_t total = 0;
+    for (std::uint64_t id = 1; id <= 3; ++id) {
+        fx.drain(id, 111, kWaterId, 50);
+        const std::int32_t accepted = fx.lastResponse().accepted_amount;
+        CHECK(accepted <= 10, "each drain bounded by maxOutput");
+        total += accepted;
+    }
+    CHECK_EQ(total, 25, "three capped drains empty the buffer exactly");
+    CHECK_EQ(fluid.amount, 0, "buffer exactly empty");
+    fx.drain(4, 111, kWaterId, 50);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "empty buffer accepts zero");
+    CHECK_EQ(fluid.amount, 0, "zero acceptance keeps the buffer at zero");
+}
+
+// -- 3.6.3: replay determinism for unknown ports and request id zero ----------
+
+void test_handler_unknown_port_response_cached() {
+    DrainFixture fx;
+    auto& fluid = fx.reg.emplace<simcore::FluidStorage>(fx.machine, kWaterId,
+                                                        100, 200, 0, 100);
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+
+    fx.traffic.clear();
+    fx.drain(5, 777, kWaterId, 40);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "unknown port -> zero");
+    fx.drain(5, 777, kWaterId, 40);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "retry returns the cached zero");
+    CHECK_EQ(fluid.amount, 100, "no debit for unknown port");
+
+    // The port appears later; the cached zero still wins for request 5
+    // (a redelivered request must not re-execute).
+    fx.registerPort(makeFluidPort(777, owner, PortRole::SOURCE, 0, 200), kWaterId);
+    fx.drain(5, 777, kWaterId, 40);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "cached response trumps late port");
+    CHECK_EQ(fluid.amount, 100, "replayed unknown-port request never debits");
+
+    // A fresh request id uses the now-registered port.
+    fx.drain(6, 777, kWaterId, 40);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 40, "new request id drains");
+    CHECK_EQ(fluid.amount, 60, "fresh request debits once");
+}
+
+void test_handler_request_id_zero_never_debits() {
+    DrainFixture fx;
+    auto& fluid = fx.reg.emplace<simcore::FluidStorage>(fx.machine, kWaterId,
+                                                        100, 200, 0, 100);
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+    fx.registerPort(makeFluidPort(121, owner, PortRole::SOURCE, 0, 200), kWaterId);
+
+    fx.traffic.clear();
+    fx.drain(0, 121, kWaterId, 30);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "request_id 0 rejected");
+    CHECK_EQ(fx.lastResponse().request_id, std::uint64_t(0), "zero response echoes the id");
+    fx.drain(0, 121, kWaterId, 30);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "second zero-id request also rejected");
+    CHECK_EQ(fluid.amount, 100,
+             "zero-id requests never debit (redelivery would double-debit)");
+}
+
+// -- 3.6.4: mixed fluids and capacity boundaries on the owner side ------------
+
+void test_drain_mixed_fluids_excluded() {
+    DrainFixture fx;
+    auto& steam = fx.reg.emplace<simcore::SteamOutputComponent>(fx.machine);
+    steam.steam_stored = 50.0;
+    steam.steam_capacity = 100.0;
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+    fx.registerPort(makeFluidPort(131, owner, PortRole::SOURCE, 0, 100), kSteamId);
+
+    fx.traffic.clear();
+    fx.drain(1, 131, kWaterId, 10);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "water request excluded from steam buffer");
+    CHECK_EQ(steam.steam_stored, 50.0, "mismatched request leaves steam unchanged");
+
+    auto tank = fx.reg.create();
+    auto& fluid = fx.reg.emplace<simcore::FluidStorage>(tank, kWaterId, 60, 100, 0, 60);
+    fx.registerPort(makeFluidPort(132, static_cast<std::uint64_t>(tank),
+                                  PortRole::SOURCE, 0, 100), kWaterId);
+    fx.drain(2, 132, kSteamId, 10);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "steam request excluded from water tank");
+    CHECK_EQ(fluid.amount, 60, "mismatched request leaves the tank unchanged");
+
+    auto empty = fx.reg.create();
+    auto& ef = fx.reg.emplace<simcore::FluidStorage>(empty, 0, 0, 100, 0, 60);
+    fx.registerPort(makeFluidPort(133, static_cast<std::uint64_t>(empty),
+                                  PortRole::SOURCE, 0, 100), kWaterId);
+    fx.drain(3, 133, kWaterId, 10);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "empty tank excludes everything");
+    CHECK_EQ(ef.amount, 0, "empty tank unchanged");
+}
+
+void test_drain_capacity_boundaries_exact_fill() {
+    DrainFixture fx;
+    auto& steam = fx.reg.emplace<simcore::SteamOutputComponent>(fx.machine);
+    steam.steam_stored = 100.0;
+    steam.steam_capacity = 100.0;
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+    fx.registerPort(makeFluidPort(141, owner, PortRole::SOURCE, 0, 100), kSteamId);
+
+    fx.traffic.clear();
+    fx.drain(1, 141, kSteamId, 1000);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 100, "over-available demand short-fills");
+    CHECK_EQ(steam.steam_stored, 0.0, "buffer drained to exactly zero");
+    fx.drain(2, 141, kSteamId, 1);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 0, "empty buffer accepts zero");
+
+    auto tank = fx.reg.create();
+    auto& fluid = fx.reg.emplace<simcore::FluidStorage>(tank, kWaterId, 40, 100, 0, 100);
+    fx.registerPort(makeFluidPort(142, static_cast<std::uint64_t>(tank),
+                                  PortRole::SOURCE, 0, 100), kWaterId);
+    fx.drain(3, 142, kWaterId, 40);
+    CHECK_EQ(fx.lastResponse().accepted_amount, 40, "exact-fill request fully accepted");
+    CHECK_EQ(fluid.amount, 0, "tank exactly empty");
+    CHECK(fluid.isEmpty(), "isEmpty boundary holds");
+}
+
 } // namespace
 
 void test_resource_drain() {
@@ -423,4 +762,26 @@ void test_resource_drain() {
     test_typed_port_remove_clears_port_and_replay();
     printf("  TEST: replay_cache_is_bounded\n");
     test_replay_cache_is_bounded();
+    printf("  TEST: handler_port_epoch_update_matrix\n");
+    test_handler_port_epoch_update_matrix();
+    printf("  TEST: handler_exact_removal_key_matrix\n");
+    test_handler_exact_removal_key_matrix();
+    printf("  TEST: handler_remove_owner_ports_without_ports_is_harmless\n");
+    test_handler_remove_owner_ports_without_ports_is_harmless();
+    printf("  TEST: handler_owner_removal_scoped_to_owner_replay\n");
+    test_handler_owner_removal_scoped_to_owner_replay();
+    printf("  TEST: source_drain_conservation_exact\n");
+    test_source_drain_conservation_exact();
+    printf("  TEST: combined_shortfall_conservation\n");
+    test_combined_shortfall_conservation();
+    printf("  TEST: drain_partial_acceptance_bounds\n");
+    test_drain_partial_acceptance_bounds();
+    printf("  TEST: handler_unknown_port_response_cached\n");
+    test_handler_unknown_port_response_cached();
+    printf("  TEST: handler_request_id_zero_never_debits\n");
+    test_handler_request_id_zero_never_debits();
+    printf("  TEST: drain_mixed_fluids_excluded\n");
+    test_drain_mixed_fluids_excluded();
+    printf("  TEST: drain_capacity_boundaries_exact_fill\n");
+    test_drain_capacity_boundaries_exact_fill();
 }
