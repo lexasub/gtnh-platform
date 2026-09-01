@@ -21,7 +21,9 @@
 #include "Network/ItemClient.h"
 #include "Network/SimCoreMessageHandler.h"
 #include "Network/ResourceDrainHandler.h"
+#include "Network/CraftReservationClient.h"
 #include <common/ResourcePortClient.h>
+#include <common/Registry.h>
 #include "ECS/SimulationEngine.h"
 #include "Storage/ChunkStoreRepository.h"
 #include "Storage/PlayerInventoryStore.h"
@@ -213,6 +215,31 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // ── Recipe resource validation (4.1.3/4.4.4) ─────────────────────────
+    // Runs after the runtime multiblock class registration so EBF/LCR
+    // recipes validate against their machine classes. The shared CSV
+    // registry resolves steam and fluid identities canonically; a validation
+    // failure is a hard startup error before the service serves.
+    {
+        gtnh::common::Registry sharedRegistry;
+        const bool registryLoaded = sharedRegistry.load("data/registry");
+        if (!registryLoaded) {
+            for (const auto& err : sharedRegistry.errors()) {
+                spdlog::error("Shared registry: {}", err);
+            }
+            spdlog::warn("Shared registry failed to load; recipe validation runs without it");
+        }
+        const auto errors = recipeManager->validateResourceRequirements(
+            registryLoaded ? &sharedRegistry : nullptr);
+        if (!errors.empty()) {
+            for (const auto& err : errors) {
+                spdlog::error("Recipe resource validation: {}", err);
+            }
+            spdlog::error("Recipe resource validation failed; refusing to start");
+            return 1;
+        }
+    }
+
     // ── Signals ───────────────────────────────────────────────────────────
     std::signal(SIGPIPE, SIG_IGN);
     std::signal(SIGINT,  handleSignal);
@@ -278,8 +305,22 @@ int main(int argc, char* argv[]) {
             routerClient->Publish(topic, payload);
             return true;
         });
-    simulationEngine->onMachineOwnerRemoved = [resourceDrainHandler](uint64_t owner_id) {
+
+    // Craft orchestration client (refactor-fluid-port-accounting 4.2.x):
+    // publishes typed consume requests for PendingCraft reservations and
+    // per-tick charges; responses correlate by request ID.
+    auto craftReservations = std::make_shared<simcore::CraftReservationClient>(
+        simulationEngine->reg(),
+        [routerClient](const char* topic, const std::vector<uint8_t>& payload) {
+            routerClient->Publish(topic, payload);
+            return true;
+        });
+
+    simulationEngine->onMachineOwnerRemoved = [resourceDrainHandler,
+                                               craftReservations](uint64_t owner_id) {
         resourceDrainHandler->removeOwnerPorts(owner_id);
+        // 4.2.4: machine removal cancels its pending reservations.
+        craftReservations->cancel(static_cast<entt::entity>(owner_id), "owner removed");
     };
 
     simulationEngine->onMachineCreated = [eventPublisher, &simulationEngine, entityStateClient, &mainQueue](
@@ -390,7 +431,7 @@ int main(int argc, char* argv[]) {
     {
         auto ms = std::make_unique<simcore::MachineSystem>(
             simulationEngine->reg(), recipeManager, eventPublisher, pipeEnergyClient, itemClient,
-            chestSessions, inventoryStore, routerClient, fluidClient);
+            chestSessions, inventoryStore, routerClient, fluidClient, craftReservations);
         machineSystemRaw = ms.get();
         simulationEngine->registerSystem(std::move(ms));
     }
@@ -406,7 +447,7 @@ int main(int argc, char* argv[]) {
     simulationEngine->registerSystem(std::make_unique<simcore::EBFSystem>(
         simulationEngine->reg(), simulationEngine->getControllers(),
         simulationEngine->getPatternRegistry(),
-        recipeManager, eventPublisher, pipeEnergyClient));
+        recipeManager, eventPublisher, pipeEnergyClient, craftReservations));
     simulationEngine->registerSystem(std::make_unique<simcore::LargeBoilerSystem>(
         simulationEngine->reg(), simulationEngine->getControllers(),
         simulationEngine->getPatternRegistry(),
@@ -414,7 +455,7 @@ int main(int argc, char* argv[]) {
     simulationEngine->registerSystem(std::make_unique<simcore::LCRSystem>(
         simulationEngine->reg(), simulationEngine->getControllers(),
         simulationEngine->getPatternRegistry(),
-        recipeManager, eventPublisher, pipeEnergyClient));
+        recipeManager, eventPublisher, pipeEnergyClient, craftReservations));
 
     // ── Generic machine interaction handlers ──
     simulationEngine->registerMachineInteractionHandler(
@@ -477,6 +518,7 @@ int main(int argc, char* argv[]) {
     msgDeps.chestSessions = chestSessions;
     msgDeps.chestStateManager = chestStateManager;
     msgDeps.resourceDrainHandler = resourceDrainHandler;
+    msgDeps.craftReservations = craftReservations;
     simcore::SimCoreMessageHandler messageHandler(std::move(msgDeps));
     messageHandler.setup();
     messageHandler.wireOnMessage(worldContainers);

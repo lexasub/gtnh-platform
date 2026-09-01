@@ -21,6 +21,7 @@ class ItemClient;
 class ContainerSessionRegistry;
 class PlayerInventoryStore;
 class IoUringRouterClient;
+class CraftReservationClient;
 
 class MachineSystem : public ISystem {
 public:
@@ -32,12 +33,18 @@ public:
                 std::shared_ptr<ContainerSessionRegistry> sessions = nullptr,
                 std::shared_ptr<PlayerInventoryStore> invStore = nullptr,
                 std::shared_ptr<IoUringRouterClient> router = nullptr,
-                std::shared_ptr<FluidClient> fluidClient = nullptr);
+                std::shared_ptr<FluidClient> fluidClient = nullptr,
+                std::shared_ptr<CraftReservationClient> reservations = nullptr);
 
   void tick(float dt) override;
   void onConsumeResponse(uint64_t node_id = 0, int32_t consumed = 0,
                          int32_t remaining = 0);
   void onFluidConsumeResponse(int32_t consumed);
+
+  // Commit a fully-accepted pending craft (4.3.2): consumes the input items
+  // and starts progress exactly once. No-op unless the entity carries a
+  // PendingCraft whose reservations are all accepted.
+  void commitPendingCraft(entt::entity entity);
 
   // TODO(perf): force-publishing every machine every 10 ticks (~0.5s) is
   // O(#machines) traffic per interval — temporary measure so late-connecting
@@ -51,6 +58,11 @@ private:
 
   void publishInventoryIfOpen(const MachineComponent& mc);
 
+  // Reservation-driven recipe start (4.2.2/4.3.3): begin/tick/commit the
+  // pending craft for `recipe` on an idle machine.
+  void tickOrchestratedStart(entt::entity entity, MachineComponent& machine,
+                             const RecipeManager::Recipe& recipe);
+
   entt::registry &reg_;
   std::shared_ptr<RecipeManager::RecipeManager> recipes_;
   std::shared_ptr<IEventPublisher> events_;
@@ -60,11 +72,13 @@ private:
   std::shared_ptr<PlayerInventoryStore> invStore_;
   std::shared_ptr<IoUringRouterClient> router_;
   std::shared_ptr<FluidClient> fluidClient_;
+  std::shared_ptr<CraftReservationClient> reservations_;
   std::unordered_map<uint64_t, int32_t> pendingConsumes_;
   std::unordered_map<uint64_t, int32_t> pendingFluidConsumes_;
   std::unordered_map<uint64_t, uint64_t> lastInventoryHash_;
   int tickCounter_ = 0;
   int startupTicks_ = 3;
+  uint64_t totalTicks_ = 0;
 };
 
 } // namespace simcore

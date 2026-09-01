@@ -31,6 +31,7 @@ class ChestStateManager;
 class MachineOpenHandler;
 class MachineCloseHandler;
 class ResourceDrainHandler;
+class CraftReservationClient;
 
 } // namespace simcore
 
@@ -63,6 +64,7 @@ public:
     std::shared_ptr<ContainerSessionRegistry> chestSessions;
     std::shared_ptr<ChestStateManager> chestStateManager;
     std::shared_ptr<ResourceDrainHandler> resourceDrainHandler;
+    std::shared_ptr<CraftReservationClient> craftReservations;
   };
 
   explicit SimCoreMessageHandler(Deps deps);

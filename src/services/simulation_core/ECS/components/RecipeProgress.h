@@ -95,13 +95,27 @@ struct PendingCraft {
   std::uint64_t expiry_tick = 0;
   std::uint64_t next_retry_tick = 0;
 
-  [[nodiscard]] std::vector<RequirementReservation>& reservations() noexcept {
+  [[nodiscard]] std::vector<RequirementReservation>&
+  reservations() noexcept {
     return requirements;
   }
 
   [[nodiscard]] const std::vector<RequirementReservation>&
   reservations() const noexcept {
     return requirements;
+  }
+
+  // Response correlation is by request ID and requirement (4.3.1), never by
+  // arrival order: the reservation carries the request id it was issued with.
+  [[nodiscard]] RequirementReservation*
+  findReservationByRequestId(std::uint64_t response_request_id) noexcept {
+    for (auto& requirement : requirements) {
+      if (requirement.request_id != 0 &&
+          requirement.request_id == response_request_id) {
+        return &requirement;
+      }
+    }
+    return nullptr;
   }
 
   [[nodiscard]] bool fullyAccepted() const noexcept {

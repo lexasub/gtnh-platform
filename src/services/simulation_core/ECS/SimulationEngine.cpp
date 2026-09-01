@@ -542,11 +542,14 @@ std::vector<uint8_t> SimulationEngine::serializeMultiblock(uint64_t controller_i
         if (auto* heat = reg_.try_get<HeatIntakeComponent>(entity)) {
             heat_stored = heat->heat_stored;
         }
-        if (auto* prog = reg_.try_get<RecipeProgress>(entity)) {
-            recipe_progress = static_cast<int32_t>(prog->remaining_ticks);
-            recipe_ticks = static_cast<int32_t>(prog->remaining_ticks);
-            recipe_id = prog->recipe_id;
-        }
+    if (auto* prog = reg_.try_get<RecipeProgress>(entity)) {
+        recipe_progress = static_cast<int32_t>(prog->remaining_ticks);
+        recipe_ticks = static_cast<int32_t>(prog->remaining_ticks);
+        recipe_id = prog->recipe_id;
+        // 4.2.3: a PendingCraft is never persisted — it has no schema fields
+        // and an empty recipe_id here, so the blob only ever carries real
+        // progress. The restored machine re-requests its requirements.
+    }
     }
 
     // Persist hatch/controller inventory contents (task 2.2) so nothing is
@@ -596,6 +599,9 @@ void SimulationEngine::deserializeMultiblock(uint64_t controller_id,
         prog->recipe_id = fb->recipe_id() ? fb->recipe_id()->str() : "";
         prog->remaining_ticks = static_cast<uint32_t>(fb->recipe_ticks());
         prog->is_processing = !prog->recipe_id.empty();
+        // 4.2.3: restored machines never inherit reservation state; an idle
+        // machine re-requests its requirements through the normal path.
+        prog->clearPendingCraft();
     }
     if (auto* inv = reg_.try_get<InventoryContainer>(entity)) {
         if (fb->slots()) {

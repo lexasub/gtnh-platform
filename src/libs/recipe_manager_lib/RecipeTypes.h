@@ -2,6 +2,7 @@
 
 #include "RecipeConditions.h"
 #include "recipe_generated.h"
+#include <common/ResourcePort.h>
 #include <array>
 #include <cstdint>
 #include <nlohmann/json.hpp>
@@ -45,6 +46,37 @@ struct OutputItem {
 /// Sentinel: recipe matches any machine energy type
 static constexpr uint8_t ENERGY_TYPE_ANY = 255;
 
+// One externally supplied resource a recipe consumes (openspec
+// refactor-fluid-port-accounting 4.1.1). Generic by design so STEAM and
+// future electricity share the same orchestration contract:
+//   kind        — transport channel (gtnh::common::ResourceKind, the domain
+//                 enum from src/common/ResourcePort.h; services map it to the
+//                 wire with ResourcePortClient.h ToWire/FromWire)
+//   resource_id — packed canonical items.csv id for FLUID/ITEM, 0 for energy
+//                 channels (EU/HU/RU carry no material id)
+//   amount      — units charged per tick while the recipe runs (same
+//                 per-tick semantics as Recipe::energy_cost)
+//   tier        — minimum machine variant tier the requirement applies to
+struct ResourceRequirement {
+  gtnh::common::ResourceKind kind = gtnh::common::ResourceKind::FLUID;
+  std::uint32_t resource_id = 0;
+  std::uint32_t amount = 0;
+  std::int16_t tier = 0;
+
+  [[nodiscard]] bool isEnergy() const noexcept {
+    return kind == gtnh::common::ResourceKind::EU ||
+           kind == gtnh::common::ResourceKind::HU ||
+           kind == gtnh::common::ResourceKind::RU;
+  }
+  [[nodiscard]] bool needsResourceId() const noexcept {
+    return kind == gtnh::common::ResourceKind::FLUID ||
+           kind == gtnh::common::ResourceKind::ITEM;
+  }
+  [[nodiscard]] bool valid() const noexcept {
+    return amount > 0 && (!needsResourceId() || resource_id != 0);
+  }
+};
+
 struct Recipe {
   std::string id;
   std::vector<InputItem> inputs;
@@ -61,6 +93,12 @@ struct Recipe {
   float energy_output; // energy produced per operation (0 for consumers)
   RecipeConditions conditions;
 
+  // Explicit external resource requirements (4.1.1). Empty = the legacy
+  // energy_in/eu path drives the machine (migration compatibility); non-empty
+  // = SimulationCore reserves every entry through the typed consume-request
+  // contract before inputs are consumed or progress starts.
+  std::vector<ResourceRequirement> resource_requirements;
+
   // Optional positional 3x3 pattern (crafting table / workbench).
   // When set, `matches` compares the container positionally (index 0 =
   // top-left, 8 = bottom-right) and `craft` consumes per-slot. Empty cell =
@@ -70,6 +108,21 @@ struct Recipe {
   std::array<ItemStack, 9> pattern{};
 
   bool matches(const std::vector<ItemStack> &container_items) const;
+
+  /// True when the recipe declares explicit resource requirements and must be
+  /// orchestrated through the reservation contract (4.1.4 execution contract).
+  [[nodiscard]] bool hasResourceRequirements() const noexcept {
+    return !resource_requirements.empty();
+  }
+
+  /// Total per-tick amount across all requirements (0 when none).
+  [[nodiscard]] std::uint32_t resourceAmountPerTick() const noexcept {
+    std::uint32_t total = 0;
+    for (const auto &req : resource_requirements) {
+      total += req.amount;
+    }
+    return total;
+  }
   /// Consume the recipe inputs from the container (pattern or aggregate),
   /// WITHOUT placing outputs. Used by the workbench where the result goes to
   /// the result slot + player inventory, not into an input-grid slot.

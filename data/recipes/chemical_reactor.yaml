@@ -11,6 +11,8 @@ recipes:
     duration: 400
     min_tier: 0
     max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:chemical_reactor_hydrogen
     inputs:
@@ -20,6 +22,8 @@ recipes:
     duration: 200
     min_tier: 0
     max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:chemical_reactor_iron_reduction
     inputs:
@@ -29,6 +33,8 @@ recipes:
     duration: 400
     min_tier: 0
     max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:chemical_reactor_oxygen
     inputs:
@@ -38,6 +44,8 @@ recipes:
     duration: 200
     min_tier: 0
     max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:chemical_reactor_water_split
     inputs:
@@ -47,3 +55,5 @@ recipes:
     duration: 300
     min_tier: 0
     max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }

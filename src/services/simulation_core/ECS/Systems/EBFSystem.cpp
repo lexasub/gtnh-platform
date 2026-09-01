@@ -9,6 +9,7 @@
 #include "../components/MultiblockController.h"
 #include "../Network/IEventPublisher.h"
 #include "../Network/PipeEnergyClient.h"
+#include "../Network/CraftReservationClient.h"
 #include "../SimulationEngine.h"
 #include "../MultiblockUtils.h"
 #include "../RecipeManager/RecipeManager.h"
@@ -23,12 +24,15 @@ EBFSystem::EBFSystem(entt::registry& reg,
                      const PatternRegistry& patterns,
                      std::shared_ptr<RecipeManager::RecipeManager> recipes,
                      std::shared_ptr<IEventPublisher> events,
-                     std::shared_ptr<PipeEnergyClient> pipeClient)
+                     std::shared_ptr<PipeEnergyClient> pipeClient,
+                     std::shared_ptr<CraftReservationClient> reservations)
     : reg_(reg), controllers_(controllers), patterns_(patterns),
-      recipes_(recipes), events_(events), pipeClient_(pipeClient)
+      recipes_(recipes), events_(events), pipeClient_(pipeClient),
+      reservations_(std::move(reservations))
 {}
 
 void EBFSystem::tick(float) {
+    ++totalTicks_;
     std::vector<uint64_t> ids;
     for (const auto& [id, _] : controllers_) ids.push_back(id);
 
@@ -136,8 +140,19 @@ void EBFSystem::tickEBF(uint64_t ctrl_id, MultiblockController& ctrl) {
 
         if (heat.heat_stored < requiredHeat) return; // not hot enough
 
-        if (energy.current < static_cast<int32_t>(recipe->energy_cost)) {
-            if (pipeClient_) {
+        const bool orchestrated = reservations_ && recipe->hasResourceRequirements();
+        const int32_t perTickCost = orchestrated
+            ? static_cast<int32_t>(recipe->resourceAmountPerTick())
+            : static_cast<int32_t>(recipe->energy_cost);
+
+        if (energy.current < perTickCost) {
+            if (orchestrated) {
+                // 4.3.4: recurring charge through the accepted-amount path
+                // before progress may advance.
+                if (!reservations_->hasOutstandingCharge(entity)) {
+                    reservations_->beginPerTickCharge(entity, *recipe);
+                }
+            } else if (pipeClient_) {
                 pipeClient_->sendConsumeRequest(
                     static_cast<uint64_t>(entity),
                     static_cast<int32_t>(machine.x),
@@ -149,7 +164,7 @@ void EBFSystem::tickEBF(uint64_t ctrl_id, MultiblockController& ctrl) {
             return;
         }
 
-        energy.current -= static_cast<int32_t>(recipe->energy_cost);
+        energy.current -= perTickCost;
         progress.remaining_ticks--;
 
         if (pipeClient_) {
@@ -208,22 +223,28 @@ void EBFSystem::tickEBF(uint64_t ctrl_id, MultiblockController& ctrl) {
 
         auto* recipe = recipes_->findRecipeByInputs(machine.machine_id, inputItems);
         if (recipe && heat.heat_stored >= requiredHeat) {
-            progress.recipe_id = recipe->id;
-            progress.remaining_ticks = static_cast<int32_t>(recipe->duration);
-            progress.is_processing = true;
+            if (reservations_ && recipe->hasResourceRequirements()) {
+                // 4.2.2/4.3.2: reserve before touching inputs or progress.
+                tickOrchestratedStart(entity, machine, *recipe,
+                                      input_start, input_end_capped);
+            } else {
+                progress.recipe_id = recipe->id;
+                progress.remaining_ticks = static_cast<int32_t>(recipe->duration);
+                progress.is_processing = true;
 
-            for (const auto& req : recipe->inputs) {
-                if (req.item_id == 0) continue;
-                int64_t remaining = static_cast<int64_t>(req.count);
-                for (int i = input_start; i < input_end_capped && remaining > 0; ++i) {
-                    auto& slot = container.slots[i];
-                    if (slot.item_id == req.item_id && slot.meta == req.metadata) {
-                        uint8_t take = std::min(slot.count, static_cast<uint8_t>(remaining));
-                        slot.count = static_cast<uint8_t>(slot.count - take);
-                        remaining -= take;
-                        if (slot.count == 0) {
-                            slot.item_id = 0;
-                            slot.meta = 0;
+                for (const auto& req : recipe->inputs) {
+                    if (req.item_id == 0) continue;
+                    int64_t remaining = static_cast<int64_t>(req.count);
+                    for (int i = input_start; i < input_end_capped && remaining > 0; ++i) {
+                        auto& slot = container.slots[i];
+                        if (slot.item_id == req.item_id && slot.meta == req.metadata) {
+                            uint8_t take = std::min(slot.count, static_cast<uint8_t>(remaining));
+                            slot.count = static_cast<uint8_t>(slot.count - take);
+                            remaining -= take;
+                            if (slot.count == 0) {
+                                slot.item_id = 0;
+                                slot.meta = 0;
+                            }
                         }
                     }
                 }
@@ -254,6 +275,95 @@ void EBFSystem::tickEBF(uint64_t ctrl_id, MultiblockController& ctrl) {
         input_end, // split inventory into input/output grids at the ITEM_IN range
         heat.ratio(),
         &hatches);
+}
+
+void EBFSystem::tickOrchestratedStart(entt::entity entity,
+                                      MachineComponent& machine,
+                                      const RecipeManager::Recipe& recipe,
+                                      int input_start, int input_end) {
+    auto& progress = reg_.get<RecipeProgress>(entity);
+
+    // 4.2.4: stale pending craft for a different recipe is cancelled.
+    if (progress.pending_craft && progress.pending_craft->recipe_id != recipe.id) {
+        reservations_->cancel(entity, "recipe changed");
+    }
+
+    if (!progress.pending_craft) {
+        reservations_->beginReservation(entity, recipe, totalTicks_);
+        return;
+    }
+    if (!reservations_->tickPending(entity, totalTicks_)) {
+        return;
+    }
+    if (progress.pending_craft && progress.pending_craft->fullyAccepted()) {
+        auto& container = reg_.get<InventoryContainer>(entity);
+        const auto* live = recipes_->getRecipeById(progress.pending_craft->recipe_id);
+        if (!live) {
+            reservations_->cancel(entity, "recipe vanished");
+            return;
+        }
+        // Commit point (4.3.2): consume inputs exactly once, then start.
+        for (const auto& req : live->inputs) {
+            if (req.item_id == 0) continue;
+            int64_t remaining = static_cast<int64_t>(req.count);
+            for (int i = input_start; i < input_end && remaining > 0; ++i) {
+                auto& slot = container.slots[i];
+                if (slot.item_id == req.item_id && slot.meta == req.metadata) {
+                    uint8_t take = std::min(slot.count, static_cast<uint8_t>(remaining));
+                    slot.count = static_cast<uint8_t>(slot.count - take);
+                    remaining -= take;
+                    if (slot.count == 0) {
+                        slot.item_id = 0;
+                        slot.meta = 0;
+                    }
+                }
+            }
+        }
+        progress.recipe_id = live->id;
+        progress.remaining_ticks = static_cast<int32_t>(live->duration);
+        progress.is_processing = true;
+        progress.clearPendingCraft();
+    }
+}
+
+void EBFSystem::commitPendingCraft(entt::entity entity) {
+    auto* machine = reg_.try_get<MachineComponent>(entity);
+    auto* progress = reg_.try_get<RecipeProgress>(entity);
+    if (!machine || !progress || !progress->pending_craft) return;
+    if (!progress->pending_craft->fullyAccepted()) return;
+
+    auto view = reg_.view<const Position, MachineComponent>();
+    for (auto e : view) {
+        auto& pos = view.get<const Position>(e);
+        if (pos.x == machine->x && pos.y == machine->y && pos.z == machine->z) {
+            auto it = std::find_if(
+                controllers_.begin(), controllers_.end(),
+                [&](const auto& entry) {
+                    return entry.second.x == machine->x &&
+                           entry.second.y == machine->y &&
+                           entry.second.z == machine->z;
+                });
+            if (it == controllers_.end()) return;
+            int input_start = 0, input_end = 0;
+            SimulationEngine::getInputSlotRange(it->second, input_start, input_end);
+            if (input_end == 0) {
+                if (auto* minfo = MachineRegistry::instance()->Get(machine->machine_id)) {
+                    input_end = std::min(minfo->slots_in,
+                                         static_cast<int>(reg_.get<InventoryContainer>(entity).slots.size()));
+                }
+            }
+            const auto* pending_recipe =
+                recipes_->getRecipeById(progress->pending_craft->recipe_id);
+            if (!pending_recipe) {
+                reservations_->cancel(entity, "recipe vanished");
+                return;
+            }
+            tickOrchestratedStart(entity, *machine, *pending_recipe,
+                                  input_start,
+                                  std::min(input_end, static_cast<int>(reg_.get<InventoryContainer>(entity).slots.size())));
+            return;
+        }
+    }
 }
 
 } // namespace simcore

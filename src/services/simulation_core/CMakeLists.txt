@@ -81,6 +81,7 @@ add_library(simcored
         Network/TopicDispatcher.cpp
         Network/SimCoreMessageHandler.cpp
         Network/ResourceDrainHandler.cpp
+        Network/CraftReservationClient.cpp
         Network/WorkbenchOpenHandler.cpp
         Network/ChestOpenHandler.cpp
         Network/ChestCloseHandler.cpp
@@ -213,6 +214,7 @@ if(BUILD_TESTING)
         test/test_wrench_meta.cpp
         test/test_boiler_ports.cpp
         test/test_resource_drain.cpp
+        test/test_pending_craft.cpp
     )
     target_compile_definitions(simcored_test PRIVATE
         DATA_DIR="${CMAKE_SOURCE_DIR}/data"

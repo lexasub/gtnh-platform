@@ -12,6 +12,12 @@
 #include <vector>
 #include <yaml-cpp/yaml.h>
 
+namespace gtnh {
+namespace common {
+class Registry;
+} // namespace common
+} // namespace gtnh
+
 namespace RecipeManager {
 
 /// Energy types used in machine variant definitions
@@ -125,6 +131,14 @@ public:
 
   /// Get machine class name for a block_id (empty string if not found).
   const std::string &getMachineClass(uint16_t block_id) const;
+
+  /// Validate every stored recipe's resource requirements (4.1.3): kind/ID
+  /// against the item registry, tier against the recipe's machine class, and
+  /// — when a loaded shared CSV registry is provided — FLUID ids against its
+  /// canonical fluid catalog (steam must resolve to Registry::steamItemId()).
+  /// Returns one message per violation; empty = all recipes valid.
+  std::vector<std::string>
+  validateResourceRequirements(const ::gtnh::common::Registry *shared) const;
 
 private:
   // ── Recipe storage ──────────────────────────────────────────────

@@ -12,3 +12,6 @@ recipes:
     duration: 200
     min_tier: 0
     max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }

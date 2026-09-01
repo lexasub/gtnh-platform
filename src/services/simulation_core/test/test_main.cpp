@@ -13,6 +13,7 @@ void test_container_click();
 void test_wrench_meta();
 void test_boiler_ports();
 void test_resource_drain();
+void test_pending_craft();
 #include <cstdint>
 #include <cstdio>
 #include <cstddef>
@@ -197,6 +198,7 @@ int main(int argc, char** argv) {
     test_wrench_meta();
     test_boiler_ports();
     test_resource_drain();
+    test_pending_craft();
 
     printf("\n=== Results: %d tests, %d passed, %d failed ===\n",
            g_tests, g_passed, g_failed);

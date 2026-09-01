@@ -44,6 +44,7 @@
 #include "ECS/Reactors/ItemFlowHandler.h"
 #include "ECS/Reactors/CableExplosionHandler.h"
 #include "Network/ResourceDrainHandler.h"
+#include "Network/CraftReservationClient.h"
 #include <common/ResourcePortClient.h>
 #include "../../data/registry/ToolIds.h"
 #include "core_generated.h"
@@ -89,6 +90,23 @@ void SimCoreMessageHandler::setup() {
         topicDispatcher_->on(gtnh::common::kTopicResourceDrainRequest,
             std::make_unique<FnTopicHandler>([drain](const std::vector<uint8_t>& data) {
                 drain->handleDrainRequest(data);
+            }));
+    }
+
+    // Craft orchestration (4.3.1): typed consume responses correlate to
+    // PendingCraft reservations / per-tick charges by request ID. Commit of a
+    // fully-accepted craft happens on the owning system's next tick.
+    if (d.craftReservations) {
+        auto reservations = d.craftReservations;
+        topicDispatcher_->on(gtnh::common::kTopicResourceConsumeResponse,
+            std::make_unique<FnTopicHandler>([reservations](const std::vector<uint8_t>& data) {
+                gtnh::common::ResourceTransferResponse response;
+                if (gtnh::common::ParseConsumeResponse(data.data(), data.size(), &response)) {
+                    reservations->onConsumeResponse(response);
+                } else {
+                    spdlog::warn("SimCoreMessageHandler: malformed ResourceConsumeResponse ({} bytes)",
+                                 data.size());
+                }
             }));
     }
 

@@ -3,6 +3,7 @@
 #include "Network/PipeEnergyClient.h"
 #include "Network/FluidClient.h"
 #include "Network/ItemClient.h"
+#include "Network/CraftReservationClient.h"
 #include <common/ItemId.h>
 #include <common/Registry.h>
 #include "Saturate.h"
@@ -40,15 +41,17 @@ MachineSystem::MachineSystem(entt::registry& reg,
                               std::shared_ptr<ContainerSessionRegistry> sessions,
                               std::shared_ptr<PlayerInventoryStore> invStore,
                               std::shared_ptr<IoUringRouterClient> router,
-                              std::shared_ptr<FluidClient> fluidClient)
+                              std::shared_ptr<FluidClient> fluidClient,
+                              std::shared_ptr<CraftReservationClient> reservations)
     : reg_(reg), recipes_(recipes), events_(events), pipeClient_(pipeClient),
       itemClient_(std::move(itemClient)), sessions_(std::move(sessions)),
       invStore_(std::move(invStore)), router_(std::move(router)),
-      fluidClient_(std::move(fluidClient))
+      fluidClient_(std::move(fluidClient)), reservations_(std::move(reservations))
 {
 }
 
 void MachineSystem::tick(float /*dt*/) {
+    ++totalTicks_;
     auto view = reg_.view<MachineComponent, RecipeProgress, InventoryContainer, EnergyStorage>();
 
     // Periodic force-publish so reconnecting clients catch up on machine state
@@ -155,31 +158,38 @@ void MachineSystem::tick(float /*dt*/) {
         if (recipe) {
             if (RecipeManager::evaluateConditions(recipe->id, reg_,
                                              machine.x, machine.y, machine.z, *recipes_)) {
-                // ── Consume input items immediately when recipe starts ──
-                for (const auto& req : recipe->inputs) {
-                    if (req.item_id == 0) continue;
-                    int64_t remaining = static_cast<int64_t>(req.count);
-                    for (int i = 0; i < input_end && remaining > 0; ++i) {
-                        auto& slot = container.slots[i];
-                        if (slot.item_id == req.item_id && slot.meta == req.metadata) {
-                            uint8_t take = std::min(slot.count,
-                                static_cast<uint8_t>(remaining));
-                            slot.count -= take;
-                            remaining -= take;
-                            if (slot.count == 0) {
-                                slot.item_id = 0;
-                                slot.meta = 0;
+                if (reservations_ && recipe->hasResourceRequirements()) {
+                    // 4.2.2/4.3.2: reserve every requirement first; inputs
+                    // are consumed and progress starts only on full
+                    // acceptance (commitPendingCraft).
+                    tickOrchestratedStart(ent, machine, *recipe);
+                } else {
+                    // ── Consume input items immediately when recipe starts ──
+                    for (const auto& req : recipe->inputs) {
+                        if (req.item_id == 0) continue;
+                        int64_t remaining = static_cast<int64_t>(req.count);
+                        for (int i = 0; i < input_end && remaining > 0; ++i) {
+                            auto& slot = container.slots[i];
+                            if (slot.item_id == req.item_id && slot.meta == req.metadata) {
+                                uint8_t take = std::min(slot.count,
+                                    static_cast<uint8_t>(remaining));
+                                slot.count -= take;
+                                remaining -= take;
+                                if (slot.count == 0) {
+                                    slot.item_id = 0;
+                                    slot.meta = 0;
+                                }
                             }
                         }
                     }
+
+                    // Notify open windows that inventory changed after consume
+                    publishInventoryIfOpen(machine);
+
+                    progress.recipe_id = recipe->id;
+                    progress.remaining_ticks = recipe->duration;
+                    progress.is_processing = true;
                 }
-
-                // Notify open windows that inventory changed after consume
-                publishInventoryIfOpen(machine);
-
-                progress.recipe_id = recipe->id;
-                progress.remaining_ticks = recipe->duration;
-                progress.is_processing = true;
             }
             continue;
         }
@@ -222,10 +232,21 @@ void MachineSystem::tick(float /*dt*/) {
             continue;
         }
 
-        if (energy.current < static_cast<int32_t>(recipe->energy_cost)) {
-            // HEAT machines use PipeNetwork continuous energy flow
-            // ELECTRICITY machines use CableGraph packet-based transport
-            if (energy.type == EnergyType::HEAT) {
+        // Orchestrated recipes charge their requirements through the typed
+        // accepted-amount path; legacy recipes keep the energy_cost debit.
+        const bool orchestrated = reservations_ && recipe->hasResourceRequirements();
+        const int32_t perTickCost = orchestrated
+            ? static_cast<int32_t>(recipe->resourceAmountPerTick())
+            : static_cast<int32_t>(recipe->energy_cost);
+
+        if (energy.current < perTickCost) {
+            if (orchestrated) {
+                // 4.3.4: recurring per-tick charge before any progress
+                // advancement; zero/partial acceptance stalls the recipe.
+                if (!reservations_->hasOutstandingCharge(ent)) {
+                    reservations_->beginPerTickCharge(ent, *recipe);
+                }
+            } else if (energy.type == EnergyType::HEAT) {
                 uint64_t node_id = static_cast<uint64_t>(ent);
                 auto pending_it = pendingConsumes_.find(node_id);
                 if (pending_it == pendingConsumes_.end()) {
@@ -330,7 +351,7 @@ void MachineSystem::tick(float /*dt*/) {
             }
             continue;
         }
-        energy.current = simcore::sub_sat(energy.current, static_cast<int32_t>(recipe->energy_cost));
+        energy.current = simcore::sub_sat(energy.current, perTickCost);
         progress.remaining_ticks--;
 
         // Notify PipeNetwork of energy state change
@@ -437,6 +458,75 @@ void MachineSystem::tick(float /*dt*/) {
                 heatRatio);
         }
     }
+}
+
+void MachineSystem::tickOrchestratedStart(entt::entity ent,
+                                          MachineComponent& machine,
+                                          const RecipeManager::Recipe& recipe) {
+    auto& progress = reg_.get<RecipeProgress>(ent);
+
+    // 4.2.4: a pending craft for a different recipe is stale — cancel it so
+    // the new recipe's requirements are reserved from scratch.
+    if (progress.pending_craft && progress.pending_craft->recipe_id != recipe.id) {
+        reservations_->cancel(ent, "recipe changed");
+    }
+
+    if (!progress.pending_craft) {
+        reservations_->beginReservation(ent, recipe, totalTicks_);
+        return;
+    }
+    if (!reservations_->tickPending(ent, totalTicks_)) {
+        return; // cancelled (timeout/retry budget); re-request next tick
+    }
+    if (progress.pending_craft && progress.pending_craft->fullyAccepted()) {
+        commitPendingCraft(ent);
+    }
+}
+
+void MachineSystem::commitPendingCraft(entt::entity ent) {
+    auto* machine = reg_.try_get<MachineComponent>(ent);
+    auto* progress = reg_.try_get<RecipeProgress>(ent);
+    auto* container = reg_.try_get<InventoryContainer>(ent);
+    if (!machine || !progress || !container || !progress->pending_craft) return;
+    if (!progress->pending_craft->fullyAccepted()) return;
+
+    const auto* recipe = recipes_->getRecipeById(progress->pending_craft->recipe_id);
+    if (!recipe) {
+        // 4.2.4: recipe vanished while pending — failed validation.
+        if (reservations_) reservations_->cancel(ent, "recipe vanished");
+        return;
+    }
+
+    int slots_in = static_cast<int>(container->slots.size());
+    if (auto* minfo = MachineRegistry::instance()->Get(machine->machine_id)) {
+        slots_in = std::min(slots_in, minfo->slots_in);
+    }
+
+    // Commit point (4.3.2): the one place orchestrated inputs are consumed.
+    for (const auto& req : recipe->inputs) {
+        if (req.item_id == 0) continue;
+        int64_t remaining = static_cast<int64_t>(req.count);
+        for (int i = 0; i < slots_in && remaining > 0; ++i) {
+            auto& slot = container->slots[i];
+            if (slot.item_id == req.item_id && slot.meta == req.metadata) {
+                uint8_t take = std::min(slot.count,
+                    static_cast<uint8_t>(remaining));
+                slot.count -= take;
+                remaining -= take;
+                if (slot.count == 0) {
+                    slot.item_id = 0;
+                    slot.meta = 0;
+                }
+            }
+        }
+    }
+
+    progress->recipe_id = recipe->id;
+    progress->remaining_ticks = recipe->duration;
+    progress->is_processing = true;
+    progress->clearPendingCraft();
+
+    publishInventoryIfOpen(*machine);
 }
 
 void MachineSystem::pushOutputToPipe(uint64_t entity_id, const MachineComponent& machine,

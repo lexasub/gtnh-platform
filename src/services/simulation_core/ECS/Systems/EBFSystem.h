@@ -10,8 +10,10 @@ namespace simcore {
 
 class IEventPublisher;
 class PipeEnergyClient;
+class CraftReservationClient;
 
 struct MultiblockController;
+struct MachineComponent;
 
 class EBFSystem : public ISystem {
 public:
@@ -20,9 +22,14 @@ public:
               const PatternRegistry& patterns,
               std::shared_ptr<RecipeManager::RecipeManager> recipes,
               std::shared_ptr<IEventPublisher> events,
-              std::shared_ptr<PipeEnergyClient> pipeClient);
+              std::shared_ptr<PipeEnergyClient> pipeClient,
+              std::shared_ptr<CraftReservationClient> reservations = nullptr);
 
     void tick(float dt) override;
+
+    // Commit a fully-accepted pending craft (4.3.2) — same contract as
+    // MachineSystem::commitPendingCraft.
+    void commitPendingCraft(entt::entity entity);
 
     static constexpr uint16_t KANHAL_COIL_BLOCK_ID = 1002;
     static constexpr uint16_t NICHROME_COIL_BLOCK_ID = 1007;
@@ -38,6 +45,8 @@ private:
     std::shared_ptr<RecipeManager::RecipeManager> recipes_;
     std::shared_ptr<IEventPublisher> events_;
     std::shared_ptr<PipeEnergyClient> pipeClient_;
+    std::shared_ptr<CraftReservationClient> reservations_;
+    uint64_t totalTicks_ = 0;
 
     static constexpr int COIL_LAYER_1 = 1;
     static constexpr int COIL_LAYER_2 = 2;
@@ -45,6 +54,9 @@ private:
     static constexpr int COIL_DZ = 1;
 
     void tickEBF(uint64_t ctrl_id, MultiblockController& ctrl);
+    void tickOrchestratedStart(entt::entity entity, MachineComponent& machine,
+                               const RecipeManager::Recipe& recipe,
+                               int input_start, int input_end);
     int detectHeatTier(const MultiblockController& ctrl) const;
     int getCoilHeat(uint16_t block_id) const;
 };

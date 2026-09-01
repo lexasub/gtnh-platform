@@ -2,6 +2,7 @@
 #include "ItemRegistry.h"
 #include "ConditionEvaluator.h"
 #include <common/ItemId.h>
+#include <common/Registry.h>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
@@ -17,9 +18,8 @@
 
 namespace {
 
-// RecipeTypes.h predates the typed resource contract. Keep this checkpoint's
-// YAML conversion local until the model can carry all requirements without
-// changing the public Recipe API.
+// YAML-side parse model; converted into the public ResourceRequirement
+// (RecipeTypes.h) once a requirement fully validates.
 enum class ParsedResourceKind : uint8_t { FLUID, EU, HU, RU, ITEM };
 
 struct ParsedResourceRequirement {
@@ -27,7 +27,34 @@ struct ParsedResourceRequirement {
   uint32_t resource_id = 0;
   uint32_t amount = 0;
   int16_t tier = 0;
+
+  RecipeManager::ResourceRequirement toModel() const {
+    RecipeManager::ResourceRequirement req;
+    switch (kind) {
+    case ParsedResourceKind::FLUID: req.kind = gtnh::common::ResourceKind::FLUID; break;
+    case ParsedResourceKind::EU:    req.kind = gtnh::common::ResourceKind::EU; break;
+    case ParsedResourceKind::HU:    req.kind = gtnh::common::ResourceKind::HU; break;
+    case ParsedResourceKind::RU:    req.kind = gtnh::common::ResourceKind::RU; break;
+    case ParsedResourceKind::ITEM:  req.kind = gtnh::common::ResourceKind::ITEM; break;
+    }
+    req.resource_id = resource_id;
+    req.amount = amount;
+    req.tier = tier;
+    return req;
+  }
 };
+
+// energy_in string (already normalized) -> the resource kind a requirement
+// must carry for the recipe to be consistent with its declared energy_in.
+std::optional<ParsedResourceKind> energyInToResourceKind(uint8_t energy_type) {
+  switch (energy_type) {
+  case 0: return ParsedResourceKind::EU;   // ELECTRICITY
+  case 1: return ParsedResourceKind::HU;   // HEAT
+  case 2: return ParsedResourceKind::FLUID; // STEAM
+  case 3: return ParsedResourceKind::RU;   // ROTATION
+  default: return std::nullopt;            // ENERGY_TYPE_ANY
+  }
+}
 
 std::optional<ParsedResourceKind>
 parseResourceKind(const YAML::Node &node) {
@@ -380,6 +407,86 @@ const std::string& RecipeManager::getMachineClass(uint16_t block_id) const {
     return (it != classByBlockId_.end()) ? it->second : emptyString_;
 }
 
+std::vector<std::string> RecipeManager::validateResourceRequirements(
+    const ::gtnh::common::Registry* shared) const {
+    std::vector<std::string> errors;
+    const bool sharedUsable = shared && shared->valid();
+    const uint16_t sharedSteam = sharedUsable ? shared->steamItemId() : 0;
+
+    for (const auto& [recipeId, recipe] : recipes_) {
+        for (const auto& req : recipe.resource_requirements) {
+            const std::string where = "recipe '" + recipeId + "' requirement kind " +
+                                      std::to_string(static_cast<int>(req.kind));
+            if (!req.valid()) {
+                errors.push_back(where + ": zero amount or missing resource_id");
+                continue;
+            }
+            if (req.needsResourceId()) {
+                if (req.resource_id > std::numeric_limits<uint16_t>::max() ||
+                    !ItemRegistry::instance().isValid(
+                        static_cast<uint16_t>(req.resource_id))) {
+                    errors.push_back(where + ": resource_id " +
+                                     std::to_string(req.resource_id) +
+                                     " is not a known item");
+                    continue;
+                }
+                if (sharedUsable && shared->item(
+                        static_cast<uint16_t>(req.resource_id)) == nullptr) {
+                    errors.push_back(where + ": resource_id " +
+                                     std::to_string(req.resource_id) +
+                                     " missing from the shared registry");
+                    continue;
+                }
+                if (req.kind == gtnh::common::ResourceKind::FLUID) {
+                    if (sharedUsable && shared->fluid(
+                            static_cast<uint16_t>(req.resource_id)) == nullptr) {
+                        errors.push_back(where + ": resource_id " +
+                                         std::to_string(req.resource_id) +
+                                         " has no fluid properties row");
+                        continue;
+                    }
+                    if (sharedUsable && sharedSteam != 0 &&
+                        req.resource_id == gtnh::common::steamItemId() &&
+                        req.resource_id != sharedSteam) {
+                        errors.push_back(where + ": steam id " +
+                                         std::to_string(req.resource_id) +
+                                         " does not match the shared registry steam " +
+                                         std::to_string(sharedSteam));
+                    }
+                }
+            }
+            if (!req.isEnergy()) continue;
+
+            const auto machineClass = classes_.find(recipe.machine_class);
+            if (machineClass == classes_.end()) continue;
+            std::optional<EnergyType> requiredEnergy;
+            switch (req.kind) {
+            case gtnh::common::ResourceKind::EU: requiredEnergy = EnergyType::ELECTRICITY; break;
+            case gtnh::common::ResourceKind::HU: requiredEnergy = EnergyType::HEAT; break;
+            case gtnh::common::ResourceKind::FLUID: requiredEnergy = EnergyType::STEAM; break;
+            case gtnh::common::ResourceKind::RU: requiredEnergy = EnergyType::ROTATION; break;
+            default: break;
+            }
+            if (!requiredEnergy) continue;
+            const bool compatible = std::any_of(
+                machineClass->second.variants.begin(),
+                machineClass->second.variants.end(),
+                [&](const MachineVariant& variant) {
+                    return variant.energy_in == *requiredEnergy &&
+                           variant.tier >= req.tier &&
+                           variant.tier >= recipe.min_tier &&
+                           variant.tier <= recipe.max_tier;
+                });
+            if (!compatible) {
+                errors.push_back(where + ": no " + recipe.machine_class +
+                                 " variant consumes it at tier " +
+                                 std::to_string(req.tier));
+            }
+        }
+    }
+    return errors;
+}
+
 // ===========================================================================
 // YAML: Recipe loading
 // ===========================================================================
@@ -615,13 +722,14 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
         // Energy output (optional — >0 for generators/boilers)
         recipe.energy_output = yaml["energy_output"].as<float>(0.0f);
 
-        // Generic resource requirements are accepted during the model
-        // migration. The existing Recipe type has no storage for them yet, so
-        // validate and convert them locally without changing its API.
+        // Generic resource requirements (4.1.2). Parsed, validated, and now
+        // stored on the Recipe so SimulationCore can orchestrate them; the
+        // legacy `energy_in`/`eu` fields stay untouched for migration.
         const YAML::Node requirements = yaml["resource_requirements"]
                                             ? yaml["resource_requirements"]
                                             : (yaml["resources"] ? yaml["resources"]
                                                                     : yaml["requirements"]);
+        std::vector<ResourceRequirement> parsed_requirements;
         if (requirements) {
             if (!requirements.IsSequence()) {
                 spdlog::warn("YAML recipe '{}': resource requirements must be a sequence",
@@ -688,8 +796,24 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
                         }
                     }
                 }
+
+                // 4.4.4: an explicit requirement whose kind contradicts the
+                // recipe's own energy_in declaration can never be served by
+                // the machines that match the recipe — reject at load.
+                if (recipe.energy_type != ENERGY_TYPE_ANY) {
+                    const auto declaredKind = energyInToResourceKind(recipe.energy_type);
+                    if (declaredKind && *declaredKind != parsed->kind) {
+                        spdlog::warn("YAML recipe '{}': resource kind {} contradicts energy_in {}",
+                                     recipe.id, static_cast<int>(parsed->kind),
+                                     static_cast<int>(recipe.energy_type));
+                        return false;
+                    }
+                }
+
+                parsed_requirements.push_back(parsed->toModel());
             }
         }
+        recipe.resource_requirements = std::move(parsed_requirements);
 
         // Legacy `energy_in`/`eu` remains the source of truth until Recipe can
         // expose the generic requirements. Validate its machine-compatible

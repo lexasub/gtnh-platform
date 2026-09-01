@@ -15,6 +15,8 @@ recipes:
     min_tier: 0
     max_tier: 32767
     unlock_era: 2   # hidden from NEI until EXPERT era (UX filter demo)
+    resource_requirements:
+      - { kind: HU, amount: 2, tier: 0 }
 
   - name: gtnh:ebf_gold_smelting
     inputs:
@@ -27,3 +29,5 @@ recipes:
     min_tier: 0
     max_tier: 32767
     unlock_era: 2   # hidden from NEI until EXPERT era (UX filter demo)
+    resource_requirements:
+      - { kind: HU, amount: 2, tier: 0 }
