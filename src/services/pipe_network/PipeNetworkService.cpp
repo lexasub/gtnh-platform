@@ -175,6 +175,49 @@ void PipeNetworkService::tick() {
     // and complete them with the pipe-only amount so consumers never hang on
     // a lost owner response.
     ++service_tick_;
+
+    // 3.5.3: bounded retries with doubling backoff. A retry re-publishes the
+    // SAME drain request id — the owner's replay cache answers re-delivery
+    // exactly once, so a retry can never double debit — and at most one
+    // publish per pending is ever in flight. Before re-publishing, the source
+    // port is re-checked against the live registry (3.5.4): a port that was
+    // removed or re-registered under a new epoch cancels the pending instead
+    // of burning retries against a dead port.
+    for (const auto& retry : consume_tracker_.collectRetries(service_tick_)) {
+        bool port_live = retry.source_port_id == 0;  // node-based: TTL-bound
+        if (!port_live) {
+            const auto* port = network_manager_.getPort(
+                retry.source_owner_id, gtnh::common::ResourceKind::FLUID,
+                retry.source_port_id);
+            port_live = port != nullptr && port->epoch == retry.source_epoch;
+        }
+        if (!port_live) {
+            for (const auto& cancelled :
+                 consume_tracker_.cancelRequest(retry.drain_request_id)) {
+                spdlog::debug(
+                    "[PipeNet] shortfall drain {} cancelled at retry time "
+                    "(port gone or re-registered); completing short-fill "
+                    "(pipe {} of {})",
+                    cancelled.drain_request_id, cancelled.pipe_accepted,
+                    cancelled.requested);
+                publishFluidConsumeResponse(
+                    cancelled.pipe_accepted,
+                    cancelled.requested - cancelled.pipe_accepted);
+            }
+            continue;
+        }
+        const gtnh::common::ResourceTransferRequest drain{
+            retry.drain_request_id, retry.source_port_id,
+            gtnh::common::ResourceKind::FLUID, retry.fluid_id,
+            retry.shortfall};
+        router_.Publish(gtnh::common::kTopicResourceDrainRequest,
+                        gtnh::common::SerializeDrainRequest(drain));
+        spdlog::debug(
+            "[PipeNet] shortfall drain {} retry #{} port {} fluid {} amount {}",
+            retry.drain_request_id, retry.retry_count, retry.source_port_id,
+            retry.fluid_id, retry.shortfall);
+    }
+
     for (const auto& pending : consume_tracker_.expire(service_tick_)) {
         spdlog::debug("[PipeNet] shortfall consume {} expired; completing short-fill "
                       "(pipe {} of {})",
@@ -321,10 +364,40 @@ void PipeNetworkService::handleBlockChanged(const std::vector<uint8_t>& data) {
         auto it = pipe_nodes_.find(key);
         if (it != pipe_nodes_.end()) {
             network_manager_.removeNode(it->second);
+            // 3.5.3: pendings tied to the removed node (as source or sink)
+            // are cancelled — completed short-fill once, marked so a late
+            // response drops instead of resurrecting them.
+            for (const auto& cancelled :
+                 consume_tracker_.cancelForNode(it->second)) {
+                spdlog::debug(
+                    "[PipeNet] node {} removed; cancelling shortfall drain {} "
+                    "short-fill (pipe {} of {})",
+                    it->second, cancelled.drain_request_id,
+                    cancelled.pipe_accepted, cancelled.requested);
+                publishFluidConsumeResponse(
+                    cancelled.pipe_accepted,
+                    cancelled.requested - cancelled.pipe_accepted);
+            }
             pipe_nodes_.erase(it);
             spdlog::debug("[PipeNet] pipe node at ({},{},{}) removed", x, y, z);
         }
-        machine_nodes_.erase(key);
+        if (auto mit = machine_nodes_.find(key); mit != machine_nodes_.end()) {
+            // Machine block gone: its node identity is dead even though the
+            // manager node lingers — cancel pendings tied to it (legacy
+            // machines have no typed port removal to do it for them).
+            for (const auto& cancelled :
+                 consume_tracker_.cancelForNode(mit->second)) {
+                spdlog::debug(
+                    "[PipeNet] machine node {} removed; cancelling shortfall "
+                    "drain {} short-fill (pipe {} of {})",
+                    mit->second, cancelled.drain_request_id,
+                    cancelled.pipe_accepted, cancelled.requested);
+                publishFluidConsumeResponse(
+                    cancelled.pipe_accepted,
+                    cancelled.requested - cancelled.pipe_accepted);
+            }
+            machine_nodes_.erase(mit);
+        }
         pipe_meta_.erase(key);
         cable_graph_.removeCableNode(key);
         return;
@@ -741,41 +814,60 @@ void PipeNetworkService::handleFluidConsumeRequest(const std::vector<uint8_t>& d
         // resolved port_id; a source without a typed port falls back to a
         // node-based request with port_id 0 (legacy producers — the owner
         // resolves those by its own means until all producers emit typed
-        // ports).
-        std::unordered_map<uint64_t, std::pair<uint64_t, gtnh::common::PortId>>
-            source_ports;
+        // ports). The port's epoch is bound into the pending (3.5.4) so a
+        // later re-registration can invalidate in-flight requests.
+        struct SourcePortRef {
+            uint64_t owner_id;
+            gtnh::common::PortId port_id;
+            uint64_t epoch;
+        };
+        std::unordered_map<uint64_t, SourcePortRef> source_ports;
         for (const auto& port : network_manager_.getRegisteredPorts()) {
             if (port.resource_kind != gtnh::common::ResourceKind::FLUID ||
                 port.role != gtnh::common::PortRole::SOURCE) {
                 continue;
             }
-            source_ports.emplace(pipenet::pipePosKey(port.x, port.y, port.z),
-                                 std::make_pair(port.owner_id, port.port_id));
+            source_ports.emplace(
+                pipenet::pipePosKey(port.x, port.y, port.z),
+                SourcePortRef{port.owner_id, port.port_id, port.epoch});
         }
 
         uint64_t best_node = 0;
         int32_t best_amount = 0;
         uint64_t best_owner = 0;
         gtnh::common::PortId best_port = 0;
+        uint64_t best_epoch = 0;
         for (uint64_t nid : network) {
             auto si = node_states_.find(nid);
             if (si == node_states_.end() || !si->second.is_source) continue;
             const auto* node = network_manager_.getNode(nid);
             if (node && node->fluidId != 0 && node->fluidId != fluid_id) continue;
             if (si->second.energy <= 0) continue;
+            uint64_t cand_owner = 0;
+            gtnh::common::PortId cand_port = 0;
+            uint64_t cand_epoch = 0;
+            if (node) {
+                if (auto sp = source_ports.find(
+                        pipenet::pipePosKey(node->x, node->y, node->z));
+                    sp != source_ports.end()) {
+                    cand_owner = sp->second.owner_id;
+                    cand_port = sp->second.port_id;
+                    cand_epoch = sp->second.epoch;
+                }
+            }
+            // 3.5.3: a source inside its rejection cooldown is not probed
+            // again — prefer the next-best live source; if every candidate
+            // cools down the consume short-fills from the pipe part.
+            if (consume_tracker_.sourceInRejectionBackoff(
+                    {nid, cand_owner, cand_port}, service_tick_)) {
+                continue;
+            }
             if (si->second.energy > best_amount) {
                 best_amount = si->second.energy;
                 best_node = nid;
-                best_owner = 0;
-                best_port = 0;
-                if (node) {
-                    if (auto sp = source_ports.find(
-                            pipenet::pipePosKey(node->x, node->y, node->z));
-                        sp != source_ports.end()) {
-                        best_owner = sp->second.first;
-                        best_port = sp->second.second;
-                    }
-                }
+                best_owner = cand_owner;
+                best_port = cand_port;
+                best_epoch = cand_epoch;
             }
         }
 
@@ -784,7 +876,7 @@ void PipeNetworkService::handleFluidConsumeRequest(const std::vector<uint8_t>& d
             const auto decision = consume_tracker_.planShortfall(
                 drain_request_id, consume_request_id, mgr_id, fluid_id,
                 requested, pipe_accepted, best_node, best_owner, best_port,
-                service_tick_);
+                service_tick_, best_epoch);
             if (decision.request_source) {
                 // 3.4.2: one typed drain request for ONLY the shortfall; the
                 // response (or expiry/removal) completes the consume — never
@@ -830,11 +922,42 @@ void PipeNetworkService::handleResourcePortRegister(const std::vector<uint8_t>& 
         spdlog::warn("[PipeNet] invalid ResourcePortRegister");
         return;
     }
+    const gtnh::common::ResourcePort* existing =
+        network_manager_.getPort(port.owner_id, port.resource_kind,
+                                 port.port_id);
+    const bool replaced = existing != nullptr;
+    const uint64_t replaced_epoch = replaced ? existing->epoch : 0;
     if (network_manager_.registerPort(port)) {
         // A successful registration clears the warn-once marker so a future
         // stale epoch for the same port is reported again.
         stale_epoch_warned_.erase({port.owner_id, port.resource_kind,
                                    port.port_id, 0});
+        // 3.5.4(c): a successful registration under a NEW epoch redefines the
+        // port; pendings bound to the old epoch can never be validly applied
+        // (their responses would fail the liveness gate), so they are
+        // cancelled now — completed short-fill once, marked so late responses
+        // drop. Same-epoch republishes (producers re-register every tick,
+        // 2.4.3) leave pendings untouched. Only FLUID registrations matter:
+        // pending drains are FLUID-only and port identity includes the kind.
+        if (replaced && replaced_epoch != port.epoch &&
+            port.resource_kind == gtnh::common::ResourceKind::FLUID) {
+            // The incarnation changed: recorded rejection failures no longer
+            // describe the current source (3.5.3).
+            consume_tracker_.clearRejectionBackoffForPort(port.owner_id,
+                                                          port.port_id);
+            for (const auto& cancelled : consume_tracker_.cancelStaleEpoch(
+                     port.owner_id, port.port_id, port.epoch)) {
+                spdlog::debug(
+                    "[PipeNet] port {} owner {} re-registered at epoch {} "
+                    "(was {}); cancelling drain {} short-fill (pipe {} of {})",
+                    port.port_id, port.owner_id, port.epoch, replaced_epoch,
+                    cancelled.drain_request_id, cancelled.pipe_accepted,
+                    cancelled.requested);
+                publishFluidConsumeResponse(
+                    cancelled.pipe_accepted,
+                    cancelled.requested - cancelled.pipe_accepted);
+            }
+        }
         return;
     }
     // Manager rejected (stale epoch or invalid port): log once per port, not
@@ -897,6 +1020,38 @@ void PipeNetworkService::handleResourceDrainResponse(const std::vector<uint8_t>&
         return;
     }
 
+    // 3.5.4(a)/(c): discard responses whose source port is no longer live at
+    // the epoch the request was planned against (removed port, re-registered
+    // port, or a missed remove message). The wire response carries no epoch,
+    // so the pending's bound epoch is checked against the live registry. The
+    // pending is cancelled (marked, completed short-fill once) so retries
+    // stop and any further late responses drop. Node-based fallback pendings
+    // (port 0) bypass the registry check.
+    if (const auto* pending = consume_tracker_.findPending(resp.request_id);
+        pending != nullptr && pending->source_port_id != 0) {
+        const auto* port = network_manager_.getPort(
+            pending->source_owner_id, gtnh::common::ResourceKind::FLUID,
+            pending->source_port_id);
+        if (!gtnh::pipe_network::drainResponsePortLive(
+                *pending, port != nullptr, port ? port->epoch : 0)) {
+            for (const auto& cancelled :
+                 consume_tracker_.cancelRequest(resp.request_id)) {
+                spdlog::debug(
+                    "[PipeNet] drain response {} discarded: port {} owner {} "
+                    "not live at epoch {} (registered epoch {}); completing "
+                    "short-fill (pipe {} of {})",
+                    resp.request_id, pending->source_port_id,
+                    pending->source_owner_id, pending->source_epoch,
+                    port ? port->epoch : 0, cancelled.pipe_accepted,
+                    cancelled.requested);
+                publishFluidConsumeResponse(
+                    cancelled.pipe_accepted,
+                    cancelled.requested - cancelled.pipe_accepted);
+            }
+            return;
+        }
+    }
+
     // 3.4.3: apply the accepted amount EXACTLY ONCE — the tracker's replay
     // guard erases applied entries, so duplicate, expired, and mismatched
     // responses are dropped by request id (3.5.2: correlation by id only).
@@ -912,6 +1067,18 @@ void PipeNetworkService::handleResourceDrainResponse(const std::vector<uint8_t>&
         spdlog::warn(
             "[PipeNet] drain response {} accepted {} clamped to {} (shortfall bound)",
             resp.request_id, resp.accepted_amount, applied.source_accepted);
+    }
+
+    // 3.5.3: a zero-accepted answer is a source rejection — cool the source
+    // down before the next fresh shortfall probes it again; a productive
+    // answer proves it alive and resets any recorded cooldown.
+    const gtnh::pipe_network::PipeConsumeTracker::SourceKey source_key{
+        applied.completed.source_node_id, applied.completed.source_owner_id,
+        applied.completed.source_port_id};
+    if (applied.source_accepted == 0) {
+        consume_tracker_.noteSourceRejection(source_key, service_tick_);
+    } else {
+        consume_tracker_.clearSourceRejection(source_key);
     }
 
     publishFluidFlowTelemetry(applied.completed, applied.source_accepted);

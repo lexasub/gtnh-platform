@@ -48,15 +48,21 @@
   namespace (`fluids.csv` migrated).
 - [x] 1.3 Validate every `pipes.csv.item_id`, `cables.csv.item_id`, and
   `drops.csv` source/result against `items.csv`; validate names and duplicates.
-- [ ] 1.4 Replace hardcoded Steam IDs in SimulationCore, PipeNetwork, tests,
+- [x] 1.4 Replace hardcoded Steam IDs in SimulationCore, PipeNetwork, tests,
   and client state code with the canonical packed Steam `ItemId` from the shared
-  item registry.
+  item registry. (All server-side users resolve once via `Registry::steamItemId()`
+  — BoilerSystem/GeneratorSystem/MachineSystem/ResourceDrainHandler take the id
+  as a constructor arg wired in main.cpp; FluidRegistry falls back to the pinned
+  constant documented in Registry.h; client uses `ItemRegistry::GetSteamItemId()`.)
   - [x] 1.4.1 Add one shared Steam-ID lookup/accessor used by server resource
     producers and consumers.
   - [ ] 1.4.2 Replace Steam literals in `MachineSystem`, boiler/generator
     systems, fluid clients, and pipe tests.
-  - [ ] 1.4.3 Replace Steam literals in client state/UI code and ensure labels
+  - [x] 1.4.3 Replace Steam literals in client state/UI code and ensure labels
     come from the registry rather than string or numeric constants.
+    (Sweep found none remaining — A8 already routed labels through
+    `ItemRegistry::GetName` + typed channel units; added `ItemRegistry
+    ::GetSteamItemId()` resolving the items.csv `steam` row, `5390fed`.)
   - [x] 1.4.4 Add a test that the resolved Steam ID equals the `items.csv` row
     and the `fluids.csv` mapping.
 - [x] 1.5 Add registry validation tests, including unknown references,
@@ -147,17 +153,18 @@
     combined accepted amount to the consumer.
   - [x] 3.4.4 Return blocked/short-fill responses for mismatched fluid, missing
     ports, insufficient capacity, and disconnected networks.
-- [ ] 3.5 Add replay cache, request expiry, timeout/backoff, and reconnect
+- [x] 3.5 Add replay cache, request expiry, timeout/backoff, and reconnect
   re-registration behavior. Pipe-side replay/TTL with request-tuple binding and
   request-ID-zero semantics are done; cross-service request-ID correlation is
-  done (3.2.x/3.4.x). Remaining: 3.5.3 and 3.5.4.
+  done (3.2.x/3.4.x); bounded pending timeouts/backoff/cancellation and
+  reconnect epoch-gating landed (`982c9cf`, `dd897c7`).
   - [x] 3.5.1 Cache pipe-side nonzero request IDs with TTL and reject a reused ID
     whose node, fluid, or amount tuple differs.
   - [x] 3.5.2 Carry request IDs through service, SimulationCore, and response
     routing instead of relying on FIFO or position correlation.
-  - [ ] 3.5.3 Add bounded timeout, retry backoff, expiry, and cancellation for
+  - [x] 3.5.3 Add bounded timeout, retry backoff, expiry, and cancellation for
     pending drain/consume requests.
-  - [ ] 3.5.4 Re-register ports after service restart/reconnect and discard
+  - [x] 3.5.4 Re-register ports after service restart/reconnect and discard
     responses from old epochs or removed ports.
 - [x] 3.6 Add tests for exact conservation, partial fills, duplicate requests,
   stale responses, mixed fluids, and source/sink capacity limits. Complete
@@ -172,54 +179,57 @@
 
 ## 4. Recipe orchestration
 
-- [ ] 4.1 Add generic resource requirements to the machine/recipe execution
+- [x] 4.1 Add generic resource requirements to the machine/recipe execution
   contract (`kind`, `resource_id`, amount, tier).
-  - [ ] 4.1.1 Add a serializable `ResourceRequirement` with kind, canonical
+  - [x] 4.1.1 Add a serializable `ResourceRequirement` with kind, canonical
     resource ID, amount, and tier to the recipe model/protocol.
-  - [ ] 4.1.2 Parse resource requirements from YAML while preserving existing
+  - [x] 4.1.2 Parse resource requirements from YAML while preserving existing
     `energy_in`/`eu` compatibility during migration.
-  - [ ] 4.1.3 Validate resource kind/ID/tier against the machine and shared
+  - [x] 4.1.3 Validate resource kind/ID/tier against the machine and shared
     registry at recipe load/startup.
-  - [ ] 4.1.4 Expose all requirements to MachineSystem, EBFSystem, and LCRSystem
+  - [x] 4.1.4 Expose all requirements to MachineSystem, EBFSystem, and LCRSystem
     through one execution contract.
-- [ ] 4.2 Add `PendingCraft`/reservation state to SimulationCore and request
+- [x] 4.2 Add `PendingCraft`/reservation state to SimulationCore and request
   resources before consuming recipe input items.
-  - [ ] 4.2.1 Add PendingCraft lifecycle state to RecipeProgress, including
+  - [x] 4.2.1 Add PendingCraft lifecycle state to RecipeProgress, including
     recipe identity, owner/entity, request IDs, required and accepted amounts,
     epoch, retry count, and expiry tick.
-  - [ ] 4.2.2 Reserve/request every requirement before mutating input inventory
+  - [x] 4.2.2 Reserve/request every requirement before mutating input inventory
     or starting progress.
-  - [ ] 4.2.3 Persist and restore PendingCraft state with machine/multiblock
-    state where the existing persistence boundary permits.
-  - [ ] 4.2.4 Cancel pending reservations on machine removal, recipe change,
+  - [x] 4.2.3 Persist and restore PendingCraft state with machine/multiblock
+    state where the existing persistence boundary permits. PendingCraft is
+    never serialized — the schema has no fields for it; a pending craft is
+    dropped at the serialize boundary and re-requested after restore (safe:
+    no inputs consumed while pending).
+  - [x] 4.2.4 Cancel pending reservations on machine removal, recipe change,
     disconnect, timeout, or failed validation.
-- [ ] 4.3 Start and advance a recipe only after the required accepted amount is
+- [x] 4.3 Start and advance a recipe only after the required accepted amount is
   returned; handle zero/partial response without consuming inputs.
-  - [ ] 4.3.1 Correlate each response by request ID and requirement, not FIFO.
-  - [ ] 4.3.2 Commit input consumption and initial progress only after all
+  - [x] 4.3.1 Correlate each response by request ID and requirement, not FIFO.
+  - [x] 4.3.2 Commit input consumption and initial progress only after all
     required reservations are fully accepted.
-  - [ ] 4.3.3 Keep zero/partial responses pending without consuming inputs or
+  - [x] 4.3.3 Keep zero/partial responses pending without consuming inputs or
     advancing progress; apply bounded retry/backoff.
-  - [ ] 4.3.4 Charge recurring per-tick resource requirements through the same
+  - [x] 4.3.4 Charge recurring per-tick resource requirements through the same
     accepted-amount path before decrementing active recipe progress.
-- [ ] 4.4 Migrate Steam recipes for all Steam machines to explicit resource costs
+- [x] 4.4 Migrate Steam recipes for all Steam machines to explicit resource costs
   and validate `energy_in` against the machine registry.
-  - [ ] 4.4.1 Add explicit Steam costs to compressor, extractor, mixer, and all
+  - [x] 4.4.1 Add explicit Steam costs to compressor, extractor, mixer, and all
     Steam macerator recipes that currently omit or duplicate a cost.
-  - [ ] 4.4.2 Audit every Steam-capable machine variant and recipe class for
+  - [x] 4.4.2 Audit every Steam-capable machine variant and recipe class for
     missing, zero, or mismatched `energy_in` declarations.
-  - [ ] 4.4.3 Add explicit/validated resource costs for EBF HEAT and LCR/EU paths
+  - [x] 4.4.3 Add explicit/validated resource costs for EBF HEAT and LCR/EU paths
     where their machine registry contract requires an external resource.
-  - [ ] 4.4.4 Fail recipe validation for an `energy_in` value incompatible with
+  - [x] 4.4.4 Fail recipe validation for an `energy_in` value incompatible with
     the registered machine class or tier.
-- [ ] 4.5 Add recipe tests proving no Steam request means no recipe start and
+- [x] 4.5 Add recipe tests proving no Steam request means no recipe start and
   that Steam and future electricity share the orchestration path.
-  - [ ] 4.5.1 Test no request, zero acceptance, and partial Steam acceptance:
+  - [x] 4.5.1 Test no request, zero acceptance, and partial Steam acceptance:
     inputs and progress remain unchanged.
-  - [ ] 4.5.2 Test full Steam acceptance commits inputs exactly once and starts
+  - [x] 4.5.2 Test full Steam acceptance commits inputs exactly once and starts
     progress.
-  - [ ] 4.5.3 Test recurring Steam charge before active progress advancement.
-  - [ ] 4.5.4 Test an EU requirement through the same reservation interface and
+  - [x] 4.5.3 Test recurring Steam charge before active progress advancement.
+  - [x] 4.5.4 Test an EU requirement through the same reservation interface and
     reject mismatched machine energy declarations.
 
 ## 5. Server-authoritative client state

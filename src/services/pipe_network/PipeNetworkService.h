@@ -53,7 +53,8 @@ private:
   std::unordered_map<uint64_t, NodeState> node_states_;
   std::unordered_map<uint64_t, uint64_t> protocol_to_mgr_;
   // Pending shortfall consumes keyed by drain request id (3.4.2/3.4.3);
-  // bounded by kPendingConsumeTtlTicks expiry in tick().
+  // bounded by kPendingConsumeTtlTicks expiry, retried with doubling backoff,
+  // and cancelled on port removal/re-registration (3.5.3/3.5.4).
   PipeConsumeTracker consume_tracker_;
   // Monotonic service tick driving pending-consume TTL expiry.
   uint64_t service_tick_ = 0;

@@ -1522,6 +1522,401 @@ static void test_port_removal_clears_pending() {
 }
 
 // =========================================================================
+//  3.5.3/3.5.4: pending lifecycle — retry backoff, rejection cooldown,
+//  cancellation, stale-epoch discard, restart re-registration
+// =========================================================================
+
+// 3.5.3: an unanswered shortfall drain is re-published with the SAME request
+// id on a doubling backoff (2/4/8/16 ticks, max 4 retries — the owner's
+// replay cache answers re-delivery exactly once); the TTL erases the entry so
+// a later request for the same node/port plans fresh.
+static void test_retry_backoff_republishes_same_request_id() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+    auto plan = tracker.planShortfall(1101, 7, 30, 2, 100, 40, 11, 99, 5, 0);
+    CHECK(plan.request_source, "shortfall planned");
+    CHECK_EQ(tracker.size(), size_t(1), "pending recorded");
+
+    CHECK(tracker.collectRetries(1).empty(), "no retry before the first window");
+    auto r1 = tracker.collectRetries(2);
+    CHECK_EQ(r1.size(), size_t(1), "first retry due at +2 ticks");
+    CHECK_EQ(r1[0].drain_request_id, uint64_t(1101), "retry re-uses the request id");
+    CHECK_EQ(r1[0].retry_count, uint32_t(1), "retry count is 1-based");
+    CHECK_EQ(r1[0].shortfall, 60, "retry covers the same shortfall");
+    CHECK_EQ(r1[0].source_epoch, uint64_t(0), "bound epoch threaded for liveness checks");
+
+    CHECK(tracker.collectRetries(3).empty(), "backoff doubles: nothing due at +3");
+    CHECK_EQ(tracker.collectRetries(4).size(), size_t(1), "second retry at +4");
+    CHECK_EQ(tracker.collectRetries(8).size(), size_t(1), "third retry at +8");
+    CHECK_EQ(tracker.collectRetries(16).size(), size_t(1), "fourth retry at +16");
+    CHECK(tracker.collectRetries(17).empty(), "retry cap reached: no more re-publishes");
+    CHECK(tracker.collectRetries(49).empty(), "cap holds until the TTL");
+    CHECK_EQ(tracker.size(), size_t(1), "pending kept waiting for the owner answer");
+
+    auto expired = tracker.expire(50);
+    CHECK_EQ(expired.size(), size_t(1), "TTL erases the pending");
+    CHECK(tracker.empty(), "expiry frees the pending entry");
+    auto fresh = tracker.planShortfall(1102, 8, 30, 2, 100, 40, 11, 99, 5, 50);
+    CHECK(fresh.request_source, "a later request for the same node/port plans fresh");
+    PASS();
+}
+
+// 3.5.3: a zero-accepted answer cools the source down — fresh shortfalls to
+// it are suppressed for a doubling window (5 ticks doubled, capped at 50); a
+// productive answer or a different source is unaffected.
+static void test_rejection_cooldown_gates_fresh_shortfall() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+    const gtnh::pipe_network::PipeConsumeTracker::SourceKey src{11, 99, 5};
+    const gtnh::pipe_network::PipeConsumeTracker::SourceKey other{12, 98, 6};
+
+    tracker.planShortfall(1201, 7, 30, 2, 100, 40, 11, 99, 5, 0);
+    auto rejected = tracker.applyDrainResponse(1201, 2, 0);
+    CHECK(rejected.applied, "zero acceptance completes the consume as blocked");
+    tracker.noteSourceRejection(src, 0);
+
+    auto cooled = tracker.planShortfall(1202, 8, 30, 2, 100, 40, 11, 99, 5, 1);
+    CHECK(!cooled.request_source, "cooled source is not probed again");
+    CHECK(tracker.empty(), "suppressed plan records no pending");
+
+    CHECK(!tracker.sourceInRejectionBackoff(src, 5), "first window is 5 ticks");
+    auto retry = tracker.planShortfall(1203, 9, 30, 2, 100, 40, 11, 99, 5, 5);
+    CHECK(retry.request_source, "probe after the window is allowed");
+
+    tracker.applyDrainResponse(1203, 2, 0);
+    tracker.noteSourceRejection(src, 5);
+    CHECK(tracker.sourceInRejectionBackoff(src, 6), "second rejection doubles the window");
+    CHECK(!tracker.planShortfall(1204, 10, 30, 2, 100, 40, 11, 99, 5, 10).request_source,
+          "doubled window suppresses the probe");
+    CHECK(!tracker.sourceInRejectionBackoff(src, 15), "doubled window elapses");
+
+    CHECK(!tracker.sourceInRejectionBackoff(other, 0), "other sources are unaffected");
+    tracker.clearSourceRejection(src);
+    CHECK(tracker.planShortfall(1205, 11, 30, 2, 100, 40, 11, 99, 5, 15).request_source,
+          "cleared cooldown probes immediately");
+    PASS();
+}
+
+// 3.5.3: removing a node cancels the pendings tied to it as source or as
+// sink; a late response for a cancelled pending is dropped, the entry is
+// never completed twice, and the node's rejection cooldown goes with it.
+static void test_node_removal_cancels_pending_late_response_dropped() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+    tracker.planShortfall(1301, 7, 40, 2, 100, 10, 11, 99, 5, 0);
+    tracker.planShortfall(1302, 8, 30, 2, 100, 10, 12, 0, 0, 0);
+    tracker.planShortfall(1303, 9, 41, 2, 100, 10, 13, 98, 6, 0);
+    CHECK_EQ(tracker.size(), size_t(3), "three pendings recorded");
+
+    const gtnh::pipe_network::PipeConsumeTracker::SourceKey src11{11, 99, 5};
+    tracker.noteSourceRejection(src11, 0);
+
+    CHECK_EQ(tracker.cancelForNode(11).size(), size_t(1),
+             "source-tied pending cancelled");
+    CHECK_EQ(tracker.cancelForNode(30).size(), size_t(1),
+             "sink-tied pending cancelled");
+    CHECK_EQ(tracker.size(), size_t(3), "cancelled entries kept until the TTL");
+    CHECK(tracker.cancelForNode(11).empty(), "repeated cancellation returns nothing");
+    CHECK(!tracker.sourceInRejectionBackoff(src11, 0),
+          "node cancellation drops its rejection cooldown");
+
+    auto late = tracker.applyDrainResponse(1301, 2, 90);
+    CHECK(!late.applied, "late response for a cancelled pending is dropped");
+
+    auto expired = tracker.expire(50);
+    CHECK_EQ(expired.size(), size_t(1), "only the live pending completes at the TTL");
+    CHECK_EQ(expired[0].drain_request_id, uint64_t(1303), "unrelated pending survives");
+    CHECK(tracker.empty(), "cancelled entries erased silently at the TTL");
+    PASS();
+}
+
+// 3.5.4: a drain response is applicable only while the addressed port is
+// still registered at the epoch the request was planned against; responses
+// from removed ports or re-registered (newer-epoch) incarnations are stale,
+// and cancelStaleEpoch retires the pendings bound to the old epoch.
+static void test_stale_epoch_response_discarded() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+    tracker.planShortfall(1401, 7, 30, 2, 100, 10, 11, 99, 5, 0, /*source_epoch=*/1);
+    const auto pending = *tracker.findPending(1401);
+    CHECK_EQ(pending.source_epoch, uint64_t(1), "plan binds the port epoch");
+
+    CHECK(gtnh::pipe_network::drainResponsePortLive(pending, true, 1),
+          "response matches the registered epoch");
+    CHECK(!gtnh::pipe_network::drainResponsePortLive(pending, true, 2),
+          "older-epoch response is stale after re-registration");
+    CHECK(!gtnh::pipe_network::drainResponsePortLive(pending, false, 0),
+          "removed-port response is stale");
+
+    tracker.planShortfall(1402, 8, 31, 2, 100, 10, 12, 0, 0, 0);
+    const auto node_based = *tracker.findPending(1402);
+    CHECK(gtnh::pipe_network::drainResponsePortLive(node_based, false, 0),
+          "node-based fallback bypasses the registry check");
+
+    tracker.planShortfall(1403, 9, 32, 2, 100, 10, 11, 99, 5, 0, /*source_epoch=*/2);
+    auto cancelled = tracker.cancelStaleEpoch(99, 5, 2);
+    CHECK_EQ(cancelled.size(), size_t(1), "only the stale-epoch pending cancels");
+    CHECK_EQ(cancelled[0].drain_request_id, uint64_t(1401), "correct pending cancelled");
+    CHECK(tracker.cancelStaleEpoch(99, 5, 2).empty(), "cancellation is once-only");
+    CHECK(tracker.findPending(1403) != nullptr, "same-epoch pending stays live");
+    CHECK(!tracker.applyDrainResponse(1401, 2, 90).applied,
+          "cancelled pending never applies");
+
+    pipenet::PipeNetworkManager mgr;
+    auto port = make_test_port(gtnh::common::ResourceKind::FLUID,
+                               gtnh::common::PortRole::SOURCE, /*epoch=*/1);
+    CHECK(mgr.registerPort(port), "epoch 1 registers");
+    auto newer = port;
+    newer.epoch = 2;
+    newer.rate = 200;
+    CHECK(mgr.registerPort(newer), "epoch 2 replaces the registration");
+    CHECK_EQ(mgr.getPort(port.owner_id, port.resource_kind, port.port_id)->epoch,
+             uint64_t(2), "live epoch visible to response validation");
+    CHECK(!mgr.registerPort(port), "epoch 1 cannot overwrite after the bump");
+    PASS();
+}
+
+// 3.5.4: after a restart the producer re-publishes its typed ports (the
+// boiler republishes every tick at a stable epoch, BoilerSystem.cpp);
+// re-registration into the fresh incarnation is idempotent, and state from
+// the previous incarnation — pending consumes, late responses, replay-cache
+// entries — cannot corrupt the new one.
+static void test_restart_reregistration_idempotent_old_epoch_ignored() {
+    auto port = make_test_port(gtnh::common::ResourceKind::FLUID,
+                               gtnh::common::PortRole::SOURCE, /*epoch=*/1);
+
+    // Incarnation A: port registered, shortfall pending, request served.
+    pipenet::PipeNetworkManager mgr_a;
+    gtnh::pipe_network::PipeConsumeTracker tracker_a(50);
+    CHECK(mgr_a.registerPort(port), "incarnation A registers the port");
+    tracker_a.planShortfall(1501, 7, 30, 2, 100, 10, 11, port.owner_id,
+                            port.port_id, 0, port.epoch);
+    CHECK_EQ(tracker_a.size(), size_t(1), "incarnation A has a pending shortfall");
+    CHECK(mgr_a.addNodeWithId(11, 10, 20, 30, 61), "source node exists");
+    mgr_a.setNodeFluid(11, 100, 1000, 2, false, true);
+    auto served = mgr_a.consumeFluid(11, 777, 2, 30);
+    CHECK_EQ(served.accepted_amount, 30, "incarnation A serves request 777");
+
+    // --- restart: all in-memory state dropped ---
+    pipenet::PipeNetworkManager mgr_b;
+    gtnh::pipe_network::PipeConsumeTracker tracker_b(50);
+
+    // Producer-driven re-registration: the same records register into the
+    // fresh manager idempotently (producers republish per tick, 2.4.3).
+    CHECK(mgr_b.registerPort(port), "republished port registers after restart");
+    CHECK(mgr_b.registerPort(port), "republished port is idempotent");
+    CHECK_EQ(mgr_b.portCount(), size_t(1), "no duplicates after restart");
+    CHECK_EQ(mgr_b.getPort(port.owner_id, port.resource_kind, port.port_id)->epoch,
+             uint64_t(1), "epoch survives the restart");
+
+    // Previous incarnation's late response: the fresh tracker knows no ids.
+    CHECK(!tracker_b.applyDrainResponse(1501, 2, 90).applied,
+          "previous-incarnation response is ignored after restart");
+    CHECK(tracker_b.empty(), "no pending state leaked across the restart");
+
+    // Previous incarnation's replay-cache id: the fresh manager re-executes.
+    CHECK(mgr_b.addNodeWithId(11, 10, 20, 30, 61), "node re-created");
+    mgr_b.setNodeFluid(11, 100, 1000, 2, false, true);
+    auto re_served = mgr_b.consumeFluid(11, 777, 2, 30);
+    CHECK_EQ(re_served.accepted_amount, 30, "fresh incarnation re-executes id 777");
+    CHECK_EQ(mgr_b.getNode(11)->fluidBuffer, 70, "no stale replay across restart");
+
+    // Machine replaced while the service kept running: the epoch bumps, the
+    // stale epoch cannot overwrite, and a pending planned against the old
+    // epoch is invalidated.
+    tracker_b.planShortfall(1502, 8, 30, 2, 100, 10, 11, port.owner_id,
+                            port.port_id, 0, /*source_epoch=*/1);
+    auto replaced = port;
+    replaced.epoch = 2;
+    replaced.rate = 300;
+    CHECK(mgr_b.registerPort(replaced), "epoch-bumped re-registration replaces");
+    CHECK(!mgr_b.registerPort(port), "old epoch cannot overwrite after the bump");
+    const auto* stale_pending = tracker_b.findPending(1502);
+    const auto* live = mgr_b.getPort(port.owner_id, port.resource_kind,
+                                     port.port_id);
+    CHECK(stale_pending != nullptr, "stale-epoch pending exists");
+    CHECK(!gtnh::pipe_network::drainResponsePortLive(
+              *stale_pending, live != nullptr, live != nullptr ? live->epoch : 0),
+          "response for the pre-bump epoch is discarded");
+    auto cancelled = tracker_b.cancelStaleEpoch(port.owner_id, port.port_id, 2);
+    CHECK_EQ(cancelled.size(), size_t(1), "stale-epoch pending cancels once");
+    PASS();
+}
+
+// =========================================================================
+//  3.5.3/3.5.4: timeout/backoff, cancellation, reconnect epoch gating
+// =========================================================================
+
+// 3.5.3: retries fire with doubling backoff (2, 4, 8, 16 ticks), stop at the
+// retry cap, and the TTL still completes the pending afterwards.
+static void test_retry_backoff_growth_capped() {
+    CHECK_EQ(gtnh::pipe_network::drainRetryBackoffTicks(0),
+             gtnh::pipe_network::kDrainRetryBaseBackoffTicks,
+             "initial delay uses the base backoff");
+    CHECK_EQ(gtnh::pipe_network::drainRetryBackoffTicks(1), uint64_t(2),
+             "first interval doubles from the base");
+    CHECK_EQ(gtnh::pipe_network::drainRetryBackoffTicks(2), uint64_t(4),
+             "second interval doubles again");
+    CHECK_EQ(gtnh::pipe_network::drainRetryBackoffTicks(3), uint64_t(8),
+             "third interval doubles again");
+    CHECK_EQ(gtnh::pipe_network::drainRetryBackoffTicks(4),
+             gtnh::pipe_network::kDrainRetryMaxBackoffTicks,
+             "interval capped at the maximum backoff");
+    CHECK_EQ(gtnh::pipe_network::drainRetryBackoffTicks(9),
+             gtnh::pipe_network::kDrainRetryMaxBackoffTicks,
+             "backoff never grows past the cap");
+
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+    tracker.planShortfall(1001, 7, 30, 2, 100, 40, 11, 99, 5, 0);
+    CHECK(tracker.collectRetries(1).empty(), "no retry before the base backoff");
+
+    auto r1 = tracker.collectRetries(2);
+    CHECK_EQ(r1.size(), size_t(1), "first retry fires at the base backoff");
+    CHECK_EQ(r1[0].drain_request_id, uint64_t(1001), "retry keeps the request id");
+    CHECK_EQ(r1[0].retry_count, uint32_t(1), "retry count incremented");
+    CHECK_EQ(r1[0].shortfall, 60, "retry re-asks only the shortfall");
+    CHECK_EQ(r1[0].source_port_id, gtnh::common::PortId(5), "retry keeps the port");
+    CHECK_EQ(r1[0].fluid_id, uint32_t(2), "retry keeps the fluid id");
+
+    CHECK(tracker.collectRetries(3).empty(), "second retry waits out the doubling");
+    auto r2 = tracker.collectRetries(4);
+    CHECK_EQ(r2.size(), size_t(1), "second retry at +4 ticks");
+    CHECK_EQ(r2[0].retry_count, uint32_t(2), "retry count grows");
+
+    CHECK(tracker.collectRetries(7).empty(), "third retry waits out the doubling");
+    auto r3 = tracker.collectRetries(8);
+    CHECK_EQ(r3.size(), size_t(1), "third retry at +8 ticks");
+
+    CHECK(tracker.collectRetries(15).empty(), "fourth retry waits out the doubling");
+    auto r4 = tracker.collectRetries(16);
+    CHECK_EQ(r4.size(), size_t(1), "fourth retry at +16 ticks");
+    CHECK_EQ(r4[0].retry_count, uint32_t(4), "retry count at the cap");
+
+    CHECK(tracker.collectRetries(31).empty(), "retry cap stops further re-publishes");
+    CHECK(tracker.collectRetries(49).empty(), "no retries past the cap");
+    CHECK_EQ(tracker.size(), size_t(1), "pending survives until the TTL");
+
+    auto expired = tracker.expire(50);
+    CHECK_EQ(expired.size(), size_t(1), "TTL expiry completes the retried pending");
+    CHECK_EQ(expired[0].retry_count, uint32_t(4), "expired entry keeps its retry count");
+    auto late = tracker.applyDrainResponse(1001, 2, 60);
+    CHECK(!late.applied, "response after expiry is dropped");
+    PASS();
+}
+
+// 3.5.3: cancelRequest marks the entry (kept until TTL), completes once, and
+// drops late responses; retries stop; expiry never re-completes it.
+static void test_cancel_request_marks_and_drops_late_response() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+    tracker.planShortfall(1401, 7, 30, 2, 100, 10, 11, 99, 5, 0, 7);
+
+    auto cancelled = tracker.cancelRequest(1401);
+    CHECK_EQ(cancelled.size(), size_t(1), "cancel returns the entry once");
+    CHECK_EQ(cancelled[0].pipe_accepted, 10, "cancelled entry keeps its pipe part");
+    CHECK_EQ(cancelled[0].requested, 100, "cancelled entry keeps its demand");
+    CHECK(tracker.cancelRequest(1401).empty(), "second cancel returns nothing");
+    CHECK_EQ(tracker.size(), size_t(1), "cancelled entry stays marked until TTL");
+
+    CHECK(tracker.collectRetries(1000).empty(), "cancelled entry is never retried");
+    auto late = tracker.applyDrainResponse(1401, 2, 90);
+    CHECK(!late.applied, "late response for a cancelled request is dropped");
+    CHECK(tracker.expire(50).empty(), "cancelled entry is not re-completed at expiry");
+    CHECK(tracker.empty(), "cancelled entry erased silently at TTL");
+    PASS();
+}
+
+// 3.5.3: port removal does not re-complete a pending already cancelled.
+static void test_clear_for_port_skips_cancelled() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+    tracker.planShortfall(1501, 7, 30, 2, 100, 10, 11, 99, 5, 0, 7);
+    CHECK_EQ(tracker.cancelRequest(1501).size(), size_t(1), "cancelled once");
+    CHECK(tracker.clearForPort(99, 5).empty(),
+          "port removal does not re-complete a cancelled pending");
+    PASS();
+}
+
+// 3.5.4(c): re-registration under a new epoch cancels only the stale-epoch
+// pending; late stale-epoch responses drop while live pendings apply.
+static void test_epoch_change_cancels_stale_pending() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+    tracker.planShortfall(1201, 7, 30, 2, 100, 10, 11, 99, 5, 0, 7);
+    tracker.planShortfall(1202, 8, 31, 2, 100, 10, 12, 99, 6, 0, 3);
+
+    auto cancelled = tracker.cancelStaleEpoch(99, 5, 8);
+    CHECK_EQ(cancelled.size(), size_t(1), "only the stale-epoch pending cancels");
+    CHECK_EQ(cancelled[0].drain_request_id, uint64_t(1201), "correct pending cancelled");
+    CHECK_EQ(tracker.size(), size_t(2), "cancelled entry is marked, not erased");
+    CHECK(tracker.cancelStaleEpoch(99, 5, 8).empty(), "cancellation is not repeated");
+    CHECK(tracker.cancelStaleEpoch(99, 5, 7).empty(),
+          "older epoch never cancels a pending bound to a newer one");
+
+    auto late = tracker.applyDrainResponse(1201, 2, 90);
+    CHECK(!late.applied, "stale-epoch response is discarded");
+    auto live = tracker.applyDrainResponse(1202, 2, 90);
+    CHECK(live.applied, "unaffected pending still applies");
+
+    tracker.planShortfall(1203, 9, 32, 2, 100, 10, 13, 99, 5, 0, 8);
+    CHECK(tracker.collectRetries(1000).empty(),
+          "no retries fire for cancelled or past-TTL entries");
+
+    auto expired = tracker.expire(50);
+    CHECK_EQ(expired.size(), size_t(1), "only the live pending completes at expiry");
+    CHECK_EQ(expired[0].drain_request_id, uint64_t(1203),
+             "cancelled entry is not re-completed at expiry");
+    CHECK(tracker.empty(), "cancelled entry erased silently at TTL");
+    PASS();
+}
+
+// 3.5.4(a)/(c): the response liveness gate — typed pendings require the port
+// live at the bound epoch; node-based fallback bypasses the check.
+static void test_response_epoch_gate() {
+    using gtnh::pipe_network::drainResponsePortLive;
+    gtnh::pipe_network::PendingConsume typed;
+    typed.source_port_id = 5;
+    typed.source_owner_id = 99;
+    typed.source_epoch = 7;
+    CHECK(drainResponsePortLive(typed, true, 7),
+          "live port at the bound epoch accepts the response");
+    CHECK(!drainResponsePortLive(typed, true, 8),
+          "re-registered epoch discards the response");
+    CHECK(!drainResponsePortLive(typed, false, 0),
+          "removed port discards the response");
+
+    gtnh::pipe_network::PendingConsume node_based;
+    node_based.source_port_id = 0;
+    CHECK(drainResponsePortLive(node_based, false, 0),
+          "node-based fallback bypasses the registry check");
+    PASS();
+}
+
+// 3.5.4(b): pending state is process-local and never persisted — a restarted
+// service starts with an empty pending map, so no phantom pending can answer
+// a pre-restart response.
+static void test_reconnect_pending_state_clean() {
+    gtnh::pipe_network::PipeConsumeTracker before(50);
+    before.planShortfall(1301, 7, 30, 2, 100, 10, 11, 99, 5, 0, 4);
+    CHECK_EQ(before.size(), size_t(1), "pre-restart pending recorded");
+
+    gtnh::pipe_network::PipeConsumeTracker after(50);
+    CHECK(after.empty(), "pending map starts clean after restart");
+    auto late = after.applyDrainResponse(1301, 2, 90);
+    CHECK(!late.applied, "pre-restart response finds no phantom pending");
+    auto plan = after.planShortfall(1302, 8, 30, 2, 100, 10, 11, 99, 5, 0, 4);
+    CHECK(plan.request_source, "post-restart planning works");
+    PASS();
+}
+
+// 3.5.2/3.5.3: request id zero is not a transaction identity on any path.
+static void test_request_id_zero_pending_paths() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+    auto plan = tracker.planShortfall(0, 7, 30, 2, 100, 10, 11, 99, 5, 0, 7);
+    CHECK(!plan.request_source, "zero request id plans nothing");
+    CHECK(tracker.empty(), "zero request id records nothing");
+    CHECK(tracker.cancelRequest(0).empty(), "zero id cancels nothing");
+    CHECK(!tracker.applyDrainResponse(0, 2, 10).applied, "zero id applies nothing");
+    CHECK(tracker.collectRetries(1000).empty(), "zero id never retries");
+    CHECK(tracker.cancelStaleEpoch(99, 0, 8).empty(),
+          "port id zero never matches in cancellation");
+    PASS();
+}
+
+// =========================================================================
 //  2.6.x: converters, simultaneous ports, entity ID zero, ID collisions,
 //  duplicate/stale updates, exact removal, removal cleanup
 // =========================================================================
@@ -2578,6 +2973,23 @@ int main(int, char**) {
     TEST(drain_response_clamped_and_mismatched);
     TEST(pending_expiry_completes_short_fill);
     TEST(port_removal_clears_pending);
+
+    // 3.5.3/3.5.4: pending lifecycle — retry backoff, rejection cooldown,
+    // cancellation, stale epochs, restart re-registration
+    TEST(retry_backoff_republishes_same_request_id);
+    TEST(rejection_cooldown_gates_fresh_shortfall);
+    TEST(node_removal_cancels_pending_late_response_dropped);
+    TEST(stale_epoch_response_discarded);
+    TEST(restart_reregistration_idempotent_old_epoch_ignored);
+
+    // Pending lifecycle: timeout/backoff, cancellation, reconnect (3.5.3/3.5.4)
+    TEST(retry_backoff_growth_capped);
+    TEST(cancel_request_marks_and_drops_late_response);
+    TEST(clear_for_port_skips_cancelled);
+    TEST(epoch_change_cancels_stale_pending);
+    TEST(response_epoch_gate);
+    TEST(reconnect_pending_state_clean);
+    TEST(request_id_zero_pending_paths);
 
     // 2.6.x: converters, simultaneous ports, entity ID zero, removal cleanup
     TEST(four_domains_simultaneous_one_owner);
