@@ -2,6 +2,7 @@
 #include "gateway.h"
 #include "client_state_generated.h"
 #include "gateway_generated.h"
+#include "pipe_network_generated.h"
 #include "quest_generated.h"
 #include "recipe_generated.h"
 #include "common/ResourceBufferStateCodec.h"
@@ -421,6 +422,13 @@ void IoUringGateway::on_router_publish(
         send_to_client_ctrl_raw(GatewayMsg::kRecipeItemResp, payload, plen);
     else if (topic == "recipe.machine.response")
         send_to_client_ctrl_raw(GatewayMsg::kRecipeMachineResp, payload, plen);
+    else if (topic == "pipe.contents.response") {
+        flatbuffers::Verifier v(payload, plen);
+        if (v.VerifyBuffer<Protocol::PipeContentsResp>(nullptr))
+            send_to_client_ctrl_raw(GatewayMsg::kPipeContentsResp, payload, plen);
+        else
+            spdlog::warn("Gateway: Router: invalid PipeContentsResp");
+    }
 else if (topic == "player.machine.slot.response")
     send_to_client_ctrl_raw(GatewayMsg::kSetMachineSlotResp, payload, plen);
     else if (topic == "player.tool.action.response")
@@ -659,6 +667,17 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
             case GatewayMsg::kRecipeMachineReq: topic = "recipe.machine"; break;
         }
         publish(topic, data, len);
+        break;
+    }
+    // Debug pipe-contents query → PipeNetworkService. Pure pass-through:
+    // verify the PipeContentsReq frame, forward to pipe.contents.request, then
+    // relay the PipeContentsResp back on pipe.contents.response → ctrl.
+    case GatewayMsg::kPipeContentsReq: {
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::PipeContentsReq>(nullptr)) {
+            spdlog::error("Gateway: invalid PipeContentsReq on ctrl"); return;
+        }
+        publish("pipe.contents.request", data, len);
         break;
     }
     default: spdlog::warn("Gateway: unknown ctrl client msg type {}", msg_type); break;

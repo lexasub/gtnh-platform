@@ -10,11 +10,12 @@ add_custom_command(
         ${FBS_GEN_DIR}/recipe_generated.h
         ${FBS_GEN_DIR}/quest_generated.h
         ${FBS_GEN_DIR}/client_state_generated.h
+        ${FBS_GEN_DIR}/pipe_network_generated.h
     COMMAND flatbuffers::flatc
         --gen-mutable
         -I ${FBS_DIR}
         -o ${FBS_GEN_DIR}
-        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/machine_state.fbs ${FBS_DIR}/client_state.fbs
+        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/machine_state.fbs ${FBS_DIR}/client_state.fbs ${FBS_DIR}/pipe_network.fbs
     DEPENDS flatbuffers::flatc
             ${FBS_DIR}/core.fbs
             ${FBS_DIR}/gateway.fbs
@@ -22,6 +23,7 @@ add_custom_command(
             ${FBS_DIR}/quest.fbs
             ${FBS_DIR}/machine_state.fbs
             ${FBS_DIR}/client_state.fbs
+            ${FBS_DIR}/pipe_network.fbs
     COMMENT "Generating FlatBuffers headers for game_client"
 )
 
@@ -32,6 +34,7 @@ add_custom_target(game_client_fbs
         ${FBS_GEN_DIR}/recipe_generated.h
         ${FBS_GEN_DIR}/quest_generated.h
         ${FBS_GEN_DIR}/client_state_generated.h
+        ${FBS_GEN_DIR}/pipe_network_generated.h
 )
 
 # Set output directories for binaries
@@ -62,6 +65,7 @@ add_executable(gameclientd
 
     Network/NetClient.cpp
     Network/ResourceBufferStateStore.cpp
+    Network/PipeContentsStateStore.cpp
 
     Cache/ChunkMeshCache.cpp
     Cache/ChunkNeighborCache.cpp
@@ -359,6 +363,7 @@ if(BUILD_TESTING)
         tests/PipeFluidOverlay_test.cpp
         Render/PipeMeshBuilder.cpp
         Network/ResourceBufferStateStore.cpp
+        Network/PipeContentsStateStore.cpp
         Crafting/ClientItemRegistry.cpp
     )
     target_compile_definitions(gameclient_pipe_fluid_overlay_test PRIVATE

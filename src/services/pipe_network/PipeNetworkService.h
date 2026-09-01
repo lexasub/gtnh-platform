@@ -126,6 +126,10 @@ private:
   // Pipe wrench handler (evaluate + report connection state)
   void handlePipeWrenchAction(const std::vector<uint8_t> &data);
 
+  // Debug pipe-contents query: report the fluid state of the node at pos
+  // exactly as stored (read-only, no graph mutation).
+  void handlePipeContentsRequest(const std::vector<uint8_t> &data);
+
   void loadPersistentState();
 };
 

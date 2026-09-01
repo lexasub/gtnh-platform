@@ -69,6 +69,13 @@ public:
     void SetResourceBufferStateCallback(ResourceBufferStateCallback cb) {
         onResourceBufferState_ = std::move(cb);
     }
+    // Debug pipe-contents reply (Protocol::PipeContentsResp, pipe_network.fbs).
+    // Raw payload; PipeContentsStateStore verifies + parses.
+    using PipeContentsCallback =
+        std::function<void(std::shared_ptr<std::vector<uint8_t>>)>;
+    void SetPipeContentsCallback(PipeContentsCallback cb) {
+        onPipeContents_ = std::move(cb);
+    }
     using QuestUpdateCallback =
       std::function<void(uint8_t, std::shared_ptr<std::vector<uint8_t>>)>;
   using GameModeChangeCallback = std::function<void(uint8_t new_mode)>;
@@ -163,6 +170,9 @@ public:
   // Server-authoritative container session (Phase C): open/close a machine window.
   void SendMachineOpenReq(uint64_t player_id, int32_t x, int32_t y, int32_t z);
   void SendMachineCloseReq(uint64_t player_id, int32_t x, int32_t y, int32_t z);
+  // Debug: request the fluid state of the pipe node at (x,y,z) from
+  // PipeNetworkService. Reply arrives asynchronously via SetPipeContentsCallback.
+  void SendPipeContentsReq(uint64_t player_id, int32_t x, int32_t y, int32_t z);
   void SendToolAction(uint64_t player_id, Protocol::ToolActionType action,
                       int32_t x, int32_t y, int32_t z, uint8_t face,
                       uint16_t item_id = 0);
@@ -267,5 +277,6 @@ private:
     StartScenarioRespCallback onStartScenarioResp_;
     GridUpdateCallback onGridUpdate_;
     ResourceBufferStateCallback onResourceBufferState_;
+    PipeContentsCallback onPipeContents_;
     ReconnectCallback onReconnect_;
 };

@@ -64,6 +64,10 @@ inline constexpr uint8_t kWorkbenchOpenReq = 44;
 // Server-authoritative machine/port buffer state (Protocol::ResourceBufferState,
 // client_state.fbs). SimulationCore → gateway → client ctrl connection.
 inline constexpr uint8_t kResourceBufferState = 47;
+// Debug pipe-contents query (Protocol::PipeContentsReq/PipeContentsResp,
+// pipe_network.fbs). Client → gateway → PipeNetwork → gateway → client ctrl.
+inline constexpr uint8_t kPipeContentsReq = 48;
+inline constexpr uint8_t kPipeContentsResp = 49;
 // Client-side historical alias for kEntitySnapshot (NetClient.h).
 inline constexpr uint8_t kEntitySnap = kEntitySnapshot;
 } // namespace GatewayMsg

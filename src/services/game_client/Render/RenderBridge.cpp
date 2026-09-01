@@ -1,6 +1,7 @@
 #include "Render/RenderBridge.h"
 #include "Render/WrenchOverlay.h"
 #include "Render/PipeFluidOverlay.h"
+#include "Network/PipeContentsStateStore.h"
 #include "Render/MinimapWorldAdapter.h"
 #include "World/World.h"
 #include "Camera/Camera.h"
@@ -378,17 +379,24 @@ void RenderBridge::ImGuiOverlay(const renderlib::FrameRenderData& frame) {
     }
 
     // ---- Pipe fluid overlay debug text (below the block-name label) ----
-    // Read-only: values come only from ResourceBufferStateStore::FindAt(); no
-    // current snapshot renders as unknown/stale — never a fabricated zero.
+    // Read-only: values come from the debug pipe-contents store (client →
+    // PipeNetwork query) with the authoritative ResourceBufferStateStore as
+    // fallback; no current snapshot renders as unknown/stale — never a
+    // fabricated zero.
     if (frame.ext.showPipeFluidOverlay) {
+        const PipeContentsStateStore::Entry* contentsEntry = nullptr;
         const ResourceBufferStateStore::Entry* stateEntry = nullptr;
         if (g_uiMgr) {
-            if (auto* store = g_uiMgr->GetResourceBufferStore()) {
+            if (auto* store = g_uiMgr->GetPipeContentsStore())
+                contentsEntry = store->FindAt(BlockPos{hb.x, hb.y, hb.z});
+            if (auto* store = g_uiMgr->GetResourceBufferStore())
                 stateEntry = store->FindAt(BlockPos{hb.x, hb.y, hb.z});
-            }
         }
         char line[128];
-        pipe_fluid_overlay::FormatStateText(line, sizeof(line), stateEntry);
+        if (contentsEntry)
+            pipe_fluid_overlay::FormatStateText(line, sizeof(line), contentsEntry);
+        else
+            pipe_fluid_overlay::FormatStateText(line, sizeof(line), stateEntry);
 
         glm::vec3 labelPos(hb.x + 0.5f, hb.y + 1.3f, hb.z + 0.5f);
         glm::vec4 clip = vp * glm::vec4(labelPos, 1.0f);

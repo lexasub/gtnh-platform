@@ -9,6 +9,7 @@
 #include "Crafting/ServerRecipeDB.h"
 #include "Network/NetClient.h"
 #include "Network/ResourceBufferStateStore.h"
+#include "Network/PipeContentsStateStore.h"
 #include "Render/RenderBridge.h"
 #include "UI/InputManager.h"
 #include "UI/UIManager.h"
@@ -17,6 +18,7 @@
 #include "World/World.h"
 #include <asio.hpp>
 #include <atomic>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -53,6 +55,14 @@ private:
   // Server-authoritative machine/port buffer state (render-thread applied).
   // Declared before uiMgr_: open windows hold a raw pointer into it.
   ResourceBufferStateStore resourceBuffers_;
+
+  // Debug pipe-contents replies (PipeNetworkService). Last-write-wins by pos;
+  // render-thread applied, cleared on reconnect.
+  PipeContentsStateStore pipeContents_;
+
+  // Debug query throttle: last requested pos + cooldown before re-asking.
+  BlockPos pipeContentsQueryPos_{std::numeric_limits<int32_t>::max(), 0, 0};
+  float pipeContentsQueryCooldown_ = 0.0f;
 
   // ---- Core subsystems ----
   GLFWWindow window_;

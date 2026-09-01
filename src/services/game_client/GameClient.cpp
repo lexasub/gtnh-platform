@@ -122,6 +122,12 @@ void GameClient::subscribeNetClient() {
         [this](std::shared_ptr<std::vector<uint8_t>> data) {
             resourceBuffers_.Enqueue(data);
         });
+    // Debug pipe-contents replies: enqueue only; render thread applies them
+    // in Update() and drains via ApplyPending().
+    netClient_->SetPipeContentsCallback(
+        [this](std::shared_ptr<std::vector<uint8_t>> data) {
+            pipeContents_.Enqueue(data);
+        });
     netClient_->SetRecipeCompletedCallback(
         [this](std::shared_ptr<std::vector<uint8_t>> data) {
             uiMgr_.HandleNetwork(GatewayMsg::kRecipeCompleted, data->data());
@@ -187,6 +193,7 @@ void GameClient::subscribeNetClient() {
     netClient_->SetReconnectCallback([this]() {
         world_.ClearPendingRequests();
         resourceBuffers_.Clear();
+        pipeContents_.Clear();
         spdlog::info("Cleared pending chunk requests and resource buffer state after bulk reconnect");
     });
 }
@@ -259,6 +266,7 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
     UIDefaults::RegisterPlayerUI(uiMgr_, invState_);
     uiMgr_.SetNetClient(netClient_.get());
     uiMgr_.SetResourceBufferStore(&resourceBuffers_);
+    uiMgr_.SetPipeContentsStore(&pipeContents_);
 
     // Server-driven recipe store (catalog + LRU caches)
     recipeDb_.Init(netClient_.get());
@@ -305,6 +313,7 @@ void GameClient::Update(float dt) {
     // Apply queued server-authoritative buffer state on the render thread
     // before UI rendering reads it.
     resourceBuffers_.ApplyPending();
+    pipeContents_.ApplyPending();
 
     // Expire stale recipe requests so a lost response doesn't permanently
     // block future queries for the same item / machine / grid.
@@ -541,6 +550,23 @@ void GameClient::Run() {
                     return world_.GetMetaAt(BlockPos{bx, by, bz});
                 });
             pipe_fluid_overlay::ConnectableFromMask(mask, frd.ext.pipeFluidConnectable);
+        }
+
+        // Debug pipe-contents query (throttled): ask PipeNetworkService for the
+        // targeted pipe's fluid state. Re-ask only when the target changed or
+        // the cooldown elapsed, so the overlay stays fresh without spamming the
+        // router on every frame.
+        if (frd.ext.showPipeFluidOverlay) {
+            if (pipeContentsQueryCooldown_ <= 0.0f ||
+                pipeContentsQueryPos_ != hb) {
+                pipeContentsQueryPos_ = hb;
+                pipeContentsQueryCooldown_ = 0.5f;
+                netClient_->SendPipeContentsReq(invState_.player_id,
+                                                hb.x, hb.y, hb.z);
+            }
+            pipeContentsQueryCooldown_ -= dt;
+        } else {
+            pipeContentsQueryCooldown_ = 0.0f;
         }
 
         renderBridge_.SubmitFrame(frd);

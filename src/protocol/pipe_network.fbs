@@ -36,6 +36,28 @@ table PipeWrenchResp {
 }
 
 // ---------------------------------------------------------------------------
+// Pipe contents query: GameClient → PipeNetwork
+// "pipe.contents.request" (client → gateway → PipeNetwork) →
+// "pipe.contents.response" (PipeNetwork → gateway → client)
+// Read-only debug query: PipeNetwork reports the fluid state of the pipe node
+// at pos exactly as stored — never computes or mutates anything.
+// ---------------------------------------------------------------------------
+table PipeContentsReq {
+  player_id: uint64;
+  pos: Vec3i (required);
+}
+
+table PipeContentsResp {
+  player_id: uint64;
+  pos: Vec3i (required);
+  found: bool = false;      // false = no pipe node at pos
+  node_id: uint64 = 0;
+  fluid_id: uint32 = 0;     // 0 = empty / no fluid
+  amount: int32 = 0;        // current fluid (mB)
+  capacity: int32 = 0;      // max capacity (mB)
+}
+
+// ---------------------------------------------------------------------------
 // Energy node update: SimulationCore → PipeNetwork
 // Published on topic "energy.node.update" whenever a machine/pipe state changes
 // ---------------------------------------------------------------------------

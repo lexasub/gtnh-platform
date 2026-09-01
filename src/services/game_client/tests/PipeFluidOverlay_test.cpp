@@ -2,10 +2,14 @@
 //   overlay gate (toggle off / non-fluid target / dense pipe), per-face mask
 //   mapping over PipeMeshBuilder::detectConnections (the same call the chunk
 //   mesh builder uses), authoritative display text (unknown/stale when no
-//   current snapshot, never a fabricated zero), and a structural read-only
-//   guard: the overlay path touches the store only through const FindAt and
-//   carries plain data through FrameExt — nothing that could emit a request.
+//   current snapshot, never a fabricated zero), the debug pipe-contents store
+//   (client → PipeNetwork query replies: last-write-wins, found=false,
+//   malformed drop), and a structural read-only guard: the overlay path
+//   touches the stores only through const FindAt and carries plain data
+//   through FrameExt — nothing that could emit a request.
 #include "Render/PipeFluidOverlay.h"
+#include "Network/PipeContentsStateStore.h"
+#include "pipe_network_generated.h"
 
 #include <common/ItemId.h>
 #include <common/ResourceBufferStateCodec.h>
@@ -102,6 +106,19 @@ bool ContainsDigit(const char* s) {
     for (; *s; ++s)
         if (*s >= '0' && *s <= '9') return true;
     return false;
+}
+
+// Wire reply as PipeNetworkService publishes on pipe.contents.response.
+std::shared_ptr<std::vector<uint8_t>> MakePipeContentsResp(
+    int32_t x, int32_t y, int32_t z, bool found, uint64_t node_id,
+    uint32_t fluid_id, int32_t amount, int32_t capacity) {
+    flatbuffers::FlatBufferBuilder fbb;
+    Protocol::Vec3i pos(x, y, z);
+    auto resp = Protocol::CreatePipeContentsResp(
+        fbb, /*player_id=*/1, &pos, found, node_id, fluid_id, amount, capacity);
+    fbb.Finish(resp);
+    return std::make_shared<std::vector<uint8_t>>(
+        fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
 }
 
 }  // namespace
@@ -272,6 +289,77 @@ static void test_state_text_stale_after_removal() {
     PASS();
 }
 
+static void test_pipe_contents_store_last_write_wins() {
+    // Reply at the overlay target pos: applied → FindAt returns the snapshot.
+    PipeContentsStateStore store;
+    store.Enqueue(
+        MakePipeContentsResp(0, 0, 0, /*found=*/true, /*node_id=*/7,
+                             kSteamItem, /*amount=*/300, /*capacity=*/1000));
+    store.ApplyPending();
+    const auto* entry = store.FindAt(BlockPos{0, 0, 0});
+    CHECK(entry != nullptr, "pipe reply applied and visible at pos");
+    CHECK(entry->found, "found flag carried through");
+    CHECK(entry->node_id == 7, "node id carried through");
+    CHECK(entry->amount == 300 && entry->capacity == 1000,
+          "fluid amount/capacity carried through");
+
+    // A second reply at the same pos replaces the first: last-write-wins.
+    store.Enqueue(
+        MakePipeContentsResp(0, 0, 0, true, 7, kSteamItem, 800, 1000));
+    store.ApplyPending();
+    entry = store.FindAt(BlockPos{0, 0, 0});
+    CHECK(entry != nullptr && entry->amount == 800,
+          "newer reply wins over the previous snapshot");
+    PASS();
+}
+
+static void test_pipe_contents_not_found_reply() {
+    // PipeNetworkService answered "no pipe node at pos" (found=false): the
+    // overlay must NOT fabricate a zero — unknown/stale, like no snapshot.
+    PipeContentsStateStore store;
+    store.Enqueue(
+        MakePipeContentsResp(0, 0, 0, /*found=*/false, /*node_id=*/0,
+                             /*fluid_id=*/0, /*amount=*/0, /*capacity=*/0));
+    store.ApplyPending();
+    const auto* entry = store.FindAt(BlockPos{0, 0, 0});
+    CHECK(entry != nullptr && !entry->found,
+          "found=false reply still recorded at pos");
+    char buf[128];
+    pipe_fluid_overlay::FormatStateText(buf, sizeof(buf), entry);
+    CHECK(std::string(buf).find("unknown/stale") != std::string::npos,
+          "no pipe node displays unknown/stale");
+    CHECK(!ContainsDigit(buf),
+          "found=false never fabricates a zero");
+    PASS();
+}
+
+static void test_pipe_contents_text_with_snapshot() {
+    ItemRegistry::LoadFromCSV(DATA_DIR "/registry/items.csv");
+    PipeContentsStateStore store;
+    store.Enqueue(
+        MakePipeContentsResp(0, 0, 0, true, 7, kSteamItem, 300, 1000));
+    store.ApplyPending();
+    char buf[128];
+    pipe_fluid_overlay::FormatStateText(
+        buf, sizeof(buf), store.FindAt(BlockPos{0, 0, 0}));
+    const std::string text = buf;
+    CHECK(text.find("steam") != std::string::npos,
+          "pipe fluid name resolved via ItemRegistry");
+    CHECK(text.find("300 / 1000") != std::string::npos,
+          "pipe fluid amount/capacity shown");
+    PASS();
+}
+
+static void test_pipe_contents_null_overload() {
+    char buf[128];
+    pipe_fluid_overlay::FormatStateText(
+        buf, sizeof(buf), static_cast<const PipeContentsStateStore::Entry*>(nullptr));
+    CHECK(std::string(buf).find("unknown/stale") != std::string::npos,
+          "never-queried pipe shows unknown/stale");
+    CHECK(!ContainsDigit(buf), "never-queried pipe fabricates nothing");
+    PASS();
+}
+
 // ---------------------------------------------------------------------------
 // Read-only structural guard: the overlay can only read. Pin the pieces a
 // future change would have to break to smuggle a client→server request onto
@@ -288,6 +376,8 @@ static void test_read_only_guard() {
     // The overlay's only data source is a const read API — no mutating path.
     static_assert(ConstFindAtOnly<ResourceBufferStateStore>,
                   "overlay reads state only through const FindAt");
+    static_assert(ConstFindAtOnly<PipeContentsStateStore>,
+                  "overlay reads pipe state only through const FindAt");
 
     // FrameExt carries plain data to the render thread: bools and a bool[6],
     // no callbacks/function pointers through which a request could be sent.
@@ -304,9 +394,18 @@ static void test_read_only_guard() {
                                  bool (*)(bool, bool, uint16_t)>);
     static_assert(std::is_same_v<decltype(&pipe_fluid_overlay::ConnectableFromMask),
                                  void (*)(FaceMask, bool*)>);
-    static_assert(std::is_same_v<decltype(&pipe_fluid_overlay::FormatStateText),
+static_assert(std::is_same_v<decltype(static_cast<void (*)(
+                                      char*, size_t,
+                                      const ResourceBufferStateStore::Entry*)>(
+                                      &pipe_fluid_overlay::FormatStateText)),
                                  void (*)(char*, size_t,
                                           const ResourceBufferStateStore::Entry*)>);
+    static_assert(std::is_same_v<decltype(static_cast<void (*)(
+                                      char*, size_t,
+                                      const PipeContentsStateStore::Entry*)>(
+                                      &pipe_fluid_overlay::FormatStateText)),
+                                 void (*)(char*, size_t,
+                                          const PipeContentsStateStore::Entry*)>);
 
     // Runtime: the full overlay read path only reads the world (counted) and
     // never touches the store's queue (size stays 0 — no Enqueue happened).
@@ -334,6 +433,10 @@ int main() {
     test_state_text_unknown_without_snapshot();
     test_state_text_with_snapshot();
     test_state_text_stale_after_removal();
+    test_pipe_contents_store_last_write_wins();
+    test_pipe_contents_not_found_reply();
+    test_pipe_contents_text_with_snapshot();
+    test_pipe_contents_null_overload();
     test_read_only_guard();
 
     fprintf(stderr, "%d/%d checks passed\n", g_passed, g_passed + g_failed);

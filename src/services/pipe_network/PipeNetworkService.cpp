@@ -141,6 +141,7 @@ void PipeNetworkService::Start() {
     router_.Subscribe("world.blocks.changed");
     router_.Subscribe("world.machine.config.updated");
     router_.Subscribe("pipe.wrench.action");
+    router_.Subscribe("pipe.contents.request");
     // Typed resource-port contract (refactor-fluid-port-accounting): typed
     // port registrations/removals feed the manager's port registry, and drain
     // responses complete pending shortfall consumes (3.4.3).
@@ -331,6 +332,8 @@ void PipeNetworkService::onRouterMessage(const std::string& topic, const std::ve
         handleMachineConfigUpdated(data);
     } else if (topic == "pipe.wrench.action") {
         handlePipeWrenchAction(data);
+    } else if (topic == "pipe.contents.request") {
+        handlePipeContentsRequest(data);
     } else if (topic == gtnh::common::kTopicResourcePortRegister) {
         handleResourcePortRegister(data);
     } else if (topic == gtnh::common::kTopicResourcePortRemove) {
@@ -568,6 +571,62 @@ void PipeNetworkService::handlePipeWrenchAction(const std::vector<uint8_t>& data
 
     spdlog::debug("[PipeNet] wrench on ({},{},{}) -> guidance {} node {} component {}",
                   x, y, z, static_cast<int>(guidance), node_id, component_size);
+}
+
+void PipeNetworkService::handlePipeContentsRequest(const std::vector<uint8_t>& data) {
+    flatbuffers::Verifier verifier(data.data(), data.size());
+    if (!verifier.VerifyBuffer<Protocol::PipeContentsReq>()) {
+        spdlog::warn("[PipeNet] invalid PipeContentsReq");
+        return;
+    }
+
+    const auto* req = flatbuffers::GetRoot<Protocol::PipeContentsReq>(data.data());
+    if (!req || !req->pos()) {
+        spdlog::warn("[PipeNet] PipeContentsReq missing pos");
+        return;
+    }
+
+    const int32_t x = req->pos()->x();
+    const int32_t y = req->pos()->y();
+    const int32_t z = req->pos()->z();
+
+    // Read-only lookup: the node is resolved from the pos → node_id maps the
+    // service maintains (same source handlePipeWrenchAction uses), and the
+    // fluid state is reported exactly as stored in the PipeNode.
+    const uint64_t key = posKey(x, y, z);
+    uint64_t node_id = 0;
+    auto pipeIt = pipe_nodes_.find(key);
+    if (pipeIt != pipe_nodes_.end()) {
+        node_id = pipeIt->second;
+    } else {
+        auto machineIt = machine_nodes_.find(key);
+        if (machineIt != machine_nodes_.end())
+            node_id = machineIt->second;
+    }
+
+    bool found = false;
+    uint32_t fluid_id = 0;
+    int32_t amount = 0;
+    int32_t capacity = 0;
+    if (node_id != 0) {
+        if (const auto* node = network_manager_.getNode(node_id)) {
+            found = true;
+            fluid_id = node->fluidId;
+            amount = node->fluidBuffer;
+            capacity = node->fluidCapacity;
+        }
+    }
+
+    flatbuffers::FlatBufferBuilder fbb;
+    Protocol::Vec3i pos(x, y, z);
+    auto resp = Protocol::CreatePipeContentsResp(
+        fbb, req->player_id(), &pos, found, node_id, fluid_id, amount, capacity);
+    fbb.Finish(resp);
+    router_.Publish("pipe.contents.response",
+        {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+
+    spdlog::debug("[PipeNet] contents query ({},{},{}) -> found {} node {} fluid {} {}/{}",
+                  x, y, z, found, node_id, fluid_id, amount, capacity);
 }
 
 void PipeNetworkService::handleNodeUpdate(const std::vector<uint8_t>& data) {

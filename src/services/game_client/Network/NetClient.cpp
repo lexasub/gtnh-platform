@@ -5,6 +5,7 @@
 #include "machine_state_generated.h"
 #include "recipe_generated.h"
 #include "quest_generated.h"
+#include "pipe_network_generated.h"
 
 #include <gtnh/net/io_uring_connection.h>
 #include <gtnh/net/tcp_connector.h>
@@ -344,6 +345,10 @@ void NetClient::OnMessage(uint8_t msg_type,
         case GatewayMsg::kResourceBufferState:
             if (onResourceBufferState_)
                 onResourceBufferState_(data);
+            break;
+        case GatewayMsg::kPipeContentsResp:
+            if (onPipeContents_)
+                onPipeContents_(data);
             break;
         case GatewayMsg::kGridUpdate: {
             if (onGridUpdate_) {
@@ -878,6 +883,17 @@ void NetClient::SendMachineCloseReq(uint64_t player_id, int32_t x, int32_t y, in
     builder.Finish(req);
     EnqueueWrite(GatewayMsg::kMachineCloseReq, builder.GetBufferPointer(), builder.GetSize());
     spdlog::debug("[Machine] SendMachineCloseReq: pos=({},{},{}) player={}",
+                  x, y, z, player_id);
+}
+
+void NetClient::SendPipeContentsReq(uint64_t player_id, int32_t x, int32_t y, int32_t z) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(64);
+    auto posVec = Protocol::Vec3i(x, y, z);
+    auto req = Protocol::CreatePipeContentsReq(builder, player_id, &posVec);
+    builder.Finish(req);
+    EnqueueWrite(GatewayMsg::kPipeContentsReq, builder.GetBufferPointer(), builder.GetSize());
+    spdlog::debug("[Pipe] SendPipeContentsReq: pos=({},{},{}) player={}",
                   x, y, z, player_id);
 }
 

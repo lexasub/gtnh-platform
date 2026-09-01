@@ -5,6 +5,7 @@
 
 #include "Crafting/ClientItemRegistry.h"       // ItemRegistry::GetName
 #include "Network/ResourceBufferStateStore.h"  // authoritative buffer state
+#include "Network/PipeContentsStateStore.h"    // debug pipe-contents snapshot
 
 #include <cstddef>
 #include <cstdint>
@@ -51,6 +52,21 @@ inline void FormatStateText(char* buf, size_t bufsize,
   const std::string name(
       ItemRegistry::GetName(static_cast<uint16_t>(entry->resource_id)));
   std::snprintf(buf, bufsize, "fluid 0x%04X %s: %d / %d", entry->resource_id,
+                name.c_str(), entry->amount, entry->capacity);
+}
+
+// Debug pipe-contents snapshot (client → PipeNetwork query). entry == nullptr
+// (never queried) or !found (no pipe node at pos) → unknown/stale; otherwise
+// the values come verbatim from PipeNetworkService's PipeNode.
+inline void FormatStateText(char* buf, size_t bufsize,
+                            const PipeContentsStateStore::Entry* entry) {
+  if (!entry || !entry->found) {
+    std::snprintf(buf, bufsize, "fluid: unknown/stale");
+    return;
+  }
+  const std::string name(
+      ItemRegistry::GetName(static_cast<uint16_t>(entry->fluid_id)));
+  std::snprintf(buf, bufsize, "fluid 0x%04X %s: %d / %d", entry->fluid_id,
                 name.c_str(), entry->amount, entry->capacity);
 }
 

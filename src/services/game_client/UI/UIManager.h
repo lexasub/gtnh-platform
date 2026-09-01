@@ -18,6 +18,7 @@ struct BlockPos;
 class NetClient;
 class ServerRecipeDB;
 class ResourceBufferStateStore;
+class PipeContentsStateStore;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // UIManager — mediator between input / network / rendering and UI windows.
@@ -90,6 +91,14 @@ public:
     return resourceBufferStore_;
   }
 
+  // ── Debug pipe-contents store (pipe fluid overlay) ──────────────────────
+  void SetPipeContentsStore(PipeContentsStateStore *store) {
+    pipeContentsStore_ = store;
+  }
+  PipeContentsStateStore *GetPipeContentsStore() const {
+    return pipeContentsStore_;
+  }
+
   // ── Player quest era (VAGRANT=0 … ADMINISTRATOR=3) ──────────────────────
   // Authoritative source is the server (StartScenarioResp.quest_book_era /
   // EraTransitionNotification). Used by recipe windows to hide recipes whose
@@ -160,6 +169,7 @@ private:
   NetClient *netClient_ = nullptr;
   ServerRecipeDB *recipeDb_ = nullptr;
   ResourceBufferStateStore *resourceBufferStore_ = nullptr;
+  PipeContentsStateStore *pipeContentsStore_ = nullptr;
   InventoryState *playerInv_ = nullptr;
   uint8_t currentEra_ = 0; // player quest era; default VAGRANT
   std::array<bool, 512> prevKeys_{};
