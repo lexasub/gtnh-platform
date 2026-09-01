@@ -76,6 +76,7 @@ add_library(simcored
         Network/ItemClient.cpp
         Network/TopicDispatcher.cpp
         Network/SimCoreMessageHandler.cpp
+        Network/ResourceDrainHandler.cpp
         Network/WorkbenchOpenHandler.cpp
         Network/ChestOpenHandler.cpp
         Network/ChestCloseHandler.cpp
@@ -207,6 +208,7 @@ if(BUILD_TESTING)
         test/test_container_click.cpp
         test/test_wrench_meta.cpp
         test/test_boiler_ports.cpp
+        test/test_resource_drain.cpp
     )
     target_compile_definitions(simcored_test PRIVATE
         DATA_DIR="${CMAKE_SOURCE_DIR}/data"

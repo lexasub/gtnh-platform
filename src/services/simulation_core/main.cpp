@@ -20,6 +20,7 @@
 #include "Network/FluidClient.h"
 #include "Network/ItemClient.h"
 #include "Network/SimCoreMessageHandler.h"
+#include "Network/ResourceDrainHandler.h"
 #include <common/ResourcePortClient.h>
 #include "ECS/SimulationEngine.h"
 #include "Storage/ChunkStoreRepository.h"
@@ -268,6 +269,19 @@ int main(int argc, char* argv[]) {
 
     simcore::MainThreadQueue mainQueue;
 
+    // Owner-side typed resource drain endpoint (refactor-fluid-port-accounting
+    // 3.2.x). Publishes responses/port-removes through the router and unregisters
+    // a machine's ports when the engine reports owner removal (2.5.2).
+    auto resourceDrainHandler = std::make_shared<simcore::ResourceDrainHandler>(
+        simulationEngine->reg(),
+        [routerClient](const char* topic, const std::vector<uint8_t>& payload) {
+            routerClient->Publish(topic, payload);
+            return true;
+        });
+    simulationEngine->onMachineOwnerRemoved = [resourceDrainHandler](uint64_t owner_id) {
+        resourceDrainHandler->removeOwnerPorts(owner_id);
+    };
+
     simulationEngine->onMachineCreated = [eventPublisher, &simulationEngine, entityStateClient, &mainQueue](
         int32_t x, int32_t y, int32_t z, uint16_t machine_id) {
         EnergyType etype = EnergyType::ELECTRICITY;
@@ -462,6 +476,7 @@ int main(int argc, char* argv[]) {
     msgDeps.wbStateManager = wbStateManager;
     msgDeps.chestSessions = chestSessions;
     msgDeps.chestStateManager = chestStateManager;
+    msgDeps.resourceDrainHandler = resourceDrainHandler;
     simcore::SimCoreMessageHandler messageHandler(std::move(msgDeps));
     messageHandler.setup();
     messageHandler.wireOnMessage(worldContainers);

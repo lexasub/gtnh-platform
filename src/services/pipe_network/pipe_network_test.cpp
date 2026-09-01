@@ -4,6 +4,7 @@
 #include <vector>
 #include <cmath>
 #include <common/ItemId.h>
+#include <common/ResourcePortClient.h>
 #include "PipeNetwork.h"
 #include "PipeConsumeTransactions.h"
 #include "HeatLoss.h"
@@ -1820,6 +1821,86 @@ static void test_persistence_load_unload_cycle() {
 //  Main
 // =========================================================================
 
+
+// ResourcePortClient serialize/parse round-trip: the shared serializer must
+// finish the FlatBuffers root (table-builder Finish() alone leaves the buffer
+// without a root offset and the receiving verifier rejects it).
+static void test_resource_port_client_roundtrip() {
+    using gtnh::common::ResourceKind;
+    using gtnh::common::PortRole;
+    using gtnh::common::ResourcePort;
+
+    ResourcePort port{};
+    port.port_id = 7;
+    port.owner_id = 42;
+    port.resource_kind = ResourceKind::FLUID;
+    port.role = PortRole::SOURCE;
+    port.x = 11; port.y = -2; port.z = 300;
+    port.face_policy = gtnh::common::FacePolicy::MASK;
+    port.face_mask = 0x2a;
+    port.capacity = 5000;
+    port.rate = 100;
+    port.epoch = 3;
+
+    auto reg = gtnh::common::SerializePortRegister(port, 1111);
+    ResourcePort back{};
+    std::uint32_t rid = 0;
+    CHECK(gtnh::common::ParsePortRegister(reg.data(), reg.size(), &back, &rid),
+          "port register roundtrip parses");
+    CHECK_EQ(back.port_id, port.port_id, "port id roundtrip");
+    CHECK_EQ(back.owner_id, port.owner_id, "owner id roundtrip");
+    CHECK(back.resource_kind == ResourceKind::FLUID, "kind roundtrip");
+    CHECK(back.role == PortRole::SOURCE, "role roundtrip");
+    CHECK_EQ(back.x, port.x, "x roundtrip");
+    CHECK_EQ(back.y, port.y, "y roundtrip");
+    CHECK_EQ(back.z, port.z, "z roundtrip");
+    CHECK_EQ(back.face_mask, port.face_mask, "face mask roundtrip");
+    CHECK_EQ(back.capacity, port.capacity, "capacity roundtrip");
+    CHECK_EQ(back.rate, port.rate, "rate roundtrip");
+    CHECK_EQ(back.epoch, port.epoch, "epoch roundtrip");
+    CHECK_EQ(rid, 1111u, "resource id roundtrip");
+
+    auto rm = gtnh::common::SerializePortRemove(42, ResourceKind::HU, 9, 5);
+    gtnh::common::ResourcePortRegistrationKey key{};
+    CHECK(gtnh::common::ParsePortRemove(rm.data(), rm.size(), &key),
+          "port remove roundtrip parses");
+    CHECK_EQ(key.owner_id, 42u, "remove owner");
+    CHECK_EQ(key.port_id, 9u, "remove port");
+    CHECK_EQ(key.epoch, 5u, "remove epoch");
+    CHECK(key.resource_kind == ResourceKind::HU, "remove kind");
+
+    gtnh::common::ResourceTransferRequest req{};
+    req.request_id = 1234;
+    req.port_id = 7;
+    req.resource_kind = ResourceKind::FLUID;
+    req.resource_id = 1111;
+    req.amount = 50;
+
+    auto drain = gtnh::common::SerializeDrainRequest(req);
+    gtnh::common::ResourceTransferRequest back_req{};
+    CHECK(gtnh::common::ParseDrainRequest(drain.data(), drain.size(), &back_req),
+          "drain request roundtrip parses");
+    CHECK_EQ(back_req.request_id, req.request_id, "drain request id");
+    CHECK_EQ(back_req.port_id, req.port_id, "drain port id");
+    CHECK_EQ(back_req.resource_id, req.resource_id, "drain resource id");
+    CHECK_EQ(back_req.amount, req.amount, "drain amount");
+
+    auto consume = gtnh::common::SerializeConsumeRequest(req);
+    CHECK(gtnh::common::ParseConsumeRequest(consume.data(), consume.size(), &back_req),
+          "consume request roundtrip parses");
+    CHECK_EQ(back_req.request_id, req.request_id, "consume request id");
+    CHECK_EQ(back_req.amount, req.amount, "consume amount");
+
+    // The verifier must reject a truncated/garbage buffer (not a parse crash).
+    const std::uint8_t garbage[] = {0x01, 0x02, 0x03, 0x04};
+    CHECK(!gtnh::common::ParsePortRegister(garbage, sizeof(garbage), &back, &rid),
+          "verifier rejects garbage register");
+    CHECK(!gtnh::common::ParseDrainRequest(garbage, sizeof(garbage), &back_req),
+          "verifier rejects garbage drain request");
+
+    PASS();
+}
+
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
 int main(int, char**) {
@@ -1846,6 +1927,7 @@ int main(int, char**) {
     TEST(cross_kind_consumption_rejected);
     TEST(port_removal_clears_domain_role);
     TEST(owner_zero_port_registers);
+    TEST(resource_port_client_roundtrip);
     TEST(typed_rate_applied_at_solve_time);
     TEST(topology_shared_domains_solved_independently);
 

@@ -42,6 +42,8 @@
 #include "ECS/Reactors/FluidFlowHandler.h"
 #include "ECS/Reactors/ItemFlowHandler.h"
 #include "ECS/Reactors/CableExplosionHandler.h"
+#include "Network/ResourceDrainHandler.h"
+#include <common/ResourcePortClient.h>
 #include "../../data/registry/ToolIds.h"
 #include "core_generated.h"
 #include "quest_generated.h"
@@ -69,6 +71,24 @@ void SimCoreMessageHandler::setup() {
     topicDispatcher_->on("item.flow", std::make_unique<ItemFlowHandler>(
         d.engine->reg(), d.itemClient, d.routerClient, d.entityStateClient,
         d.chestSessions, d.inventoryStore));
+
+    // Typed resource-port contract: the owner-side drain endpoint tracks port
+    // registrations/removals and answers ResourceDrainRequest transactions.
+    if (d.resourceDrainHandler) {
+        auto drain = d.resourceDrainHandler;
+        topicDispatcher_->on(gtnh::common::kTopicResourcePortRegister,
+            std::make_unique<FnTopicHandler>([drain](const std::vector<uint8_t>& data) {
+                drain->handlePortRegister(data);
+            }));
+        topicDispatcher_->on(gtnh::common::kTopicResourcePortRemove,
+            std::make_unique<FnTopicHandler>([drain](const std::vector<uint8_t>& data) {
+                drain->handlePortRemove(data);
+            }));
+        topicDispatcher_->on(gtnh::common::kTopicResourceDrainRequest,
+            std::make_unique<FnTopicHandler>([drain](const std::vector<uint8_t>& data) {
+                drain->handleDrainRequest(data);
+            }));
+    }
 
     topicDispatcher_->on("energy.cable.exploded", std::make_unique<CableExplosionHandler>(
         d.chunkClient));

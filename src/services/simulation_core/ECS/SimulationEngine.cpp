@@ -81,6 +81,7 @@ void SimulationEngine::destroyController(uint64_t id)
         if (reg_.all_of<InventoryContainer>(ctrl_entity)) reg_.remove<InventoryContainer>(ctrl_entity);
         if (reg_.all_of<EnergyStorage>(ctrl_entity)) reg_.remove<EnergyStorage>(ctrl_entity);
         if (reg_.all_of<HeatIntakeComponent>(ctrl_entity)) reg_.remove<HeatIntakeComponent>(ctrl_entity);
+        if (onMachineOwnerRemoved) onMachineOwnerRemoved(static_cast<uint64_t>(ctrl_entity));
     }
 
     controllers_.erase(it);
@@ -154,6 +155,7 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
                 reg_.remove<RecipeProgress>(entity);
                 reg_.remove<InventoryContainer>(entity);
                 reg_.remove<EnergyStorage>(entity);
+                if (onMachineOwnerRemoved) onMachineOwnerRemoved(static_cast<uint64_t>(entity));
                 spdlog::debug("[ECS] Removed machine components from cleared entity at ({},{},{})", x, y, z);
             }
             spdlog::debug("[ECS] Cleared block entity at ({},{},{})", x, y, z);
@@ -191,6 +193,7 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
         reg_.remove<RecipeProgress>(entity);
         reg_.remove<InventoryContainer>(entity);
         reg_.remove<EnergyStorage>(entity);
+        if (onMachineOwnerRemoved) onMachineOwnerRemoved(static_cast<uint64_t>(entity));
         spdlog::debug("[ECS] Removed machine components from entity at ({},{},{})", x, y, z);
 
     } else if (!was_machine && is_machine) {

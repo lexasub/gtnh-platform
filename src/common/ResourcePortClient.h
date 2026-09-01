@@ -94,7 +94,7 @@ struct ResourceTransferResponse {
   builder.add_epoch(port.epoch);
   builder.add_face_policy(ToWire(port.face_policy));
   builder.add_face_mask(port.face_mask);
-  builder.Finish();
+  fbb.Finish(builder.Finish());
   return {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()};
 }
 
@@ -107,7 +107,7 @@ struct ResourceTransferResponse {
   builder.add_owner_id(owner_id);
   builder.add_epoch(epoch);
   builder.add_resource_kind(ToWire(kind));
-  builder.Finish();
+  fbb.Finish(builder.Finish());
   return {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()};
 }
 
@@ -120,7 +120,7 @@ struct ResourceTransferResponse {
   builder.add_resource_kind(ToWire(request.resource_kind));
   builder.add_resource_id(request.resource_id);
   builder.add_amount(request.amount);
-  builder.Finish();
+  fbb.Finish(builder.Finish());
   return {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()};
 }
 
@@ -133,7 +133,7 @@ struct ResourceTransferResponse {
   builder.add_resource_kind(ToWire(request.resource_kind));
   builder.add_resource_id(request.resource_id);
   builder.add_amount(request.amount);
-  builder.Finish();
+  fbb.Finish(builder.Finish());
   return {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()};
 }
 

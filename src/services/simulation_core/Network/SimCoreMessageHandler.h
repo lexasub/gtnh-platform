@@ -30,6 +30,7 @@ class ContainerSessionRegistry;
 class ChestStateManager;
 class MachineOpenHandler;
 class MachineCloseHandler;
+class ResourceDrainHandler;
 
 } // namespace simcore
 
@@ -61,6 +62,7 @@ public:
     std::shared_ptr<simulation_core::WorkbenchStateManager> wbStateManager;
     std::shared_ptr<ContainerSessionRegistry> chestSessions;
     std::shared_ptr<ChestStateManager> chestStateManager;
+    std::shared_ptr<ResourceDrainHandler> resourceDrainHandler;
   };
 
   explicit SimCoreMessageHandler(Deps deps);

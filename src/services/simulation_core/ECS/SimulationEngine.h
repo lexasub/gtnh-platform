@@ -44,6 +44,11 @@ public:
       onMultiblockCreated;
   std::function<void(uint64_t controller_id, const std::vector<uint8_t> &state)>
       onMultiblockSave;
+  // Fired when a machine owner stops existing: its block is broken, its block
+  // is replaced by a non-machine, or its multiblock controller is destroyed.
+  // The argument is the typed-port owner identity (the EnTT entity value).
+  // Wired to ResourceDrainHandler::removeOwnerPorts (task 2.5.2).
+  std::function<void(uint64_t owner_id)> onMachineOwnerRemoved;
 
   void onBlockChanged(uint32_t x, uint32_t y, uint32_t z, uint16_t block_id,
                       uint8_t meta, uint32_t mb_id);
