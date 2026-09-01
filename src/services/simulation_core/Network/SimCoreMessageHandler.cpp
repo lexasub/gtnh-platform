@@ -69,7 +69,7 @@ void SimCoreMessageHandler::setup() {
     topicDispatcher_->on("energy.flow", std::make_unique<EnergyFlowHandler>(
         d.engine->reg(), d.pipeEnergyClient));
     topicDispatcher_->on("fluid.flow", std::make_unique<FluidFlowHandler>(
-        d.engine->reg(), d.fluidClient,
+        d.engine->reg(),
         std::make_shared<ResourceBufferStatePublisher>(d.routerClient)));
     topicDispatcher_->on("item.flow", std::make_unique<ItemFlowHandler>(
         d.engine->reg(), d.itemClient, d.routerClient, d.entityStateClient,

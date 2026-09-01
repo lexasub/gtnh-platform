@@ -35,8 +35,9 @@
   serializers (`ResourceDrainHandler.cpp:47`); unit tests inject payloads via
   local helpers, which is why the suite is green. A serialize→parse round-trip
   contract test must accompany the fix.
-- Still open after this update: section 4 (implementation agent in progress),
-  1.4.2/1.4.3 and 6.1/6.3 (integration-verify agent), 3.5.3/3.5.4.
+- Still open after this update: nothing in sections 1–6 except parent rollups
+  left unticked by instruction; final build/ctest re-run happens at the merge
+  gate (this worktree cannot build).
 
 ## 1. Registry identity and validation
 
@@ -56,8 +57,21 @@
   constant documented in Registry.h; client uses `ItemRegistry::GetSteamItemId()`.)
   - [x] 1.4.1 Add one shared Steam-ID lookup/accessor used by server resource
     producers and consumers.
-  - [ ] 1.4.2 Replace Steam literals in `MachineSystem`, boiler/generator
-    systems, fluid clients, and pipe tests.
+  - [x] 1.4.2 Replace Steam literals in `MachineSystem`, boiler/generator
+    systems, fluid clients, and pipe tests. (Verified + completed
+    2026-09-01: the listed legacy call sites already used the pinned
+    `gtnh::common::steamItemId()` constant; this pass migrated them to the
+    runtime accessor. `simulation_core/main.cpp` loads the shared registry
+    once, resolves `Registry::steamItemId()` (main.cpp:234) and carries the
+    id into the `BoilerSystem`/`GeneratorSystem`/`MachineSystem`/
+    `ResourceDrainHandler` constructors. Fail-closed id 0: no heat→steam
+    conversion, no steam advertisement, no steam request (recipe stays
+    pending), no drain acceptance. `pipe_network/FluidRegistry.cpp` resolves
+    via a loaded registry with the pinned constant as documented fallback.
+    Remaining constexpr users are the two documented ones — RecipeManager
+    cross-check and the FluidRegistry fallback; raw `1111:11:1` literals
+    remain only inside `Registry.h` and test expectation values. Grep audit
+    clean for simcore + pipe_network production code.)
   - [x] 1.4.3 Replace Steam literals in client state/UI code and ensure labels
     come from the registry rather than string or numeric constants.
     (Sweep found none remaining — A8 already routed labels through
@@ -270,16 +284,33 @@
 
 ## 6. Cleanup and verification
 
-- [ ] 6.1 Remove or migrate `FluidFlowHandler` mirror-debit behavior; retain
-  optional flow telemetry only. **PARTIAL**: source debit adjusted and
-  `ResourceBufferState` publication added after `fluid->addFluid` succeeds, but
-  destination delivery remains an ECS-mutating correctness path and typed
-  owner transactions are not wired end-to-end.
+- [x] 6.1 Remove or migrate `FluidFlowHandler` mirror-debit behavior; retain
+  optional flow telemetry only. **Completed 2026-09-01**: the destination
+  `addFluid` mirror-credit and the legacy `fluid.node.update` mirror publish
+  were removed from `FluidFlowHandler`; the handler is now flow-telemetry
+  logging plus a read-only `ResourceBufferState` snapshot of the destination
+  buffer (no ECS mutation; no production entity carries `FluidStorage`, so
+  no live consumer is affected — verified via call graph: the only
+  `fluid.flow` publisher is `publishFluidFlowTelemetry`, declared
+  telemetry-only at the source). Source debit = typed `ResourceDrainRequest`
+  (3.2.x); destination delivery = the existing typed
+  `fluid.consume.response` path (`MachineSystem::onFluidConsumeResponse`).
+  Remaining follow-up slice: the typed `ResourceConsumeRequest` service side
+  in PipeNetwork (consume requests still ride the legacy
+  `fluid.consume.request` topic) — tracked as GTNH-x71.4; no new protocol
+  invented.
 - [x] 6.2 Keep directional routing as a future edge/port policy; do not split
   graphs by direction in this change.
-- [ ] 6.3 Remove unrelated wrench/UI/CLI changes from the implementation diff
-  or track them under separate changes. **PARTIAL**: the reviewed range still
-  contains unrelated `AGENTS.md` and metadata changes.
+- [x] 6.3 Remove unrelated wrench/UI/CLI changes from the implementation diff
+  or track them under separate changes. **Completed 2026-09-01**: diff vs
+  `origin/main` audited (94 files). Reverted in this branch: `AGENTS.md`
+  (beads-section deletion swept in by WIP commit `b34180f`; pure metadata
+  churn, zero added lines). Intentional-and-tracked, left in place:
+  `.beads/issues.jsonl` / `.beads/interactions.jsonl` (this change's own
+  issue exports) and `src/common/OpenHashMap.h` (standalone fix `acb3454`
+  "repair OpenHashMap cluster deletion" predating the agent wave; follow-up
+  issue GTNH-ax2 covers its test regression). No wrench/UI/CLI leftovers
+  found in the range.
 - [x] 6.4 Run generated FlatBuffers updates, incremental `ninja -j5`, full ctest,
   registry validation, and `openspec validate refactor-fluid-port-accounting --strict`.
   **Verified 2026-09-01 (re-run after agent wave merges)**: incremental

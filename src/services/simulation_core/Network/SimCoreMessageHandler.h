@@ -11,7 +11,6 @@ class SimulationEngine;
 class IoUringRouterClient;
 class RouterEventPublisher;
 class PipeEnergyClient;
-class FluidClient;
 class ItemClient;
 class PlayerInventoryStore;
 class EntityStateStoreClient;
@@ -49,7 +48,6 @@ public:
     std::shared_ptr<IoUringRouterClient> routerClient;
     std::shared_ptr<RouterEventPublisher> eventPublisher;
     std::shared_ptr<PipeEnergyClient> pipeEnergyClient;
-    std::shared_ptr<FluidClient> fluidClient;
     std::shared_ptr<ItemClient> itemClient;
     std::shared_ptr<PlayerInventoryStore> inventoryStore;
     std::shared_ptr<EntityStateStoreClient> entityStateClient;
