@@ -81,6 +81,13 @@ table EvaluateConditionsResp {
   success:bool;
 }
 
+table ResourceRequirement {
+  resource_kind:ResourceKind;
+  resource_id:uint32;
+  amount:int32;
+  tier:uint8;
+}
+
 table RecipeInfo {
   machine_type:uint16;
   machine_class:string;
@@ -96,6 +103,7 @@ table RecipeInfo {
   // has_pattern recipes.
   has_pattern:bool;
   pattern:[ItemStack];
+  requirements:[ResourceRequirement];
 }
 
 table RecipeCatalogResp {

@@ -1,6 +1,7 @@
 #include "GeneratorSystem.h"
 #include "Network/FluidClient.h"
 #include "../../common/ItemId.h"
+#include "../../common/Registry.h"
 #include "../../libs/machine_registry/MachineRegistry.h"
 #include "../components/HeatIntakeComponent.h"
 #include "../components/SteamOutputComponent.h"
@@ -59,7 +60,7 @@ void GeneratorSystem::tick(float /*dt*/) {
             if (fluidClient_) {
                 fluidClient_->publishNodeUpdate(
                     static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
-                    ItemId::pack("1111:11:1"),              // steam
+                    gtnh::common::steamItemId(),              // steam
                     energy.current, energy.capacity,
                     0, energy.maxOutput, energy.tier,
                     true, false);                           // is_source=true
@@ -153,7 +154,7 @@ void GeneratorSystem::tick(float /*dt*/) {
             if (fluidClient_) {
                 fluidClient_->publishNodeUpdate(
                     static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
-                    ItemId::pack("1111:11:1"),              // steam
+                    gtnh::common::steamItemId(),              // steam
                     energy.current, energy.capacity,
                     0, energy.maxOutput, energy.tier,
                     true, false);                           // is_source=true

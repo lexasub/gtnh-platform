@@ -8,8 +8,89 @@
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <climits>
+#include <cstdint>
+#include <limits>
+#include <optional>
 #include <unordered_set>
+
+namespace {
+
+// RecipeTypes.h predates the typed resource contract. Keep this checkpoint's
+// YAML conversion local until the model can carry all requirements without
+// changing the public Recipe API.
+enum class ParsedResourceKind : uint8_t { FLUID, EU, HU, RU, ITEM };
+
+struct ParsedResourceRequirement {
+  ParsedResourceKind kind;
+  uint32_t resource_id = 0;
+  uint32_t amount = 0;
+  int16_t tier = 0;
+};
+
+std::optional<ParsedResourceKind>
+parseResourceKind(const YAML::Node &node) {
+  if (!node || !node.IsScalar()) return std::nullopt;
+
+  std::string value = node.as<std::string>("");
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](unsigned char c) {
+                   return static_cast<char>(std::toupper(c));
+                 });
+  if (value == "FLUID") return ParsedResourceKind::FLUID;
+  if (value == "EU") return ParsedResourceKind::EU;
+  if (value == "HU") return ParsedResourceKind::HU;
+  if (value == "RU") return ParsedResourceKind::RU;
+  if (value == "ITEM") return ParsedResourceKind::ITEM;
+  return std::nullopt;
+}
+
+template <typename ResourceIdResolver>
+std::optional<ParsedResourceRequirement>
+parseResourceRequirement(const YAML::Node &node,
+                        ResourceIdResolver &&resolveResourceId) {
+  if (!node || !node.IsMap()) return std::nullopt;
+
+  const auto kind = parseResourceKind(node["kind"]);
+  if (!kind) return std::nullopt;
+
+  uint64_t amount = 0;
+  int64_t tier = 0;
+  try {
+    amount = node["amount"].as<uint64_t>();
+    tier = node["tier"].as<int64_t>(0);
+  } catch (const YAML::Exception &) {
+    return std::nullopt;
+  }
+  if (amount == 0 || amount > std::numeric_limits<uint32_t>::max() ||
+      tier < 0 || tier > std::numeric_limits<int16_t>::max()) {
+    return std::nullopt;
+  }
+
+  ParsedResourceRequirement result{*kind, 0, static_cast<uint32_t>(amount),
+                                   static_cast<int16_t>(tier)};
+  if (node["resource_id"]) {
+    if (!node["resource_id"].IsScalar()) return std::nullopt;
+    result.resource_id = resolveResourceId(node["resource_id"]);
+  }
+
+  // Energy channels are typed by kind and deliberately have no material ID.
+  if ((*kind == ParsedResourceKind::EU || *kind == ParsedResourceKind::HU ||
+       *kind == ParsedResourceKind::RU) && result.resource_id != 0) {
+    return std::nullopt;
+  }
+  // FLUID and ITEM IDs are canonical packed registry IDs, not arbitrary
+  // transport-local numbers. The caller performs the registry lookup after
+  // this conversion because it owns the RecipeManager resolver.
+  if ((*kind == ParsedResourceKind::FLUID ||
+       *kind == ParsedResourceKind::ITEM) && result.resource_id == 0) {
+    return std::nullopt;
+  }
+  return result;
+}
+
+} // namespace
 
 namespace RecipeManager {
 
@@ -455,7 +536,10 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
             else if (ei == "STEAM") recipe.energy_type = static_cast<uint8_t>(2);
             else if (ei == "ELECTRICITY") recipe.energy_type = static_cast<uint8_t>(0);
             else if (ei == "ROTATION") recipe.energy_type = static_cast<uint8_t>(3);
-            else spdlog::warn("YAML recipe '{}': unknown energy_in '{}'", recipe.id, ei);
+            else {
+                spdlog::warn("YAML recipe '{}': unknown energy_in '{}'", recipe.id, ei);
+                return false;
+            }
         }
 
         // Inputs
@@ -530,6 +614,109 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
 
         // Energy output (optional — >0 for generators/boilers)
         recipe.energy_output = yaml["energy_output"].as<float>(0.0f);
+
+        // Generic resource requirements are accepted during the model
+        // migration. The existing Recipe type has no storage for them yet, so
+        // validate and convert them locally without changing its API.
+        const YAML::Node requirements = yaml["resource_requirements"]
+                                            ? yaml["resource_requirements"]
+                                            : (yaml["resources"] ? yaml["resources"]
+                                                                    : yaml["requirements"]);
+        if (requirements) {
+            if (!requirements.IsSequence()) {
+                spdlog::warn("YAML recipe '{}': resource requirements must be a sequence",
+                             recipe.id);
+                return false;
+            }
+            for (size_t i = 0; i < requirements.size(); ++i) {
+                const auto parsed = parseResourceRequirement(
+                    requirements[i], [this](const YAML::Node &idNode) {
+                        const std::string id = idNode.as<std::string>("");
+                        uint16_t packed = resolveItemId(id);
+                        return ItemRegistry::instance().isValid(packed) ? packed : 0;
+                    });
+                if (!parsed) {
+                    spdlog::warn("YAML recipe '{}': invalid resource requirement at index {}",
+                                 recipe.id, i);
+                    return false;
+                }
+                if ((parsed->kind == ParsedResourceKind::FLUID ||
+                     parsed->kind == ParsedResourceKind::ITEM) &&
+                    (parsed->resource_id > std::numeric_limits<uint16_t>::max() ||
+                     !ItemRegistry::instance().isValid(
+                         static_cast<uint16_t>(parsed->resource_id)))) {
+                    spdlog::warn("YAML recipe '{}': unknown resource_id {}",
+                                 recipe.id, parsed->resource_id);
+                    return false;
+                }
+                if (parsed->kind == ParsedResourceKind::FLUID &&
+                    !ItemId::isFluid(static_cast<uint16_t>(parsed->resource_id))) {
+                    spdlog::warn("YAML recipe '{}': resource_id {} is not a fluid",
+                                 recipe.id, parsed->resource_id);
+                    return false;
+                }
+                if (parsed->tier < recipe.min_tier || parsed->tier > recipe.max_tier) {
+                    spdlog::warn("YAML recipe '{}': resource tier {} is outside recipe tier range",
+                                 recipe.id, parsed->tier);
+                    return false;
+                }
+
+                const auto machineClass = classes_.find(recipe.machine_class);
+                if (machineClass != classes_.end()) {
+                    std::optional<EnergyType> requiredEnergy;
+                    switch (parsed->kind) {
+                    case ParsedResourceKind::EU: requiredEnergy = EnergyType::ELECTRICITY; break;
+                    case ParsedResourceKind::HU: requiredEnergy = EnergyType::HEAT; break;
+                    case ParsedResourceKind::FLUID: requiredEnergy = EnergyType::STEAM; break;
+                    case ParsedResourceKind::RU: requiredEnergy = EnergyType::ROTATION; break;
+                    case ParsedResourceKind::ITEM: break;
+                    }
+                    if (requiredEnergy) {
+                        const bool compatible = std::any_of(
+                            machineClass->second.variants.begin(),
+                            machineClass->second.variants.end(),
+                            [&](const MachineVariant &variant) {
+                                return variant.energy_in == *requiredEnergy &&
+                                       variant.tier >= parsed->tier &&
+                                       variant.tier >= recipe.min_tier &&
+                                       variant.tier <= recipe.max_tier;
+                            });
+                        if (!compatible) {
+                            spdlog::warn("YAML recipe '{}': resource kind/tier is incompatible with machine class",
+                                         recipe.id);
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Legacy `energy_in`/`eu` remains the source of truth until Recipe can
+        // expose the generic requirements. Validate its machine-compatible
+        // domain and preserve the old zero-cost/no-filter behavior.
+        if (recipe.energy_cost < 0.0f) {
+            spdlog::warn("YAML recipe '{}': eu must not be negative", recipe.id);
+            return false;
+        }
+        if (recipe.energy_type != ENERGY_TYPE_ANY && recipe.energy_cost > 0.0f) {
+            const auto machineClass = classes_.find(recipe.machine_class);
+            if (machineClass != classes_.end()) {
+                bool compatible = false;
+                for (const auto &variant : machineClass->second.variants) {
+                    if (variant.energy_in == static_cast<EnergyType>(recipe.energy_type) &&
+                        variant.tier >= recipe.min_tier &&
+                        variant.tier <= recipe.max_tier) {
+                        compatible = true;
+                        break;
+                    }
+                }
+                if (!compatible) {
+                    spdlog::warn("YAML recipe '{}': energy_in is incompatible with machine class/tier",
+                                 recipe.id);
+                    return false;
+                }
+            }
+        }
 
         // Conditions (optional)
         if (yaml["conditions"]) {

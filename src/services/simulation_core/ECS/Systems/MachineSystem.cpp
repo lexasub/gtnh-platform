@@ -4,6 +4,7 @@
 #include "Network/FluidClient.h"
 #include "Network/ItemClient.h"
 #include <common/ItemId.h>
+#include <common/Registry.h>
 #include "Saturate.h"
 #include "MachineRegistry.h"
 #include "../components/OverheatComponent.h"
@@ -310,7 +311,7 @@ void MachineSystem::tick(float /*dt*/) {
                             static_cast<int32_t>(machine.x),
                             static_cast<int32_t>(machine.y),
                             static_cast<int32_t>(machine.z),
-                            ItemId::pack("1111:11:1"),
+                            gtnh::common::steamItemId(),
                             energy.current,
                             energy.capacity,
                             0, 0, energy.tier, false, true);   // sink/neutral
@@ -319,7 +320,7 @@ void MachineSystem::tick(float /*dt*/) {
                             static_cast<int32_t>(machine.x),
                             static_cast<int32_t>(machine.y),
                             static_cast<int32_t>(machine.z),
-                            ItemId::pack("1111:11:1"),
+                            gtnh::common::steamItemId(),
                             needed);
                     }
                     pendingFluidConsumes_[node_id] = needed;

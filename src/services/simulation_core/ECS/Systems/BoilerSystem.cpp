@@ -2,6 +2,7 @@
 #include "HeatConstants.h"
 #include "Network/FluidClient.h"
 #include <common/ItemId.h>
+#include <common/Registry.h>
 #include <spdlog/spdlog.h>
 #include "../components/HeatIntakeComponent.h"
 #include "../components/EnergyStorage.h"
@@ -96,7 +97,7 @@ void BoilerSystem::tick(float /*dt*/) {
         if (fluidClient_) {
             fluidClient_->publishNodeUpdate(
                 static_cast<uint64_t>(ent), machine.x, machine.y, machine.z,
-                ItemId::pack("1111:11:1"),              // steam fluid id
+                gtnh::common::steamItemId(),              // steam fluid id
                 static_cast<int32_t>(steam.steam_stored),
                 static_cast<int32_t>(steam.steam_capacity),
                 0, maxOut, energy.tier,

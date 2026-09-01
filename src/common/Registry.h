@@ -108,5 +108,11 @@ private:
   std::vector<DropDefinition> drops_;
   std::vector<std::string> errors_;
 };
+// Canonical packed item identity for the Steam fluid.  Keep resource call sites
+// independent of the literal while the full registry loader is integrated into
+// this service's startup path.
+inline constexpr std::uint16_t steamItemId() noexcept {
+  return ItemId::pack("1111:11:1");
+}
 
 } // namespace gtnh::common
