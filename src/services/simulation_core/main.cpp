@@ -20,6 +20,7 @@
 #include "Network/FluidClient.h"
 #include "Network/ItemClient.h"
 #include "Network/SimCoreMessageHandler.h"
+#include <common/ResourcePortClient.h>
 #include "ECS/SimulationEngine.h"
 #include "Storage/ChunkStoreRepository.h"
 #include "Storage/PlayerInventoryStore.h"
@@ -88,13 +89,14 @@ void spawnECSSystems(std::shared_ptr<simcore::ChunkStoreRepository> blockReposit
                      std::shared_ptr<simcore::RouterEventPublisher> eventPublisher,
                      std::shared_ptr<simcore::PipeEnergyClient> pipeEnergyClient,
                      std::shared_ptr<simcore::FluidClient> fluidClient,
-                     std::shared_ptr<simcore::SimulationEngine> simulationEngine) {
+                     std::shared_ptr<simcore::SimulationEngine> simulationEngine,
+                     std::shared_ptr<gtnh::common::IResourcePortClient> resourcePortClient) {
     // TODO - may be lazy start - on use
     simulationEngine->registerSystem(std::make_unique<simcore::CoolantSystem>(simulationEngine->reg()));
     simulationEngine->registerSystem(std::make_unique<simcore::ExplosionSystem>(simulationEngine->reg(), eventPublisher));
     simulationEngine->registerSystem(std::make_unique<simcore::GeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient));
     simulationEngine->registerSystem(std::make_unique<simcore::CreativeGeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
-    simulationEngine->registerSystem(std::make_unique<simcore::BoilerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient));
+    simulationEngine->registerSystem(std::make_unique<simcore::BoilerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient, resourcePortClient));
     simulationEngine->registerSystem(std::make_unique<simcore::TransformerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
     simulationEngine->registerSystem(std::make_unique<simcore::DrillSystem>(simulationEngine->reg(), blockRepository, eventPublisher, pipeEnergyClient));
     simulationEngine->registerSystem(std::make_unique<simcore::RotareGeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
@@ -233,6 +235,13 @@ int main(int argc, char* argv[]) {
     auto pipeEnergyClient   = std::make_shared<simcore::PipeEnergyClient>(routerClient);
     auto fluidClient        = std::make_shared<simcore::FluidClient>(routerClient);
     auto itemClient         = std::make_shared<simcore::ItemClient>(routerClient);
+    // Typed resource-port publisher (openspec refactor-fluid-port-accounting
+    // 2.4): binds the shared port contract to the existing router connection.
+    auto resourcePortClient = std::make_shared<gtnh::common::TypedResourcePortClient>(
+        [routerClient](const char* topic, const std::vector<std::uint8_t>& payload) {
+            routerClient->Publish(topic, payload);
+            return true;
+        });
     auto inventoryStore     = std::make_shared<simcore::PlayerInventoryStore>();
     inventoryStore->setOnChange([routerClient](uint64_t player_id, uint16_t slot_index,
                                                 uint16_t item_id, uint8_t count, uint16_t meta) {
@@ -378,7 +387,7 @@ int main(int argc, char* argv[]) {
         batteryBufferRaw = bbs.get();
         simulationEngine->registerSystem(std::move(bbs));
     }
-    spawnECSSystems(blockRepository, eventPublisher, pipeEnergyClient, fluidClient, simulationEngine);
+    spawnECSSystems(blockRepository, eventPublisher, pipeEnergyClient, fluidClient, simulationEngine, resourcePortClient);
 
     simulationEngine->registerSystem(std::make_unique<simcore::EBFSystem>(
         simulationEngine->reg(), simulationEngine->getControllers(),

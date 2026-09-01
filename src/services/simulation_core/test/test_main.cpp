@@ -11,6 +11,7 @@ void test_game_scenario();
 void test_inventory_click();
 void test_container_click();
 void test_wrench_meta();
+void test_boiler_ports();
 #include <cstdint>
 #include <cstdio>
 #include <cstddef>
@@ -193,6 +194,7 @@ int main(int argc, char** argv) {
     test_inventory_click();
     test_container_click();
     test_wrench_meta();
+    test_boiler_ports();
 
     printf("\n=== Results: %d tests, %d passed, %d failed ===\n",
            g_tests, g_passed, g_failed);

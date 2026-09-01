@@ -206,6 +206,7 @@ if(BUILD_TESTING)
         test/test_inventory_click.cpp
         test/test_container_click.cpp
         test/test_wrench_meta.cpp
+        test/test_boiler_ports.cpp
     )
     target_compile_definitions(simcored_test PRIVATE
         DATA_DIR="${CMAKE_SOURCE_DIR}/data"

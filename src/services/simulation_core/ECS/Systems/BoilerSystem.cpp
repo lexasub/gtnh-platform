@@ -3,6 +3,7 @@
 #include "Network/FluidClient.h"
 #include <common/ItemId.h>
 #include <common/Registry.h>
+#include <common/ResourcePortClient.h>
 #include <spdlog/spdlog.h>
 #include "../components/HeatIntakeComponent.h"
 #include "../components/EnergyStorage.h"
@@ -13,8 +14,10 @@ namespace simcore {
 BoilerSystem::BoilerSystem(entt::registry& reg,
                            std::shared_ptr<IEventPublisher> events,
                            std::shared_ptr<PipeEnergyClient> pipeClient,
-                           std::shared_ptr<FluidClient> fluidClient)
-    : reg_(reg), events_(events), pipeClient_(pipeClient), fluidClient_(fluidClient)
+                           std::shared_ptr<FluidClient> fluidClient,
+                           std::shared_ptr<gtnh::common::IResourcePortClient> portClient)
+    : reg_(reg), events_(events), pipeClient_(pipeClient), fluidClient_(fluidClient),
+      portClient_(portClient)
 {
 }
 
@@ -103,7 +106,43 @@ void BoilerSystem::tick(float /*dt*/) {
                 0, maxOut, energy.tier,
                 true, false);                           // is_source=true, is_sink=false
         }
+
+        // Typed resource ports (openspec refactor-fluid-port-accounting 2.4):
+        // the boiler is a converter, so it registers a separate HU sink and a
+        // separate FLUID steam source on the same owner — never one node
+        // identity for both domains. Republished every tick at the same epoch;
+        // receivers dedupe on (owner, kind, port, epoch). Each record is
+        // self-contained, so publication order does not matter. Legacy node
+        // updates above stay until the typed path is end-to-end (removal is a
+        // later task).
+        if (portClient_) {
+            const std::uint64_t owner = static_cast<std::uint64_t>(ent);
+            const std::int32_t px = static_cast<std::int32_t>(machine.x);
+            const std::int32_t py = static_cast<std::int32_t>(machine.y);
+            const std::int32_t pz = static_cast<std::int32_t>(machine.z);
+
+            const gtnh::common::ResourcePort hu_sink = BoilerPorts::MakeHuSinkPort(
+                owner, px, py, pz,
+                heatIntake.heat_capacity,
+                HeatConstants::HEAT_SINK_REPLENISH_TARGET,
+                port_epochs_.EpochOf(owner, BoilerPorts::kBoilerHuSinkPortId));
+            const gtnh::common::ResourcePort steam_source =
+                BoilerPorts::MakeSteamSourcePort(
+                    owner, px, py, pz,
+                    static_cast<std::int32_t>(steam.steam_capacity),
+                    HeatConstants::CONVERSION_RATE,
+                    port_epochs_.EpochOf(owner, BoilerPorts::kBoilerSteamSourcePortId));
+
+            portClient_->PublishPortRegister(hu_sink, 0);  // HU: no resource id
+            portClient_->PublishPortRegister(steam_source,
+                                             gtnh::common::steamItemId());
+        }
     }
+}
+
+std::uint64_t BoilerSystem::replacePort(std::uint64_t owner_id,
+                                        gtnh::common::PortId port_id) {
+    return port_epochs_.Replace(owner_id, port_id);
 }
 
 } // namespace simcore
