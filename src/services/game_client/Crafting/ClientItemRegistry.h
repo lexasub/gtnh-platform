@@ -21,5 +21,6 @@ const ItemInfo *GetItem(uint16_t itemId);
 std::string_view GetName(uint16_t itemId);
 uint8_t GetStackSize(uint16_t itemId);
 std::vector<uint16_t> GetAllItemIds();
+uint16_t GetSteamItemId();
 
 } // namespace ItemRegistry

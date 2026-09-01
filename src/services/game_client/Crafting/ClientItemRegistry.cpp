@@ -8,12 +8,14 @@
 namespace ItemRegistry {
 
 static std::unordered_map<uint16_t, ItemInfo> s_items;
+static uint16_t s_steamItemId = 0;
 
 void Init() {
     LoadFromCSV("data/registry/items.csv");
 }
 
 void LoadFromCSV(const std::string& csvPath) {
+    s_steamItemId = 0;
     std::ifstream file(csvPath);
     if (!file.is_open()) {
         std::cerr << "Failed to open items.csv: " << csvPath << std::endl;
@@ -43,6 +45,9 @@ void LoadFromCSV(const std::string& csvPath) {
         // name
         if (!std::getline(iss, field, ',')) continue;
         std::string name = field;
+        if (name == "steam") {
+            s_steamItemId = id;
+        }
 
         // stack (optional, default 64)
         uint8_t stackSize = 64;
@@ -96,6 +101,10 @@ std::vector<uint16_t> GetAllItemIds() {
         ids.push_back(id);
     }
     return ids;
+}
+
+uint16_t GetSteamItemId() {
+    return s_steamItemId;
 }
 
 }
