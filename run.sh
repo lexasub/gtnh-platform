@@ -125,10 +125,19 @@ ok "Clean"
 # ── process management ────────────────────────────────────────────
 
 PID_FILE=$(mktemp /tmp/gtnh-pids.XXXXXX)
+FORWARD_PID_FILE=$(mktemp /tmp/gtnh-log-forward-pids.XXXXXX)
 
 cleanup() {
     echo ""
     info "Shutting down all services …"
+    if [ -f "$FORWARD_PID_FILE" ]; then
+        tac "$FORWARD_PID_FILE" | while read -r pid; do
+            # Each forwarder has its own session, so stop its tail/nc children.
+            kill -- "-${pid}" 2>/dev/null || true
+            kill "$pid" 2>/dev/null || true
+        done
+        rm -f "$FORWARD_PID_FILE"
+    fi
     if [ -f "$PID_FILE" ]; then
         # reverse order: client first, router last
         tac "$PID_FILE" | while read -r pid; do
@@ -142,14 +151,25 @@ cleanup() {
 trap 'cleanup' INT TERM
 
 LAUNCH() {
-    local name="$1" bin="$2" log; shift 2
+    local name="$1" bin="$2" log forward_pid; shift 2
     log="/tmp/gtnh/${name}.log"
     info "Starting ${name} …"
     : > "${log}"
-    # Service → tee (file + nc → Loki)
-    GTNH_LOG_LEVEL=trace "$bin" "$@" 2>&1 | tee -a "${log}" | nc "${LOKI_HOST}" "${LOKI_BRIDGE_PORT}" &
+
+    # Keep the service independent from the optional Loki log forwarder.  The
+    # direct background process is the daemon itself, so its PID is safe to
+    # use for liveness checks and shutdown.
+    GTNH_LOG_LEVEL=trace "$bin" "$@" >>"${log}" 2>&1 &
     local pid=$!
     echo "$pid" >> "$PID_FILE"
+
+    # Forward a copy of the local log to Loki without putting the daemon on a
+    # pipe that can deliver SIGPIPE when the remote endpoint disconnects.
+    setsid bash -c 'tail -n 0 -F "$1" | nc "$2" "$3" >/dev/null 2>&1' \
+        bash "${log}" "${LOKI_HOST}" "${LOKI_BRIDGE_PORT}" &
+    forward_pid=$!
+    echo "$forward_pid" >> "$FORWARD_PID_FILE"
+
     ok "${name} (PID ${pid}) — log: ${log}"
     sleep 0.5
     # quick check: did it already die?
