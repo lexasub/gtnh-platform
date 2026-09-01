@@ -9,17 +9,19 @@ add_custom_command(
         ${FBS_GEN_DIR}/gateway_generated.h
         ${FBS_GEN_DIR}/recipe_generated.h
         ${FBS_GEN_DIR}/quest_generated.h
+        ${FBS_GEN_DIR}/client_state_generated.h
     COMMAND flatbuffers::flatc
         --gen-mutable
         -I ${FBS_DIR}
         -o ${FBS_GEN_DIR}
-        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/machine_state.fbs
+        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/machine_state.fbs ${FBS_DIR}/client_state.fbs
     DEPENDS flatbuffers::flatc
             ${FBS_DIR}/core.fbs
             ${FBS_DIR}/gateway.fbs
             ${FBS_DIR}/recipe.fbs
             ${FBS_DIR}/quest.fbs
             ${FBS_DIR}/machine_state.fbs
+            ${FBS_DIR}/client_state.fbs
     COMMENT "Generating FlatBuffers headers for game_client"
 )
 
@@ -29,6 +31,7 @@ add_custom_target(game_client_fbs
         ${FBS_GEN_DIR}/gateway_generated.h
         ${FBS_GEN_DIR}/recipe_generated.h
         ${FBS_GEN_DIR}/quest_generated.h
+        ${FBS_GEN_DIR}/client_state_generated.h
 )
 
 # Set output directories for binaries
@@ -58,6 +61,7 @@ add_executable(gameclientd
     Crafting/ServerRecipeDB.cpp
 
     Network/NetClient.cpp
+    Network/ResourceBufferStateStore.cpp
 
     Cache/ChunkMeshCache.cpp
     Cache/ChunkNeighborCache.cpp
@@ -325,4 +329,26 @@ if(BUILD_TESTING)
         glm::glm
     )
     add_test(NAME gameclient_wrench_meta_link_test COMMAND gameclient_wrench_meta_link_test)
+
+    # Cross-service fixture: ResourceBufferState publication → gateway routing
+    # → client queue application → sequence ordering → removal clearing
+    # (openspec refactor-fluid-port-accounting 5.4.2/5.4.3).
+    add_executable(gameclient_resource_buffer_state_test
+        tests/ResourceBufferState_test.cpp
+        Network/ResourceBufferStateStore.cpp
+        Crafting/ClientItemRegistry.cpp
+    )
+    target_compile_definitions(gameclient_resource_buffer_state_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+    )
+    target_include_directories(gameclient_resource_buffer_state_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    target_link_libraries(gameclient_resource_buffer_state_test PRIVATE
+        glm::glm
+        spdlog::spdlog
+    )
+    add_dependencies(gameclient_resource_buffer_state_test game_client_fbs)
+    add_test(NAME gameclient_resource_buffer_state_test COMMAND gameclient_resource_buffer_state_test)
 endif()

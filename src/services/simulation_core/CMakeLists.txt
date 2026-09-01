@@ -34,11 +34,12 @@ add_custom_command(
         ${FBS_GEN_DIR}/pipe_network_generated.h
         ${FBS_GEN_DIR}/quest_generated.h
         ${FBS_GEN_DIR}/multiblock_state_generated.h
+        ${FBS_GEN_DIR}/client_state_generated.h
     COMMAND flatbuffers::flatc
         --gen-mutable
         -I ${FBS_DIR}
         -o ${FBS_GEN_DIR}
-        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/simcore.fbs ${FBS_DIR}/chunkstore.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/meta_db.fbs ${FBS_DIR}/machine_state.fbs ${FBS_DIR}/entity_state_store.fbs ${FBS_DIR}/pipe_network.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/multiblock_state.fbs
+        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/simcore.fbs ${FBS_DIR}/chunkstore.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/meta_db.fbs ${FBS_DIR}/machine_state.fbs ${FBS_DIR}/entity_state_store.fbs ${FBS_DIR}/pipe_network.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/multiblock_state.fbs ${FBS_DIR}/client_state.fbs
     DEPENDS flatbuffers::flatc
             ${FBS_DIR}/core.fbs
             ${FBS_DIR}/simcore.fbs
@@ -49,6 +50,7 @@ add_custom_command(
             ${FBS_DIR}/pipe_network.fbs
             ${FBS_DIR}/quest.fbs
             ${FBS_DIR}/multiblock_state.fbs
+            ${FBS_DIR}/client_state.fbs
     COMMENT "Generating FlatBuffers headers for simulation_core"
 )
 
@@ -62,6 +64,7 @@ add_custom_target(simcored_fbs
         ${FBS_GEN_DIR}/pipe_network_generated.h
         ${FBS_GEN_DIR}/quest_generated.h
         ${FBS_GEN_DIR}/multiblock_state_generated.h
+        ${FBS_GEN_DIR}/client_state_generated.h
 )
 
 # C++ library
@@ -74,6 +77,7 @@ add_library(simcored
         Network/PipeEnergyClient.cpp
         Network/FluidClient.cpp
         Network/ItemClient.cpp
+        Network/ResourceBufferStatePublisher.cpp
         Network/TopicDispatcher.cpp
         Network/SimCoreMessageHandler.cpp
         Network/ResourceDrainHandler.cpp

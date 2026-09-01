@@ -1,5 +1,6 @@
 #include "gateway.h"
 #include "gateway_generated.h"
+#include <common/ResourceBufferStateCodec.h>
 
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
@@ -125,6 +126,7 @@ int main(int argc, char* argv[]) {
     gateway.subscribe("player.machine.slot.response");
     gateway.subscribe("player.tool.action.response");
     gateway.subscribe("world.block_entity.update");
+    gateway.subscribe(gtnh::common::kTopicResourceBufferState);
     gateway.subscribe("recipe.completed");
     gateway.subscribe("player.position.load");
     gateway.subscribe("quest.completed.notification");

@@ -7,9 +7,17 @@
 
 namespace simcore {
 
+namespace {
+// Stable slot for the FLUID buffer this handler credits; typed per-machine
+// port allocation (openspec task 2.4.1) will replace it.
+constexpr gtnh::common::PortId kFluidBufferPortId = 1;
+} // namespace
+
 FluidFlowHandler::FluidFlowHandler(entt::registry& reg,
-                                   std::shared_ptr<FluidClient> fluidClient)
-    : reg_(reg), fluidClient_(std::move(fluidClient))
+                                   std::shared_ptr<FluidClient> fluidClient,
+                                   std::shared_ptr<ResourceBufferStatePublisher> statePublisher)
+    : reg_(reg), fluidClient_(std::move(fluidClient)),
+      statePublisher_(std::move(statePublisher))
 {}
 
 void FluidFlowHandler::handle(const std::vector<uint8_t>& data) {
@@ -72,6 +80,17 @@ void FluidFlowHandler::handle(const std::vector<uint8_t>& data) {
             to_node, mc ? mc->x : x, mc ? mc->y : y, mc ? mc->z : z,
             fluid->fluid_id, fluid->amount, fluid->capacity,
             0, 0, 0, false, true);
+    }
+    // Client-facing snapshot (gateway route), separate from the internal
+    // PipeNetwork node update above. owner = the node identity PipeNetwork
+    // uses for this machine; epoch 0 until typed ports supply generations.
+    if (statePublisher_) {
+        statePublisher_->PublishBufferState(
+            to_node, kFluidBufferPortId, gtnh::common::ResourceKind::FLUID,
+            fluid->fluid_id, fluid->amount, fluid->capacity, fluid->maxOutput,
+            /*epoch=*/0, mc ? static_cast<int32_t>(mc->x) : x,
+            mc ? static_cast<int32_t>(mc->y) : y,
+            mc ? static_cast<int32_t>(mc->z) : z);
     }
     spdlog::trace("FluidFlowHandler: fluid {} x{} delivered to destination node {} accepted={}",
                   fluid_id, amount, to_node, accepted);

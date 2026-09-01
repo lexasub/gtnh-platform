@@ -1,8 +1,10 @@
 // gateway.cpp
 #include "gateway.h"
+#include "client_state_generated.h"
 #include "gateway_generated.h"
 #include "quest_generated.h"
 #include "recipe_generated.h"
+#include "common/ResourceBufferStateCodec.h"
 
 #include <gtnh/net/frame.h>
 #include <flatbuffers/flatbuffers.h>
@@ -396,6 +398,16 @@ void IoUringGateway::on_router_publish(
         send_to_client_ctrl_raw(GatewayMsg::kInventoryUpdate, payload, plen);
     else if (topic == "world.block_entity.update")
         send_to_client_ctrl_raw(GatewayMsg::kBlockEntityUpdate, payload, plen);
+    else if (topic == gtnh::common::kTopicResourceBufferState) {
+        // Server-authoritative machine/port buffer state → client ctrl.
+        // Internal PipeNetwork topics (resource.port.*, resource.drain.*,
+        // resource.consume.*) are deliberately NOT subscribed/forwarded.
+        flatbuffers::Verifier v(payload, plen);
+        if (v.VerifyBuffer<Protocol::ResourceBufferState>(nullptr))
+            send_to_client_ctrl_raw(GatewayMsg::kResourceBufferState, payload, plen);
+        else
+            spdlog::warn("Gateway: Router: invalid ResourceBufferState");
+    }
     else if (topic == "sim.craft.response")
         send_to_client_ctrl_raw(GatewayMsg::kCraftResponse, payload, plen);
     else if (topic == "sim.workbench.state")

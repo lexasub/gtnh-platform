@@ -93,6 +93,7 @@ IUIWindow* BlockUIFactory::FindOrCreateMachine(UIManager& mgr, BlockPos pos, uin
         win->SetNetClient(mgr.GetNetClient());
         win->SetDragManager(&mgr.GetDragManager());
         win->SetBinder(&mgr.GetBinder());
+        win->SetResourceBufferStore(mgr.GetResourceBufferStore());
         // Server-authoritative machine.open needs the player id; use the
         // factory value (lastPlayerInv_ is null on first open).
         if (auto* pinv = mgr.GetPlayerInventory()) {

@@ -115,6 +115,12 @@ void GameClient::subscribeNetClient() {
         [this](std::shared_ptr<std::vector<uint8_t>> data) {
             uiMgr_.HandleNetwork(GatewayMsg::kBlockEntityUpdate, data->data());
         });
+    // Server-authoritative machine/port buffer state: enqueue only — the
+    // render thread applies queued updates in Update() via ApplyPending().
+    netClient_->SetResourceBufferStateCallback(
+        [this](std::shared_ptr<std::vector<uint8_t>> data) {
+            resourceBuffers_.Enqueue(data);
+        });
     netClient_->SetRecipeCompletedCallback(
         [this](std::shared_ptr<std::vector<uint8_t>> data) {
             uiMgr_.HandleNetwork(GatewayMsg::kRecipeCompleted, data->data());
@@ -179,7 +185,8 @@ void GameClient::subscribeNetClient() {
 
     netClient_->SetReconnectCallback([this]() {
         world_.ClearPendingRequests();
-        spdlog::info("Cleared pending chunk requests after bulk reconnect");
+        resourceBuffers_.Clear();
+        spdlog::info("Cleared pending chunk requests and resource buffer state after bulk reconnect");
     });
 }
 
@@ -250,6 +257,7 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
     invState_.player_id = 1; // hardcoded dev ID until auth
     UIDefaults::RegisterPlayerUI(uiMgr_, invState_);
     uiMgr_.SetNetClient(netClient_.get());
+    uiMgr_.SetResourceBufferStore(&resourceBuffers_);
 
     // Server-driven recipe store (catalog + LRU caches)
     recipeDb_.Init(netClient_.get());
@@ -293,6 +301,10 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
 }
 
 void GameClient::Update(float dt) {
+    // Apply queued server-authoritative buffer state on the render thread
+    // before UI rendering reads it.
+    resourceBuffers_.ApplyPending();
+
     // Expire stale recipe requests so a lost response doesn't permanently
     // block future queries for the same item / machine / grid.
     recipeDb_.PollTimeouts();
@@ -513,6 +525,7 @@ void GameClient::Run() {
         // Destroy GPU meshes for evicted chunks
         for (const auto& coord : world_.TakeEvictedChunks()) {
             meshMgr_.HandleEviction(coord);
+            resourceBuffers_.ClearChunk(coord);
         }
     }
 }

@@ -1,6 +1,8 @@
 // gateway.h
 #pragma once
 
+#include <common/GatewayMsg.h>
+
 #include <gtnh/net/io_uring_connection.h>
 #include <gtnh/net/router_client.h>
 #include <gtnh/net/server.h>
@@ -17,6 +19,9 @@
 //
 // Frame: [4 bytes: payload size BE] [1 byte: message type] [FlatBuffer data]
 //
+// Message type constants live in <common/GatewayMsg.h> — the single source of
+// truth shared with the game client (NetClient.h).
+//
 // Types (client → gateway):
 //   1 = PlayerAction (FlatBuffer: Protocol::PlayerAction)
 //   7 = InventoryAction (FlatBuffer: Protocol::InventoryAction)
@@ -29,56 +34,6 @@
 //   6 = InventoryUpdate (FlatBuffer: Protocol::InventoryUpdate)
 //  14 = ToolActionResp (FlatBuffer: Protocol::ToolActionResp)
 // ---------------------------------------------------------------------------
-namespace GatewayMsg { // TODO move to protocol (flatbuffers)
-inline constexpr uint8_t kPlayerAction = 1;
-inline constexpr uint8_t kChunkSnapshot = 2;
-inline constexpr uint8_t kEntitySnapshot = 3;
-inline constexpr uint8_t kBlockUpdate = 4;
-inline constexpr uint8_t kBlockAck = 5;
-inline constexpr uint8_t kInventoryUpdate = 6;
-inline constexpr uint8_t kInventoryAction = 7;
-inline constexpr uint8_t kBlockEntityUpdate = 8;
-inline constexpr uint8_t kCraftRequest = 9;
-inline constexpr uint8_t kCraftResponse = 10;
-inline constexpr uint8_t kSetBlockAction = 11;
-inline constexpr uint8_t kCompressedChunkData = 12;
-inline constexpr uint8_t kToolAction = 13;
-inline constexpr uint8_t kToolActionResp = 14;
-inline constexpr uint8_t kSetMachineSlot = 15;
-inline constexpr uint8_t kSetMachineSlotResp = 16;
-inline constexpr uint8_t kRecipeCompleted = 17;
-inline constexpr uint8_t kMachineOpenReq = 18; // was kChestSaveReq (dead, removed)
-inline constexpr uint8_t kChestOpenReq = 19;
-inline constexpr uint8_t kChestCloseReq = 45;
-inline constexpr uint8_t kMachineCloseReq = 46;
-inline constexpr uint8_t kQuestProgressUpdate = 20;
-inline constexpr uint8_t kQuestUnlockNotification = 21;
-inline constexpr uint8_t kQuestCompletedNotification = 22;
-inline constexpr uint8_t kMultiblockEvent = 23;
-inline constexpr uint8_t kQuestCompleteRequest = 24;
-inline constexpr uint8_t kQuestEraTransition = 25;
-inline constexpr uint8_t kQuestExchangeRequest = 26;
-inline constexpr uint8_t kQuestExchangeResponse = 27;
-inline constexpr uint8_t kQuestExchangeCooldownGet = 28;
-inline constexpr uint8_t kQuestExchangeCooldown = 29;
-inline constexpr uint8_t kGameModeChange = 30;
-inline constexpr uint8_t kStartScenarioReq = 31;
-inline constexpr uint8_t kStartScenarioResp = 32;
-inline constexpr uint8_t kQuestBookOpen = 33;
-// Server-driven recipe queries (client↔gateway↔RecipeManagerService).
-// Payload is always a Protocol::RecipeFrame (recipe.fbs).
-inline constexpr uint8_t kRecipeCheckReq = 34;
-inline constexpr uint8_t kRecipeCheckResp = 35;
-inline constexpr uint8_t kRecipeCatalogReq = 36;
-inline constexpr uint8_t kRecipeCatalogResp = 37;
-inline constexpr uint8_t kRecipeItemReq = 38;
-inline constexpr uint8_t kRecipeItemResp = 39;
-inline constexpr uint8_t kRecipeMachineReq = 40;
-inline constexpr uint8_t kRecipeMachineResp = 41;
-inline constexpr uint8_t kBlockActionDirective = 42;
-inline constexpr uint8_t kGridUpdate = 43;
-inline constexpr uint8_t kWorkbenchOpenReq = 44;
-} // namespace GatewayMsg
 
 // ---------------------------------------------------------------------------
 // Interest management

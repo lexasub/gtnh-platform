@@ -8,6 +8,7 @@
 #include "Common/Types.h"
 #include "Crafting/ServerRecipeDB.h"
 #include "Network/NetClient.h"
+#include "Network/ResourceBufferStateStore.h"
 #include "Render/RenderBridge.h"
 #include "UI/InputManager.h"
 #include "UI/UIManager.h"
@@ -48,6 +49,10 @@ private:
 
   // Server-driven recipe store (catalog + LRU caches); owns recipe queries.
   ServerRecipeDB recipeDb_;
+
+  // Server-authoritative machine/port buffer state (render-thread applied).
+  // Declared before uiMgr_: open windows hold a raw pointer into it.
+  ResourceBufferStateStore resourceBuffers_;
 
   // ---- Core subsystems ----
   GLFWWindow window_;

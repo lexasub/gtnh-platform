@@ -17,6 +17,7 @@ struct InventoryState;
 struct BlockPos;
 class NetClient;
 class ServerRecipeDB;
+class ResourceBufferStateStore;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // UIManager — mediator between input / network / rendering and UI windows.
@@ -80,6 +81,14 @@ public:
   // ── Server-driven recipe store (shared by windows/panels) ────────────────
   void SetRecipeDb(ServerRecipeDB *db) { recipeDb_ = db; }
   ServerRecipeDB *GetRecipeDb() const { return recipeDb_; }
+
+  // ── Server-authoritative machine/port buffer state (MachineWindow) ──────
+  void SetResourceBufferStore(ResourceBufferStateStore *store) {
+    resourceBufferStore_ = store;
+  }
+  ResourceBufferStateStore *GetResourceBufferStore() const {
+    return resourceBufferStore_;
+  }
 
   // ── Player quest era (VAGRANT=0 … ADMINISTRATOR=3) ──────────────────────
   // Authoritative source is the server (StartScenarioResp.quest_book_era /
@@ -150,6 +159,7 @@ private:
   std::vector<std::unique_ptr<ISidePanel>> panels_;
   NetClient *netClient_ = nullptr;
   ServerRecipeDB *recipeDb_ = nullptr;
+  ResourceBufferStateStore *resourceBufferStore_ = nullptr;
   InventoryState *playerInv_ = nullptr;
   uint8_t currentEra_ = 0; // player quest era; default VAGRANT
   std::array<bool, 512> prevKeys_{};

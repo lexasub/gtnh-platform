@@ -10,16 +10,18 @@ add_custom_command(
         ${FBS_GEN_DIR}/gateway_generated.h
         ${FBS_GEN_DIR}/quest_generated.h
         ${FBS_GEN_DIR}/recipe_generated.h
+        ${FBS_GEN_DIR}/client_state_generated.h
     COMMAND flatbuffers::flatc
         --gen-mutable
         -I ${FBS_DIR}
         -o ${FBS_GEN_DIR}
-        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/recipe.fbs
+        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/client_state.fbs
     DEPENDS flatbuffers::flatc
             ${FBS_DIR}/core.fbs
             ${FBS_DIR}/gateway.fbs
             ${FBS_DIR}/quest.fbs
             ${FBS_DIR}/recipe.fbs
+            ${FBS_DIR}/client_state.fbs
     COMMENT "Generating FlatBuffers headers for gateway"
 )
 
@@ -29,6 +31,7 @@ add_custom_target(gateway_fbs
         ${FBS_GEN_DIR}/gateway_generated.h
         ${FBS_GEN_DIR}/quest_generated.h
         ${FBS_GEN_DIR}/recipe_generated.h
+        ${FBS_GEN_DIR}/client_state_generated.h
 )
 
 add_executable(gatewayd
@@ -38,6 +41,7 @@ add_executable(gatewayd
 
 add_dependencies(gatewayd gateway_fbs)
 include_directories(BEFORE SYSTEM ${flatbuffers_INCLUDE_DIRS} ${FBS_GEN_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/src)
 
 target_link_libraries(gatewayd PRIVATE
     gtnh-net

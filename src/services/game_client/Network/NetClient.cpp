@@ -341,6 +341,10 @@ void NetClient::OnMessage(uint8_t msg_type,
             if (onBlockEntityUpdate_)
                 onBlockEntityUpdate_(data);
             break;
+        case GatewayMsg::kResourceBufferState:
+            if (onResourceBufferState_)
+                onResourceBufferState_(data);
+            break;
         case GatewayMsg::kGridUpdate: {
             if (onGridUpdate_) {
                 flatbuffers::Verifier v(payload, plen);

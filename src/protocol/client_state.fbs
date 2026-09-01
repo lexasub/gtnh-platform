@@ -1,0 +1,34 @@
+include "core.fbs";
+namespace Protocol;
+
+// ---------------------------------------------------------------------------
+// Client-facing machine/port resource state (openspec
+// refactor-fluid-port-accounting §5, design §5 Client state).
+//
+// SimulationCore publishes one snapshot per machine port buffer; Gateway
+// forwards it verbatim to the client connection on
+// GatewayMsg::kResourceBufferState. This is the ONLY resource-state channel
+// that reaches the client: internal PipeNetwork registration/transaction
+// topics (resource.port.register, resource.drain.*, resource.consume.*) are
+// never subscribed by the gateway.
+//
+// sequence is monotonically increasing per (owner_id, port_id); epoch is the
+// port generation (a re-registered port bumps epoch and restarts sequence).
+// ---------------------------------------------------------------------------
+
+// Server-authoritative buffer snapshot for one machine port. `removed` marks
+// a port removal: clients drop the stored entry and reject older epochs for
+// that (owner_id, port_id) pair.
+table ResourceBufferState {
+  owner_id:uint64;              // machine instance identity (SimulationCore)
+  port_id:uint64;               // port slot within the owner
+  resource_kind:ResourceKind;   // transport channel (FLUID, EU, HU, RU, ITEM)
+  resource_id:uint32;           // canonical packed ItemId (0 for energy channels)
+  amount:int32;                 // current stored amount (mB for FLUID)
+  capacity:int32;               // max capacity
+  rate:int32;                   // per-tick transfer rate
+  epoch:uint64;                 // port generation
+  sequence:uint64;              // monotonic per (owner_id, port_id)
+  pos:Vec3i (required);         // machine position (client UI lookup key)
+  removed:bool = false;         // true = port removed, drop client state
+}

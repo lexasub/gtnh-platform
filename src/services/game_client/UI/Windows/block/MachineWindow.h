@@ -33,8 +33,6 @@ struct BlockEntityUpdateData {
   std::vector<ItemStack> outputItems;
   float heatRatio = 0.0f;      // Heat ratio (0.0 - 1.0+) for overheat warnings
   uint64_t mbId = 0;           // Multiblock ID (0 = not a multiblock)
-  double steamCurrent = -1.0;  // Produced STEAM (boilers, no water)
-  double steamCapacity = -1.0; // STEAM buffer capacity
 };
 
 // One multiblock hatch shown in the window (task 3.1). `type` matches
@@ -52,6 +50,9 @@ public:
   void SetDragManager(DragManager *dm) { dragMgr_ = dm; }
   void SetBinder(const InputBinder *binder) { binder_ = binder; }
   void SetPlayerId(uint64_t pid) { player_id_ = pid; }
+  void SetResourceBufferStore(class ResourceBufferStateStore *store) {
+    resourceBuffers_ = store;
+  }
 
   std::string_view Name() const override { return "Machine"; }
 
@@ -109,11 +110,15 @@ private:
   ProgressStyle cachedStyle_ = ProgressStyle::GENERIC;
   bool styleCached_ = false;
 
+  // ── Server-authoritative resource buffers (state store, not raw wire) ──
+  class ResourceBufferStateStore *resourceBuffers_ = nullptr;
+
   ProgressStyle ResolveProgressStyle(const MachineInfo *info);
 
   // ── Render helpers ──────────────────────────────────────────────────
   void RenderProgress(const MachineInfo *info, float prog);
   void RenderEnergyBarImpl(EnergyType et, uint32_t energy, uint32_t energyMax,
                            float heatRatio = 0.0f, uint64_t mbId = 0);
+  void RenderResourceBuffers();
   void RenderOutOfSyncWarning();
 };

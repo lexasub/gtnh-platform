@@ -2,7 +2,10 @@
 #include "Components/SlotGrid.h"
 #include "Components/PlayerInventoryGrid.h"
 #include "Network/NetClient.h"
+#include "Network/ResourceBufferStateStore.h"
 #include "RenderLib/Utils/TextureAtlas.h"
+#include "Crafting/ClientItemRegistry.h"
+#include "common/ResourcePort.h"
 #include "core_generated.h"
 #include "recipe_generated.h"
 #include <imgui.h>
@@ -122,6 +125,23 @@ const char* HatchTypeName(uint8_t type) {
         case Protocol::HatchType_MUFFLER:      return "Muffler";
         default:                               return "Hatch";
     }
+}
+
+// Label resolved through items.csv (5.3.3); unknown ids show the registry's "???".
+std::string BufferResourceLabel(uint32_t resource_id) {
+    return std::string(ItemRegistry::GetName(static_cast<uint16_t>(resource_id)));
+}
+
+// Unit per transport channel, not per resource.
+const char* BufferUnit(gtnh::common::ResourceKind kind) {
+    switch (kind) {
+        case gtnh::common::ResourceKind::FLUID: return "mB";
+        case gtnh::common::ResourceKind::EU:    return "EU";
+        case gtnh::common::ResourceKind::HU:    return "HU";
+        case gtnh::common::ResourceKind::RU:    return "RU";
+        case gtnh::common::ResourceKind::ITEM:  return "";
+    }
+    return "";
 }
 
 } // anonymous namespace
@@ -264,6 +284,50 @@ void MachineWindow::RenderOutOfSyncWarning() {
     ImGui::PopStyleColor();
 }
 
+// ── Server-authoritative resource buffers, read from the client state store
+// (the only UI input for machine buffers — no raw transport decoding here).
+void MachineWindow::RenderResourceBuffers() {
+    if (!resourceBuffers_) return;
+    const ResourceBufferStateStore::Entry* buffer =
+        resourceBuffers_->FindAt(pos_);
+    if (!buffer) return;
+
+    ImGui::Separator();
+    const char* unit = BufferUnit(
+        static_cast<gtnh::common::ResourceKind>(buffer->resource_kind));
+    const std::string label = BufferResourceLabel(buffer->resource_id);
+    char buf[96];
+    if (unit[0] != '\0') {
+        std::snprintf(buf, sizeof(buf), "%s: %d / %d %s", label.c_str(),
+                      buffer->amount, buffer->capacity, unit);
+    } else {
+        std::snprintf(buf, sizeof(buf), "%s: %d / %d", label.c_str(),
+                      buffer->amount, buffer->capacity);
+    }
+
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 p0 = ImGui::GetCursorScreenPos();
+    float w = 200.0f;
+    float h = 18.0f;
+    ImVec2 p1(p0.x + w, p0.y + h);
+
+    dl->AddRectFilled(p0, p1, IM_COL32(40, 40, 40, 255), 3.0f);
+    const float ratio = buffer->capacity > 0
+        ? static_cast<float>(buffer->amount) / static_cast<float>(buffer->capacity)
+        : 0.0f;
+    if (ratio > 0.0f) {
+        ImVec2 fillEnd(p0.x + w * std::min(ratio, 1.0f), p1.y);
+        dl->AddRectFilled(p0, fillEnd, IM_COL32(80, 180, 235, 255), 3.0f);
+    }
+    dl->AddRect(p0, p1, IM_COL32(80, 80, 80, 255), 3.0f);
+
+    ImVec2 textSize = ImGui::CalcTextSize(buf);
+    ImVec2 textPos(p0.x + (w - textSize.x) * 0.5f, p0.y + (h - textSize.y) * 0.5f);
+    dl->AddText(textPos, IM_COL32(220, 220, 220, 255), buf);
+
+    ImGui::Dummy(ImVec2(w, h + 2.0f));
+}
+
 void MachineWindow::Render(InventoryState* playerInv) {
     if (!open_) return;
 
@@ -348,15 +412,8 @@ void MachineWindow::Render(InventoryState* playerInv) {
                             hasPendingUpdate_ ? pendingUpdate_.heatRatio : 0.0f,
                             hasPendingUpdate_ ? pendingUpdate_.mbId : 0);
 
-        // ── Boiler STEAM output bar (water-free steam production) ──────────
-        if (info && info->machine_class == "boiler" &&
-            hasPendingUpdate_ && pendingUpdate_.steamCurrent >= 0.0) {
-            ImGui::Separator();
-            RenderEnergyBarImpl(EnergyType::STEAM,
-                                static_cast<uint32_t>(pendingUpdate_.steamCurrent),
-                                static_cast<uint32_t>(pendingUpdate_.steamCapacity > 0
-                                    ? pendingUpdate_.steamCapacity : 1));
-        }
+        // ── Server-authoritative resource buffers (state store) ───────────
+        RenderResourceBuffers();
 
         // ── Multiblock hatches (task 3.1) ─────────────────────────────────
         if (!pendingHatches_.empty()) {
@@ -503,8 +560,6 @@ void MachineWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
     pendingUpdate_.energyType = static_cast<EnergyType>(update->energy_type());
     pendingUpdate_.heatRatio = update->temperature();
     pendingUpdate_.mbId = update->mb_id();
-    pendingUpdate_.steamCurrent = update->steam_current();
-    pendingUpdate_.steamCapacity = update->steam_capacity();
     timeSinceUpdate_ = 0.0f;
 
     pendingUpdate_.inputItems.clear();

@@ -4,6 +4,7 @@
 #include "Network/PipeEnergyClient.h"
 #include "Network/FluidClient.h"
 #include "Network/ItemClient.h"
+#include "Network/ResourceBufferStatePublisher.h"
 #include "Network/TopicDispatcher.h"
 #include "Network/clients/EntityStateStoreClient.h"
 #include "Network/clients/IoUringRouterClient.h"
@@ -67,7 +68,8 @@ void SimCoreMessageHandler::setup() {
     topicDispatcher_->on("energy.flow", std::make_unique<EnergyFlowHandler>(
         d.engine->reg(), d.pipeEnergyClient));
     topicDispatcher_->on("fluid.flow", std::make_unique<FluidFlowHandler>(
-        d.engine->reg(), d.fluidClient));
+        d.engine->reg(), d.fluidClient,
+        std::make_shared<ResourceBufferStatePublisher>(d.routerClient)));
     topicDispatcher_->on("item.flow", std::make_unique<ItemFlowHandler>(
         d.engine->reg(), d.itemClient, d.routerClient, d.entityStateClient,
         d.chestSessions, d.inventoryStore));
