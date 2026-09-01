@@ -12,6 +12,7 @@
 #include "CableTypes.h"
 #include "Client/MessageRouterClient.h"
 #include "PipeBlockIds.h"
+#include "PipeConsumeTransactions.h"
 #include "PipeNetwork.h"
 
 namespace gtnh {
@@ -51,6 +52,21 @@ private:
   pipenet::PipeNetworkManager network_manager_;
   std::unordered_map<uint64_t, NodeState> node_states_;
   std::unordered_map<uint64_t, uint64_t> protocol_to_mgr_;
+  // Pending shortfall consumes keyed by drain request id (3.4.2/3.4.3);
+  // bounded by kPendingConsumeTtlTicks expiry in tick().
+  PipeConsumeTracker consume_tracker_;
+  // Monotonic service tick driving pending-consume TTL expiry.
+  uint64_t service_tick_ = 0;
+  // Fresh transaction ids for the consume and drain legs. Seeded from wall
+  // clock so ids never repeat across service restarts (owner-side replay
+  // caches may outlive this process).
+  uint64_t next_txn_id_ = 0;
+  // Warn-once markers for manager-rejected port register/remove messages
+  // (2.5.3): producers may republish every tick, so rejections log once per
+  // port, not per tick. Epoch is normalized to 0 in the marker key; a later
+  // successful registration for the same port clears the marker.
+  std::unordered_set<gtnh::common::ResourcePortRegistrationKey>
+      stale_epoch_warned_;
   // pos_key → PipeNetworkManager node_id (pipe blocks, from world.blocks.changed)
   std::unordered_map<uint64_t, uint64_t> pipe_nodes_;
   // pos_key → connection mask (meta) for pipe/cable blocks
@@ -74,6 +90,17 @@ private:
   void handleFluidNodeUpdate(const std::vector<uint8_t> &data);
   void handleFluidCheckRequest(const std::vector<uint8_t> &data);
   void handleFluidConsumeRequest(const std::vector<uint8_t> &data);
+
+  // Typed resource-port contract (refactor-fluid-port-accounting)
+  void handleResourcePortRegister(const std::vector<uint8_t> &data);
+  void handleResourcePortRemove(const std::vector<uint8_t> &data);
+  void handleResourceDrainResponse(const std::vector<uint8_t> &data);
+
+  // Publishes a legacy FluidConsumeResp (consumed/remaining) to the consumer.
+  void publishFluidConsumeResponse(int32_t consumed, int32_t remaining);
+  // Telemetry-only fluid.flow event for an applied source drain (3.3.3).
+  void publishFluidFlowTelemetry(const PendingConsume &pending,
+                                 int32_t amount);
 
   // Item node handlers
   void handleItemNodeUpdate(const std::vector<uint8_t> &data);

@@ -1,9 +1,11 @@
 #include "PipeNetworkService.h"
 #include "Client/MessageRouterClient.h"
+#include <common/ResourcePortClient.h>
 #include <core_generated.h>
 #include <pipe_network_generated.h>
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
+#include <chrono>
 #include <fstream>
 #include <sstream>
 
@@ -114,8 +116,10 @@ namespace gtnh {
 namespace pipe_network {
 
 PipeNetworkService::PipeNetworkService(MessageRouterClient& router, asio::io_context& io)
-    : router_(router), io_(io), tick_timer_(io)
-{}
+    : router_(router), io_(io), tick_timer_(io), consume_tracker_(kPendingConsumeTtlTicks),
+      next_txn_id_((std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count() | 1)) {}
 
 PipeNetworkService::~PipeNetworkService() { Stop(); }
 
@@ -137,6 +141,12 @@ void PipeNetworkService::Start() {
     router_.Subscribe("world.blocks.changed");
     router_.Subscribe("world.machine.config.updated");
     router_.Subscribe("pipe.wrench.action");
+    // Typed resource-port contract (refactor-fluid-port-accounting): typed
+    // port registrations/removals feed the manager's port registry, and drain
+    // responses complete pending shortfall consumes (3.4.3).
+    router_.Subscribe(gtnh::common::kTopicResourcePortRegister);
+    router_.Subscribe(gtnh::common::kTopicResourcePortRemove);
+    router_.Subscribe(gtnh::common::kTopicResourceDrainResponse);
 
     loadPersistentState();
     running_ = true;
@@ -161,6 +171,19 @@ void PipeNetworkService::scheduleTick() {
 }
 
 void PipeNetworkService::tick() {
+    // Bounded pending map (3.4.3): expire shortfall consumes past their TTL
+    // and complete them with the pipe-only amount so consumers never hang on
+    // a lost owner response.
+    ++service_tick_;
+    for (const auto& pending : consume_tracker_.expire(service_tick_)) {
+        spdlog::debug("[PipeNet] shortfall consume {} expired; completing short-fill "
+                      "(pipe {} of {})",
+                      pending.drain_request_id, pending.pipe_accepted,
+                      pending.requested);
+        publishFluidConsumeResponse(pending.pipe_accepted,
+                                    pending.requested - pending.pipe_accepted);
+    }
+
     for (const auto* net : network_manager_.getAllNetworks()) {
         if (!net || net->nodeIds.empty()) continue;
 
@@ -265,6 +288,12 @@ void PipeNetworkService::onRouterMessage(const std::string& topic, const std::ve
         handleMachineConfigUpdated(data);
     } else if (topic == "pipe.wrench.action") {
         handlePipeWrenchAction(data);
+    } else if (topic == gtnh::common::kTopicResourcePortRegister) {
+        handleResourcePortRegister(data);
+    } else if (topic == gtnh::common::kTopicResourcePortRemove) {
+        handleResourcePortRemove(data);
+    } else if (topic == gtnh::common::kTopicResourceDrainResponse) {
+        handleResourceDrainResponse(data);
     }
 }
 
@@ -686,78 +715,232 @@ void PipeNetworkService::handleFluidConsumeRequest(const std::vector<uint8_t>& d
     const uint32_t fluid_id = req->fluid_id();
     const int32_t requested = req->amount();
     if (requested <= 0 || fluid_id == 0) {
-        flatbuffers::FlatBufferBuilder fbb;
-        auto resp = Protocol::CreateFluidConsumeResp(fbb, 0, requested > 0 ? requested : 0);
-        fbb.Finish(resp);
-        router_.Publish("fluid.consume.response",
-            {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+        // 3.4.4: blocked request — zero accepted, exact remaining.
+        publishFluidConsumeResponse(0, requested > 0 ? requested : 0);
         return;
     }
 
-    // The manager owns pipe-buffer debits. The checked-in wire request has no
-    // request_id, so service-level retransmit correlation is not possible.
+    // The manager owns pipe-buffer debits (3.3.1). The checked-in wire request
+    // carries no request_id, so the service mints one per delivery: node ids
+    // must never double as request ids (3.5.2 — no positional correlation).
+    // When FluidConsumeReq grows a request_id field, thread it through here.
+    const uint64_t consume_request_id = ++next_txn_id_;
     const auto pipe_result = network_manager_.consumeFluid(
-        mgr_id, req->node_id(), fluid_id, requested);
-    int32_t consumed = pipe_result.accepted_amount;
-    int32_t remaining_demand = pipe_result.remaining;
+        mgr_id, consume_request_id, fluid_id, requested);
+    const int32_t pipe_accepted = pipe_result.accepted_amount;
+    const int32_t remaining_demand = pipe_result.remaining;
 
-    // A source is owner state, not a mirror of the pipe node.  Only debit the
-    // source snapshot for fluid that was not already present in pipe buffers.
-    // Publish one event per source so FluidFlowHandler can provide telemetry
-    // without mutating the owning ECS component.
+    // Shortfall: the source is owner state (SimulationCore), never a service
+    // mirror (3.3.1/3.3.2). The snapshot below is a routing cache only — it
+    // selects whom to ask and is never debited here; the owner is asked with
+    // a typed ResourceDrainRequest for exactly the shortfall (3.4.2) and its
+    // response completes the consume exactly once (3.4.3).
     if (remaining_demand > 0) {
         const auto network = network_manager_.discoverNetwork(mgr_id);
-        std::vector<uint64_t> sources;
-        int32_t total_source = 0;
+        // Typed FLUID source ports by position. The drain request carries the
+        // resolved port_id; a source without a typed port falls back to a
+        // node-based request with port_id 0 (legacy producers — the owner
+        // resolves those by its own means until all producers emit typed
+        // ports).
+        std::unordered_map<uint64_t, std::pair<uint64_t, gtnh::common::PortId>>
+            source_ports;
+        for (const auto& port : network_manager_.getRegisteredPorts()) {
+            if (port.resource_kind != gtnh::common::ResourceKind::FLUID ||
+                port.role != gtnh::common::PortRole::SOURCE) {
+                continue;
+            }
+            source_ports.emplace(pipenet::pipePosKey(port.x, port.y, port.z),
+                                 std::make_pair(port.owner_id, port.port_id));
+        }
+
+        uint64_t best_node = 0;
+        int32_t best_amount = 0;
+        uint64_t best_owner = 0;
+        gtnh::common::PortId best_port = 0;
         for (uint64_t nid : network) {
             auto si = node_states_.find(nid);
             if (si == node_states_.end() || !si->second.is_source) continue;
             const auto* node = network_manager_.getNode(nid);
             if (node && node->fluidId != 0 && node->fluidId != fluid_id) continue;
             if (si->second.energy <= 0) continue;
-            sources.push_back(nid);
-            total_source += si->second.energy;
+            if (si->second.energy > best_amount) {
+                best_amount = si->second.energy;
+                best_node = nid;
+                best_owner = 0;
+                best_port = 0;
+                if (node) {
+                    if (auto sp = source_ports.find(
+                            pipenet::pipePosKey(node->x, node->y, node->z));
+                        sp != source_ports.end()) {
+                        best_owner = sp->second.first;
+                        best_port = sp->second.second;
+                    }
+                }
+            }
         }
 
-        int32_t source_debt = (std::min)(remaining_demand, total_source);
-        int32_t left = source_debt;
-        for (size_t i = 0; i < sources.size() && left > 0; ++i) {
-            const uint64_t source_id = sources[i];
-            auto si = node_states_.find(source_id);
-            if (si == node_states_.end()) continue;
-            const int32_t take = (i + 1 == sources.size())
-                ? (std::min)(left, si->second.energy)
-                : (std::min)(left, static_cast<int32_t>(
-                    (static_cast<int64_t>(source_debt) * si->second.energy) / total_source));
-            if (take <= 0) continue;
-
-            si->second.energy -= take;
-            consumed += take;
-            left -= take;
-
-            const auto* source_node = network_manager_.getNode(source_id);
-            if (!source_node) continue;
-            Protocol::Vec3i source_pos(source_node->x, source_node->y, source_node->z);
-            flatbuffers::FlatBufferBuilder flow_builder;
-            auto event = Protocol::CreateFluidFlowEvent(
-                flow_builder, source_id,
-                si->second.protocol_id != 0 ? si->second.protocol_id : source_id,
-                0, fluid_id, take, &source_pos, si->second.tier);
-            flow_builder.Finish(event);
-            router_.Publish("fluid.flow", {flow_builder.GetBufferPointer(),
-                                             flow_builder.GetBufferPointer() + flow_builder.GetSize()});
+        if (best_node != 0) {
+            const uint64_t drain_request_id = ++next_txn_id_;
+            const auto decision = consume_tracker_.planShortfall(
+                drain_request_id, consume_request_id, mgr_id, fluid_id,
+                requested, pipe_accepted, best_node, best_owner, best_port,
+                service_tick_);
+            if (decision.request_source) {
+                // 3.4.2: one typed drain request for ONLY the shortfall; the
+                // response (or expiry/removal) completes the consume — never
+                // answered synchronously.
+                const gtnh::common::ResourceTransferRequest drain{
+                    drain_request_id, best_port,
+                    gtnh::common::ResourceKind::FLUID, fluid_id,
+                    decision.shortfall};
+                router_.Publish(gtnh::common::kTopicResourceDrainRequest,
+                                gtnh::common::SerializeDrainRequest(drain));
+                spdlog::debug(
+                    "[PipeNet] shortfall drain request {} port {} node {} fluid {} "
+                    "amount {} (pipe served {} of {})",
+                    drain_request_id, best_port, best_node, fluid_id,
+                    decision.shortfall, pipe_accepted, requested);
+                return;
+            }
         }
-        remaining_demand = requested - consumed;
+
+        // 3.4.4: no source to ask — short-fill with the exact pipe amount.
     }
 
+    publishFluidConsumeResponse(pipe_accepted, remaining_demand);
+    spdlog::debug("[PipeNet] fluid consume node={} fluid={} requested={} pipe={} accepted={} remaining={}",
+                  req->node_id(), fluid_id, requested, pipe_accepted,
+                  pipe_accepted, remaining_demand);
+}
+
+void PipeNetworkService::publishFluidConsumeResponse(int32_t consumed,
+                                                     int32_t remaining) {
     flatbuffers::FlatBufferBuilder fbb;
-    auto resp = Protocol::CreateFluidConsumeResp(fbb, consumed, remaining_demand);
+    auto resp = Protocol::CreateFluidConsumeResp(fbb, consumed, remaining);
     fbb.Finish(resp);
     router_.Publish("fluid.consume.response",
         {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
-    spdlog::debug("[PipeNet] fluid consume node={} fluid={} requested={} pipe={} total={} remaining={}",
-                  req->node_id(), fluid_id, requested, pipe_result.accepted_amount,
-                  consumed, remaining_demand);
+}
+
+void PipeNetworkService::handleResourcePortRegister(const std::vector<uint8_t>& data) {
+    gtnh::common::ResourcePort port;
+    uint32_t resource_id = 0;
+    if (!gtnh::common::ParsePortRegister(data.data(), data.size(), &port,
+                                         &resource_id)) {
+        spdlog::warn("[PipeNet] invalid ResourcePortRegister");
+        return;
+    }
+    if (network_manager_.registerPort(port)) {
+        // A successful registration clears the warn-once marker so a future
+        // stale epoch for the same port is reported again.
+        stale_epoch_warned_.erase({port.owner_id, port.resource_kind,
+                                   port.port_id, 0});
+        return;
+    }
+    // Manager rejected (stale epoch or invalid port): log once per port, not
+    // per republished tick (2.5.3).
+    const gtnh::common::ResourcePortRegistrationKey warn_key{
+        port.owner_id, port.resource_kind, port.port_id, 0};
+    if (stale_epoch_warned_.insert(warn_key).second) {
+        spdlog::warn(
+            "[PipeNet] port register rejected (stale epoch or invalid port): "
+            "owner {} kind {} port {} epoch {}",
+            port.owner_id, static_cast<int>(port.resource_kind), port.port_id,
+            port.epoch);
+    }
+}
+
+void PipeNetworkService::handleResourcePortRemove(const std::vector<uint8_t>& data) {
+    gtnh::common::ResourcePortRegistrationKey key;
+    if (!gtnh::common::ParsePortRemove(data.data(), data.size(), &key)) {
+        spdlog::warn("[PipeNet] invalid ResourcePortRemove");
+        return;
+    }
+    // 2.5.1: exact (owner, kind, port, epoch) removal — the epoch is passed
+    // through untouched and the manager rejects stale epochs.
+    if (!network_manager_.removePort(key.owner_id, key.resource_kind,
+                                     key.port_id, key.epoch)) {
+        const gtnh::common::ResourcePortRegistrationKey warn_key{
+            key.owner_id, key.resource_kind, key.port_id, 0};
+        if (stale_epoch_warned_.insert(warn_key).second) {
+            spdlog::warn(
+                "[PipeNet] port remove rejected (unknown port or stale epoch): "
+                "owner {} kind {} port {} epoch {}",
+                key.owner_id, static_cast<int>(key.resource_kind),
+                key.port_id, key.epoch);
+        }
+        return;
+    }
+    // 2.5.3: pending transactions addressed to the removed port complete as
+    // zero/short-fill (source part 0) so consumers are never left hanging.
+    for (const auto& pending :
+         consume_tracker_.clearForPort(key.owner_id, key.port_id)) {
+        spdlog::debug(
+            "[PipeNet] port {} owner {} removed; completing consume {} short-fill "
+            "(pipe {} of {})",
+            key.port_id, key.owner_id, pending.drain_request_id,
+            pending.pipe_accepted, pending.requested);
+        publishFluidConsumeResponse(pending.pipe_accepted,
+                                    pending.requested - pending.pipe_accepted);
+    }
+}
+
+void PipeNetworkService::handleResourceDrainResponse(const std::vector<uint8_t>& data) {
+    gtnh::common::ResourceTransferResponse resp;
+    if (!gtnh::common::ParseDrainResponse(data.data(), data.size(), &resp)) {
+        spdlog::warn("[PipeNet] invalid ResourceDrainResponse");
+        return;
+    }
+    if (resp.resource_kind != gtnh::common::ResourceKind::FLUID) {
+        spdlog::debug("[PipeNet] ignoring drain response {} for non-FLUID kind",
+                      resp.request_id);
+        return;
+    }
+
+    // 3.4.3: apply the accepted amount EXACTLY ONCE — the tracker's replay
+    // guard erases applied entries, so duplicate, expired, and mismatched
+    // responses are dropped by request id (3.5.2: correlation by id only).
+    const auto applied = consume_tracker_.applyDrainResponse(
+        resp.request_id, resp.resource_id, resp.accepted_amount);
+    if (!applied.applied) {
+        spdlog::debug(
+            "[PipeNet] drain response {} not applied (unknown/replayed/mismatched)",
+            resp.request_id);
+        return;
+    }
+    if (applied.source_accepted != resp.accepted_amount) {
+        spdlog::warn(
+            "[PipeNet] drain response {} accepted {} clamped to {} (shortfall bound)",
+            resp.request_id, resp.accepted_amount, applied.source_accepted);
+    }
+
+    publishFluidFlowTelemetry(applied.completed, applied.source_accepted);
+    publishFluidConsumeResponse(applied.combined_accepted, applied.remaining);
+    spdlog::debug("[PipeNet] drain response {} accepted {} -> consume combined {} remaining {}",
+                  resp.request_id, applied.source_accepted,
+                  applied.combined_accepted, applied.remaining);
+}
+
+void PipeNetworkService::publishFluidFlowTelemetry(const PendingConsume& pending,
+                                                   int32_t amount) {
+    if (amount <= 0) return;
+    const auto* source_node = network_manager_.getNode(pending.source_node_id);
+    if (!source_node) return;
+    const auto si = node_states_.find(pending.source_node_id);
+    Protocol::Vec3i pos(source_node->x, source_node->y, source_node->z);
+    flatbuffers::FlatBufferBuilder fbb;
+    // Telemetry only (3.3.3): this fluid.flow event is informational; nothing
+    // may debit or credit any owner or pipe buffer through it.
+    auto event = Protocol::CreateFluidFlowEvent(
+        fbb, pending.source_node_id,
+        si != node_states_.end() && si->second.protocol_id != 0
+            ? si->second.protocol_id
+            : pending.source_node_id,
+        pending.sink_node_id, pending.fluid_id, amount, &pos,
+        si != node_states_.end() ? si->second.tier : 0);
+    fbb.Finish(event);
+    router_.Publish("fluid.flow",
+        {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
 }
 
 void PipeNetworkService::handleItemNodeUpdate(const std::vector<uint8_t>& data) {

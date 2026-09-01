@@ -5,6 +5,7 @@
 #include <cmath>
 #include <common/ItemId.h>
 #include "PipeNetwork.h"
+#include "PipeConsumeTransactions.h"
 #include "HeatLoss.h"
 #include "CableGraph.h"
 #include "CableTypes.h"
@@ -1375,6 +1376,151 @@ static void test_fluid_routing_capacity() {
 }
 
 // =========================================================================
+//  Pipe-buffer conservation (3.3.4)
+// =========================================================================
+
+static void test_fluid_conservation_accepted_blocked_disconnected() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t sink = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(sink, 100, 1000, 2, false, true);
+
+    // Accepted: the buffer is debited exactly the accepted amount and
+    // accepted + remaining reconstructs the request.
+    int32_t before = mgr.getNode(sink)->fluidBuffer;
+    auto accepted = mgr.consumeFluid(sink, 1, 2, 60);
+    CHECK_EQ(accepted.accepted_amount, 60, "accepted transfer");
+    CHECK_EQ(before - mgr.getNode(sink)->fluidBuffer, accepted.accepted_amount,
+             "pipe buffer debited exactly the accepted amount");
+    CHECK_EQ(accepted.accepted_amount + accepted.remaining, 60,
+             "accepted + remaining == requested");
+
+    // Blocked (fluid mismatch): zero accepted, buffer unchanged.
+    before = mgr.getNode(sink)->fluidBuffer;
+    auto blocked = mgr.consumeFluid(sink, 2, 84, 30);
+    CHECK(blocked.blocked, "mismatched fluid blocked");
+    CHECK_EQ(blocked.accepted_amount, 0, "blocked transfer accepts nothing");
+    CHECK_EQ(mgr.getNode(sink)->fluidBuffer, before,
+             "blocked transfer leaves the buffer unchanged");
+
+    // Disconnected (no FLUID sink domain): zero accepted, buffer unchanged.
+    uint64_t lone = mgr.addNode(50, 0, 0, 61);
+    mgr.setNodeFluid(lone, 100, 1000, 2, false, false);
+    before = mgr.getNode(lone)->fluidBuffer;
+    auto disconnected = mgr.consumeFluid(lone, 3, 2, 30);
+    CHECK(disconnected.blocked, "consume without a FLUID sink is blocked");
+    CHECK_EQ(disconnected.accepted_amount, 0, "disconnected transfer accepts nothing");
+    CHECK_EQ(mgr.getNode(lone)->fluidBuffer, before,
+             "disconnected transfer leaves the buffer unchanged");
+    PASS();
+}
+
+// =========================================================================
+//  Service-side shortfall transactions (3.4.2/3.4.3/2.5.3)
+// =========================================================================
+
+static void test_shortfall_plan_records_pending() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(10);
+    auto plan = tracker.planShortfall(
+        /*drain_request_id=*/501, /*consume_request_id=*/7,
+        /*sink_node_id=*/30, /*fluid_id=*/2, /*requested=*/100,
+        /*pipe_accepted=*/40, /*source_node_id=*/11, /*source_owner_id=*/99,
+        /*source_port_id=*/5, /*now_tick=*/3);
+    CHECK(plan.request_source, "shortfall emits a source drain request");
+    CHECK_EQ(plan.shortfall, 60, "drain request covers only the shortfall");
+    CHECK_EQ(plan.drain_request_id, uint64_t(501), "drain request id threaded");
+    CHECK_EQ(plan.source_port_id, gtnh::common::PortId(5), "typed port id threaded");
+    CHECK_EQ(tracker.size(), size_t(1), "pending consume recorded");
+
+    auto full = tracker.planShortfall(502, 8, 30, 2, 100, 100, 11, 99, 5, 3);
+    CHECK(!full.request_source, "no shortfall means no drain request");
+    CHECK_EQ(tracker.size(), size_t(1), "full pipe serve records nothing");
+
+    auto no_source = tracker.planShortfall(503, 9, 30, 2, 100, 0, 0, 0, 0, 3);
+    CHECK(!no_source.request_source, "missing source candidate emits nothing");
+    CHECK_EQ(tracker.size(), size_t(1), "sourceless plan records nothing");
+    PASS();
+}
+
+static void test_drain_response_applied_exactly_once() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(10);
+    auto plan = tracker.planShortfall(601, 7, 30, 2, 100, 40, 11, 99, 5, 0);
+    CHECK(plan.request_source, "pending recorded");
+
+    auto first = tracker.applyDrainResponse(601, 2, 25);
+    CHECK(first.applied, "first response applies");
+    CHECK_EQ(first.source_accepted, 25, "source part credited");
+    CHECK_EQ(first.combined_accepted, 65, "combined = pipe part + source part");
+    CHECK_EQ(first.remaining, 35, "remaining is exact");
+
+    auto replay = tracker.applyDrainResponse(601, 2, 25);
+    CHECK(!replay.applied, "duplicate response is ignored (replay guard)");
+    CHECK_EQ(replay.combined_accepted, 0, "replay credits nothing");
+
+    auto unknown = tracker.applyDrainResponse(999, 2, 25);
+    CHECK(!unknown.applied, "unknown request id is ignored");
+    PASS();
+}
+
+static void test_drain_response_clamped_and_mismatched() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(10);
+    tracker.planShortfall(701, 7, 30, 2, 100, 60, 11, 99, 5, 0);
+
+    auto over = tracker.applyDrainResponse(701, 2, 90);
+    CHECK(over.applied, "over-acceptance still completes the consume");
+    CHECK_EQ(over.source_accepted, 40, "accepted clamped to the shortfall");
+    CHECK_EQ(over.combined_accepted, 100, "combined never exceeds requested");
+
+    tracker.planShortfall(702, 8, 30, 2, 100, 0, 11, 99, 5, 0);
+    auto negative = tracker.applyDrainResponse(702, 2, -5);
+    CHECK(negative.applied, "negative acceptance completes as blocked");
+    CHECK_EQ(negative.source_accepted, 0, "negative amount rejected");
+    CHECK_EQ(negative.combined_accepted, 0, "blocked response is zero-accepted");
+    CHECK_EQ(negative.remaining, 100, "blocked response reports full remaining");
+
+    tracker.planShortfall(703, 9, 30, 2, 100, 0, 11, 99, 5, 0);
+    auto mismatch = tracker.applyDrainResponse(703, 84, 50);
+    CHECK(!mismatch.applied, "mismatched fluid response is ignored");
+    PASS();
+}
+
+static void test_pending_expiry_completes_short_fill() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(5);
+    tracker.planShortfall(801, 7, 30, 2, 100, 30, 11, 99, 5, 0);
+    CHECK(tracker.expire(4).empty(), "nothing expires before the TTL");
+    auto expired = tracker.expire(5);
+    CHECK_EQ(expired.size(), size_t(1), "pending expires at the TTL");
+    CHECK_EQ(expired[0].pipe_accepted, 30, "expired entry keeps the pipe part");
+    CHECK_EQ(expired[0].requested, 100, "expired entry keeps the demand");
+    CHECK(tracker.empty(), "pending map bounded by expiry");
+    auto late = tracker.applyDrainResponse(801, 2, 70);
+    CHECK(!late.applied, "late response after expiry is ignored");
+    PASS();
+}
+
+static void test_port_removal_clears_pending() {
+    gtnh::pipe_network::PipeConsumeTracker tracker(50);
+    tracker.planShortfall(901, 7, 30, 2, 100, 10, 11, 99, 5, 0);
+    tracker.planShortfall(902, 8, 31, 2, 100, 10, 12, 0, 0, 0);
+    tracker.planShortfall(903, 9, 32, 2, 100, 10, 13, 99, 6, 0);
+
+    auto cleared = tracker.clearForPort(99, 5);
+    CHECK_EQ(cleared.size(), size_t(1), "only the removed port's pending clears");
+    CHECK_EQ(cleared[0].drain_request_id, uint64_t(901), "correct pending cleared");
+    CHECK_EQ(cleared[0].pipe_accepted, 10, "cleared pending keeps its pipe part");
+    CHECK_EQ(tracker.size(), size_t(2), "other pendings survive");
+
+    CHECK(tracker.clearForPort(99, 5).empty(), "repeated removal clears nothing");
+    CHECK(tracker.clearForPort(98, 6).empty(), "wrong owner does not clear port 6");
+    CHECK(tracker.clearForPort(99, 0).empty(),
+          "port id zero never matches (node-based fallback)");
+    auto rest = tracker.clearForPort(99, 6);
+    CHECK_EQ(rest.size(), size_t(1), "second port clears its own pending");
+    CHECK_EQ(tracker.size(), size_t(1),
+             "node-based pending survives port removal (TTL-bound)");
+    PASS();
+}
+
+// =========================================================================
 //  Integration-style tests
 // =========================================================================
 
@@ -1775,6 +1921,16 @@ int main(int, char**) {
     // Fluid routing (extended)
     TEST(fluid_routing_type_mismatch);
     TEST(fluid_routing_capacity);
+
+    // Pipe-buffer conservation (3.3.4)
+    TEST(fluid_conservation_accepted_blocked_disconnected);
+
+    // Service-side shortfall transactions (3.4.2/3.4.3/2.5.3)
+    TEST(shortfall_plan_records_pending);
+    TEST(drain_response_applied_exactly_once);
+    TEST(drain_response_clamped_and_mismatched);
+    TEST(pending_expiry_completes_short_fill);
+    TEST(port_removal_clears_pending);
 
     // Integration-style
     TEST(block_place_auto_discovery);
