@@ -179,12 +179,12 @@ bool Registry::loadFluids(std::string_view path) {
   while (std::getline(input, line)) {
     ++line_no; line = trim(line); if (line.empty() || line[0] == '#') continue;
     const auto row = fields(line);
-    if (first) { first = false; if (header(row, {"fluid_id", "item_id", "name", "color", "density", "gaseous", "temperature"})) continue; }
-    if (row.size() != 7) { error(line_no, path, "fluids row must have 7 columns"); continue; }
-    int fluid_id = 0, temperature = 0; std::uint16_t item_id = 0; double density = 0; bool gaseous = false;
-    if (!integer(row[0], fluid_id) || fluid_id <= 0 || fluid_id > 65535 || !parseItemId(row[1], item_id) || !real(row[4], density) || !boolean(row[5], gaseous) || !integer(row[6], temperature)) { error(line_no, path, "invalid fluid row"); continue; }
-    if (fluids_.find(static_cast<std::uint16_t>(fluid_id)) != fluids_.end()) { error(line_no, path, "duplicate fluid id"); continue; }
-    fluids_.emplace(static_cast<std::uint16_t>(fluid_id), FluidDefinition{static_cast<std::uint16_t>(fluid_id), item_id, row[2], row[3], density, gaseous, temperature});
+    if (first) { first = false; if (header(row, {"item_id", "name", "color", "density", "gaseous", "temperature"})) continue; }
+    if (row.size() != 6) { error(line_no, path, "fluids row must have 6 columns"); continue; }
+    std::uint16_t item_id = 0; int temperature = 0; double density = 0; bool gaseous = false;
+    if (!parseItemId(row[0], item_id) || !real(row[3], density) || !boolean(row[4], gaseous) || !integer(row[5], temperature)) { error(line_no, path, "invalid fluid row"); continue; }
+    if (fluids_.find(item_id) != fluids_.end()) { error(line_no, path, "duplicate fluid item id"); continue; }
+    fluids_.emplace(item_id, FluidDefinition{item_id, row[1], row[2], density, gaseous, temperature});
   }
   return true;
 }
@@ -212,9 +212,9 @@ bool Registry::validateReferences() {
     if (items_.find(id) == items_.end()) error(0, "cables.csv", "item_id does not resolve in items.csv");
     else if (items_.at(id).name != row.name) error(0, "cables.csv", "name does not match items.csv");
   }
-  for (const auto& [id, row] : fluids_) {
-    if (items_.find(row.item_id) == items_.end()) error(0, "fluids.csv", "item_id does not resolve in items.csv");
-    else if (items_.at(row.item_id).name != row.name) error(0, "fluids.csv", "name does not match items.csv");
+  for (const auto& [item_id, row] : fluids_) {
+    if (items_.find(item_id) == items_.end()) error(0, "fluids.csv", "item_id does not resolve in items.csv");
+    else if (items_.at(item_id).name != row.name) error(0, "fluids.csv", "name does not match items.csv");
   }
   for (const auto& row : drops_) {
     if (items_.find(row.source) == items_.end()) error(0, "drops.csv", "source does not resolve in items.csv");
@@ -227,8 +227,11 @@ const ItemDefinition* Registry::item(std::uint16_t id) const { auto it = items_.
 const ItemDefinition* Registry::itemByName(std::string_view name) const { auto it = names_.find(std::string(name)); return it == names_.end() ? nullptr : item(it->second); }
 const PipeDefinition* Registry::pipe(std::uint16_t id) const { auto it = pipes_.find(id); return it == pipes_.end() ? nullptr : &it->second; }
 const CableDefinition* Registry::cable(std::uint16_t id) const { auto it = cables_.find(id); return it == cables_.end() ? nullptr : &it->second; }
-const FluidDefinition* Registry::fluid(std::uint16_t id) const { auto it = fluids_.find(id); return it == fluids_.end() ? nullptr : &it->second; }
-const FluidDefinition* Registry::fluidByItem(std::uint16_t id) const { for (const auto& [_, row] : fluids_) if (row.item_id == id) return &row; return nullptr; }
-std::uint16_t Registry::steamItemId() const { const auto* steam = itemByName("steam"); return steam == nullptr ? 0 : steam->id; }
+const FluidDefinition* Registry::fluid(std::uint16_t item_id) const { auto it = fluids_.find(item_id); return it == fluids_.end() ? nullptr : &it->second; }
+std::uint16_t Registry::steamItemId() const {
+  const auto* steam = itemByName("steam");
+  if (steam == nullptr || fluids_.find(steam->id) == fluids_.end()) return 0;
+  return steam->id;
+}
 
 } // namespace gtnh::common

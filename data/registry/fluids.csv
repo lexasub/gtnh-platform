@@ -1,5 +1,5 @@
-fluid_id,item_id,name,color,density,gaseous,temperature
-1,1111:11:0,water,1e5bc9,1000,false,300
-2,1111:11:1,steam,e0e0e0,0.6,true,400
-3,1111:11:2,sulfuric_acid,d4a0a0,1840,false,300
-4,1111:11:3,oxygen,a0a0d4,1.429,true,300
+item_id,name,color,density,gaseous,temperature
+1111:11:0,water,1e5bc9,1000,false,300
+1111:11:1,steam,e0e0e0,0.6,true,400
+1111:11:2,sulfuric_acid,d4a0a0,1840,false,300
+1111:11:3,oxygen,a0a0d4,1.429,true,300

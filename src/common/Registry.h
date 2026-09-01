@@ -8,6 +8,11 @@
 #include <unordered_map>
 #include <vector>
 
+// Canonical registry contract (openspec refactor-fluid-port-accounting,
+// design decision §1): items.csv is the sole catalog and ID namespace for
+// every item, block, pipe, cable, and fluid.  pipes.csv, cables.csv,
+// fluids.csv, and drops.csv carry properties only and reference canonical
+// packed item ids; there is no separate fluid_id, pipe_id, or cable_id type.
 namespace gtnh::common {
 
 struct ItemDefinition {
@@ -36,7 +41,6 @@ struct CableDefinition {
 };
 
 struct FluidDefinition {
-  std::uint16_t fluid_id = 0;
   std::uint16_t item_id = 0;
   std::string name;
   std::string color;
@@ -69,10 +73,14 @@ public:
   [[nodiscard]] const ItemDefinition* itemByName(std::string_view name) const;
   [[nodiscard]] const PipeDefinition* pipe(std::uint16_t id) const;
   [[nodiscard]] const CableDefinition* cable(std::uint16_t id) const;
-  [[nodiscard]] const FluidDefinition* fluid(std::uint16_t fluid_id) const;
-  [[nodiscard]] const FluidDefinition* fluidByItem(std::uint16_t item_id) const;
+  // Fluid properties are keyed by the canonical items.csv item id of the
+  // fluid item; there is no separate fluid id namespace.
+  [[nodiscard]] const FluidDefinition* fluid(std::uint16_t item_id) const;
   [[nodiscard]] const std::vector<DropDefinition>& drops() const { return drops_; }
 
+  // Canonical Steam identity: the items.csv row named "steam", returned only
+  // when fluids.csv maps a property row to that item id.  Zero when the
+  // registry is not loaded or the fluids.csv mapping is missing.
   [[nodiscard]] std::uint16_t steamItemId() const;
   [[nodiscard]] const std::unordered_map<std::uint16_t, ItemDefinition>& items() const {
     return items_;
@@ -83,6 +91,7 @@ public:
   [[nodiscard]] const std::unordered_map<std::uint16_t, CableDefinition>& cables() const {
     return cables_;
   }
+  // Keyed by canonical items.csv item id.
   [[nodiscard]] const std::unordered_map<std::uint16_t, FluidDefinition>& fluids() const {
     return fluids_;
   }
@@ -108,9 +117,12 @@ private:
   std::vector<DropDefinition> drops_;
   std::vector<std::string> errors_;
 };
-// Canonical packed item identity for the Steam fluid.  Keep resource call sites
-// independent of the literal while the full registry loader is integrated into
-// this service's startup path.
+// DEPRECATED back-compat constant for call sites that do not yet hold a
+// loaded Registry (SimulationCore systems, PipeNetwork FluidRegistry).  The
+// canonical accessor is Registry::steamItemId(), which resolves the items.csv
+// row and its fluids.csv mapping at runtime.  registry_test pins this
+// constant to the registry-resolved value; remove it when the remaining call
+// sites migrate to a loaded Registry (tasks 1.4.2/1.4.3).
 inline constexpr std::uint16_t steamItemId() noexcept {
   return ItemId::pack("1111:11:1");
 }
