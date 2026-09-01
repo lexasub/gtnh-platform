@@ -40,7 +40,9 @@ PipeNetworkManager::PipeNetworkManager() = default;
 PipeNetworkManager::~PipeNetworkManager() = default;
 
 bool PipeNetworkManager::registerPort(const gtnh::common::ResourcePort& port) {
-    if (!port.valid() || port.owner_id == 0) return false;
+    // owner_id == 0 is a valid owner (tests cover entity ID zero and
+    // manager/EnTT ID collisions); only the port identity must be non-zero.
+    if (!port.valid()) return false;
 
     PortKey key{port.owner_id, port.resource_kind, port.port_id};
     auto it = ports_.find(key);
@@ -62,7 +64,7 @@ bool PipeNetworkManager::removePort(uint64_t ownerId,
                                     gtnh::common::ResourceKind resourceKind,
                                     gtnh::common::PortId portId,
                                     uint64_t epoch) {
-    if (ownerId == 0 || portId == 0) return false;
+    if (portId == 0) return false;
 
     PortKey key{ownerId, resourceKind, portId};
     auto it = ports_.find(key);
@@ -74,7 +76,7 @@ bool PipeNetworkManager::removePort(uint64_t ownerId,
 bool PipeNetworkManager::removePort(uint64_t ownerId,
                                     gtnh::common::ResourceKind resourceKind,
                                     gtnh::common::PortId portId) {
-    if (ownerId == 0 || portId == 0) return false;
+    if (portId == 0) return false;
 
     PortKey key{ownerId, resourceKind, portId};
     return ports_.erase(key) != 0;

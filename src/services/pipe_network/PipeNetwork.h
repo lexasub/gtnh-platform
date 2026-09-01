@@ -7,38 +7,7 @@
 #include <unordered_set>
 #include <vector>
 
-#if __has_include(<common/ResourcePort.h>)
 #include <common/ResourcePort.h>
-#else
-// Keep the pipe domain buildable at this commit boundary. The canonical
-// contract lives in src/common/ResourcePort.h and supersedes this fallback
-// when it is available on the include path.
-namespace gtnh::common {
-using PortId = std::uint64_t;
-
-enum class ResourceKind : std::uint8_t { FLUID = 0, EU = 1, HU = 2, RU = 3, ITEM = 4 };
-enum class PortRole : std::uint8_t { NONE = 0, SOURCE = 1, SINK = 2 };
-enum class FacePolicy : std::uint8_t { ALL_FACES = 0, MASK = 1 };
-
-struct ResourcePort {
-  PortId port_id = 0;
-  std::uint64_t owner_id = 0;
-  ResourceKind resource_kind = ResourceKind::FLUID;
-  std::uint32_t resource_id = 0;
-  PortRole role = PortRole::NONE;
-  std::int32_t x = 0;
-  std::int32_t y = 0;
-  std::int32_t z = 0;
-  FacePolicy face_policy = FacePolicy::ALL_FACES;
-  std::uint8_t face_mask = 0x3f;
-  std::int32_t capacity = 0;
-  std::int32_t rate = 0;
-  std::uint64_t epoch = 0;
-
-  [[nodiscard]] bool valid() const { return port_id != 0; }
-};
-} // namespace gtnh::common
-#endif
 
 namespace pipenet {
 

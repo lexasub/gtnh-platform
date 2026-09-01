@@ -156,7 +156,7 @@ table FluidNodeUpdate {
   face_mask:uint8 = 63;
 }
 
-// Generic typed registration/update. Domain-specific legacy messages remain
+// Generic typed node-state update. Domain-specific legacy messages remain
 // available during migration, but new producers should use this contract.
 table ResourcePortUpdate {
   port:ResourcePort (required);
@@ -164,10 +164,32 @@ table ResourcePortUpdate {
   connected_ports:[uint64];
 }
 
+// Typed port registration (machine owner → PipeNetwork). Idempotent by
+// (owner_id, resource_kind, port_id, epoch); epochs are monotonic.
+// resource_id is the packed canonical ItemId for FLUID/ITEM and zero for
+// energy channels; it is informational and never a filter — concrete
+// drain/consume operations carry the actual resource ID.
+table ResourcePortRegister {
+  port_id:uint64;
+  owner_id:uint64;
+  resource_kind:ResourceKind;
+  resource_id:uint32;
+  role:PortRole;
+  pos:Vec3i (required);
+  capacity:int32;
+  rate:int32;
+  epoch:uint64;
+  face_policy:FacePolicy;
+  face_mask:uint8;
+}
+
+// Exact (owner, kind, port, epoch) removal; also clears pending requests
+// owned by the port.
 table ResourcePortRemove {
   port_id:uint64;
   owner_id:uint64;
   epoch:uint64;
+  resource_kind:ResourceKind;
 }
 
 // Exactly-once resource boundary operations. request_id makes retries safe.
@@ -203,10 +225,6 @@ table ResourceConsumeResponse {
   accepted_amount:int32;
   remaining:int32;
 }
-
-// Canonical typed port topics use these tables. `resource_id` is a packed
-// ItemId for FLUID/ITEM and zero for energy channels.
-
 
 // ---------------------------------------------------------------------------
 // Fluid check: request/response over topics

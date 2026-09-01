@@ -132,7 +132,6 @@ static gtnh::common::ResourcePort make_test_port(
     port.port_id = 7;
     port.owner_id = 99;
     port.resource_kind = kind;
-    port.resource_id = kind == gtnh::common::ResourceKind::FLUID ? 84 : 0;
     port.role = role;
     port.x = 10;
     port.y = 20;

@@ -45,12 +45,13 @@ struct ResourcePortRegistrationKeyHash {
   }
 };
 
+// One transport-facing machine port. A port carries no resource filter: it
+// says only which channel and direction it supports; concrete FLUID/ITEM
+// operation messages carry the actual resource ID.
 struct ResourcePort {
   PortId port_id = 0;
   std::uint64_t owner_id = 0;
   ResourceKind resource_kind = ResourceKind::FLUID;
-  // Packed ItemId for FLUID/ITEM, zero for EU/HU/RU.
-  std::uint32_t resource_id = 0;
   PortRole role = PortRole::NONE;
   std::int32_t x = 0;
   std::int32_t y = 0;
