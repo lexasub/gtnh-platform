@@ -218,6 +218,197 @@ static void test_typed_port_removal_cleanup() {
 }
 
 // =========================================================================
+//  Typed domain graphs/state (2.3.x)
+// =========================================================================
+
+static gtnh::common::ResourcePort make_port_at(
+    gtnh::common::ResourceKind kind, gtnh::common::PortRole role,
+    uint64_t owner, gtnh::common::PortId port_id,
+    int32_t x, int32_t y, int32_t z, uint64_t epoch = 1) {
+    gtnh::common::ResourcePort port;
+    port.port_id = port_id;
+    port.owner_id = owner;
+    port.resource_kind = kind;
+    port.role = role;
+    port.x = x;
+    port.y = y;
+    port.z = z;
+    port.capacity = 1000;
+    port.rate = 100;
+    port.epoch = epoch;
+    return port;
+}
+
+static void test_converter_domains_independent_roles() {
+    pipenet::PipeNetworkManager mgr;
+    CHECK(mgr.addNodeWithId(99, 10, 20, 30, 1), "boiler node registered at port position");
+
+    // Converter: HU sink + FLUID source on the SAME owner and position.
+    auto hu = make_port_at(gtnh::common::ResourceKind::HU,
+                           gtnh::common::PortRole::SINK, 99, 1, 10, 20, 30);
+    auto fluid = make_port_at(gtnh::common::ResourceKind::FLUID,
+                              gtnh::common::PortRole::SOURCE, 99, 2, 10, 20, 30);
+    CHECK(mgr.registerPort(hu), "HU sink port registers");
+    CHECK(mgr.registerPort(fluid), "FLUID source port registers");
+
+    const auto* node = mgr.getNode(99);
+    CHECK(node != nullptr, "boiler node exists");
+    const auto& hu_domain =
+        node->domains[pipenet::domainIndex(gtnh::common::ResourceKind::HU)];
+    const auto& fluid_domain =
+        node->domains[pipenet::domainIndex(gtnh::common::ResourceKind::FLUID)];
+    CHECK(hu_domain.is_sink, "HU domain sees the sink role");
+    CHECK(!hu_domain.is_source, "HU domain has no source role");
+    CHECK(fluid_domain.is_source, "FLUID domain sees the source role");
+    CHECK(!fluid_domain.is_sink, "FLUID domain has no sink role");
+    CHECK_EQ(hu_domain.rate, 100, "HU domain carries the port rate");
+    PASS();
+}
+
+static void test_typed_registration_feeds_domain_after_node() {
+    pipenet::PipeNetworkManager mgr;
+    // Port registered before the node exists (publication order independence).
+    auto hu = make_port_at(gtnh::common::ResourceKind::HU,
+                           gtnh::common::PortRole::SINK, 5, 1, 1, 2, 3);
+    CHECK(mgr.registerPort(hu), "port registers before the node exists");
+
+    uint64_t node = mgr.addNode(1, 2, 3, 1);
+    const auto* d = mgr.nodeDomain(node, gtnh::common::ResourceKind::HU);
+    CHECK(d != nullptr, "domain view exists");
+    CHECK(d->is_sink, "late node inherits the HU sink role");
+    CHECK(!d->is_source, "HU source role stays unset");
+    PASS();
+}
+
+static void test_legacy_adapter_routes_to_single_domain() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t n = mgr.addNode(0, 0, 0, 1);
+
+    // Legacy heat update touches only the HU domain.
+    mgr.setNodeHeat(n, 100, 500, false, true);
+    CHECK(mgr.nodeDomain(n, gtnh::common::ResourceKind::HU)->is_sink,
+          "legacy heat sink lands in HU");
+    CHECK(!mgr.nodeDomain(n, gtnh::common::ResourceKind::FLUID)->is_sink,
+          "HU sink does not leak into FLUID");
+    CHECK(!mgr.nodeDomain(n, gtnh::common::ResourceKind::EU)->is_sink,
+          "HU sink does not leak into EU");
+
+    // Legacy fluid update touches only the FLUID domain; HU survives.
+    mgr.setNodeFluid(n, 0, 500, 2, true, false);
+    CHECK(mgr.nodeDomain(n, gtnh::common::ResourceKind::FLUID)->is_source,
+          "legacy fluid source lands in FLUID");
+    CHECK(!mgr.nodeDomain(n, gtnh::common::ResourceKind::HU)->is_source,
+          "FLUID source does not leak into HU");
+    CHECK(mgr.nodeDomain(n, gtnh::common::ResourceKind::HU)->is_sink,
+          "HU sink survives the fluid update");
+
+    // Legacy energy update touches only the EU domain; HU/FLUID survive.
+    mgr.setNodeEnergy(n, 0, 500, false, true);
+    CHECK(mgr.nodeDomain(n, gtnh::common::ResourceKind::EU)->is_sink,
+          "legacy energy sink lands in EU");
+    CHECK(mgr.nodeDomain(n, gtnh::common::ResourceKind::HU)->is_sink,
+          "HU sink survives the energy update");
+    CHECK(mgr.nodeDomain(n, gtnh::common::ResourceKind::FLUID)->is_source,
+          "FLUID source survives the energy update");
+    PASS();
+}
+
+static void test_cross_kind_consumption_rejected() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t node = mgr.addNode(0, 0, 0, 1);
+    auto hu = make_port_at(gtnh::common::ResourceKind::HU,
+                           gtnh::common::PortRole::SINK, 7, 1, 0, 0, 0);
+    CHECK(mgr.registerPort(hu), "HU sink port registers");
+
+    // Node-level fluid consume: the HU port must not make the node a fluid sink.
+    auto res = mgr.consumeFluid(node, 1, 2, 10);
+    CHECK(res.blocked, "fluid consume is blocked without a FLUID sink");
+    CHECK_EQ(res.accepted_amount, 0, "cross-kind consume cannot debit");
+
+    // Port-level fluid consume through the HU port id: rejected and logged.
+    auto via_port = mgr.consumeFluidViaPort(7, 1, 2, 2, 10);
+    CHECK(via_port.blocked, "fluid consume via HU port is rejected");
+    CHECK_EQ(via_port.accepted_amount, 0, "cross-kind port consume cannot debit");
+    PASS();
+}
+
+static void test_port_removal_clears_domain_role() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t node = mgr.addNode(0, 0, 0, 61);  // fluid pipe: buffer + capacity
+    mgr.setNodeFluid(node, 100, 1000, 2, false, false);
+    auto fluid = make_port_at(gtnh::common::ResourceKind::FLUID,
+                              gtnh::common::PortRole::SINK, 7, 3, 0, 0, 0);
+    CHECK(mgr.registerPort(fluid), "FLUID sink port registers");
+    CHECK(mgr.nodeDomain(node, gtnh::common::ResourceKind::FLUID)->is_sink,
+          "typed registration feeds the FLUID domain");
+
+    auto served = mgr.consumeFluid(node, 1, 2, 50);
+    CHECK_EQ(served.accepted_amount, 50, "port-backed sink is served");
+
+    CHECK(mgr.removePort(fluid), "port removes");
+    CHECK(!mgr.nodeDomain(node, gtnh::common::ResourceKind::FLUID)->is_sink,
+          "removed port no longer feeds the domain");
+    auto res = mgr.consumeFluid(node, 2, 2, 50);
+    CHECK(res.blocked, "flow cannot target the removed port's machine");
+    CHECK_EQ(res.accepted_amount, 0, "removed port cannot debit");
+    PASS();
+}
+
+static void test_owner_zero_port_registers() {
+    pipenet::PipeNetworkManager mgr;
+    auto port = make_port_at(gtnh::common::ResourceKind::FLUID,
+                             gtnh::common::PortRole::SINK, 0, 9, 0, 0, 0);
+    CHECK(mgr.registerPort(port), "owner id zero is a valid machine instance");
+    CHECK(mgr.hasPort(0, gtnh::common::ResourceKind::FLUID, 9),
+          "owner-zero port is queryable");
+    PASS();
+}
+
+static void test_typed_rate_applied_at_solve_time() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t sink = mgr.addNode(0, 0, 0, 61);
+    mgr.setNodeFluid(sink, 100, 100, 2, false, true);
+
+    auto full = mgr.consumeFluid(sink, 1, 2, 50);
+    CHECK_EQ(full.accepted_amount, 50, "without port policy the demand is served");
+
+    // A typed port adds solve-time rate policy for the same domain.
+    auto port = make_port_at(gtnh::common::ResourceKind::FLUID,
+                             gtnh::common::PortRole::SINK, 7, 4, 0, 0, 0);
+    port.rate = 10;
+    CHECK(mgr.registerPort(port), "rate-limited FLUID sink port registers");
+    auto limited = mgr.consumeFluid(sink, 2, 2, 50);
+    CHECK_EQ(limited.accepted_amount, 10, "port rate clamps the solve-time transfer");
+    CHECK_EQ(limited.remaining, 40, "unserved demand is reported");
+    PASS();
+}
+
+static void test_topology_shared_domains_solved_independently() {
+    pipenet::PipeNetworkManager mgr;
+    uint64_t a = mgr.addNode(0, 0, 0, 61);
+    uint64_t b = mgr.addNode(1, 0, 0, 61);
+    mgr.addEdge(a, b);
+
+    // One shared topology carries two domains: FLUID roles on a, HU roles on b.
+    mgr.setNodeFluid(a, 100, 200, 84, true, false);
+    mgr.setNodeHeat(b, 0, 500, false, true);
+
+    CHECK_EQ(mgr.networkCount(), size_t(1), "one shared topology");
+    auto comp = mgr.discoverNetwork(a);
+    CHECK_EQ(comp.size(), size_t(2), "both nodes share the graph");
+
+    CHECK(mgr.nodeDomain(a, gtnh::common::ResourceKind::FLUID)->is_source,
+          "FLUID source on a");
+    CHECK(mgr.nodeDomain(b, gtnh::common::ResourceKind::HU)->is_sink,
+          "HU sink on b");
+    CHECK(!mgr.nodeDomain(b, gtnh::common::ResourceKind::FLUID)->is_source,
+          "no FLUID leak to b");
+    CHECK(!mgr.nodeDomain(a, gtnh::common::ResourceKind::HU)->is_sink,
+          "no HU leak to a");
+    PASS();
+}
+
+// =========================================================================
 //  Pipe wrench guidance tests (evaluatePipeWrench)
 // =========================================================================
 
@@ -301,8 +492,7 @@ static void test_item_network_simple() {
     // Configure: src produces items, sink consumes
     mgr.setNodeItemProps(src, 10, true, false);   // 10 slot capacity, is source
     mgr.setNodeItemProps(pipe, 10, false, false);  // 10 slot capacity, not source
-    mgr.setNodeItemProps(sink, 10, false, false);  // 10 slot capacity, not source
-    mgr.setNodeEnergy(sink, 0, 100, false, true);  // set sink=true for energy/isSink
+    mgr.setNodeItemProps(sink, 10, false, true);   // 10 slot capacity, item sink
 
     // Add one item at source
     mgr.addNodeItem(src, 42, 1);  // item_id=42, count=1
@@ -341,8 +531,7 @@ static void test_item_network_multi_item() {
     mgr.addEdge(src, sink);
 
     mgr.setNodeItemProps(src, 10, true, false);
-    mgr.setNodeItemProps(sink, 10, false, false);
-    mgr.setNodeEnergy(sink, 0, 1000, false, true);
+    mgr.setNodeItemProps(sink, 10, false, true);
 
     mgr.addNodeItem(src, 1, 1);
     mgr.addNodeItem(src, 2, 1);
@@ -363,8 +552,7 @@ static void test_item_network_multi_tick() {
     mgr.addEdge(src, sink);
 
     mgr.setNodeItemProps(src, 10, true, false);
-    mgr.setNodeItemProps(sink, 10, false, false);
-    mgr.setNodeEnergy(sink, 0, 1000, false, true);
+    mgr.setNodeItemProps(sink, 10, false, true);
 
     mgr.addNodeItem(src, 1, 1);
     mgr.addNodeItem(src, 2, 1);
@@ -1055,8 +1243,7 @@ static void test_large_network() {
     for (size_t i = 1; i < nodes.size() - 1; ++i) {
         mgr.setNodeItemProps(nodes[i], 100, false, false);
     }
-    mgr.setNodeItemProps(nodes.back(), 100, false, false);
-    mgr.setNodeEnergy(nodes.back(), 0, 10000, false, true);
+    mgr.setNodeItemProps(nodes.back(), 100, false, true);
 
     mgr.addNodeItem(nodes[0], 1, 1);
 
@@ -1220,8 +1407,7 @@ static void test_machine_to_pipe_to_machine() {
 
     mgr.setNodeItemProps(src, 10, true, false);    // source
     mgr.setNodeItemProps(pipe, 10, false, false);   // pass-through
-    mgr.setNodeItemProps(sink, 10, false, false);   // sink (item capacity=10 means pipe stores items)
-    mgr.setNodeEnergy(sink, 0, 1000, false, true); // mark as sink
+    mgr.setNodeItemProps(sink, 10, false, true);    // sink (item capacity=10 means pipe stores items)
 
     // Add item at source
     mgr.addNodeItem(src, 42, 1);
@@ -1506,6 +1692,16 @@ int main(int, char**) {
     TEST(typed_ports_independent_resource_domains);
     TEST(typed_port_reregistration_is_idempotent);
     TEST(typed_port_removal_cleanup);
+
+    // Typed domain graphs/state (2.3.x)
+    TEST(converter_domains_independent_roles);
+    TEST(typed_registration_feeds_domain_after_node);
+    TEST(legacy_adapter_routes_to_single_domain);
+    TEST(cross_kind_consumption_rejected);
+    TEST(port_removal_clears_domain_role);
+    TEST(owner_zero_port_registers);
+    TEST(typed_rate_applied_at_solve_time);
+    TEST(topology_shared_domains_solved_independently);
 
     // Pipe wrench guidance
     TEST(wrench_isolated_pipe);

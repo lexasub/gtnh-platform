@@ -9,6 +9,13 @@
 
 namespace pipenet {
 
+namespace {
+constexpr size_t kFluidDomainIdx = static_cast<size_t>(gtnh::common::ResourceKind::FLUID);
+constexpr size_t kEuDomainIdx = static_cast<size_t>(gtnh::common::ResourceKind::EU);
+constexpr size_t kHuDomainIdx = static_cast<size_t>(gtnh::common::ResourceKind::HU);
+constexpr size_t kItemDomainIdx = static_cast<size_t>(gtnh::common::ResourceKind::ITEM);
+} // namespace
+
 WrenchGuidance evaluatePipeWrench(
     const std::unordered_map<uint64_t, uint64_t>& pipe_nodes,
     const std::unordered_map<uint64_t, uint64_t>& machine_nodes,
@@ -48,15 +55,25 @@ bool PipeNetworkManager::registerPort(const gtnh::common::ResourcePort& port) {
     auto it = ports_.find(key);
     if (it == ports_.end()) {
         ports_.emplace(key, port);
-        return true;
+    } else {
+        // Replaying an epoch is an update-in-place: it cannot create a duplicate,
+        // while retries with identical data remain observationally idempotent.
+        // Epochs are monotonic so delayed updates cannot overwrite current state.
+        if (port.epoch < it->second.epoch) return false;
+        it->second = port;
     }
 
-    // Replaying an epoch is an update-in-place: it cannot create a duplicate,
-    // while retries with identical data remain observationally idempotent.
-    // Epochs are monotonic so delayed updates cannot overwrite current state.
-    if (port.epoch < it->second.epoch) return false;
-
-    it->second = port;
+    // 2.3.2: route the typed registration into its resource domain so solvers
+    // apply role/rate policy at solve time. A port is never consumable through
+    // another resource kind (see consumeFluidViaPort / warnCrossKindConsume).
+    uint64_t node = findNodeAtPosition(port.x, port.y, port.z);
+    projectNodeDomain(node, port.resource_kind);
+    spdlog::debug(
+        "[PipeNet] port {} owner {} kind {} role {} -> {} at ({},{},{})",
+        port.port_id, port.owner_id, static_cast<int>(port.resource_kind),
+        static_cast<int>(port.role),
+        node != 0 ? "node domain" : "registry only (no node at position)",
+        port.x, port.y, port.z);
     return true;
 }
 
@@ -69,7 +86,11 @@ bool PipeNetworkManager::removePort(uint64_t ownerId,
     PortKey key{ownerId, resourceKind, portId};
     auto it = ports_.find(key);
     if (it == ports_.end() || it->second.epoch != epoch) return false;
+    const int32_t px = it->second.x;
+    const int32_t py = it->second.y;
+    const int32_t pz = it->second.z;
     ports_.erase(it);
+    projectNodeDomain(findNodeAtPosition(px, py, pz), resourceKind);
     return true;
 }
 
@@ -79,18 +100,35 @@ bool PipeNetworkManager::removePort(uint64_t ownerId,
     if (portId == 0) return false;
 
     PortKey key{ownerId, resourceKind, portId};
-    return ports_.erase(key) != 0;
+    auto it = ports_.find(key);
+    if (it == ports_.end()) return false;
+    const int32_t px = it->second.x;
+    const int32_t py = it->second.y;
+    const int32_t pz = it->second.z;
+    ports_.erase(it);
+    projectNodeDomain(findNodeAtPosition(px, py, pz), resourceKind);
+    return true;
 }
 
 size_t PipeNetworkManager::removePortsForOwner(uint64_t ownerId) {
+    struct AffectedPort {
+        int32_t x, y, z;
+        gtnh::common::ResourceKind kind;
+    };
+    std::vector<AffectedPort> affected;
     size_t removed = 0;
     for (auto it = ports_.begin(); it != ports_.end();) {
         if (it->first.owner_id == ownerId) {
+            affected.push_back({it->second.x, it->second.y, it->second.z,
+                                it->first.resource_kind});
             it = ports_.erase(it);
             ++removed;
         } else {
             ++it;
         }
+    }
+    for (const auto& port : affected) {
+        projectNodeDomain(findNodeAtPosition(port.x, port.y, port.z), port.kind);
     }
     return removed;
 }
@@ -132,12 +170,8 @@ uint64_t PipeNetworkManager::addNode(int32_t x, int32_t y, int32_t z, uint16_t b
     node.fluidId = 0;
     node.itemBuffer.clear();
     node.itemCapacity = 0;
-    node.isItemSource = false;
     node.heatStored = 0;
     node.heatCapacity = 0;
-    node.isSource = false;
-    node.isSink = false;
-    node.isItemSink = false;
 
     switch (blockId) {
         case BLOCK_ID_ITEM_PIPE:
@@ -166,6 +200,7 @@ uint64_t PipeNetworkManager::addNode(int32_t x, int32_t y, int32_t z, uint16_t b
     }
 
     nodes_[id] = node;
+    indexNodePosition(id, x, y, z);
     rebuildNetworks();
     return id;
 }
@@ -185,12 +220,8 @@ bool PipeNetworkManager::addNodeWithId(uint64_t id, int32_t x, int32_t y, int32_
     node.fluidId = 0;
     node.itemBuffer.clear();
     node.itemCapacity = 0;
-    node.isItemSource = false;
     node.heatStored = 0;
     node.heatCapacity = 0;
-    node.isSource = false;
-    node.isSink = false;
-    node.isItemSink = false;
 
     switch (blockId) {
         case BLOCK_ID_ITEM_PIPE:
@@ -219,6 +250,7 @@ bool PipeNetworkManager::addNodeWithId(uint64_t id, int32_t x, int32_t y, int32_
     }
 
     nodes_[id] = node;
+    indexNodePosition(id, x, y, z);
     rebuildNetworks();
     return true;
 }
@@ -232,6 +264,13 @@ void PipeNetworkManager::removeNode(uint64_t nodeId) {
         } else {
             ++ei;
         }
+    }
+    const int32_t x = it->second.x;
+    const int32_t y = it->second.y;
+    const int32_t z = it->second.z;
+    auto pos = node_by_pos_.find(pipePosKey(x, y, z));
+    if (pos != node_by_pos_.end() && pos->second == nodeId) {
+        node_by_pos_.erase(pos);
     }
     nodes_.erase(it);
     rebuildNetworks();
@@ -382,14 +421,6 @@ void PipeNetworkManager::rebuildNetworks() {
     }
 }
 
-[[maybe_unused]] static bool isSourceNode(const PipeNode& node) {
-    return node.isSource;
-}
-
-[[maybe_unused]] static bool isSinkNode(const PipeNode& node) {
-    return node.isSink;
-}
-
 void PipeNetworkManager::distributeFlow(std::vector<uint64_t>& nodeIds, int32_t totalAmount,
                                         std::unordered_map<uint64_t, int32_t>& deltas) {
     if (nodeIds.empty() || totalAmount == 0) return;
@@ -399,8 +430,8 @@ void PipeNetworkManager::distributeFlow(std::vector<uint64_t>& nodeIds, int32_t 
     for (uint64_t nid : nodeIds) {
         auto ni = nodes_.find(nid);
         if (ni == nodes_.end()) continue;
-        if (ni->second.isSource) sources.push_back(nid);
-        if (ni->second.isSink) sinks.push_back(nid);
+        if (ni->second.domains[kEuDomainIdx].is_source) sources.push_back(nid);
+        if (ni->second.domains[kEuDomainIdx].is_sink) sinks.push_back(nid);
     }
 
     // Remove energy from sources proportionally to their capacity
@@ -427,6 +458,9 @@ void PipeNetworkManager::distributeFlow(std::vector<uint64_t>& nodeIds, int32_t 
                     std::max(1, ni->second.energyCapacity) / totalSourceCapacity);
             }
             take = std::min(take, ni->second.energyBuffer);
+            if (const auto& domain = ni->second.domains[kEuDomainIdx]; domain.rate > 0) {
+                take = std::min(take, domain.rate);
+            }
             deltas[sid] -= take;
             ni->second.energyBuffer -= take;
             remaining -= take;
@@ -443,6 +477,9 @@ void PipeNetworkManager::distributeFlow(std::vector<uint64_t>& nodeIds, int32_t 
             int32_t give = perSink + (i < static_cast<size_t>(remainder) ? 1 : 0);
             int32_t room = ni->second.energyCapacity - ni->second.energyBuffer;
             give = std::min(give, room);
+            if (const auto& domain = ni->second.domains[kEuDomainIdx]; domain.rate > 0) {
+                give = std::min(give, domain.rate);
+            }
             deltas[snid] += give;
             ni->second.energyBuffer += give;
         }
@@ -463,7 +500,7 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeEnergy(uint6
         auto nodeIt = nodes_.find(nid);
         if (nodeIt == nodes_.end()) continue;
         net.totalEnergy += nodeIt->second.energyBuffer;
-        if (nodeIt->second.isSink) anySink = true;
+        if (nodeIt->second.domains[kEuDomainIdx].is_sink) anySink = true;
     }
     net.isActive = anySink && tickEnergy != 0;
 
@@ -483,7 +520,8 @@ FluidTransferResult PipeNetworkManager::consumeFluidUncached(uint64_t nodeId,
 
     auto it = nodes_.find(nodeId);
     if (it == nodes_.end() || it->second.fluidCapacity <= 0 ||
-        !it->second.isSink) {
+        !it->second.domains[kFluidDomainIdx].is_sink) {
+        if (it != nodes_.end()) warnCrossKindConsume(it->second);
         result.blocked = true;
         result.remaining = amount;
         return result;
@@ -497,6 +535,9 @@ FluidTransferResult PipeNetworkManager::consumeFluidUncached(uint64_t nodeId,
     }
 
     result.accepted_amount = (std::min)(amount, node.fluidBuffer);
+    if (const auto& domain = node.domains[kFluidDomainIdx]; domain.rate > 0) {
+        result.accepted_amount = std::min(result.accepted_amount, domain.rate);
+    }
     node.fluidBuffer -= result.accepted_amount;
     result.remaining = amount - result.accepted_amount;
     if (node.fluidBuffer == 0) node.fluidId = 0;
@@ -572,7 +613,7 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeFluid(uint64
     for (uint64_t nid : net.nodeIds) {
         auto nodeIt = nodes_.find(nid);
         if (nodeIt == nodes_.end()) continue;
-        bool isSink = nodeIt->second.isSink;
+        bool isSink = nodeIt->second.domains[kFluidDomainIdx].is_sink;
         bool hasRoom = nodeIt->second.fluidBuffer < nodeIt->second.fluidCapacity;
         bool fluidOk = nodeIt->second.fluidId == 0;
         if (isSink && hasRoom && fluidOk) {
@@ -590,6 +631,9 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeFluid(uint64
             int32_t give = perSink + (i < static_cast<size_t>(remainder) ? 1 : 0);
             int32_t room = nodeIt->second.fluidCapacity - nodeIt->second.fluidBuffer;
             give = std::min(give, room);
+            if (const auto& domain = nodeIt->second.domains[kFluidDomainIdx]; domain.rate > 0) {
+                give = std::min(give, domain.rate);
+            }
             deltas[snid] += give;
             nodeIt->second.fluidBuffer += give;
             if (nodeIt->second.fluidId == 0 && give > 0) {
@@ -604,7 +648,7 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeFluid(uint64
         auto nodeIt = nodes_.find(nid);
         if (nodeIt == nodes_.end()) continue;
         net.totalFluid += nodeIt->second.fluidBuffer;
-        if (nodeIt->second.isSink) anySink = true;
+        if (nodeIt->second.domains[kFluidDomainIdx].is_sink) anySink = true;
     }
     net.isActive = anySink && tickFluid != 0;
 
@@ -667,7 +711,7 @@ void PipeNetworkManager::rebuildItemNetworks() {
             // Check if node has item capacity (is an item pipe)
             if (ni->second.itemCapacity > 0) {
                 net.itemNodes.push_back(cnid);
-                if (ni->second.isItemSource) {
+                if (ni->second.domains[kItemDomainIdx].is_source) {
                     net.itemTransferRate = std::max(net.itemTransferRate, 1.0f);
                 }
             }
@@ -720,7 +764,7 @@ uint64_t PipeNetworkManager::findNextItemHop(uint64_t currentNodeId, uint64_t ne
             }
 
             // If neighbor is a sink (machine), return it directly
-            if (nodeIt->second.isSink) {
+            if (nodeIt->second.domains[kItemDomainIdx].is_sink) {
                 return neighbor;
             }
 
@@ -754,12 +798,12 @@ std::vector<ConsumedItemEvent> PipeNetworkManager::moveItemsInNetwork(uint64_t n
         if (ni == nodes_.end()) continue;
 
         // Source: marked as item source and has items to send
-        if (ni->second.isItemSource && !ni->second.itemBuffer.empty()) {
+        if (ni->second.domains[kItemDomainIdx].is_source && !ni->second.itemBuffer.empty()) {
             sources.push_back(nid);
         }
 
         // Sink: marked as sink and has room in inventory
-                if (ni->second.isSink || ni->second.isItemSink) {
+                if (ni->second.domains[kItemDomainIdx].is_sink) {
                     // Check if this sink has inventory room (using ItemSlot as capacity indicator)
                     // For raw pipes acting as sinks, check itemBuffer vs itemCapacity
                     if (ni->second.itemBuffer.size() < static_cast<size_t>(ni->second.itemCapacity) ||
@@ -803,7 +847,7 @@ std::vector<ConsumedItemEvent> PipeNetworkManager::moveItemsInNetwork(uint64_t n
                 auto ni = nodes_.find(neighbor);
                 if (ni == nodes_.end()) continue;
 
-                if (ni->second.isSink || ni->second.isItemSink) {
+                if (ni->second.domains[kItemDomainIdx].is_sink) {
                     // Verify the sink has room
                     bool hasRoom = ni->second.itemBuffer.size() <
                                    static_cast<size_t>(ni->second.itemCapacity) ||
@@ -865,14 +909,19 @@ const std::vector<ConsumedItemEvent>& PipeNetworkManager::getConsumedItemEvents(
     return consumedItemEvents_;
 }
 
+// LEGACY NODE-UPDATE ADAPTER (2.3.4) — see the removal-point note above the
+// setNode* declarations in PipeNetwork.h. Each setter routes its legacy
+// is_source/is_sink pair into exactly one resource domain.
+
 void PipeNetworkManager::setNodeEnergy(uint64_t nodeId, int32_t energy, int32_t capacity,
                                         bool isSource, bool isSink) {
     auto it = nodes_.find(nodeId);
     if (it == nodes_.end()) return;
     it->second.energyBuffer = energy;
     it->second.energyCapacity = capacity;
-    it->second.isSource = isSource;
-    it->second.isSink = isSink;
+    auto& domain = it->second.domains[kEuDomainIdx];
+    domain.is_source = isSource;
+    domain.is_sink = isSink;
 }
 
 void PipeNetworkManager::setNodeFluid(uint64_t nodeId, int32_t fluid, int32_t capacity,
@@ -882,17 +931,18 @@ void PipeNetworkManager::setNodeFluid(uint64_t nodeId, int32_t fluid, int32_t ca
     it->second.fluidBuffer = fluid;
     it->second.fluidCapacity = capacity;
     it->second.fluidId = fluidId;
-    it->second.isSource = isSource;
-    it->second.isSink = isSink;
+    auto& domain = it->second.domains[kFluidDomainIdx];
+    domain.is_source = isSource;
+    domain.is_sink = isSink;
 }
 
 void PipeNetworkManager::setNodeItemProps(uint64_t nodeId, uint8_t itemCapacity, bool isItemSource, bool isItemSink) {
     auto it = nodes_.find(nodeId);
     if (it == nodes_.end()) return;
     it->second.itemCapacity = itemCapacity;
-    it->second.isItemSource = isItemSource;
-    it->second.isItemSink = isItemSink;
-    it->second.isSink = isItemSink;
+    auto& domain = it->second.domains[kItemDomainIdx];
+    domain.is_source = isItemSource;
+    domain.is_sink = isItemSink;
 }
 
 void PipeNetworkManager::addNodeItem(uint64_t nodeId, uint16_t itemId, uint8_t count) {
@@ -907,8 +957,100 @@ void PipeNetworkManager::setNodeHeat(uint64_t nodeId, int32_t heat, int32_t capa
     if (it == nodes_.end()) return;
     it->second.heatStored = heat;
     it->second.heatCapacity = capacity;
-    it->second.isSource = isSource;
-    it->second.isSink = isSink;
+    auto& domain = it->second.domains[kHuDomainIdx];
+    domain.is_source = isSource;
+    domain.is_sink = isSink;
+}
+
+const DomainNodeState* PipeNetworkManager::nodeDomain(
+    uint64_t nodeId, gtnh::common::ResourceKind kind) const {
+    auto it = nodes_.find(nodeId);
+    if (it == nodes_.end()) return nullptr;
+    return &it->second.domains[domainIndex(kind)];
+}
+
+uint64_t PipeNetworkManager::findNodeAtPosition(int32_t x, int32_t y, int32_t z) const {
+    auto it = node_by_pos_.find(pipePosKey(x, y, z));
+    return it == node_by_pos_.end() ? 0 : it->second;
+}
+
+void PipeNetworkManager::indexNodePosition(uint64_t nodeId, int32_t x, int32_t y, int32_t z) {
+    node_by_pos_[pipePosKey(x, y, z)] = nodeId;
+    for (size_t i = 0; i < kResourceDomainCount; ++i) {
+        projectNodeDomain(nodeId, static_cast<gtnh::common::ResourceKind>(i));
+    }
+}
+
+void PipeNetworkManager::projectNodeDomain(uint64_t nodeId,
+                                           gtnh::common::ResourceKind kind) {
+    auto it = nodes_.find(nodeId);
+    if (it == nodes_.end()) return;
+    const auto& node = it->second;
+
+    // Domain state for `kind` is derived from the typed ports of that kind at
+    // the node position: roles OR together (a machine may expose a source and
+    // a sink in one domain), rate/face policy take the most permissive value.
+    // No matching ports clears the domain, so a removed port stops receiving
+    // flow immediately.
+    DomainNodeState state;
+    for (const auto& [key, port] : ports_) {
+        if (key.resource_kind != kind) continue;
+        if (port.x != node.x || port.y != node.y || port.z != node.z) continue;
+        state.is_source = state.is_source || port.role == gtnh::common::PortRole::SOURCE;
+        state.is_sink = state.is_sink || port.role == gtnh::common::PortRole::SINK;
+        state.rate = std::max(state.rate, port.rate);
+        state.face_mask = static_cast<uint8_t>(state.face_mask | port.face_mask);
+    }
+    it->second.domains[domainIndex(kind)] = state;
+}
+
+void PipeNetworkManager::warnCrossKindConsume(const PipeNode& node) const {
+    int other_kind_ports = 0;
+    for (const auto& [key, port] : ports_) {
+        if (key.resource_kind == gtnh::common::ResourceKind::FLUID) continue;
+        if (port.x == node.x && port.y == node.y && port.z == node.z) {
+            ++other_kind_ports;
+        }
+    }
+    if (other_kind_ports > 0) {
+        spdlog::warn(
+            "[PipeNet] fluid consume rejected at node {} ({},{},{}): {} registered "
+            "port(s) at this position belong to other resource domains",
+            node.id, node.x, node.y, node.z, other_kind_ports);
+    }
+}
+
+FluidTransferResult PipeNetworkManager::consumeFluidViaPort(
+    uint64_t ownerId, gtnh::common::PortId portId,
+    uint64_t requestId, uint32_t fluidId, int32_t amount) {
+    FluidTransferResult blocked{requestId, 0, fluidId, 0,
+                                amount > 0 ? amount : 0, true};
+
+    const auto* port = getPort(ownerId, gtnh::common::ResourceKind::FLUID, portId);
+    if (!port) {
+        // 2.3.2 enforcement: the port id may exist under another resource
+        // kind; consuming fluid through it is rejected and logged.
+        for (const auto& [key, p] : ports_) {
+            if (key.owner_id == ownerId && key.port_id == portId) {
+                spdlog::warn(
+                    "[PipeNet] fluid consume via port {} owner {} rejected: port "
+                    "is resource kind {}, not FLUID",
+                    portId, ownerId, static_cast<int>(key.resource_kind));
+                return blocked;
+            }
+        }
+        spdlog::debug("[PipeNet] fluid consume via unknown port {} owner {}",
+                      portId, ownerId);
+        return blocked;
+    }
+    if (port->role != gtnh::common::PortRole::SINK) {
+        spdlog::warn(
+            "[PipeNet] fluid consume via port {} owner {} rejected: role is not SINK",
+            portId, ownerId);
+        return blocked;
+    }
+    return consumeFluid(findNodeAtPosition(port->x, port->y, port->z),
+                        requestId, fluidId, amount);
 }
 
 void PipeNetworkManager::setNodeSideConfig(uint64_t nodeId,
@@ -959,11 +1101,13 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeHeat(uint64_
 
         const auto& node = nodeIt->second;
 
-        if (node.isSource && node.heatStored > node.heatCapacity * 0.9) {
+        if (node.domains[kHuDomainIdx].is_source &&
+            node.heatStored > node.heatCapacity * 0.9) {
             heatSources.push_back(nid);
         }
 
-        if (node.isSink && node.heatStored < node.heatCapacity) {
+        if (node.domains[kHuDomainIdx].is_sink &&
+            node.heatStored < node.heatCapacity) {
             heatSinks.push_back(nid);
         }
     }
@@ -1028,8 +1172,14 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeHeat(uint64_
             
             int32_t currentExcess = sourceNode.heatStored - static_cast<int32_t>(sourceNode.heatCapacity * 0.9);
             if (currentExcess <= 0) continue;
-            
+
             int32_t take = std::min(give, currentExcess);
+            if (const auto& srcDomain = sourceNode.domains[kHuDomainIdx]; srcDomain.rate > 0) {
+                take = std::min(take, srcDomain.rate);
+            }
+            if (const auto& sinkDomain = node.domains[kHuDomainIdx]; sinkDomain.rate > 0) {
+                take = std::min(take, sinkDomain.rate);
+            }
             sourceNode.heatStored -= take;
             node.heatStored += take;
             
@@ -1061,7 +1211,7 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeHeat(uint64_
         auto nodeIt = nodes_.find(nid);
         if (nodeIt == nodes_.end()) continue;
         net.totalEnergy += nodeIt->second.heatStored;
-        if (nodeIt->second.isSink) anySink = true;
+        if (nodeIt->second.domains[kHuDomainIdx].is_sink) anySink = true;
     }
     net.isActive = anySink && tickHeat != 0;
 

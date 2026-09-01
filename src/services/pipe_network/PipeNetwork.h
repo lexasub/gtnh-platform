@@ -76,6 +76,31 @@ struct ConsumedItemEvent {
   int32_t x, y, z;  // world position of the sink
 };
 
+// ---------------------------------------------------------------------------
+// Typed domain state (openspec refactor-fluid-port-accounting 2.3.1)
+//
+// Topology (nodes/edges/connected components) stays ONE shared graph per the
+// approved design (§6): direction is a future edge/port policy and graphs are
+// NOT split by resource domain. What is per-domain is the solve-time state:
+// every node carries independent role flags and policy for each ResourceKind,
+// so a converter's HU sink and FLUID source never share state.
+// ---------------------------------------------------------------------------
+inline constexpr size_t kResourceDomainCount = 5;  // FLUID, EU, HU, RU, ITEM
+
+// Solve-time state of one node in one resource domain. Roles are never shared
+// across domains. `rate`/`face_mask` are solver policy contributed by typed
+// ports (rate 0 / face_mask 0 = no policy, the legacy default), not topology.
+struct DomainNodeState {
+  bool is_source = false;
+  bool is_sink = false;
+  int32_t rate = 0;        // max transfer per tick for this domain (0 = unset)
+  uint8_t face_mask = 0;   // port face policy (future directional solver)
+};
+
+inline size_t domainIndex(gtnh::common::ResourceKind kind) {
+  return static_cast<size_t>(kind);
+}
+
 struct PipeNode {
   uint64_t id;
   int32_t x, y, z;
@@ -94,8 +119,6 @@ struct PipeNode {
   // Item handling
   std::vector<ItemSlot> itemBuffer;
   uint8_t itemCapacity = 0;
-  bool isItemSource = false;
-  bool isItemSink = false;
 
   // Heat handling
   int32_t heatStored;    // current heat stored in this node
@@ -105,8 +128,9 @@ struct PipeNode {
   // Side config for machine sink routing
   std::array<uint8_t, 6> side_config;
 
-  bool isSource; // generator/input
-  bool isSink;   // consumer/output
+  // Per-resource-domain solve-time state (2.3.1). There is deliberately no
+  // shared is_source/is_sink pair: each domain's roles live in its own slot.
+  std::array<DomainNodeState, kResourceDomainCount> domains;
 };
 
 struct PipeEdge {
@@ -169,6 +193,19 @@ public:
   std::vector<gtnh::common::ResourcePort> getRegisteredPorts() const;
   size_t portCount() const { return ports_.size(); }
 
+  // Typed-domain view of a node (2.3.1): per-resource-kind role/policy state.
+  // Returns nullptr for unknown nodes.
+  const DomainNodeState* nodeDomain(uint64_t nodeId,
+                                    gtnh::common::ResourceKind kind) const;
+
+  // Typed fluid consume (2.3.2): resolves the (owner, FLUID, port) port and
+  // rejects ports registered under another resource kind or with a non-SINK
+  // role (enforced + logged) before consuming from the port's node.
+  FluidTransferResult consumeFluidViaPort(uint64_t ownerId,
+                                          gtnh::common::PortId portId,
+                                          uint64_t requestId,
+                                          uint32_t fluidId, int32_t amount);
+
   // Add/remove connection between nodes
   uint64_t addEdge(uint64_t fromNode, uint64_t toNode, float resistance = 0.0f);
   void removeEdge(uint64_t edgeId);
@@ -211,6 +248,15 @@ public:
   PipeNetwork *getItemNetwork(uint64_t nodeId);
 
   // Node property setters (used by PipeNetworkService and tests)
+  //
+  // LEGACY NODE-UPDATE ADAPTER — compatibility boundary (2.3.4).
+  // REMOVE after all producers emit typed ports (registerPort); the producers
+  // today are the legacy *NodeUpdate handlers in PipeNetworkService.cpp
+  // (energy.node.update / fluid.node.update / item.node.update) and the
+  // setNode* calls in pipe_network_test.cpp. Each adapter maps one legacy
+  // is_source/is_sink pair into exactly ONE resource domain (2.3.1); during
+  // migration the last writer per domain wins, and producers are expected to
+  // be either legacy or typed per domain, not both.
   void setNodeEnergy(uint64_t nodeId, int32_t energy, int32_t capacity,
                      bool isSource, bool isSink);
   void setNodeFluid(uint64_t nodeId, int32_t fluid, int32_t capacity,
@@ -248,6 +294,23 @@ private:
   std::unordered_map<uint64_t, uint64_t>
       nodeToNetwork_; // node_id -> network_id
   std::unordered_map<uint64_t, PipeNetwork> networks_;
+
+  // pos_key -> node id. Routes typed port registrations (which carry world
+  // positions) into node domains. One node per position; last wins (the
+  // service never registers two nodes at one position).
+  std::unordered_map<uint64_t, uint64_t> node_by_pos_;
+
+  uint64_t findNodeAtPosition(int32_t x, int32_t y, int32_t z) const;
+  // Recomputes the node's domain state for `kind` from every registered port
+  // of that kind at the node position (2.3.2). No matching ports clears the
+  // domain, so flow can no longer target a removed port.
+  void projectNodeDomain(uint64_t nodeId, gtnh::common::ResourceKind kind);
+  // 2.3.2 enforcement telemetry: warns when a rejected fluid consume landed
+  // on a node whose typed ports belong to other resource domains.
+  void warnCrossKindConsume(const PipeNode& node) const;
+  // Registers the node position and routes ports already registered at that
+  // position into the new node's domains (registration/node order independence).
+  void indexNodePosition(uint64_t nodeId, int32_t x, int32_t y, int32_t z);
 
   struct PortKey {
     uint64_t owner_id;

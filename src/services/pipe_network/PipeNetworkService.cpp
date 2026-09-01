@@ -788,10 +788,10 @@ void PipeNetworkService::handleItemNodeUpdate(const std::vector<uint8_t>& data) 
     bool is_sink = update->is_sink();
     network_manager_.setNodeItemProps(mgr_id, static_cast<uint8_t>(cap > 0 ? cap : 0), is_source, is_sink);
 
-    // Item nodes use isItemSource / isItemSink (set via setNodeItemProps), NOT
-    // PipeNode::isSource/isSink which are energy-grid flags consumed by
-    // distributeEnergy(). Mutating them via const_cast would misclassify this
-    // item node as an energy generator/consumer — removed.
+    // Item roles live in the ITEM resource domain (set via setNodeItemProps),
+    // never in the EU-domain roles consumed by distributeEnergy() — the legacy
+    // shared is_source/is_sink pair is gone (typed domain model,
+    // openspec refactor-fluid-port-accounting 2.3.1).
 
     auto* items = update->items();
     if (items) {
