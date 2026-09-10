@@ -108,8 +108,15 @@ private:
   void handleItemNodeUpdate(const std::vector<uint8_t> &data);
   void handleItemTransferRequest(const std::vector<uint8_t> &data);
 
-  // Block change handler (pipe auto-detection)
+  // Block change handler (pipe auto-detection).
   void handleBlockChanged(const std::vector<uint8_t> &data);
+  // Register all pipe blocks from a chunk snapshot. The snapshot uses the
+  // existing CompressedChunkData wire format; no new protocol is required.
+  void handleChunkLoaded(const std::vector<uint8_t> &data);
+  void registerPipeBlock(int32_t x, int32_t y, int32_t z,
+                         uint16_t block_id, uint8_t meta);
+  void refreshPipeConnections(uint64_t nodeId, int32_t x, int32_t y, int32_t z,
+                              uint16_t block_id, uint8_t meta);
 
   // Mask-aware item/fluid/heat edge creation: connects the node at (x,y,z) to
   // compatible pipe/machine neighbors, gated by per-face connection masks.
