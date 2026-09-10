@@ -54,7 +54,16 @@ const PipeContentsStateStore::Entry* PipeContentsStateStore::FindAt(
 }
 
 void PipeContentsStateStore::Apply(const Entry& update) {
-  entries_[MakeBlockPosKey(update.pos.x, update.pos.y, update.pos.z)] = update;
+  const uint64_t key = MakeBlockPosKey(update.pos.x, update.pos.y, update.pos.z);
+  // A query may race pipe registration (world.blocks.changed) and return
+  // found=false while the previous response already identified this pipe.
+  // Keep the known snapshot rather than replacing useful state with a
+  // transient miss; the next successful reply refreshes it in place.
+  if (!update.found) {
+    auto it = entries_.find(key);
+    if (it != entries_.end() && it->second.found) return;
+  }
+  entries_[key] = update;
 }
 
 void PipeContentsStateStore::Clear() {

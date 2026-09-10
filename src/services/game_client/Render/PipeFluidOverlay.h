@@ -64,10 +64,15 @@ inline void FormatStateText(char* buf, size_t bufsize,
     std::snprintf(buf, bufsize, "fluid: unknown/stale");
     return;
   }
+  if (entry->fluid_id == 0) {
+    std::snprintf(buf, bufsize, "fluid: empty (0 / %d)", entry->capacity);
+    return;
+  }
   const std::string name(
       ItemRegistry::GetName(static_cast<uint16_t>(entry->fluid_id)));
   std::snprintf(buf, bufsize, "fluid 0x%04X %s: %d / %d", entry->fluid_id,
-                name.c_str(), entry->amount, entry->capacity);
+                name.empty() ? "?" : name.c_str(), entry->amount,
+                entry->capacity);
 }
 
 }  // namespace pipe_fluid_overlay

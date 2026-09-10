@@ -138,10 +138,12 @@ void RenderBridge::ImGuiOverlay(const renderlib::FrameRenderData& frame) {
                 stateEntry = store->FindAt(pipePos);
         }
         char line[128];
-        if (contentsEntry)
+        if (contentsEntry && contentsEntry->found)
             pipe_fluid_overlay::FormatStateText(line, sizeof(line), contentsEntry);
-        else
+        else if (stateEntry)
             pipe_fluid_overlay::FormatStateText(line, sizeof(line), stateEntry);
+        else
+            pipe_fluid_overlay::FormatStateText(line, sizeof(line), contentsEntry);
         ImGui::Text("pipe (%d,%d,%d): %s", pipePos.x, pipePos.y, pipePos.z, line);
     }
     ImGui::End();
@@ -393,10 +395,12 @@ void RenderBridge::ImGuiOverlay(const renderlib::FrameRenderData& frame) {
                 stateEntry = store->FindAt(BlockPos{hb.x, hb.y, hb.z});
         }
         char line[128];
-        if (contentsEntry)
+        if (contentsEntry && contentsEntry->found)
             pipe_fluid_overlay::FormatStateText(line, sizeof(line), contentsEntry);
-        else
+        else if (stateEntry)
             pipe_fluid_overlay::FormatStateText(line, sizeof(line), stateEntry);
+        else
+            pipe_fluid_overlay::FormatStateText(line, sizeof(line), contentsEntry);
 
         glm::vec3 labelPos(hb.x + 0.5f, hb.y + 1.3f, hb.z + 0.5f);
         glm::vec4 clip = vp * glm::vec4(labelPos, 1.0f);

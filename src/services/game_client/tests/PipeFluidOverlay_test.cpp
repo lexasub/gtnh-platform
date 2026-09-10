@@ -303,13 +303,20 @@ static void test_pipe_contents_store_last_write_wins() {
     CHECK(entry->amount == 300 && entry->capacity == 1000,
           "fluid amount/capacity carried through");
 
-    // A second reply at the same pos replaces the first: last-write-wins.
+    // A second successful reply at the same pos replaces the first.
     store.Enqueue(
         MakePipeContentsResp(0, 0, 0, true, 7, kSteamItem, 800, 1000));
     store.ApplyPending();
     entry = store.FindAt(BlockPos{0, 0, 0});
     CHECK(entry != nullptr && entry->amount == 800,
           "newer reply wins over the previous snapshot");
+
+    // A transient registration miss must not erase the known snapshot.
+    store.Enqueue(MakePipeContentsResp(0, 0, 0, false, 0, 0, 0, 0));
+    store.ApplyPending();
+    entry = store.FindAt(BlockPos{0, 0, 0});
+    CHECK(entry != nullptr && entry->found && entry->amount == 800,
+          "not-found reply preserves the known snapshot");
     PASS();
 }
 
@@ -330,6 +337,30 @@ static void test_pipe_contents_not_found_reply() {
           "no pipe node displays unknown/stale");
     CHECK(!ContainsDigit(buf),
           "found=false never fabricates a zero");
+
+    // A query can race the world.blocks.changed registration event.  A later
+    // transient found=false response must not erase a known pipe snapshot.
+    store.Enqueue(MakePipeContentsResp(0, 0, 0, true, 7, kSteamItem, 300, 1000));
+    store.ApplyPending();
+    store.Enqueue(MakePipeContentsResp(0, 0, 0, false, 0, 0, 0, 0));
+    store.ApplyPending();
+    entry = store.FindAt(BlockPos{0, 0, 0});
+    CHECK(entry != nullptr && entry->found && entry->amount == 300,
+          "transient not-found reply preserves known pipe snapshot");
+    PASS();
+}
+
+static void test_pipe_contents_empty_fluid() {
+    PipeContentsStateStore store;
+    store.Enqueue(MakePipeContentsResp(0, 0, 0, true, 7, 0, 0, 1000));
+    store.ApplyPending();
+    char buf[128];
+    pipe_fluid_overlay::FormatStateText(buf, sizeof(buf),
+                                        store.FindAt(BlockPos{0, 0, 0}));
+    CHECK(std::string(buf).find("fluid: empty") != std::string::npos,
+          "empty pipe displays an explicit empty state");
+    CHECK(std::string(buf).find("0 / 1000") != std::string::npos,
+          "empty pipe retains amount and capacity");
     PASS();
 }
 
@@ -435,6 +466,7 @@ int main() {
     test_state_text_stale_after_removal();
     test_pipe_contents_store_last_write_wins();
     test_pipe_contents_not_found_reply();
+    test_pipe_contents_empty_fluid();
     test_pipe_contents_text_with_snapshot();
     test_pipe_contents_null_overload();
     test_read_only_guard();

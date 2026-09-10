@@ -604,17 +604,25 @@ void PipeNetworkService::handlePipeContentsRequest(const std::vector<uint8_t>& d
             node_id = machineIt->second;
     }
 
+    // Block-change registration and typed machine updates are asynchronous.
+    // During startup the position maps can briefly lag even though the manager
+    // already owns the node.  Fall back to the manager's canonical position
+    // index, and also recover from a stale service-map entry.
+    const auto* node = node_id != 0 ? network_manager_.getNode(node_id) : nullptr;
+    if (!node) {
+        node_id = network_manager_.findNodeAtPosition(x, y, z);
+        node = node_id != 0 ? network_manager_.getNode(node_id) : nullptr;
+    }
+
     bool found = false;
     uint32_t fluid_id = 0;
     int32_t amount = 0;
     int32_t capacity = 0;
-    if (node_id != 0) {
-        if (const auto* node = network_manager_.getNode(node_id)) {
-            found = true;
-            fluid_id = node->fluidId;
-            amount = node->fluidBuffer;
-            capacity = node->fluidCapacity;
-        }
+    if (node) {
+        found = true;
+        fluid_id = node->fluidId;
+        amount = node->fluidBuffer;
+        capacity = node->fluidCapacity;
     }
 
     flatbuffers::FlatBufferBuilder fbb;

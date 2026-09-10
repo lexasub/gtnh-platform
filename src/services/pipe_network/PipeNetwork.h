@@ -280,6 +280,8 @@ public:
   size_t nodeCount() const { return nodes_.size(); }
   size_t networkCount() const { return networks_.size(); }
   size_t edgeCount() const { return edges_.size(); }
+  // Resolve a registered node by world position for read-only diagnostics.
+  uint64_t findNodeAtPosition(int32_t x, int32_t y, int32_t z) const;
 
 private:
   struct InternalEdge {
@@ -300,7 +302,6 @@ private:
   // service never registers two nodes at one position).
   std::unordered_map<uint64_t, uint64_t> node_by_pos_;
 
-  uint64_t findNodeAtPosition(int32_t x, int32_t y, int32_t z) const;
   // Recomputes the node's domain state for `kind` from every registered port
   // of that kind at the node position (2.3.2). No matching ports clears the
   // domain, so flow can no longer target a removed port.
