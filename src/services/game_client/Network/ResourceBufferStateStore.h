@@ -49,6 +49,11 @@ class ResourceBufferStateStore {
   // valid until the next ApplyPending/Clear/ClearChunk.
   [[nodiscard]] const Entry* FindAt(const BlockPos& pos) const;
 
+  // A machine may expose multiple domains at one position (for example HU
+  // input plus SU output), so callers that render the full machine UI must not
+  // collapse the position to one port.
+  [[nodiscard]] std::vector<Entry> FindAllAt(const BlockPos& pos) const;
+
   // Drop all state: reconnect (5.2.4) or shutdown.
   void Clear();
 

@@ -33,6 +33,10 @@ struct BlockEntityUpdateData {
   std::vector<ItemStack> outputItems;
   float heatRatio = 0.0f;      // Heat ratio (0.0 - 1.0+) for overheat warnings
   uint64_t mbId = 0;           // Multiblock ID (0 = not a multiblock)
+  // Steam output is a second buffer for heat boilers, while `energy` above
+  // remains the primary HU input buffer.
+  double steamCurrent = -1.0;
+  double steamCapacity = -1.0;
 };
 
 // One multiblock hatch shown in the window (task 3.1). `type` matches
@@ -68,6 +72,14 @@ public:
   // ── Energy type ──────────────────────────────────────────────────────
   EnergyType GetEnergyType() const;
   void SetEnergyType(EnergyType et);
+
+  // Typed resource snapshots are authoritative for machine buffer bars. When
+  // one is present, the legacy BlockEntityUpdate energy bar must not be drawn
+  // as it would duplicate (for example) the boiler's HU sink.
+  static constexpr bool ShouldRenderLegacyEnergyBar(
+      bool hasTypedResourceBuffers) noexcept {
+    return !hasTypedResourceBuffers;
+  }
 
 private:
   bool open_ = false;

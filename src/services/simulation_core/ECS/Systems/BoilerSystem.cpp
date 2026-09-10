@@ -15,9 +15,10 @@ BoilerSystem::BoilerSystem(entt::registry& reg,
                            std::shared_ptr<PipeEnergyClient> pipeClient,
                            std::shared_ptr<FluidClient> fluidClient,
                            std::shared_ptr<gtnh::common::IResourcePortClient> portClient,
-                           std::uint16_t steam_item_id)
+                           std::uint16_t steam_item_id,
+                           std::shared_ptr<ResourceBufferStatePublisher> statePublisher)
     : reg_(reg), events_(events), pipeClient_(pipeClient), fluidClient_(fluidClient),
-      portClient_(portClient), steam_id_(steam_item_id)
+      portClient_(portClient), statePublisher_(statePublisher), steam_id_(steam_item_id)
 {
 }
 
@@ -118,6 +119,30 @@ void BoilerSystem::tick(float /*dt*/) {
         // self-contained, so publication order does not matter. Legacy node
         // updates above stay until the typed path is end-to-end (removal is a
         // later task).
+        const std::uint64_t owner = static_cast<std::uint64_t>(ent);
+        const std::int32_t px = static_cast<std::int32_t>(machine.x);
+        const std::int32_t py = static_cast<std::int32_t>(machine.y);
+        const std::int32_t pz = static_cast<std::int32_t>(machine.z);
+        if (statePublisher_) {
+            statePublisher_->PublishBufferState(
+                owner, BoilerPorts::kBoilerHuSinkPortId,
+                gtnh::common::ResourceKind::HU, 0,
+                heatIntake.heat_stored, heatIntake.heat_capacity,
+                HeatConstants::HEAT_SINK_REPLENISH_TARGET,
+                port_epochs_.EpochOf(owner, BoilerPorts::kBoilerHuSinkPortId),
+                px, py, pz);
+            if (steam_id_ != 0) {
+                statePublisher_->PublishBufferState(
+                    owner, BoilerPorts::kBoilerSteamSourcePortId,
+                    gtnh::common::ResourceKind::FLUID, steam_id_,
+                    static_cast<std::int32_t>(steam.steam_stored),
+                    static_cast<std::int32_t>(steam.steam_capacity),
+                    HeatConstants::CONVERSION_RATE,
+                    port_epochs_.EpochOf(owner, BoilerPorts::kBoilerSteamSourcePortId),
+                    px, py, pz);
+            }
+        }
+
         if (portClient_) {
             const std::uint64_t owner = static_cast<std::uint64_t>(ent);
             const std::int32_t px = static_cast<std::int32_t>(machine.x);

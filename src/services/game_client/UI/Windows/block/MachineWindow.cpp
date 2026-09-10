@@ -128,8 +128,19 @@ const char* HatchTypeName(uint8_t type) {
 }
 
 // Label resolved through items.csv (5.3.3); unknown ids show the registry's "???".
-std::string BufferResourceLabel(uint32_t resource_id) {
-    return std::string(ItemRegistry::GetName(static_cast<uint16_t>(resource_id)));
+std::string BufferResourceLabel(uint32_t resource_id,
+                                gtnh::common::ResourceKind kind) {
+    if (resource_id == 0) {
+        switch (kind) {
+            case gtnh::common::ResourceKind::HU: return "HU";
+            case gtnh::common::ResourceKind::EU: return "EU";
+            case gtnh::common::ResourceKind::RU: return "RU";
+            default: break;
+        }
+    }
+    const std::string name(
+        ItemRegistry::GetName(static_cast<uint16_t>(resource_id)));
+    return name.empty() ? "?" : name;
 }
 
 // Unit per transport channel, not per resource.
@@ -288,44 +299,52 @@ void MachineWindow::RenderOutOfSyncWarning() {
 // (the only UI input for machine buffers — no raw transport decoding here).
 void MachineWindow::RenderResourceBuffers() {
     if (!resourceBuffers_) return;
-    const ResourceBufferStateStore::Entry* buffer =
-        resourceBuffers_->FindAt(pos_);
-    if (!buffer) return;
+    const auto buffers = resourceBuffers_->FindAllAt(pos_);
+    if (buffers.empty()) return;
 
     ImGui::Separator();
-    const char* unit = BufferUnit(
-        static_cast<gtnh::common::ResourceKind>(buffer->resource_kind));
-    const std::string label = BufferResourceLabel(buffer->resource_id);
-    char buf[96];
-    if (unit[0] != '\0') {
-        std::snprintf(buf, sizeof(buf), "%s: %d / %d %s", label.c_str(),
-                      buffer->amount, buffer->capacity, unit);
-    } else {
-        std::snprintf(buf, sizeof(buf), "%s: %d / %d", label.c_str(),
-                      buffer->amount, buffer->capacity);
+    for (const auto& buffer : buffers) {
+        const char* unit = BufferUnit(
+            static_cast<gtnh::common::ResourceKind>(buffer.resource_kind));
+        const std::string label = BufferResourceLabel(
+            buffer.resource_id,
+            static_cast<gtnh::common::ResourceKind>(buffer.resource_kind));
+        char buf[96];
+        if (unit[0] != '\0') {
+            std::snprintf(buf, sizeof(buf), "%s: %d / %d %s", label.c_str(),
+                          buffer.amount, buffer.capacity, unit);
+        } else {
+            std::snprintf(buf, sizeof(buf), "%s: %d / %d", label.c_str(),
+                          buffer.amount, buffer.capacity);
+        }
+
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        ImVec2 p0 = ImGui::GetCursorScreenPos();
+        float w = 200.0f;
+        float h = 18.0f;
+        ImVec2 p1(p0.x + w, p0.y + h);
+
+        dl->AddRectFilled(p0, p1, IM_COL32(40, 40, 40, 255), 3.0f);
+        const float ratio = buffer.capacity > 0
+            ? static_cast<float>(buffer.amount) / static_cast<float>(buffer.capacity)
+            : 0.0f;
+        if (ratio > 0.0f) {
+            ImVec2 fillEnd(p0.x + w * std::min(ratio, 1.0f), p1.y);
+            const auto kind = static_cast<gtnh::common::ResourceKind>(
+                buffer.resource_kind);
+            const ImU32 color = kind == gtnh::common::ResourceKind::HU
+                ? IM_COL32(255, 150, 50, 255)
+                : IM_COL32(80, 180, 235, 255);
+            dl->AddRectFilled(p0, fillEnd, color, 3.0f);
+        }
+        dl->AddRect(p0, p1, IM_COL32(80, 80, 80, 255), 3.0f);
+
+        ImVec2 textSize = ImGui::CalcTextSize(buf);
+        ImVec2 textPos(p0.x + (w - textSize.x) * 0.5f,
+                       p0.y + (h - textSize.y) * 0.5f);
+        dl->AddText(textPos, IM_COL32(220, 220, 220, 255), buf);
+        ImGui::Dummy(ImVec2(w, h + 2.0f));
     }
-
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    ImVec2 p0 = ImGui::GetCursorScreenPos();
-    float w = 200.0f;
-    float h = 18.0f;
-    ImVec2 p1(p0.x + w, p0.y + h);
-
-    dl->AddRectFilled(p0, p1, IM_COL32(40, 40, 40, 255), 3.0f);
-    const float ratio = buffer->capacity > 0
-        ? static_cast<float>(buffer->amount) / static_cast<float>(buffer->capacity)
-        : 0.0f;
-    if (ratio > 0.0f) {
-        ImVec2 fillEnd(p0.x + w * std::min(ratio, 1.0f), p1.y);
-        dl->AddRectFilled(p0, fillEnd, IM_COL32(80, 180, 235, 255), 3.0f);
-    }
-    dl->AddRect(p0, p1, IM_COL32(80, 80, 80, 255), 3.0f);
-
-    ImVec2 textSize = ImGui::CalcTextSize(buf);
-    ImVec2 textPos(p0.x + (w - textSize.x) * 0.5f, p0.y + (h - textSize.y) * 0.5f);
-    dl->AddText(textPos, IM_COL32(220, 220, 220, 255), buf);
-
-    ImGui::Dummy(ImVec2(w, h + 2.0f));
 }
 
 void MachineWindow::Render(InventoryState* playerInv) {
@@ -408,9 +427,20 @@ void MachineWindow::Render(InventoryState* playerInv) {
             ? pendingUpdate_.energyCapacity
             : (info ? (static_cast<uint32_t>(info->tier * 10000) > 0 ? static_cast<uint32_t>(info->tier * 10000) : 10000) : 10000);
         uint32_t energyVal = hasPendingUpdate_ ? pendingUpdate_.energy : 0;
-        RenderEnergyBarImpl(energyType, energyVal, energyMax,
-                            hasPendingUpdate_ ? pendingUpdate_.heatRatio : 0.0f,
-                            hasPendingUpdate_ ? pendingUpdate_.mbId : 0);
+
+        // Typed resource snapshots are the canonical machine-buffer display.
+        // Do not also render BlockEntityUpdate's legacy energy bar: a
+        // steam_heat_boiler publishes the same HU sink through both paths,
+        // which otherwise produces two HU bars. The legacy SU fields are
+        // likewise intentionally ignored; steam is rendered from the typed
+        // FLUID snapshot with the canonical steam resource label.
+        const bool hasTypedResourceBuffers = resourceBuffers_ &&
+            !resourceBuffers_->FindAllAt(pos_).empty();
+        if (ShouldRenderLegacyEnergyBar(hasTypedResourceBuffers)) {
+            RenderEnergyBarImpl(energyType, energyVal, energyMax,
+                                hasPendingUpdate_ ? pendingUpdate_.heatRatio : 0.0f,
+                                hasPendingUpdate_ ? pendingUpdate_.mbId : 0);
+        }
 
         // ── Server-authoritative resource buffers (state store) ───────────
         RenderResourceBuffers();
@@ -438,7 +468,6 @@ void MachineWindow::Render(InventoryState* playerInv) {
     }
 
     ImGui::Separator();
-
     ImGui::PushID("machine_player_inv");
     RenderPlayerInventoryGrid(*playerInv, 0, static_cast<int>(playerInv->slots.size()),
                               9, playerInv->selectedSlot, false, dragMgr_, /*authoritative*/ true,
@@ -560,6 +589,10 @@ void MachineWindow::OnNetworkUpdate(uint8_t msgType, const void* data) {
     pendingUpdate_.energyType = static_cast<EnergyType>(update->energy_type());
     pendingUpdate_.heatRatio = update->temperature();
     pendingUpdate_.mbId = update->mb_id();
+    // Steam heat boilers carry HU in the primary energy fields and SU in the
+    // dedicated steam fields. Preserve -1 as "not provided" for other machines.
+    pendingUpdate_.steamCurrent = update->steam_current();
+    pendingUpdate_.steamCapacity = update->steam_capacity();
     timeSinceUpdate_ = 0.0f;
 
     pendingUpdate_.inputItems.clear();

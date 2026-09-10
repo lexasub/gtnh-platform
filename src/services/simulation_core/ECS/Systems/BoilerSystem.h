@@ -8,6 +8,7 @@
 #include "../components/MachineComponent.h"
 #include "../components/RecipeProgress.h"
 #include "BoilerPorts.h"
+#include "../../Network/ResourceBufferStatePublisher.h"
 #include "ISystem.h"
 #include "MachineRegistry.h"
 #include <entt/entt.hpp>
@@ -32,7 +33,8 @@ public:
                std::shared_ptr<PipeEnergyClient> pipeClient,
                std::shared_ptr<FluidClient> fluidClient = nullptr,
                std::shared_ptr<gtnh::common::IResourcePortClient> portClient = nullptr,
-               std::uint16_t steam_item_id = 0);
+               std::uint16_t steam_item_id = 0,
+               std::shared_ptr<ResourceBufferStatePublisher> statePublisher = nullptr);
 
   void tick(float dt) override;
 
@@ -50,6 +52,7 @@ private:
   // 2.4): HU sink + FLUID steam source, published alongside the legacy node
   // updates until the typed path is end-to-end.
   std::shared_ptr<gtnh::common::IResourcePortClient> portClient_;
+  std::shared_ptr<ResourceBufferStatePublisher> statePublisher_;
   BoilerPorts::PortEpochBook port_epochs_;
   // Registry-resolved Steam item id; 0 (registry unavailable) fails closed:
   // no conversion, no steam advertisement.

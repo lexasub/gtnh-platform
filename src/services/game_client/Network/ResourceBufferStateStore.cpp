@@ -113,6 +113,18 @@ const ResourceBufferStateStore::Entry* ResourceBufferStateStore::FindAt(
   return entry == entries_.end() ? nullptr : &entry->second;
 }
 
+std::vector<ResourceBufferStateStore::Entry>
+ResourceBufferStateStore::FindAllAt(const BlockPos& pos) const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  const uint64_t posKey = MakeBlockPosKey(pos.x, pos.y, pos.z);
+  std::vector<Entry> result;
+  for (const auto& [key, entry] : entries_) {
+    if (MakeBlockPosKey(entry.pos.x, entry.pos.y, entry.pos.z) == posKey)
+      result.push_back(entry);
+  }
+  return result;
+}
+
 void ResourceBufferStateStore::Clear() {
   std::lock_guard<std::mutex> lock(mutex_);
   pending_.clear();

@@ -13,6 +13,7 @@
 #include <common/coords/Coords.h>
 
 #include <Crafting/ClientItemRegistry.h>
+#include <UI/Windows/block/MachineWindow.h>
 
 #include <cstdint>
 #include <string>
@@ -130,6 +131,38 @@ static void test_publication_routing_and_application() {
         CHECK(entry->epoch == 7 && entry->sequence == 1,
               "epoch/sequence round-trip");
     }
+    PASS();
+}
+
+static void test_machine_window_uses_typed_buffers_once() {
+    CHECK(MachineWindow::ShouldRenderLegacyEnergyBar(true) == false,
+          "typed HU/SU snapshots suppress the duplicate legacy energy bar");
+    CHECK(MachineWindow::ShouldRenderLegacyEnergyBar(false) == true,
+          "machines without typed snapshots retain the legacy energy bar");
+    PASS();
+}
+
+static void test_multiple_domains_at_same_position() {
+    ResourceBufferStateStore store;
+    auto hu = MakeState(1);
+    hu.owner_id = 7;
+    hu.port_id = 0x0101;
+    hu.resource_kind = gtnh::common::ResourceKind::HU;
+    hu.resource_id = 0;
+    hu.amount = 500;
+    hu.capacity = 1000;
+    auto steam = MakeState(1);
+    steam.owner_id = 7;
+    steam.port_id = 0x0102;
+    steam.resource_kind = gtnh::common::ResourceKind::FLUID;
+    steam.amount = 300;
+    store.Enqueue(std::make_shared<std::vector<uint8_t>>(
+        gtnh::common::SerializeResourceBufferState(hu)));
+    store.Enqueue(std::make_shared<std::vector<uint8_t>>(
+        gtnh::common::SerializeResourceBufferState(steam)));
+    store.ApplyPending();
+    const auto all = store.FindAllAt(BlockPos{10, 64, -20});
+    CHECK(all.size() == 2, "HU and steam buffers coexist at one machine position");
     PASS();
 }
 
@@ -318,6 +351,8 @@ int main() {
     test_gateway_msg_constant_sync();
     test_client_topic_is_not_internal_pipe_topic();
     test_publication_routing_and_application();
+    test_machine_window_uses_typed_buffers_once();
+    test_multiple_domains_at_same_position();
     test_sequence_ordering();
     test_epoch_gates_fail_closed();
     test_removal_clearing_and_tombstones();
