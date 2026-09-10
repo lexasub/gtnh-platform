@@ -245,7 +245,35 @@ void PipeNetworkService::tick() {
 
         network_manager_.distributeHeat(net->id, pipenet::HeatConstants::MAX_HEAT_PER_TICK);
     }
-    
+
+    // Fluid source buffers are owned by SimulationCore, but pipes own transport
+    // buffers. Mirror the latest source snapshot before each transport solve so
+    // a steam_heat_boiler can fill an attached pipe without a consumer request.
+    for (auto& [mgr_id, state] : node_states_) {
+        if (!state.is_source || state.fluid_id == 0) continue;
+        const auto* node = network_manager_.getNode(mgr_id);
+        if (!node || node->fluidCapacity <= 0) continue;
+        network_manager_.setNodeFluid(mgr_id, state.energy, state.capacity,
+                                      state.fluid_id, true, state.is_sink);
+    }
+    for (const auto* net : network_manager_.getAllNetworks()) {
+        if (!net || net->nodeIds.empty() || net->fluidId == 0) continue;
+        const auto fluidDeltas = network_manager_.fillFluidPipesFromSources(net->id);
+        for (const auto& [node_id, delta] : fluidDeltas) {
+            if (delta <= 0) continue;
+            const auto* node = network_manager_.getNode(node_id);
+            if (!node) continue;
+            Protocol::Vec3i pos(node->x, node->y, node->z);
+            flatbuffers::FlatBufferBuilder fbb;
+            auto update = Protocol::CreateFluidNodeUpdate(
+                fbb, node_id, &pos, node->fluidId, node->fluidBuffer,
+                node->fluidCapacity, 0, 0, 0, false, false, 0);
+            fbb.Finish(update);
+            router_.Publish("fluid.pipe.state",
+                {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+        }
+    }
+
     // Interval save of item buffers (TODO research: proper chunk unload hook)
     ++tick_counter_;
     if (tick_counter_ >= PERSIST_INTERVAL_TICKS) {
@@ -785,23 +813,24 @@ void PipeNetworkService::handleFluidNodeUpdate(const std::vector<uint8_t>& data)
         spdlog::debug("Registered fluid node {} at ({},{},{})", protocol_id, x, y, z);
     } else {
         mgr_id = it->second;
-        // Fluid-capacity upgrade: machines register via handleNodeUpdate as
-        // energy nodes (blockId=1, fluidCapacity=0). First fluid update lifts
-        // them into the fluid layer so the masked scan below forms pipe edges.
-        const auto* nn = network_manager_.getNode(mgr_id);
-        if (nn && nn->fluidCapacity <= 0) {
-            network_manager_.setNodeFluid(mgr_id, update->amount(), update->capacity(),
-                                          update->fluid_id(), update->is_source(), update->is_sink());
-        }
     }
+
+    // Every fluid update is authoritative, including the first update for a
+    // machine node created with the fluid-pipe topology default. The default
+    // pipe capacity is intentionally non-zero, so gating this call on capacity
+    // silently drops the boiler's amount, fluid id, and source role.
+    network_manager_.setNodeFluid(mgr_id, update->amount(), update->capacity(),
+                                  update->fluid_id(), update->is_source(), update->is_sink());
 
     NodeState& st = node_states_[mgr_id];
     st.protocol_id = protocol_id;
     st.energy = update->amount();
     st.capacity = update->capacity();
     st.tier = update->tier();
+    st.fluid_id = update->fluid_id();
     st.is_source = update->is_source();
     st.is_sink = update->is_sink();
+    if (update->max_output() > 0) st.max_output = update->max_output();
 
     if (update->connected_nodes() && update->connected_nodes()->size() > 0) {
         for (auto it_c = update->connected_nodes()->begin();

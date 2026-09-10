@@ -231,6 +231,11 @@ public:
   std::unordered_map<uint64_t, int32_t> distributeFluid(uint64_t networkId,
                                                         int32_t tickFluid);
 
+  // Fill non-machine fluid pipe buffers from connected source nodes. Source
+  // buffers are owner-state mirrors, so this consumes transport capacity but
+  // does not debit the source node; a later machine consume drains the pipe.
+  std::unordered_map<uint64_t, int32_t> fillFluidPipesFromSources(uint64_t networkId);
+
   // Consume from pipe buffers first. This is deliberately independent from
   // owner/source state: callers may request a source shortfall afterwards.
   FluidTransferResult consumeFluid(uint64_t nodeId, uint64_t requestId,

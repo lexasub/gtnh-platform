@@ -6,6 +6,7 @@
 #include <common/ItemId.h>
 #include <common/ResourcePortClient.h>
 #include "PipeNetwork.h"
+#include "PipeBlockIds.h"
 #include "PipeConsumeTransactions.h"
 #include "HeatLoss.h"
 #include "CableGraph.h"
@@ -747,6 +748,76 @@ static void test_fluid_distribution_simple() {
     const auto* sinkNode = mgr.getNode(sink);
     CHECK_GT(sinkNode->fluidBuffer, 0, "sink received fluid");
     CHECK_EQ(sinkNode->fluidId, uint32_t(84), "sink fluid type is water");
+    PASS();
+}
+
+static void test_boiler_source_fills_connected_pipe() {
+    // Regression for fluid.node.update's first update: a newly-created machine
+    // node uses the fluid-pipe topology default (capacity 1000), so its
+    // authoritative source update must still set amount, fluid id, and role.
+    pipenet::PipeNetworkManager mgr;
+    const uint32_t steam = ItemId::pack("1111:11:1");
+    const uint64_t boiler = 700;
+    const uint64_t pipe = mgr.addNode(1, 0, 0, BLOCK_ID_FLUID_PIPE);
+    CHECK(mgr.addNodeWithId(boiler, 0, 0, 0, BLOCK_ID_FLUID_PIPE),
+          "boiler node can use an explicit protocol id");
+    mgr.addEdge(boiler, pipe);
+
+    mgr.setNodeFluid(boiler, 250, 1000, steam, true, false);
+    mgr.setNodeFluid(pipe, 0, 1000, 0, false, false);
+    mgr.rebuildNetworks();
+
+    const auto* boilerNode = mgr.getNode(boiler);
+    CHECK_EQ(boilerNode->fluidBuffer, 250, "boiler update stores source amount");
+    CHECK_EQ(boilerNode->fluidId, steam, "boiler update stores steam id");
+    CHECK(boilerNode->domains[pipenet::domainIndex(gtnh::common::ResourceKind::FLUID)].is_source,
+          "boiler update stores fluid source role");
+
+    uint64_t network = 0;
+    for (const auto* net : mgr.getAllNetworks()) {
+        for (uint64_t node : net->nodeIds) {
+            if (node == boiler) network = net->id;
+        }
+    }
+    CHECK_GT(network, uint64_t(0), "boiler and pipe share a network");
+    auto deltas = mgr.fillFluidPipesFromSources(network);
+    CHECK_EQ(deltas[pipe], 250, "source fills connected pipe buffer");
+    CHECK_EQ(deltas[boiler], -250, "source mirror is debited exactly once");
+    CHECK_EQ(mgr.getNode(pipe)->fluidBuffer, 250, "pipe contains boiler steam");
+    auto secondTick = mgr.fillFluidPipesFromSources(network);
+    CHECK(secondTick.empty(), "repeated tick does not duplicate source fluid");
+    CHECK_EQ(mgr.getNode(pipe)->fluidId, steam, "pipe carries boiler steam id");
+    PASS();
+}
+
+static void test_two_boiler_sources_fill_connected_pipe() {
+    pipenet::PipeNetworkManager mgr;
+    const uint32_t steam = ItemId::pack("1111:11:1");
+    const uint64_t boilerA = 701;
+    const uint64_t boilerB = 702;
+    const uint64_t pipe = mgr.addNode(2, 0, 0, BLOCK_ID_FLUID_PIPE);
+    CHECK(mgr.addNodeWithId(boilerA, 0, 0, 0, BLOCK_ID_FLUID_PIPE),
+          "first boiler node added");
+    CHECK(mgr.addNodeWithId(boilerB, 1, 0, 0, BLOCK_ID_FLUID_PIPE),
+          "second boiler node added");
+    mgr.addEdge(boilerA, boilerB);
+    mgr.addEdge(boilerB, pipe);
+    mgr.setNodeFluid(boilerA, 100, 1000, steam, true, false);
+    mgr.setNodeFluid(boilerB, 200, 1000, steam, true, false);
+    mgr.setNodeFluid(pipe, 0, 1000, 0, false, false);
+    mgr.rebuildNetworks();
+
+    uint64_t network = 0;
+    for (const auto* net : mgr.getAllNetworks()) {
+        for (uint64_t node : net->nodeIds) {
+            if (node == boilerA) network = net->id;
+        }
+    }
+    CHECK_GT(network, uint64_t(0), "two boilers and pipe share a network");
+    mgr.fillFluidPipesFromSources(network);
+    CHECK_EQ(mgr.getNode(pipe)->fluidBuffer, 300,
+             "connected pipe receives fluid from both boiler sources");
+    CHECK_EQ(mgr.getNode(pipe)->fluidId, steam, "multi-source pipe keeps steam id");
     PASS();
 }
 
@@ -2913,6 +2984,8 @@ int main(int, char**) {
 
     // Fluid distribution
     TEST(fluid_transaction_replay_and_limits);
+    TEST(boiler_source_fills_connected_pipe);
+    TEST(two_boiler_sources_fill_connected_pipe);
     TEST(fluid_distribution_simple);
     TEST(fluid_distribution_capacity_limited);
     TEST(fluid_distribution_no_source);

@@ -655,6 +655,99 @@ std::unordered_map<uint64_t, int32_t> PipeNetworkManager::distributeFluid(uint64
     return deltas;
 }
 
+std::unordered_map<uint64_t, int32_t>
+PipeNetworkManager::fillFluidPipesFromSources(uint64_t networkId) {
+    std::unordered_map<uint64_t, int32_t> deltas;
+    auto networkIt = networks_.find(networkId);
+    if (networkIt == networks_.end()) return deltas;
+
+    PipeNetwork& net = networkIt->second;
+    std::vector<uint64_t> sources;
+    std::vector<uint64_t> pipes;
+    int64_t available = 0;
+    int64_t room = 0;
+    uint32_t fluidId = 0;
+
+    for (uint64_t nodeId : net.nodeIds) {
+        auto nodeIt = nodes_.find(nodeId);
+        if (nodeIt == nodes_.end()) continue;
+        const PipeNode& node = nodeIt->second;
+        const auto& fluidDomain = node.domains[kFluidDomainIdx];
+        if (fluidDomain.is_source && node.fluidBuffer > 0 &&
+            node.fluidCapacity > 0 && node.fluidId != 0) {
+            sources.push_back(nodeId);
+            available += node.fluidBuffer;
+            if (fluidId == 0) fluidId = node.fluidId;
+            else if (fluidId != node.fluidId) fluidId = 0;
+        }
+        if (node.fluidCapacity > 0 && !fluidDomain.is_source &&
+            !fluidDomain.is_sink) {
+            const int32_t nodeRoom = node.fluidCapacity - node.fluidBuffer;
+            if (nodeRoom > 0) {
+                pipes.push_back(nodeId);
+                room += nodeRoom;
+            }
+        }
+    }
+
+    // A mixed source network must not inject an ambiguous fluid into a pipe.
+    if (sources.empty() || pipes.empty() || available <= 0 || room <= 0 ||
+        fluidId == 0) {
+        return deltas;
+    }
+
+    const int32_t toFill = static_cast<int32_t>(
+        std::min<int64_t>(available, room));
+    int32_t remaining = toFill;
+    for (size_t i = 0; i < pipes.size(); ++i) {
+        auto nodeIt = nodes_.find(pipes[i]);
+        if (nodeIt == nodes_.end()) continue;
+        const int32_t nodeRoom = nodeIt->second.fluidCapacity -
+                                  nodeIt->second.fluidBuffer;
+        int32_t give = (i + 1 == pipes.size())
+                           ? remaining
+                           : static_cast<int32_t>(
+                                 (static_cast<int64_t>(toFill) * nodeRoom) / room);
+        give = std::min(give, nodeRoom);
+        if (give <= 0) continue;
+        nodeIt->second.fluidBuffer += give;
+        if (nodeIt->second.fluidId == 0) nodeIt->second.fluidId = fluidId;
+        deltas[pipes[i]] += give;
+        remaining -= give;
+    }
+
+    // Move exactly the amount accepted by pipe capacity out of the source
+    // mirrors. This is what makes a second tick a no-op until the owner emits a
+    // fresh source update; copying without this debit would duplicate fluid.
+    int32_t sourceRemaining = toFill;
+    int64_t sourceAvailable = available;
+    for (size_t i = 0; i < sources.size() && sourceRemaining > 0; ++i) {
+        auto nodeIt = nodes_.find(sources[i]);
+        if (nodeIt == nodes_.end()) continue;
+        const int32_t sourceBuffer = nodeIt->second.fluidBuffer;
+        int32_t take = (i + 1 == sources.size())
+                           ? sourceRemaining
+                           : static_cast<int32_t>(
+                                 (static_cast<int64_t>(toFill) * sourceBuffer) /
+                                 sourceAvailable);
+        take = std::min(take, sourceBuffer);
+        if (take <= 0) continue;
+        nodeIt->second.fluidBuffer -= take;
+        deltas[sources[i]] -= take;
+        sourceRemaining -= take;
+        sourceAvailable -= sourceBuffer;
+    }
+
+    net.totalFluid = 0;
+    net.fluidId = fluidId;
+    for (uint64_t nodeId : net.nodeIds) {
+        auto nodeIt = nodes_.find(nodeId);
+        if (nodeIt != nodes_.end()) net.totalFluid += nodeIt->second.fluidBuffer;
+    }
+    net.isActive = !deltas.empty();
+    return deltas;
+}
+
 const PipeNode* PipeNetworkManager::getNode(uint64_t nodeId) const {
     auto it = nodes_.find(nodeId);
     return it != nodes_.end() ? &it->second : nullptr;
