@@ -54,14 +54,20 @@ int main(int argc, char** argv) {
 
     spdlog::info("PipeNetwork service ready");
 
+    // Process a bounded batch of ready completions so a continuously readable
+    // socket cannot postpone the periodic metrics check or shutdown forever.
+    constexpr std::size_t kMaxCompletionsPerLoop = 256;
     while (g_running) {
         if (metrics.poll()) {
             metrics.printMetrics("PipeNetwork Service (pipe_networkd)");
         }
-        
-        ioCtx.poll_one();
+
+        std::size_t completions = 0;
+        while (completions < kMaxCompletionsPerLoop && ioCtx.poll_one() != 0) {
+            ++completions;
+        }
         if (!g_running) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     service.Stop();
