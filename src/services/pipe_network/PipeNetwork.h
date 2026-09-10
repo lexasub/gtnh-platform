@@ -5,6 +5,7 @@
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include <common/ResourcePort.h>
@@ -208,6 +209,10 @@ public:
 
   // Add/remove connection between nodes
   uint64_t addEdge(uint64_t fromNode, uint64_t toNode, float resistance = 0.0f);
+  // Add a batch of connections and rebuild topology once. This is used by
+  // adjacency scans, which can discover several faces in one update.
+  size_t addEdges(const std::vector<std::pair<uint64_t, uint64_t>>& nodePairs,
+                  float resistance = 0.0f);
   void removeEdge(uint64_t edgeId);
 
   // Per-face connection mask for item/fluid pipe nodes.
@@ -231,9 +236,9 @@ public:
   std::unordered_map<uint64_t, int32_t> distributeFluid(uint64_t networkId,
                                                         int32_t tickFluid);
 
-  // Fill non-machine fluid pipe buffers from connected source nodes. Source
-  // buffers are owner-state mirrors, so this consumes transport capacity but
-  // does not debit the source node; a later machine consume drains the pipe.
+  // Fill non-machine fluid pipe buffers from connected source nodes. The source
+  // buffer is a transport-side mirror of the latest owner update, so accepted
+  // fluid is debited once and a later owner update supplies the next snapshot.
   std::unordered_map<uint64_t, int32_t> fillFluidPipesFromSources(uint64_t networkId);
 
   // Consume from pipe buffers first. This is deliberately independent from

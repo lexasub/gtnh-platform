@@ -246,18 +246,12 @@ void PipeNetworkService::tick() {
         network_manager_.distributeHeat(net->id, pipenet::HeatConstants::MAX_HEAT_PER_TICK);
     }
 
-    // Fluid source buffers are owned by SimulationCore, but pipes own transport
-    // buffers. Mirror the latest source snapshot before each transport solve so
-    // a steam_heat_boiler can fill an attached pipe without a consumer request.
-    for (auto& [mgr_id, state] : node_states_) {
-        if (!state.is_source || state.fluid_id == 0) continue;
-        const auto* node = network_manager_.getNode(mgr_id);
-        if (!node || node->fluidCapacity <= 0) continue;
-        network_manager_.setNodeFluid(mgr_id, state.energy, state.capacity,
-                                      state.fluid_id, true, state.is_sink);
-    }
+    // Fluid source buffers are updated authoritatively by fluid.node.update;
+    // do not overwrite them from the last snapshot here. fillFluidPipesFromSources
+    // debits the manager's transport-side source mirror, and restoring the old
+    // snapshot every tick would duplicate fluid indefinitely.
     for (const auto* net : network_manager_.getAllNetworks()) {
-        if (!net || net->nodeIds.empty() || net->fluidId == 0) continue;
+        if (!net || net->nodeIds.empty()) continue;
         const auto fluidDeltas = network_manager_.fillFluidPipesFromSources(net->id);
         for (const auto& [node_id, delta] : fluidDeltas) {
             if (delta <= 0) continue;
@@ -483,6 +477,8 @@ void PipeNetworkService::connectNodeNeighbors(uint64_t sourceNodeId,
                                             int32_t x, int32_t y, int32_t z,
                                             uint8_t sourceMeta, bool isItem,
                                             bool isHeat, bool sourceIsPipe) {
+    std::vector<std::pair<uint64_t, uint64_t>> candidateEdges;
+    candidateEdges.reserve(6);
     for (int f = 0; f < 6; ++f) {
         int32_t nx = x + FACE_DX[f];
         int32_t ny = y + FACE_DY[f];
@@ -530,15 +526,19 @@ void PipeNetworkService::connectNodeNeighbors(uint64_t sourceNodeId,
             uint8_t nMeta = pipe_meta_.count(nKey) ? pipe_meta_[nKey] : 0;
             // Connected iff both endpoints open their shared face.
             if (pipenet::pipeFacesConnected(sourceMeta, nMeta, f)) {
-                network_manager_.addEdge(sourceNodeId, nNode);
+                candidateEdges.emplace_back(sourceNodeId, nNode);
             }
         } else {
             // Machine endpoints carry no per-face mask; the pipe side gates.
             if (pipenet::pipeFaceOpen(sourceMeta, f)) {
-                network_manager_.addEdge(sourceNodeId, nNode);
+                candidateEdges.emplace_back(sourceNodeId, nNode);
             }
         }
     }
+    // Rebuild once after the full six-face scan. addEdge() intentionally keeps
+    // its immediate-rebuild API for existing callers, while this hot path must
+    // not rebuild the whole graph once per connected face.
+    network_manager_.addEdges(candidateEdges);
 }
 
 bool PipeNetworkService::isPipeBlock(uint16_t block_id) {

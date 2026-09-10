@@ -61,9 +61,13 @@ int main(int argc, char** argv) {
         if (metrics.poll()) {
             metrics.printMetrics("PipeNetwork Service (pipe_networkd)");
         }
-
+        
+        // Drain all completions that are already ready. Processing only one
+        // handler per 10 ms starves the router read/write continuations while
+        // block updates arrive in bursts, which in turn trips its write
+        // deadline and disconnects pipe_network.
         std::size_t completions = 0;
-        while (completions < kMaxCompletionsPerLoop && ioCtx.poll_one() != 0) {
+        while (completions < kMaxCompletionsPerLoop && ioCtx.poll() != 0) {
             ++completions;
         }
         if (!g_running) break;

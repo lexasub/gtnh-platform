@@ -293,6 +293,32 @@ uint64_t PipeNetworkManager::addEdge(uint64_t fromNode, uint64_t toNode, float r
     return id;
 }
 
+size_t PipeNetworkManager::addEdges(
+    const std::vector<std::pair<uint64_t, uint64_t>>& nodePairs,
+    float resistance) {
+    size_t added = 0;
+    for (const auto& [fromNode, toNode] : nodePairs) {
+        if (nodes_.find(fromNode) == nodes_.end() ||
+            nodes_.find(toNode) == nodes_.end()) {
+            continue;
+        }
+        bool exists = false;
+        for (const auto& [eid, edge] : edges_) {
+            if ((edge.fromNode == fromNode && edge.toNode == toNode) ||
+                (edge.fromNode == toNode && edge.toNode == fromNode)) {
+                exists = true;
+                break;
+            }
+        }
+        if (exists) continue;
+        const uint64_t id = nextEdgeId_++;
+        edges_[id] = InternalEdge{id, fromNode, toNode, resistance};
+        ++added;
+    }
+    if (added != 0) rebuildNetworks();
+    return added;
+}
+
 void PipeNetworkManager::removeEdge(uint64_t edgeId) {
     edges_.erase(edgeId);
     rebuildNetworks();
@@ -776,6 +802,12 @@ PipeNetwork* PipeNetworkManager::getItemNetwork(uint64_t nodeId) {
 }
 
 void PipeNetworkManager::rebuildItemNetworks() {
+    // This is a full topology rebuild, not an incremental append. Keeping the
+    // previous networks here leaves stale components in getAllNetworks() and
+    // makes each block update grow the work performed by every tick.
+    nodeToNetwork_.clear();
+    networks_.clear();
+
     std::unordered_set<uint64_t> visited;
     for (const auto& [nid, node] : nodes_) {
         if (visited.find(nid) != visited.end()) continue;

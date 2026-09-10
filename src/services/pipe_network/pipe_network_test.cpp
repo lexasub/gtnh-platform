@@ -1295,6 +1295,45 @@ static void test_remove_edge_and_rebuild() {
     PASS();
 }
 
+static void test_add_edges_rebuilds_once_and_deduplicates() {
+    pipenet::PipeNetworkManager mgr;
+    std::vector<uint64_t> nodes;
+    for (int i = 0; i < 4; ++i) nodes.push_back(mgr.addNode(i, 0, 0, 100));
+
+    const std::vector<std::pair<uint64_t, uint64_t>> edges = {
+        {nodes[0], nodes[1]}, {nodes[1], nodes[2]}, {nodes[2], nodes[3]},
+        {nodes[0], nodes[1]}};
+    CHECK_EQ(mgr.addEdges(edges), size_t(3),
+             "batch edge insertion adds unique valid edges");
+    CHECK_EQ(mgr.edgeCount(), size_t(3), "batch edge insertion deduplicates edges");
+    CHECK_EQ(mgr.networkCount(), size_t(1),
+             "batch edge insertion leaves one connected network");
+    CHECK_EQ(mgr.discoverNetwork(nodes[0]).size(), size_t(4),
+             "batch edge insertion connects all nodes");
+    CHECK_EQ(mgr.addEdges(edges), size_t(0), "repeating batch adds no edges");
+    PASS();
+}
+
+static void test_item_network_rebuild_replaces_stale_components() {
+    pipenet::PipeNetworkManager mgr;
+    const uint64_t a = mgr.addNode(0, 0, 0, 62);
+    const uint64_t b = mgr.addNode(1, 0, 0, 62);
+    mgr.addEdge(a, b);
+    mgr.setNodeItemProps(a, 4, true, false);
+    mgr.setNodeItemProps(b, 4, false, true);
+
+    mgr.rebuildItemNetworks();
+    CHECK_EQ(mgr.networkCount(), size_t(1),
+             "first item rebuild creates one component");
+    mgr.rebuildItemNetworks();
+    CHECK_EQ(mgr.networkCount(), size_t(1),
+             "repeated item rebuild does not retain stale components");
+    CHECK_EQ(mgr.getItemNetwork(a)->nodeIds.size(), size_t(2),
+             "repeated item rebuild keeps current component nodes");
+    PASS();
+}
+
+
 static void test_large_network() {
     // 100 nodes in a line - stress test
     pipenet::PipeNetworkManager mgr;
@@ -2978,6 +3017,8 @@ int main(int, char**) {
     TEST(find_next_item_hop_no_item_capability);
 
     // Energy distribution
+    TEST(add_edges_rebuilds_once_and_deduplicates);
+    TEST(item_network_rebuild_replaces_stale_components);
     TEST(energy_distribution_simple);
     TEST(energy_distribution_no_sink);
     TEST(energy_distribution_capacity_limited);
