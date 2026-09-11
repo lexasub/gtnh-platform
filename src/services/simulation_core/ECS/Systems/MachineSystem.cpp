@@ -197,6 +197,53 @@ void MachineSystem::tick(float /*dt*/) {
 
     }
 
+    // ---- Pass 1.5: passive steam top-up (skip managed_externally) ----
+    // GT semantics: a steam machine draws steam from an attached steam pipe
+    // whenever its tank is below capacity — independent of any active recipe.
+    // pendingFluidConsumes_ gives one outstanding request per machine, so this
+    // pass and the recipe-driven branch in Pass 2 never double-send.
+    for (auto ent : view) {
+        auto& machine = view.get<MachineComponent>(ent);
+        auto& energy = view.get<EnergyStorage>(ent);
+
+        if (machine.managed_externally) continue;
+        if (energy.type != EnergyType::STEAM) continue;
+        if (steam_item_id_ == 0) continue;
+        if (energy.current >= energy.capacity) continue;
+
+        const uint64_t node_id = static_cast<uint64_t>(ent);
+        if (pendingFluidConsumes_.find(node_id) != pendingFluidConsumes_.end())
+            continue;
+
+        const int32_t amount = static_cast<int32_t>(
+            std::min<int64_t>(static_cast<int64_t>(energy.capacity) - energy.current,
+                              kSteamFillQuantum));
+        if (amount <= 0) continue;
+
+        if (fluidClient_) {
+            fluidClient_->publishNodeUpdate(
+                node_id,
+                static_cast<int32_t>(machine.x),
+                static_cast<int32_t>(machine.y),
+                static_cast<int32_t>(machine.z),
+                steam_item_id_,
+                energy.current,
+                energy.capacity,
+                0, 0, energy.tier, false, true);   // sink/neutral
+            fluidClient_->sendFluidRequest(
+                node_id,
+                static_cast<int32_t>(machine.x),
+                static_cast<int32_t>(machine.y),
+                static_cast<int32_t>(machine.z),
+                steam_item_id_,
+                amount);
+            pendingFluidConsumes_[node_id] = amount;
+            spdlog::debug("Steam machine entity {} top-up requested {} steam (current {}/{})",
+                          static_cast<uint32_t>(ent), amount,
+                          energy.current, energy.capacity);
+        }
+    }
+
     // ---- Pass 2: tick active recipes (skip managed_externally) ----
     for (auto ent : view) {
         auto& machine = view.get<MachineComponent>(ent);

@@ -53,6 +53,12 @@ public:
   // counts grow.
   static constexpr int kForcePublishInterval = 10;
 
+  // Passive steam top-up: max amount requested per delivery when a steam
+  // machine's tank is below capacity. Matches the pipe buffer capacity and
+  // the solid/heat boiler output rate, so a 10000-tank fills in ~10
+  // deliveries. PipeNetwork short-fills when the network has less.
+  static constexpr int32_t kSteamFillQuantum = 1000;
+
 private:
   void pushOutputToPipe(uint64_t entity_id, const MachineComponent& machine,
                         InventoryContainer& container, int slots_in);

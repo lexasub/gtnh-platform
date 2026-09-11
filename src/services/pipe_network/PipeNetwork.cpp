@@ -567,6 +567,33 @@ FluidTransferResult PipeNetworkManager::consumeFluidUncached(uint64_t nodeId,
     node.fluidBuffer -= result.accepted_amount;
     result.remaining = amount - result.accepted_amount;
     if (node.fluidBuffer == 0) node.fluidId = 0;
+
+    // Spec ("drains its pipe buffers first"): after the requesting node's own
+    // buffer, the shortfall is served from the fluid buffers of the pipes in
+    // the same network. Pipe buffers mirror their owner's state (the
+    // owner-side refill debit is a separate task); is_source nodes (boilers)
+    // are excluded — their buffer mirrors the owner and is debited only via
+    // the drain path.
+    for (uint64_t nid : discoverNetwork(nodeId)) {
+        if (nid == nodeId) continue;
+        if (result.remaining == 0) break;
+        auto pi = nodes_.find(nid);
+        if (pi == nodes_.end()) continue;
+        PipeNode& pn = pi->second;
+        if (!ItemId::isPipe(pn.block_id)) continue;
+        if (pn.domains[kFluidDomainIdx].is_source) continue;
+        if (pn.fluidCapacity <= 0) continue;
+        if (pn.fluidId != 0 && pn.fluidId != fluidId) continue;
+        int32_t take = (std::min)(result.remaining, pn.fluidBuffer);
+        if (const auto& domain = pn.domains[kFluidDomainIdx]; domain.rate > 0) {
+            take = (std::min)(take, domain.rate);
+        }
+        if (take <= 0) continue;
+        pn.fluidBuffer -= take;
+        if (pn.fluidBuffer == 0) pn.fluidId = 0;
+        result.accepted_amount += take;
+        result.remaining -= take;
+    }
     return result;
 }
 

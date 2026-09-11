@@ -347,6 +347,7 @@ if(BUILD_TESTING)
     )
     target_include_directories(gameclient_resource_buffer_state_test PRIVATE
         ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/libs
         ${CMAKE_CURRENT_SOURCE_DIR}
     )
     target_link_libraries(gameclient_resource_buffer_state_test PRIVATE

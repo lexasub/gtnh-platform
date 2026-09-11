@@ -2591,6 +2591,75 @@ static void test_sink_capacity_boundaries_exact_fill() {
     PASS();
 }
 
+// 3.6.5: "drains its pipe buffers first" — a machine sink whose own buffer is
+// empty (mirror of the simcore state) must be served from the fluid buffers
+// of the pipes in its network before any shortfall is reported.
+static void test_consume_drains_connected_pipe_buffers() {
+    pipenet::PipeNetworkManager mgr;
+    const uint32_t steam = ItemId::pack("1111:11:1");
+    const uint32_t water = ItemId::pack("1111:11:2");
+
+    uint64_t boiler = mgr.addNode(0, 0, 0, 1000);  // machine block, not a pipe
+    uint64_t pipeA = mgr.addNode(1, 0, 0, BLOCK_ID_FLUID_PIPE);
+    uint64_t pipeB = mgr.addNode(2, 0, 0, BLOCK_ID_FLUID_PIPE);
+    uint64_t pipeWater = mgr.addNode(3, 0, 0, BLOCK_ID_FLUID_PIPE);
+    uint64_t sink = mgr.addNode(4, 0, 0, 1000);    // steam machine node
+    mgr.addEdge(boiler, pipeA);
+    mgr.addEdge(pipeA, pipeB);
+    mgr.addEdge(pipeA, pipeWater);
+    mgr.addEdge(pipeB, sink);
+
+    // Boiler is a source: its buffer mirrors the owner and must NOT be drained
+    // by the consume path (only via the drain/shortfall path).
+    mgr.setNodeFluid(boiler, 500, 1000, steam, true, false);
+    // Sink machine: own buffer mirror is empty, as mirrored from simcore.
+    mgr.setNodeFluid(sink, 0, 1000, steam, false, true);
+    // Pipes are full of steam; one pipe carries a different fluid.
+    mgr.setNodeFluid(pipeA, 1000, 1000, steam, false, false);
+    mgr.setNodeFluid(pipeB, 1000, 1000, steam, false, false);
+    mgr.setNodeFluid(pipeWater, 800, 1000, water, false, false);
+
+    // Request 1500: own buffer 0 + 1500 mB total from the steam pipes (the
+    // traversal order over the pipes is unspecified — assert the aggregate).
+    auto res = mgr.consumeFluid(sink, 1001, steam, 1500);
+    CHECK_EQ(res.accepted_amount, 1500,
+             "own empty buffer + pipe buffers cover the request");
+    CHECK_EQ(res.remaining, 0, "full coverage leaves no shortfall");
+    const int32_t steamLeft = mgr.getNode(pipeA)->fluidBuffer +
+                              mgr.getNode(pipeB)->fluidBuffer;
+    CHECK_EQ(steamLeft, 500, "exactly 1500 mB drawn from the steam pipes");
+    CHECK(mgr.getNode(pipeA)->fluidBuffer >= 0 &&
+              mgr.getNode(pipeA)->fluidBuffer <= 1000 &&
+              mgr.getNode(pipeB)->fluidBuffer >= 0 &&
+              mgr.getNode(pipeB)->fluidBuffer <= 1000,
+          "no pipe over-drained");
+    if (mgr.getNode(pipeA)->fluidBuffer == 0)
+        CHECK_EQ(mgr.getNode(pipeA)->fluidId, uint32_t(0),
+                 "emptied pipe resets its fluid id");
+    if (mgr.getNode(pipeB)->fluidBuffer == 0)
+        CHECK_EQ(mgr.getNode(pipeB)->fluidId, uint32_t(0),
+                 "emptied pipe resets its fluid id");
+    CHECK_EQ(mgr.getNode(pipeWater)->fluidBuffer, 800,
+             "pipe with a different fluid is not debited");
+    CHECK_EQ(mgr.getNode(boiler)->fluidBuffer, 500,
+             "is_source boiler buffer untouched by consume");
+    CHECK_EQ(mgr.getNode(sink)->fluidBuffer, 0,
+             "sink own buffer was already empty");
+
+    // The remaining 500 mB across the steam pipes: partial coverage,
+    // shortfall reported.
+    auto partial = mgr.consumeFluid(sink, 1002, steam, 700);
+    CHECK_EQ(partial.accepted_amount, 500, "pipe remainder is served");
+    CHECK_EQ(partial.remaining, 200, "unserved demand is the shortfall");
+    CHECK_EQ(mgr.getNode(pipeA)->fluidBuffer, 0, "steam pipes now empty");
+    CHECK_EQ(mgr.getNode(pipeB)->fluidBuffer, 0, "steam pipes now empty");
+    CHECK_EQ(mgr.getNode(pipeA)->fluidId, uint32_t(0),
+             "pipeA fluid id reset on empty");
+    CHECK_EQ(mgr.getNode(pipeB)->fluidId, uint32_t(0),
+             "pipeB fluid id reset on empty");
+    PASS();
+}
+
 // =========================================================================
 //  Integration-style tests
 // =========================================================================
@@ -3027,6 +3096,7 @@ int main(int, char**) {
     TEST(fluid_transaction_replay_and_limits);
     TEST(boiler_source_fills_connected_pipe);
     TEST(two_boiler_sources_fill_connected_pipe);
+    TEST(consume_drains_connected_pipe_buffers);
     TEST(fluid_distribution_simple);
     TEST(fluid_distribution_capacity_limited);
     TEST(fluid_distribution_no_source);

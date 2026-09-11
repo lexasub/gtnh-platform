@@ -6,7 +6,7 @@
 #include "Common/BlockType.h"
 #include "Common/Inventory.h"
 #include "UI/Core/DragManager.h"
-#include "Windows/BlockAttachedWindow.h"
+#include "UI/Windows/BlockAttachedWindow.h"
 #include "machine_registry/MachineRegistry.h"
 
 class NetClient;

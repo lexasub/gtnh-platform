@@ -39,6 +39,11 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction* action) {
                     entityStateClient_, onGiveItem_, onDrillUse_,
                     onBlockPlaced_, postToMain_);
 
+  spdlog::debug("SetBlockCAS: player={} type={} held=0x{:04X} expected=0x{:04X} new=0x{:04X} face={} req={} at ({},{},{}) eff ({},{},{}) effexp=0x{:04X}",
+                ctx.player_id, static_cast<int>(ctx.action_type), ctx.held_item,
+                ctx.expected_block_id, ctx.new_block_id, static_cast<int>(ctx.face),
+                ctx.request_id, ctx.x, ctx.y, ctx.z,
+                ctx.eff_x, ctx.eff_y, ctx.eff_z, ctx.eff_expected);
   if (dispatcher_.dispatch(ctx)) return;
   spdlog::info("Unhandled action: player={} type={} at ({},{},{})",
                ctx.player_id, static_cast<int>(ctx.action_type), ctx.x,
