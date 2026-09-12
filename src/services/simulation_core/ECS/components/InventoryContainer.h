@@ -22,7 +22,9 @@ struct InventoryContainer {
   InventoryContainer() = default;
   InventoryContainer(uint16_t type, uint16_t count,
                      const std::vector<InventorySlot> &items)
-      : entity_type(type), slot_count(count), slots(items) {}
+      : entity_type(type), slot_count(count), slots(items) {
+    if (slots.size() < static_cast<size_t>(count)) slots.resize(count);
+  }
 
   InventorySlot getSlot(uint16_t index) const {
     return (index < slots.size()) ? slots[index] : InventorySlot{};

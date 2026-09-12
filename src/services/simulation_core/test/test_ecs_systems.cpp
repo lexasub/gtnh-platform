@@ -688,6 +688,139 @@ static void test_MachineSystem_steam_machine_requests_fluid() {
     PASS();
 }
 
+static void test_MachineSystem_craft_places_output_in_output_slot() {
+    setupMachineRegistry();
+    auto* mreg = MachineRegistry::instance();
+
+    MachineInfo info{};
+    info.id = 9002;
+    info.name = "test_heat_macerator";
+    info.machine_class = "macerator";
+    info.energy_in = EnergyType::HEAT;
+    info.tier = 0;
+    info.slots_in = 1;
+    info.slots_out = 1;
+    info.capacity = 10000;
+    info.maxInput = 32;
+    info.maxOutput = 0;
+    mreg->Register(info);
+
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(
+        std::make_shared<simcore::IoUringRouterClient>());
+    auto recipes = std::make_shared<RecipeManager::RecipeManager>();
+
+    recipes->registerMachineClass(9002, "macerator", 0,
+                                  static_cast<uint8_t>(RecipeManager::EnergyType::HEAT));
+
+    std::string yaml =
+        "class: macerator\n"
+        "recipes:\n"
+        "  - name: test_mac_cobble\n"
+        "    inputs:\n"
+        "      - { item: \"0:0:2\", count: 1 }\n"
+        "    outputs:\n"
+        "      - { item: \"0:0:3\", count: 1 }\n"
+        "    eu: 32\n"
+        "    duration: 10\n"
+        "    min_tier: 0\n"
+        "    max_tier: 32767\n";
+    std::string recipePath = makeTempFile(yaml);
+    CHECK(recipes->loadRecipesFromYamlFile(recipePath),
+          "temp macerator recipe must load");
+
+    simcore::MachineSystem sys(reg, recipes, events, pipeClient);
+
+    const uint16_t kBlock = 9002;
+    auto ent = reg.create();
+    reg.emplace<simcore::MachineComponent>(ent, kBlock, 0, 0, 0, 0, 0);
+    reg.emplace<simcore::RecipeProgress>(ent);
+    reg.emplace<simcore::EnergyStorage>(ent, 10000, 10000, 32, 0, 0, EnergyType::HEAT);
+    simcore::InventoryContainer container(0, 2, {{ItemId::pack("0:0:2"), 1, 0}});
+    reg.emplace<simcore::InventoryContainer>(ent, container);
+
+    for (int i = 0; i < 15; ++i) sys.tick(0.05f);
+
+    auto& progress = reg.get<simcore::RecipeProgress>(ent);
+    CHECK(progress.recipe_id.empty(), "recipe must finish after duration");
+    CHECK(!progress.is_processing, "machine not processing after completion");
+
+    auto& slots = reg.get<simcore::InventoryContainer>(ent).slots;
+    CHECK_EQ(slots.size(), static_cast<size_t>(2), "container keeps in+out slots");
+    CHECK_EQ(slots[1].item_id, ItemId::pack("0:0:3"),
+             "output slot must contain sand after craft");
+    CHECK_EQ(slots[1].count, 1, "output count must be 1");
+    CHECK_EQ(slots[0].item_id, 0, "input consumed at recipe start");
+    CHECK_EQ(slots[0].count, 0, "input count zeroed after consumption");
+
+    PASS();
+}
+
+static void test_MachineSystem_craft_drops_output_when_container_short() {
+    // Runtime mismatch: 1-slot container (input only) vs registered in+out=2.
+    // Completion writes at [slots_in, total_slots) — empty here, output dropped.
+    setupMachineRegistry();
+    auto* mreg = MachineRegistry::instance();
+
+    MachineInfo info{};
+    info.id = 9003;
+    info.name = "test_heat_macerator_short";
+    info.machine_class = "macerator";
+    info.energy_in = EnergyType::HEAT;
+    info.tier = 0;
+    info.slots_in = 1;
+    info.slots_out = 1;
+    info.capacity = 10000;
+    info.maxInput = 32;
+    info.maxOutput = 0;
+    mreg->Register(info);
+
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(
+        std::make_shared<simcore::IoUringRouterClient>());
+    auto recipes = std::make_shared<RecipeManager::RecipeManager>();
+
+    recipes->registerMachineClass(9003, "macerator", 0,
+                                  static_cast<uint8_t>(RecipeManager::EnergyType::HEAT));
+
+    std::string yaml =
+        "class: macerator\n"
+        "recipes:\n"
+        "  - name: test_mac_cobble_short\n"
+        "    inputs:\n"
+        "      - { item: \"0:0:2\", count: 1 }\n"
+        "    outputs:\n"
+        "      - { item: \"0:0:3\", count: 1 }\n"
+        "    eu: 32\n"
+        "    duration: 10\n"
+        "    min_tier: 0\n"
+        "    max_tier: 32767\n";
+    std::string recipePath = makeTempFile(yaml);
+    CHECK(recipes->loadRecipesFromYamlFile(recipePath),
+          "temp macerator recipe must load");
+
+    simcore::MachineSystem sys(reg, recipes, events, pipeClient);
+
+    const uint16_t kBlock = 9003;
+    auto ent = reg.create();
+    reg.emplace<simcore::MachineComponent>(ent, kBlock, 0, 0, 0, 0, 0);
+    reg.emplace<simcore::RecipeProgress>(ent);
+    reg.emplace<simcore::EnergyStorage>(ent, 10000, 10000, 32, 0, 0, EnergyType::HEAT);
+    simcore::InventoryContainer container(0, 1, {{ItemId::pack("0:0:2"), 1, 0}});
+    reg.emplace<simcore::InventoryContainer>(ent, container);
+
+    for (int i = 0; i < 15; ++i) sys.tick(0.05f);
+
+    auto& slots = reg.get<simcore::InventoryContainer>(ent).slots;
+    CHECK_EQ(slots.size(), static_cast<size_t>(1), "container stays 1 slot");
+    CHECK_EQ(slots[0].item_id, 0, "input consumed");
+    CHECK_EQ(slots[0].count, 0, "no output must appear in the input slot");
+
+    PASS();
+}
+
 static void test_BatteryBufferSystem_charges_tool() {
     setupMachineRegistry();
     entt::registry reg;
@@ -1088,6 +1221,8 @@ void test_ecs_systems() {
     TEST(AdjacencyTransferSystem_non_adjacent_no_transfer);
     TEST(MachineSystem_idle_no_recipe);
     TEST(MachineSystem_steam_machine_requests_fluid);
+    TEST(MachineSystem_craft_places_output_in_output_slot);
+    TEST(MachineSystem_craft_drops_output_when_container_short);
     TEST(CreativeGeneratorSystem_fills_energy);
     TEST(BatteryBufferSystem_charges_tool);
     TEST(BatteryBufferSystem_empty_slot_noop);

@@ -4,6 +4,7 @@
 #include "ECS/components/Position.h"
 #include "ECS/components/MachineComponent.h"
 #include "ECS/components/InventoryContainer.h"
+#include "ECS/components/RecipeProgress.h"
 #include "Network/clients/IoUringRouterClient.h"
 #include "Storage/ChestStateManager.h"
 #include "Storage/ContainerSession.h"
@@ -106,13 +107,36 @@ void MachineOpenHandler::handle(const std::vector<uint8_t>& data) {
           auto* c = reg.try_get<InventoryContainer>(entity);
           ContainerSession* s = sessions_->find(pid);
           if (!c || !s) return;
-          // Merge clicks that landed before ECS link, then switch to live-ECS.
-          c->slots.clear();
-          c->slots.reserve(s->slots.size());
-          for (auto& ps : s->slots)
-            c->slots.push_back({ps.item_id, ps.count, ps.meta});
+          // Live ECS slots are authoritative while the machine runs: a stale
+          // or empty persisted snapshot must never wipe crafted outputs.
+          // The snapshot is only a cold-start restore — apply it when the
+          // entity is fresh (no active recipe, empty live container), i.e.
+          // after a server restart or lazy-init from ChunkStore.
+          bool freshIdle = true;
+          auto* prog = reg.try_get<RecipeProgress>(entity);
+          if (prog && (!prog->recipe_id.empty() || prog->is_processing ||
+                       prog->needs_output)) {
+            freshIdle = false;
+          }
+          if (freshIdle) {
+            for (const auto& slot : c->slots) {
+              if (slot.item_id != 0) { freshIdle = false; break; }
+            }
+          }
+          if (freshIdle) {
+            size_t n = std::min(s->slots.size(), c->slots.size());
+            for (size_t i = 0; i < n; ++i) {
+              if (c->slots[i].item_id == 0 && s->slots[i].item_id != 0) {
+                c->slots[i] = {s->slots[i].item_id, s->slots[i].count,
+                               s->slots[i].meta};
+              }
+            }
+          }
           s->reg = &reg;
           s->machine_entity = entity;
+          // Republish merged (live) state — the pre-link publish above sent
+          // the owned copy, which may be empty.
+          PublishFullInventory(router_, *inv_, *sessions_, pid, x, y, z);
         });
       },
       machine_id);
