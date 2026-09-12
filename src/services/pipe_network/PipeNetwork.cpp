@@ -156,6 +156,9 @@ PipeNetworkManager::getRegisteredPorts() const {
 }
 
 uint64_t PipeNetworkManager::addNode(int32_t x, int32_t y, int32_t z, uint16_t blockId) {
+    while (nodes_.find(nextNodeId_) != nodes_.end()) {
+        ++nextNodeId_;
+    }
     uint64_t id = nextNodeId_++;
     PipeNode node{};
     node.id = id;

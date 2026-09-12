@@ -5,13 +5,36 @@
 #include <pipe_network_generated.h>
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
+#include "../chunk_store/Storage/cache/MutableChunk.h"
 #include <chrono>
 #include <fstream>
 #include <sstream>
+#include <unordered_set>
+#include <utility>
 
 namespace {
 
-// Bridge struct to pass private PipeNetworkService state into generic handlers
+struct SnapshotPipeBlock {
+    int32_t x;
+    int32_t y;
+    int32_t z;
+    uint16_t block_id;
+    uint8_t meta;
+};
+
+// Canonical face order for per-face connection masks.
+static constexpr int8_t FACE_DX[6] = {1, -1, 0, 0, 0, 0};
+static constexpr int8_t FACE_DY[6] = {0, 0, 1, -1, 0, 0};
+static constexpr int8_t FACE_DZ[6] = {0, 0, 0, 0, 1, -1};
+
+} // namespace
+
+namespace gtnh {
+namespace pipe_network {
+
+namespace {
+
+// Bridge struct to pass private PipeNetworkService state into generic handlers.
 struct CheckBridge {
     std::unordered_map<uint64_t, uint64_t>& protocol_to_mgr;
     pipenet::PipeNetworkManager& network_manager;
@@ -19,15 +42,6 @@ struct CheckBridge {
     gtnh::pipe_network::MessageRouterClient& router;
 };
 
-// Canonical face order for per-face connection masks: index = meta bit.
-//   0=+X, 1=-X, 2=+Y, 3=-Y, 4=+Z, 5=-Z  (matches CableGraph / meta-bit convention).
-// meta == 0 ⇒ all six faces connected (0x3F).
-static constexpr int8_t FACE_DX[6] = { 1, -1, 0, 0, 0, 0};
-
-static constexpr int8_t FACE_DY[6] = { 0,  0, 1,-1, 0, 0};
-static constexpr int8_t FACE_DZ[6] = { 0,  0, 0, 0, 1,-1};
-
-// Generic check handler: iterates network, sums source energy, publishes response.
 template<typename ReqT, typename RespT>
 void handleCheckTemplate(
     const std::vector<uint8_t>& data,
@@ -56,11 +70,9 @@ void handleCheckTemplate(
         for (uint64_t nid : net->nodeIds)
             if (nid == mgr_id) { found = true; break; }
         if (!found) continue;
-
         for (uint64_t nid : net->nodeIds) {
             auto si = br.node_states.find(nid);
-            if (si == br.node_states.end()) continue;
-            if (si->second.is_source)
+            if (si != br.node_states.end() && si->second.is_source)
                 available += si->second.energy;
         }
         break;
@@ -68,7 +80,6 @@ void handleCheckTemplate(
 
     int32_t deficit = (std::max)(0, req->demand() - available);
     available = (std::min)(available, req->demand());
-
     flatbuffers::FlatBufferBuilder fbb;
     auto resp = createResp(fbb, available, deficit);
     fbb.Finish(resp);
@@ -76,9 +87,9 @@ void handleCheckTemplate(
         {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
 }
 
-// Shared consume computation: find network, fill sink, drain sources proportionally.
 int32_t computeConsume(uint64_t mgr_id, int32_t amount,
-                       CheckBridge& br, int32_t& out_total_source, int& out_source_count)
+                       CheckBridge& br, int32_t& out_total_source,
+                       int& out_source_count)
 {
     int32_t consumed = 0;
     for (const auto* net : br.network_manager.getAllNetworks()) {
@@ -87,7 +98,6 @@ int32_t computeConsume(uint64_t mgr_id, int32_t amount,
         for (uint64_t nid : net->nodeIds)
             if (nid == mgr_id) { found = true; break; }
         if (!found) continue;
-
         auto sink_it = br.node_states.find(mgr_id);
         if (sink_it != br.node_states.end()) {
             int32_t room = sink_it->second.capacity - sink_it->second.energy;
@@ -96,11 +106,9 @@ int32_t computeConsume(uint64_t mgr_id, int32_t amount,
             consumed += give;
             amount -= give;
         }
-
         for (uint64_t nid : net->nodeIds) {
             auto si = br.node_states.find(nid);
-            if (si == br.node_states.end()) continue;
-            if (si->second.is_source) {
+            if (si != br.node_states.end() && si->second.is_source) {
                 out_total_source += si->second.energy;
                 ++out_source_count;
             }
@@ -111,9 +119,6 @@ int32_t computeConsume(uint64_t mgr_id, int32_t amount,
 }
 
 } // anonymous namespace
-
-namespace gtnh {
-namespace pipe_network {
 
 PipeNetworkService::PipeNetworkService(MessageRouterClient& router, asio::io_context& io)
     : router_(router), io_(io), tick_timer_(io), consume_tracker_(kPendingConsumeTtlTicks),
@@ -139,6 +144,7 @@ void PipeNetworkService::Start() {
     router_.Subscribe("item.node.update");
     router_.Subscribe("item.transfer.request");
     router_.Subscribe("world.blocks.changed");
+    router_.Subscribe("world.chunk.loaded.compressed");
     router_.Subscribe("world.machine.config.updated");
     router_.Subscribe("pipe.wrench.action");
     router_.Subscribe("pipe.contents.request");
@@ -350,6 +356,8 @@ void PipeNetworkService::onRouterMessage(const std::string& topic, const std::ve
         handleItemTransferRequest(data);
     } else if (topic == "world.blocks.changed") {
         handleBlockChanged(data);
+    } else if (topic == "world.chunk.loaded.compressed") {
+        handleChunkLoaded(data);
     } else if (topic == "world.machine.config.updated") {
         handleMachineConfigUpdated(data);
     } else if (topic == "pipe.wrench.action") {
@@ -386,6 +394,9 @@ void PipeNetworkService::handleBlockChanged(const std::vector<uint8_t>& data) {
     uint64_t key = posKey(x, y, z);
 
     if (block_id == 0) {
+        for (auto& [chunk_key, positions] : chunk_pipe_positions_) {
+            positions.erase(key);
+        }
         auto it = pipe_nodes_.find(key);
         if (it != pipe_nodes_.end()) {
             network_manager_.removeNode(it->second);
@@ -428,6 +439,19 @@ void PipeNetworkService::handleBlockChanged(const std::vector<uint8_t>& data) {
         return;
     }
 
+    // A non-pipe replacement must remove the old pipe node as well; otherwise
+    // the graph retains a stale endpoint until the process restarts.
+    if (!isPipeBlock(block_id)) {
+        if (auto old = pipe_nodes_.find(key); old != pipe_nodes_.end()) {
+            network_manager_.removeNode(old->second);
+            pipe_nodes_.erase(old);
+            pipe_meta_.erase(key);
+        }
+        for (auto& [chunk_key, positions] : chunk_pipe_positions_) {
+            positions.erase(key);
+        }
+    }
+
     // Cable handling must run before the isPipeBlock early-return: cables are
     // not isPipeBlock, so their masks would otherwise never reach CableGraph.
     if (isCableBlock(block_id)) {
@@ -449,19 +473,34 @@ void PipeNetworkService::handleBlockChanged(const std::vector<uint8_t>& data) {
 
     if (!isPipeBlock(block_id)) return;
 
-    bool isNew = (pipe_nodes_.find(key) == pipe_nodes_.end());
-    uint64_t nodeId;
-    if (isNew) {
-        nodeId = network_manager_.addNode(x, y, z, block_id);
-        pipe_nodes_.emplace(key, nodeId);
-        spdlog::debug("[PipeNet] pipe node {} at ({},{},{}) added", nodeId, x, y, z);
-    } else {
-        nodeId = pipe_nodes_[key];
+    const bool isNew = pipe_nodes_.find(key) == pipe_nodes_.end();
+    const uint64_t oldNodeId = isNew ? 0 : pipe_nodes_.at(key);
+    const auto* oldNode = oldNodeId != 0 ? network_manager_.getNode(oldNodeId) : nullptr;
+    const bool blockTypeChanged = oldNode != nullptr && oldNode->block_id != block_id;
+    registerPipeBlock(x, y, z, block_id, event->meta());
+    const uint64_t nodeId = pipe_nodes_.at(key);
+    if (isNew || blockTypeChanged) {
+        spdlog::debug("[PipeNet] pipe node {} at ({},{},{}) {}",
+                      nodeId, x, y, z, isNew ? "added" : "replaced");
     }
 
     uint8_t meta = event->meta();
     pipe_meta_[key] = meta;
     network_manager_.setNodeMeta(nodeId, meta);
+
+    // A live block change is authoritative for this position; remember the
+    // pipe in its chunk so a later snapshot can reconcile replacements.
+    const ChunkKey chunk_key{
+        x >= 0 ? x / 32 : (x - 31) / 32,
+        y >= 0 ? y / 32 : (y - 31) / 32,
+        z >= 0 ? z / 32 : (z - 31) / 32};
+    chunk_pipe_positions_[chunk_key].insert(key);
+    if (blockTypeChanged) {
+        // registerPipeBlock removed the old node and its stale edges. The
+        // following refresh rebuilds connections for the replacement type.
+    }
+
+
 
     // Rebuild mask-aware connectivity: drop stale edges, then re-add only the
     // faces both endpoints permit open.
@@ -541,12 +580,112 @@ void PipeNetworkService::connectNodeNeighbors(uint64_t sourceNodeId,
     network_manager_.addEdges(candidateEdges);
 }
 
+void PipeNetworkService::handleChunkLoaded(const std::vector<uint8_t>& data) {
+    flatbuffers::Verifier verifier(data.data(), data.size());
+    if (!verifier.VerifyBuffer<Protocol::CompressedChunkData>()) {
+        spdlog::warn("[PipeNet] invalid CompressedChunkData");
+        return;
+    }
+    const auto* event = flatbuffers::GetRoot<Protocol::CompressedChunkData>(data.data());
+    if (!event || !event->coord() || !event->palette_data() ||
+        event->palette_data()->empty()) {
+        spdlog::warn("[PipeNet] CompressedChunkData missing coord or palette");
+        return;
+    }
+
+    MutableChunk chunk;
+    const auto* wire = event->palette_data();
+    if (!chunk.fromWire(wire->Data(), wire->size())) {
+        spdlog::warn("[PipeNet] invalid chunk wire payload at ({},{},{})",
+                     event->coord()->x(), event->coord()->y(), event->coord()->z());
+        return;
+    }
+
+    const int32_t cx = event->coord()->x();
+    const int32_t cy = event->coord()->y();
+    const int32_t cz = event->coord()->z();
+    std::vector<SnapshotPipeBlock> snapshot;
+    for (int ly = 0; ly < 32; ++ly) {
+        for (int lz = 0; lz < 32; ++lz) {
+            for (int lx = 0; lx < 32; ++lx) {
+                const uint16_t block_id = chunk.getBlock(lx, ly, lz);
+                if (!isPipeBlock(block_id)) continue;
+                snapshot.push_back({cx * 32 + lx, cy * 32 + ly, cz * 32 + lz,
+                                    block_id, chunk.getMeta(lx, ly, lz)});
+            }
+        }
+    }
+
+    const ChunkKey chunk_key{cx, cy, cz};
+    auto& previous = chunk_pipe_positions_[chunk_key];
+    std::unordered_set<uint64_t> current;
+    current.reserve(snapshot.size());
+    for (const auto& pipe : snapshot) current.insert(posKey(pipe.x, pipe.y, pipe.z));
+
+    for (const uint64_t old_key : previous) {
+        if (current.count(old_key) != 0) continue;
+        auto it = pipe_nodes_.find(old_key);
+        if (it == pipe_nodes_.end()) continue;
+        network_manager_.removeNode(it->second);
+        pipe_nodes_.erase(it);
+        pipe_meta_.erase(old_key);
+    }
+    for (const auto& pipe : snapshot) {
+        registerPipeBlock(pipe.x, pipe.y, pipe.z, pipe.block_id, pipe.meta);
+    }
+    previous = std::move(current);
+    for (const auto& pipe : snapshot) {
+        auto it = pipe_nodes_.find(posKey(pipe.x, pipe.y, pipe.z));
+        if (it != pipe_nodes_.end()) {
+            refreshPipeConnections(it->second, pipe.x, pipe.y, pipe.z,
+                                   pipe.block_id, pipe.meta);
+        }
+    }
+    network_manager_.rebuildItemNetworks();
+    spdlog::debug("[PipeNet] hydrated chunk ({},{},{}): {} pipe nodes",
+                  cx, cy, cz, snapshot.size());
+}
+
+void PipeNetworkService::registerPipeBlock(int32_t x, int32_t y, int32_t z,
+                                            uint16_t block_id, uint8_t meta) {
+    const uint64_t key = posKey(x, y, z);
+    auto it = pipe_nodes_.find(key);
+    uint64_t node_id = 0;
+    if (it != pipe_nodes_.end()) {
+        node_id = it->second;
+        const auto* node = network_manager_.getNode(node_id);
+        if (!node || node->block_id != block_id) {
+            network_manager_.removeNode(node_id);
+            pipe_nodes_.erase(it);
+            node_id = 0;
+        }
+    }
+    if (node_id == 0) {
+        node_id = network_manager_.addNode(x, y, z, block_id);
+        pipe_nodes_[key] = node_id;
+    }
+    pipe_meta_[key] = meta;
+    network_manager_.setNodeMeta(node_id, meta);
+}
+
+void PipeNetworkService::refreshPipeConnections(uint64_t node_id, int32_t x,
+                                                 int32_t y, int32_t z,
+                                                 uint16_t block_id, uint8_t meta) {
+    network_manager_.removeEdgesForNode(node_id);
+    const bool is_item = block_id == BLOCK_ID_ITEM_PIPE ||
+                         block_id == BLOCK_ID_DENSE_ITEM_PIPE;
+    const bool is_heat = block_id == BLOCK_ID_HEAT_PIPE;
+    connectNodeNeighbors(node_id, x, y, z, meta, is_item, is_heat,
+                         /*sourceIsPipe=*/true);
+}
+
 bool PipeNetworkService::isPipeBlock(uint16_t block_id) {
     switch (block_id) {
         case BLOCK_ID_ITEM_PIPE:
         case BLOCK_ID_FLUID_PIPE:
         case BLOCK_ID_DENSE_ITEM_PIPE:
         case BLOCK_ID_DENSE_FLUID_PIPE:
+        case BLOCK_ID_HEAT_PIPE:
             return true;
         default:
             return false;
@@ -678,13 +817,25 @@ void PipeNetworkService::handleNodeUpdate(const std::vector<uint8_t>& data) {
     uint64_t mgr_id;
     if (it == protocol_to_mgr_.end()) {
         if (!network_manager_.addNodeWithId(protocol_id, x, y, z, 1)) {
-            spdlog::warn("Duplicate energy node {}", protocol_id);
-            return;
+            // Chunk hydration allocates local pipe IDs before the simulation
+            // publishes machine IDs. Keep the protocol ID as the lookup key,
+            // but allocate a collision-free manager ID for this machine.
+            mgr_id = network_manager_.findNodeAtPosition(x, y, z);
+            const auto* existing = mgr_id != 0 ? network_manager_.getNode(mgr_id) : nullptr;
+            if (existing != nullptr && existing->block_id != 1) {
+                mgr_id = network_manager_.addNode(x, y, z, 1);
+            }
+            if (mgr_id == 0) {
+                spdlog::warn("Unable to register energy node {}", protocol_id);
+                return;
+            }
+        } else {
+            mgr_id = protocol_id;
         }
-        mgr_id = protocol_id;
         protocol_to_mgr_[protocol_id] = mgr_id;
         machine_nodes_[posKey(x, y, z)] = mgr_id;
-        spdlog::debug("Registered energy node {} at ({},{},{})", protocol_id, x, y, z);
+        spdlog::debug("Registered energy node {} at ({},{},{}) as manager node {}",
+                      protocol_id, x, y, z, mgr_id);
     } else {
         mgr_id = it->second;
     }
@@ -804,13 +955,25 @@ void PipeNetworkService::handleFluidNodeUpdate(const std::vector<uint8_t>& data)
     uint64_t mgr_id;
     if (it == protocol_to_mgr_.end()) {
         if (!network_manager_.addNodeWithId(protocol_id, x, y, z, BLOCK_ID_FLUID_PIPE)) {
-            spdlog::warn("Duplicate fluid node {}", protocol_id);
-            return;
+            // A hydrated pipe may already occupy the protocol ID. Reuse an
+            // existing machine node at this position, otherwise allocate a
+            // separate manager node while retaining the protocol ID.
+            mgr_id = network_manager_.findNodeAtPosition(x, y, z);
+            const auto* existing = mgr_id != 0 ? network_manager_.getNode(mgr_id) : nullptr;
+            if (existing == nullptr) {
+                mgr_id = network_manager_.addNode(x, y, z, BLOCK_ID_FLUID_PIPE);
+            }
+            if (mgr_id == 0) {
+                spdlog::warn("Unable to register fluid node {}", protocol_id);
+                return;
+            }
+        } else {
+            mgr_id = protocol_id;
         }
-        mgr_id = protocol_id;
         protocol_to_mgr_[protocol_id] = mgr_id;
         machine_nodes_[posKey(x, y, z)] = mgr_id;
-        spdlog::debug("Registered fluid node {} at ({},{},{})", protocol_id, x, y, z);
+        spdlog::debug("Registered fluid node {} at ({},{},{}) as manager node {}",
+                      protocol_id, x, y, z, mgr_id);
     } else {
         mgr_id = it->second;
     }

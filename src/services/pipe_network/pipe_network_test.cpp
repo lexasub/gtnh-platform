@@ -124,6 +124,20 @@ static void test_add_node_with_id() {
     PASS();
 }
 
+static void test_automatic_node_id_skips_explicit_machine_id() {
+    pipenet::PipeNetworkManager mgr;
+    CHECK(mgr.addNodeWithId(1, 10, 0, 0, 1),
+          "machine node with protocol id 1 registers");
+    const uint64_t pipe = mgr.addNode(11, 0, 0, BLOCK_ID_FLUID_PIPE);
+    CHECK_NE(pipe, uint64_t(1),
+             "hydrated pipe must not overwrite machine node id");
+    const auto* machine = mgr.getNode(1);
+    CHECK(machine != nullptr && machine->x == 10,
+          "machine node remains at its original position");
+    PASS();
+}
+
+
 // =========================================================================
 //  Typed resource port registration tests
 // =========================================================================
@@ -3053,6 +3067,7 @@ int main(int, char**) {
     TEST(disconnected_graphs);
     TEST(rebuild_networks);
     TEST(add_node_with_id);
+    TEST(automatic_node_id_skips_explicit_machine_id);
 
     // Typed resource ports
     TEST(typed_ports_independent_resource_domains);

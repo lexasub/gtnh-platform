@@ -69,10 +69,28 @@ private:
   // successful registration for the same port clears the marker.
   std::unordered_set<gtnh::common::ResourcePortRegistrationKey>
       stale_epoch_warned_;
-  // pos_key → PipeNetworkManager node_id (pipe blocks, from world.blocks.changed)
+  // pos_key → PipeNetworkManager node_id (pipe blocks, from world.blocks.changed
+  // or authoritative chunk snapshots).
   std::unordered_map<uint64_t, uint64_t> pipe_nodes_;
   // pos_key → connection mask (meta) for pipe/cable blocks
   std::unordered_map<uint64_t, uint8_t> pipe_meta_;
+  struct ChunkKey {
+    int32_t x;
+    int32_t y;
+    int32_t z;
+    bool operator==(const ChunkKey&) const = default;
+  };
+  struct ChunkKeyHash {
+    size_t operator()(const ChunkKey& key) const noexcept {
+      size_t h = static_cast<size_t>(static_cast<uint32_t>(key.x));
+      h = h * 31u + static_cast<size_t>(static_cast<uint32_t>(key.y));
+      h = h * 31u + static_cast<size_t>(static_cast<uint32_t>(key.z));
+      return h;
+    }
+  };
+  // Chunk coordinate → pipe positions seen in the last authoritative snapshot.
+  std::unordered_map<ChunkKey, std::unordered_set<uint64_t>, ChunkKeyHash>
+      chunk_pipe_positions_;
   // pos_key → node_id (registered machine nodes, from *.node.update)
   std::unordered_map<uint64_t, uint64_t> machine_nodes_;
   CableGraph cable_graph_;

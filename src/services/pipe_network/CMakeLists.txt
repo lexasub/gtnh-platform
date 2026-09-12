@@ -39,6 +39,9 @@ add_executable(pipe_networkd
     PipeNetwork.cpp
     CableGraph.cpp
     Client/MessageRouterClient.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/chunk_store/Storage/cache/MutableChunk.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/chunk_store/Storage/cache/MutableSection.cpp
+    ${CMAKE_SOURCE_DIR}/src/services/chunk_store/Storage/SectionCodec.cpp
 )
 
 target_include_directories(pipe_networkd PRIVATE
