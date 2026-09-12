@@ -121,3 +121,11 @@ test.sh
 sudo_perf.sh
 .claude
 cmake-build-offline
+
+# Beads / Dolt files (added by bd init)
+.beads/proxieddb/
+*.gate.lock*
+
+# Gas City
+.beads/*
+!.beads/identity.toml
