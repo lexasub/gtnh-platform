@@ -31,6 +31,7 @@ void validRegistry() {
   assert(registry.pipe(ItemId::pack("1111:10:0")) != nullptr);
   assert(registry.cable(ItemId::pack("1111:01:0")) != nullptr);
   const auto* steam_fluid = registry.fluid(registry.steamItemId());
+  (void)steam_fluid;
   assert(steam_fluid != nullptr && steam_fluid->item_id == registry.steamItemId());
   assert(registry.drops().size() == 2);
 }
@@ -43,9 +44,11 @@ void steamIdMatchesRegistryData() {
   const std::uint16_t steam = registry.steamItemId();
   assert(steam == ItemId::pack("1111:11:1"));
   const auto* item = registry.item(steam);
+  (void)item;
   assert(item != nullptr && item->name == "steam");
   assert(item->id_text == "1111:11:1");
   const auto* fluid = registry.fluid(steam);
+  (void)fluid;
   assert(fluid != nullptr && fluid->item_id == steam);
   assert(fluid->name == "steam");
   assert(gtnh::common::steamItemId() == steam);
