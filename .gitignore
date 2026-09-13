@@ -120,6 +120,9 @@ skills-lock.json
 
 # ── Temporary / scratch files ────────────────────────────
 tests/
+# game_client tests are checked-in sources, not repository scratch files.
+!src/services/game_client/tests/
+!src/services/game_client/tests/*.cpp
 Testing/
 test_recipe.json
 try_fix.patch
