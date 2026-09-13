@@ -11,7 +11,7 @@ namespace simcore {
 
 namespace {
     inline bool isGenerator(uint16_t block_id) {
-        return block_id == ItemId::pack("1110:00:2") || block_id == ItemId::pack("1110:01:0");
+        return block_id == ItemId::pack("1110:000:2") || block_id == ItemId::pack("1110:011:0");
     }
 }
 

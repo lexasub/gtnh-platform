@@ -229,7 +229,7 @@ static void test_MachineRegistry_Yaml_lowercase_role() {
         "machine_classes:\n"
         "  - class: generator\n"
         "    variants:\n"
-        "      - block_id: \"1110:00:2\"\n"
+        "      - block_id: \"1110:000:2\"\n"
         "        name: heat_generator\n"
         "        energy_out: HEAT\n"
         "        slots: { input: 1, output: 0 }\n"
@@ -238,7 +238,7 @@ static void test_MachineRegistry_Yaml_lowercase_role() {
         "          max_output: 32\n"
         "  - class: macerator\n"
         "    variants:\n"
-        "      - block_id: \"1110:00:8\"\n"
+        "      - block_id: \"1110:001:5\"\n"
         "        name: macerator\n"
         "        energy_in: ELECTRICITY\n"
         "        slots: { input: 1, output: 1 }\n"
@@ -249,7 +249,7 @@ static void test_MachineRegistry_Yaml_lowercase_role() {
     auto reg = MachineRegistry::LoadFromYaml(path.c_str());
     CHECK(reg != nullptr, "YAML registry should load");
 
-    auto* gen = reg->Get(ItemId::pack("1110:00:2"));
+    auto* gen = reg->Get(ItemId::pack("1110:000:2"));
     CHECK(gen != nullptr, "heat_generator should load from YAML");
     if (gen) {
         // producer (energy_out present, no energy_in) → maxOutput read, maxInput 0
@@ -262,7 +262,7 @@ static void test_MachineRegistry_Yaml_lowercase_role() {
         }
     }
 
-    auto* mac = reg->Get(ItemId::pack("1110:00:8"));
+    auto* mac = reg->Get(ItemId::pack("1110:001:5"));
     CHECK(mac != nullptr, "macerator should load from YAML");
     if (mac) {
         // consumer (energy_in present) → maxInput reads usage
@@ -280,7 +280,7 @@ static void test_GeneratorSystem_burns_coal() {
     simcore::GeneratorSystem sys(reg, events, pipeClient);
 
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:00:2"), 0, 100, 64, 100, 1);
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:000:2"), 0, 100, 64, 100, 1);
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 0, 128, 128, 0, EnergyType::HEAT);
     simcore::InventoryContainer container(0, 1, {{ItemId::pack("0:11110:2"), 1, 0}});
     reg.emplace<simcore::InventoryContainer>(ent, container);
@@ -290,7 +290,7 @@ static void test_GeneratorSystem_burns_coal() {
 
     CHECK_GT(energy.current, 0, "generator should produce energy from coal");
     CHECK_GT(events->block_entity_update_count, 0, "should publish BlockEntityUpdate");
-    CHECK_EQ(events->last_machine_id, ItemId::pack("1110:00:2"), "machine_id should be heat_generator");
+    CHECK_EQ(events->last_machine_id, ItemId::pack("1110:000:2"), "machine_id should be heat_generator");
 
     PASS();
 }
@@ -306,7 +306,7 @@ static void test_GeneratorSystem_producer_maxInput_zero() {
     simcore::GeneratorSystem sys(reg, events, pipeClient);
 
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:00:2"), 0, 200, 64, 200, 4);
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:000:2"), 0, 200, 64, 200, 4);
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 0, 0, 32, 0, EnergyType::HEAT);
     simcore::InventoryContainer container(0, 1, {{ItemId::pack("0:11110:2"), 1, 0}});
     reg.emplace<simcore::InventoryContainer>(ent, container);
@@ -327,7 +327,7 @@ static void test_GeneratorSystem_no_fuel_no_energy() {
     simcore::GeneratorSystem sys(reg, events, pipeClient);
 
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:00:2"), 0, 101, 64, 101, 2);
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:000:2"), 0, 101, 64, 101, 2);
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 0, 128, 128, 0, EnergyType::HEAT);
     reg.emplace<simcore::InventoryContainer>(ent);
 
@@ -347,7 +347,7 @@ static void test_GeneratorSystem_full_storage_skips() {
     simcore::GeneratorSystem sys(reg, events, pipeClient);
 
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:00:2"), 0, 102, 64, 102, 3);
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:000:2"), 0, 102, 64, 102, 3);
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 10000, 128, 128, 0, EnergyType::HEAT);
     reg.emplace<simcore::InventoryContainer>(ent);
 
@@ -422,8 +422,8 @@ static void test_AdjacencyTransferSystem_non_adjacent_no_transfer() {
 }
 
 // Heat propagation end-to-end through the real onBlockChanged entity-creation
-// path with the real machines.yaml: heat_generator (1110:00:2, PRODUCER/HEAT)
-// burning coal must transfer heat into an adjacent heat_furnace (1110:00:0,
+// path with the real machines.yaml: heat_generator (1110:000:2, PRODUCER/HEAT)
+// burning coal must transfer heat into an adjacent heat_furnace (1110:000:0,
 // CONSUMER/HEAT). Guards the ParseRole + HeatTransferSystem producer-detection
 // fixes — before them the generator parsed as CONSUMER (maxOutput=0) and was
 // never treated as a heat source.
@@ -440,8 +440,8 @@ static void test_HeatTransferSystem_yaml_generator_to_furnace() {
     simcore::GeneratorSystem genSys(engine.reg(), events, pipeClient);
     simcore::AdjacencyTransferSystem adjSys(engine.reg(), *MachineRegistry::instance(), events);
 
-    engine.onBlockChanged(0, 0, 0, ItemId::pack("1110:00:2"), 0, 0); // heat_generator
-    engine.onBlockChanged(1, 0, 0, ItemId::pack("1110:00:0"), 0, 0); // heat_furnace
+    engine.onBlockChanged(0, 0, 0, ItemId::pack("1110:000:2"), 0, 0); // heat_generator
+    engine.onBlockChanged(1, 0, 0, ItemId::pack("1110:000:0"), 0, 0); // heat_furnace
 
     // Verify the registry-derived components are correct (root-cause guards).
     entt::entity gen = entt::null, furn = entt::null;
@@ -503,7 +503,7 @@ static void test_SetBlockCASHandler_lazy_creates_pre_existing_machine() {
     // The furnace "exists" in the world (ChunkStore) but has no ECS entity —
     // the scenario of a block placed before simcore restarted.
     auto repo = std::make_shared<FakeBlockRepository>();
-    repo->block_id = ItemId::pack("1110:00:0"); // heat_furnace
+    repo->block_id = ItemId::pack("1110:000:0"); // heat_furnace
     repo->meta = 0;
     repo->mb_id = 0;
 
@@ -540,7 +540,7 @@ static void test_SetBlockCASHandler_lazy_creates_pre_existing_machine() {
 
     // Place a heat_generator adjacent and burn coal — heat must now flow into
     // the lazy-created furnace (the pre-fix behaviour: no entity → no transfer).
-    engine->onBlockChanged(4, 10, 5, ItemId::pack("1110:00:2"), 0, 0);
+    engine->onBlockChanged(4, 10, 5, ItemId::pack("1110:000:2"), 0, 0);
     entt::entity gen = entt::null;
     for (auto e : r.view<simcore::Position>()) {
         auto& pp = r.get<simcore::Position>(e);
@@ -910,7 +910,7 @@ static void test_CreativeGeneratorSystem_fills_energy() {
     simcore::CreativeGeneratorSystem sys(reg, events, pipeClient);
 
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:2"), 0, 300, 50, 300, 40);
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:100:0"), 0, 300, 50, 300, 40);
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 0, 0, 0, 10, EnergyType::ELECTRICITY);
 
     sys.tick(0.05f);
@@ -1123,7 +1123,7 @@ static void test_BoilerSystem_heat_boiler_produces_steam_no_water() {
                               gtnh::common::steamItemId());
 
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:1"), 0, 100, 64, 100, 1);
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:011:1"), 0, 100, 64, 100, 1);
     // EnergyStorage holds input HEAT (received from an adjacent heat producer via
     // AdjacencyTransferSystem, which keeps heat_stored and current in sync).
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 500, 0, 32, 1, EnergyType::HEAT);
@@ -1143,7 +1143,7 @@ static void test_BoilerSystem_heat_boiler_produces_steam_no_water() {
     auto& heatIn = reg.get<simcore::HeatIntakeComponent>(ent);
 
     CHECK_GT(steamOut.steam_stored, 0, "heat boiler should convert HEAT into STEAM");
-    CHECK_EQ(events->last_machine_id, ItemId::pack("1110:01:1"), "machine_id should be steam_heat_boiler");
+    CHECK_EQ(events->last_machine_id, ItemId::pack("1110:011:1"), "machine_id should be steam_heat_boiler");
     CHECK_GT(events->last_steam_current, 0, "BlockEntityUpdate should carry steam_current");
     CHECK_LT(heatIn.heat_stored, 500, "heat should be consumed (no water involved)");
 
@@ -1159,7 +1159,7 @@ static void test_BoilerSystem_heat_pipe_replenish_request() {
                               gtnh::common::steamItemId());
 
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:1"), 0, 100, 64, 100, 1);
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:011:1"), 0, 100, 64, 100, 1);
     // Heat nearly exhausted: boiler must issue a HEAT consume request (pull) so a
     // connected heat pipe network can replenish it.
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 10, 0, 32, 1, EnergyType::HEAT);
@@ -1190,7 +1190,7 @@ static void test_GeneratorSystem_solid_boiler_produces_steam() {
                                  gtnh::common::steamItemId());
 
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:0"), 0, 200, 64, 200, 4);
+    reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:011:0"), 0, 200, 64, 200, 4);
     reg.emplace<simcore::EnergyStorage>(ent, 10000, 0, 0, 32, 0, EnergyType::STEAM);
     simcore::InventoryContainer container(0, 2, {{ItemId::pack("0:11110:2"), 1, 0}});
     reg.emplace<simcore::InventoryContainer>(ent, container);

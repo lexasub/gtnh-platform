@@ -918,7 +918,7 @@ static void test_cable_graph_add_remove() {
     using namespace gtnh::pipe_network;
 
     CableGraph graph;
-    const CableDef tinDef = {66, 1, "cable_tin", 100000000.0f, 32, 32};
+    const CableDef tinDef = {ItemId::pack("1111:01:0"), 1, "cable_tin", 100000000.0f, 32, 32};
 
     graph.addCableNode(1, tinDef, 0, 0, 0);
     graph.addCableNode(2, tinDef, 1, 0, 0);
@@ -939,7 +939,7 @@ static void test_cable_graph_packet_routing() {
     using namespace gtnh::pipe_network;
 
     CableGraph graph;
-    const CableDef def = {66, 1, "cable_tin", 100000000.0f, 32, 32};
+    const CableDef def = {ItemId::pack("1111:01:0"), 1, "cable_tin", 100000000.0f, 32, 32};
 
     graph.addCableNode(1, def, 0, 0, 0);
     graph.addCableNode(2, def, 1, 0, 0);
@@ -962,9 +962,9 @@ static void test_cable_graph_voltage_limit() {
 
     CableGraph graph;
     // Low voltage cable (maxVoltage=32)
-    CableDef lowDef = {66, 1, "cable_tin", 100000000.0f, 32, 32};
+    CableDef lowDef = {ItemId::pack("1111:01:0"), 1, "cable_tin", 100000000.0f, 32, 32};
     // High voltage cable (maxVoltage=512)
-    CableDef highDef = {68, 2, "cable_gold", 49668352.0f, 128, 128};
+    CableDef highDef = {ItemId::pack("1111:01:2"), 2, "cable_gold", 49668352.0f, 128, 128};
 
     graph.addCableNode(1, lowDef, 0, 0, 0);
     graph.addCableNode(2, highDef, 1, 0, 0);
@@ -2847,7 +2847,7 @@ static void test_cable_graph_transformer_integration() {
     CableGraph cg;
 
     CableDef mvCable;
-    mvCable.block_id = 66;
+    mvCable.block_id = ItemId::pack("1111:01:0");
     mvCable.tier = 2;
     mvCable.max_voltage = 128;
     mvCable.ampacity = 16;
@@ -2856,7 +2856,7 @@ static void test_cable_graph_transformer_integration() {
     cg.addCableNode(102, mvCable, 1, 0, 0);
 
     CableDef hvCable;
-    hvCable.block_id = 68;
+    hvCable.block_id = ItemId::pack("1111:01:2");
     hvCable.tier = 3;
     hvCable.max_voltage = 512;
     hvCable.ampacity = 8;
@@ -2903,7 +2903,7 @@ static void test_cable_explosion_event() {
     using namespace gtnh::pipe_network;
 
     CableGraph cg;
-    CableDef def = {66, 2, "cable_tin", 0.0f, 128, 16};
+    CableDef def = {ItemId::pack("1111:01:0"), 2, "cable_tin", 0.0f, 128, 16};
 
     cg.addCableNode(100, def, 0, 0, 0);
     cg.addCableNode(102, def, 1, 0, 0);
@@ -3054,6 +3054,23 @@ static void test_resource_port_client_roundtrip() {
     PASS();
 }
 
+static void test_cable_defs_packed_range() {
+    using namespace gtnh::pipe_network;
+
+    for (const auto& [id, def] : CABLE_DEFS) {
+        CHECK(ItemId::isCable(id), "cable id inside packed cable range");
+        CHECK_EQ(ItemId::category(id), ItemId::CAT_INFRA, "cable id in INFRA category");
+        CHECK_EQ(def.block_id, id, "def block_id matches map key");
+        CHECK(isCableBlock(id), "isCableBlock finds every CABLE_DEFS entry");
+        CHECK(getCableDef(id) != nullptr, "getCableDef finds every CABLE_DEFS entry");
+        CHECK(getCableDef(id)->tier == def.tier, "getCableDef returns matching tier");
+    }
+    CHECK_EQ(CABLE_DEFS.size(), 6u, "all six cables registered");
+    CHECK(!isCableBlock(ItemId::pack("1111:10:0")), "pipe id is not a cable");
+    CHECK(!isCableBlock(ItemId::pack("1111:11:0")), "fluid id is not a cable");
+    PASS();
+}
+
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
 int main(int, char**) {
@@ -3151,6 +3168,9 @@ int main(int, char**) {
 
     // Cable explosion event
     TEST(cable_explosion_event);
+
+    // CABLE_DEFS must stay in the packed 1111:01:x range (ItemId::isCable)
+    TEST(cable_defs_packed_range);
 
     // Persistence cycle
     TEST(persistence_load_unload_cycle);

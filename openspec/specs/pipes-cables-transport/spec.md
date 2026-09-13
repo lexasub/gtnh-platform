@@ -1,7 +1,7 @@
 # pipes-cables-transport Specification
 
 ## Purpose
-TBD - created by archiving change implement-pipes-cables-transport. Update Purpose after archive.
+Core pipe/cable transport graph: item, fluid, and energy flow solving.
 ## Requirements
 ### Requirement: Item Pipe Transport
 The system SHALL support item transport between machines via item pipes, with BFS routing and 1 block/tick movement.
@@ -14,7 +14,7 @@ The system SHALL support item transport between machines via item pipes, with BF
 
 #### Scenario: Item pipe block placed
 - **GIVEN** no item pipe network exists
-- **WHEN** a player places `item_pipe` (block_id=62) adjacent to an existing pipe or machine
+- **WHEN** a player places `item_pipe` (block_id=`1111:10:1`) adjacent to an existing pipe or machine
 - **THEN** `PipeNetworkService::handleBlockChanged()` fires
 - **AND** `PipeNetworkManager::addNode()` creates a new pipe node
 - **AND** `rebuildItemNetworks()` rebuilds connected components via BFS
@@ -44,7 +44,7 @@ The system SHALL support item transport between machines via item pipes, with BF
 - **AND** `SetMachineSlotReq` is sent to SimulationCore
 
 #### Scenario: Dense item pipe has higher capacity
-- **GIVEN** a `dense_item_pipe` (block_id=64) and a regular `item_pipe` (block_id=62)
+- **GIVEN** a `dense_item_pipe` (block_id=`1111:10:2`) and a regular `item_pipe` (block_id=`1111:10:1`)
 - **WHEN** both are placed in the network
 - **THEN** the dense pipe node has `itemCapacity > item_pipe` capacity
 - **AND** more items can be buffered at the dense pipe node
@@ -87,8 +87,8 @@ may emit different concrete item IDs over time.
 - **AND** the sink machine buffer increases only once from that response
 
 #### Scenario: Fluid type mismatch blocks flow
-- **GIVEN** a fluid pipe network contains `fluid_id = 1` (water)
-- **WHEN** a source or sink with `fluid_id = 2` (steam) requests transport on the
+- **GIVEN** a fluid pipe network contains `fluid_id = 64512` (water, `1111:11:0`)
+- **WHEN** a source or sink with `fluid_id = 64513` (steam, `1111:11:1`) requests transport on the
   same network
 - **THEN** the mismatched amount is not accepted or mixed
 - **AND** the caller receives a blocked or short-fill response
@@ -119,7 +119,7 @@ The system SHALL support packet-based energy transport through cables with volta
 
 #### Scenario: Cable block placed
 - **GIVEN** no cable network exists
-- **WHEN** a player places `cable_tin` (block_id=66) adjacent to another cable or machine
+- **WHEN** a player places `cable_tin` (block_id=`1111:01:0`) adjacent to another cable or machine
 - **THEN** `CableGraph::addCableNode()` creates a new cable node with tier/ampacity/loss from `CABLE_DEFS`
 
 #### Scenario: Correct tier allows energy flow
@@ -178,35 +178,35 @@ The system SHALL support voltage transformation between cable tiers, both step-u
 The system SHALL register all pipe and cable block IDs in the item registry and provide classification functions for rendering and simulation.
 
 **References:**
-- `data/registry/items.csv` — block ID entries (lines 106-116)
+- `data/registry/items.csv` — block ID entries (lines 172-183)
 - `src/services/pipe_network/PipeBlockIds.h` — `BLOCK_ID_FLUID_PIPE`, `BLOCK_ID_ITEM_PIPE`, `BLOCK_ID_DENSE_ITEM_PIPE`, `BLOCK_ID_DENSE_FLUID_PIPE`
 - `src/services/pipe_network/PipeNetworkService.cpp` — `isPipeBlock()` at line 276
-- `src/services/pipe_network/CableTypes.h` — `isCableBlock()` at line 27
+- `src/services/pipe_network/CableTypes.h` — `isCableBlock()` at line 29
 - `src/services/game_client/Render/BlockRenderRegistry.h` — `isPipeBlock()`, `isCableBlock()`, `blockIdToPipeType()`, `blockIdToCableTier()`
 - `src/services/game_client/Render/PipeMeshBuilder.h` — `pipeTypeToBlockId()`, `isCableType()`, `pipeTypeToCableTier()`
 
 #### Scenario: Pipe block IDs registered
 - **GIVEN** the item registry at `data/registry/items.csv`
 - **WHEN** scanning registered items
-- **THEN** `fluid_pipe` (61), `item_pipe` (62), `dense_item_pipe` (64), `dense_fluid_pipe` (65) are present
+- **THEN** `fluid_pipe` (`1111:10:0`), `item_pipe` (`1111:10:1`), `dense_item_pipe` (`1111:10:2`), `dense_fluid_pipe` (`1111:10:3`) are present
 
 #### Scenario: Cable block IDs registered
 - **GIVEN** the item registry at `data/registry/items.csv`
 - **WHEN** scanning registered items
-- **THEN** `cable_tin` (66) through `cable_platinum` (71) are present
+- **THEN** `cable_tin` (`1111:01:0`) through `cable_platinum` (`1111:01:5`) are present
 
 #### Scenario: isPipeBlock() returns true for pipe blocks
 - **GIVEN** `PipeNetworkService::isPipeBlock()`
-- **WHEN** called with block_id = 61 (fluid_pipe), 62 (item_pipe), 64 (dense_item_pipe), 65 (dense_fluid_pipe)
+- **WHEN** called with block_id = `1111:10:0` (fluid_pipe), `1111:10:1` (item_pipe), `1111:10:2` (dense_item_pipe), `1111:10:3` (dense_fluid_pipe)
 - **THEN** returns `true`
-- **AND** called with block_id = 0, 66 (cable_tin), or any non-pipe block
+- **AND** called with block_id = 0, `1111:01:0` (cable_tin), or any non-pipe block
 - **THEN** returns `false`
 
 #### Scenario: isCableBlock() returns true for cable blocks
 - **GIVEN** `isCableBlock()` from `CableTypes.h`
-- **WHEN** called with block_id = 66..71 (cable_tin through cable_platinum)
+- **WHEN** called with block_id = `1111:01:0`..`1111:01:5` (cable_tin through cable_platinum)
 - **THEN** returns `true`
-- **AND** called with block_id = 62 (item_pipe) or non-cable block
+- **AND** called with block_id = `1111:10:1` (item_pipe) or non-cable block
 - **THEN** returns `false`
 
 ### Requirement: Cable Overheat Explosion Propagation

@@ -21,3 +21,15 @@ recipes:
       - { item: oak_planks, count: 1 }   # oak_planks
     duration: 50
     energy_output: 1000   # HU generated
+
+  - name: generator_charcoal
+    inputs:
+      - { item: charcoal, count: 1 }
+    duration: 100
+    energy_output: 8000   # HU generated
+
+  - name: generator_oak_log
+    inputs:
+      - { item: oak_log, count: 1 }
+    duration: 50
+    energy_output: 2000   # HU generated

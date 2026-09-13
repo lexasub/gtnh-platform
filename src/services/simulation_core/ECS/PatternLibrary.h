@@ -58,10 +58,10 @@ using BlockLookupFn = std::function<uint16_t(uint32_t x, uint32_t y, uint32_t z)
 // machines.yaml are regenerated. They are deliberately distinct from the
 // legacy multiblock structural/controller block ids (1001-1006) so a hatch
 // block never collides with a controller or firebox.
-constexpr uint16_t HATCH_BLOCK_ITEM_IN   = ItemId::pack("1110:10:0");
-constexpr uint16_t HATCH_BLOCK_ITEM_OUT  = ItemId::pack("1110:10:1");
-constexpr uint16_t HATCH_BLOCK_FLUID_IN  = ItemId::pack("1110:10:2");
-constexpr uint16_t HATCH_BLOCK_FLUID_OUT = ItemId::pack("1110:10:3");
+constexpr uint16_t HATCH_BLOCK_ITEM_IN   = ItemId::pack("1110:101:0");
+constexpr uint16_t HATCH_BLOCK_ITEM_OUT  = ItemId::pack("1110:101:1");
+constexpr uint16_t HATCH_BLOCK_FLUID_IN  = ItemId::pack("1110:101:2");
+constexpr uint16_t HATCH_BLOCK_FLUID_OUT = ItemId::pack("1110:101:3");
 
 inline HatchType hatchBlockIdToType(uint16_t block_id) {
     switch (block_id) {

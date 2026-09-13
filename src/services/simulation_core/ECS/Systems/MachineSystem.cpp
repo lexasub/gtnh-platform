@@ -11,6 +11,7 @@
 #include "../components/HeatSlowComponent.h"
 #include "../components/HeatIntakeComponent.h"
 #include "../components/SteamOutputComponent.h"
+#include "../components/FluidStorage.h"
 #include "Storage/ContainerSession.h"
 #include "Storage/ChestStateManager.h"
 #include "Storage/PlayerInventoryStore.h"
@@ -159,7 +160,7 @@ void MachineSystem::tick(float /*dt*/) {
         if (recipe) {
             if (RecipeManager::evaluateConditions(recipe->id, reg_,
                                              machine.x, machine.y, machine.z, *recipes_)) {
-                if (reservations_ && recipe->hasResourceRequirements()) {
+                if (reservations_ && recipe->needsReservation()) {
                     // 4.2.2/4.3.2: reserve every requirement first; inputs
                     // are consumed and progress starts only on full
                     // acceptance (commitPendingCraft).
@@ -460,6 +461,37 @@ void MachineSystem::tick(float /*dt*/) {
                 if (remaining > 0) {
                     spdlog::warn("Machine {} at entity {}: output slots full, {} of item {} dropped",
                                  recipe->id, static_cast<uint32_t>(ent), remaining, out.item_id);
+                }
+            }
+
+            // Credit per-operation fluid outputs into the machine's fluid
+            // buffer. The buffer is created lazily (one operation's worth of
+            // capacity) so FLUID-source drains and buffer-state publishers
+            // can observe the produced fluids.
+            if (recipe->hasFluidOutputs()) {
+                auto* fluid = reg_.try_get<FluidStorage>(ent);
+                if (!fluid) {
+                    int32_t total_mb = 0;
+                    for (const auto& fo : recipe->fluid_outputs) {
+                        total_mb += static_cast<int32_t>(fo.amount_mb);
+                    }
+                    const uint32_t first_id = recipe->fluid_outputs.front().fluid_id;
+                    fluid = &reg_.emplace<FluidStorage>(
+                        ent, first_id, 0, total_mb, total_mb, total_mb);
+                }
+                for (const auto& fo : recipe->fluid_outputs) {
+                    if (fluid->fluid_id != fo.fluid_id) {
+                        spdlog::warn("Machine {} at entity {}: fluid output {} dropped, buffer holds different fluid",
+                                     recipe->id, static_cast<uint32_t>(ent), fo.fluid_id);
+                        continue;
+                    }
+                    const int32_t accepted =
+                        fluid->addFluid(static_cast<int32_t>(fo.amount_mb));
+                    if (accepted < static_cast<int32_t>(fo.amount_mb)) {
+                        spdlog::warn("Machine {} at entity {}: fluid buffer full, {} mB of fluid {} dropped",
+                                     recipe->id, static_cast<uint32_t>(ent),
+                                     fo.amount_mb - accepted, fo.fluid_id);
+                    }
                 }
             }
 

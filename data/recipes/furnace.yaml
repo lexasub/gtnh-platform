@@ -116,3 +116,246 @@ recipes:
     eu: 0.7
     min_tier: 0
     max_tier: 32767
+
+  # ── Ore → Ingot ───────────────────────────────────────────
+  - name: gtnh:smelt_tin_ore
+    inputs:
+      - { item: tin_ore, count: 1 }
+    outputs:
+      - { item: tin_ingot, count: 1 }
+    duration: 200
+    eu: 0.5
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_copper_ore
+    inputs:
+      - { item: copper_ore, count: 1 }
+    outputs:
+      - { item: copper_ingot, count: 1 }
+    duration: 200
+    eu: 0.5
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_lead_ore
+    inputs:
+      - { item: lead_ore, count: 1 }
+    outputs:
+      - { item: lead_ingot, count: 1 }
+    duration: 200
+    eu: 0.5
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_silver_ore
+    inputs:
+      - { item: silver_ore, count: 1 }
+    outputs:
+      - { item: silver_ingot, count: 1 }
+    duration: 200
+    eu: 0.7
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_zinc_ore
+    inputs:
+      - { item: zinc_ore, count: 1 }
+    outputs:
+      - { item: zinc_ingot, count: 1 }
+    duration: 200
+    eu: 0.5
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_nickel_ore
+    inputs:
+      - { item: nickel_ore, count: 1 }
+    outputs:
+      - { item: nickel_ingot, count: 1 }
+    duration: 200
+    eu: 0.7
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_osmium_ore
+    inputs:
+      - { item: osmium_ore, count: 1 }
+    outputs:
+      - { item: osmium_ingot, count: 1 }
+    duration: 300
+    eu: 1.0
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_iridium_ore
+    inputs:
+      - { item: iridium_ore, count: 1 }
+    outputs:
+      - { item: iridium_ingot, count: 1 }
+    duration: 300
+    eu: 1.0
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_platinum_ore
+    inputs:
+      - { item: platinum_ore, count: 1 }
+    outputs:
+      - { item: platinum_ingot, count: 1 }
+    duration: 300
+    eu: 1.0
+    min_tier: 0
+    max_tier: 32767
+
+  # ── More Dust → Ingot ─────────────────────────────────────
+  - name: gtnh:smelt_lead_dust
+    inputs:
+      - { item: lead_dust, count: 1 }
+    outputs:
+      - { item: lead_ingot, count: 1 }
+    duration: 200
+    eu: 0.5
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_silver_dust
+    inputs:
+      - { item: silver_dust, count: 1 }
+    outputs:
+      - { item: silver_ingot, count: 1 }
+    duration: 200
+    eu: 0.7
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_zinc_dust
+    inputs:
+      - { item: zinc_dust, count: 1 }
+    outputs:
+      - { item: zinc_ingot, count: 1 }
+    duration: 200
+    eu: 0.5
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_steel_dust
+    inputs:
+      - { item: steel_dust, count: 1 }
+    outputs:
+      - { item: steel_ingot, count: 1 }
+    duration: 250
+    eu: 0.7
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_aluminium_dust
+    inputs:
+      - { item: aluminium_dust, count: 1 }
+    outputs:
+      - { item: aluminium_ingot, count: 1 }
+    duration: 250
+    eu: 0.7
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_titanium_dust
+    inputs:
+      - { item: titanium_dust, count: 1 }
+    outputs:
+      - { item: titanium_ingot, count: 1 }
+    duration: 300
+    eu: 1.0
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_tungsten_dust
+    inputs:
+      - { item: tungsten_dust, count: 1 }
+    outputs:
+      - { item: tungsten_ingot, count: 1 }
+    duration: 300
+    eu: 1.0
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_platinum_dust
+    inputs:
+      - { item: platinum_dust, count: 1 }
+    outputs:
+      - { item: platinum_ingot, count: 1 }
+    duration: 300
+    eu: 1.0
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_iridium_dust
+    inputs:
+      - { item: iridium_dust, count: 1 }
+    outputs:
+      - { item: iridium_ingot, count: 1 }
+    duration: 300
+    eu: 1.0
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_osmium_dust
+    inputs:
+      - { item: osmium_dust, count: 1 }
+    outputs:
+      - { item: osmium_ingot, count: 1 }
+    duration: 300
+    eu: 1.0
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_brass_dust
+    inputs:
+      - { item: brass_dust, count: 1 }
+    outputs:
+      - { item: brass_ingot, count: 1 }
+    duration: 200
+    eu: 0.5
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_invar_dust
+    inputs:
+      - { item: invar_dust, count: 1 }
+    outputs:
+      - { item: invar_ingot, count: 1 }
+    duration: 200
+    eu: 0.7
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Misc ──────────────────────────────────────────────────
+  - name: gtnh:smelt_oak_log_charcoal
+    inputs:
+      - { item: oak_log, count: 1 }
+    outputs:
+      - { item: charcoal, count: 2 }
+    duration: 200
+    eu: 0.2
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_clay_brick
+    inputs:
+      - { item: clay_ball, count: 1 }
+    outputs:
+      - { item: brick, count: 1 }
+    duration: 200
+    eu: 0.2
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:smelt_chromium_dust
+    inputs:
+      - { item: chromium_dust, count: 1 }
+    outputs:
+      - { item: chromium_ingot, count: 1 }
+    duration: 200
+    eu: 0.5
+    min_tier: 0
+    max_tier: 32767

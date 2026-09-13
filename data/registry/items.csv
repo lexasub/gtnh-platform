@@ -1,5 +1,9 @@
 int,name,stack,meta
-# BASE terrain blocks (prefix 0:0)
+# Registry layout: logical group comments mirror data/registry/item-subgroups.json.
+# Existing hierarchical IDs are immutable; comments do not define allocation namespaces.
+
+# base/terrain — allocation pool 00 (logical subgroups below)
+# base/terrain/stone-ground — legacy items
 0:0:0,air,0,0
 0:0:1,stone,,0
 0:0:2,cobblestone,,0
@@ -9,19 +13,70 @@ int,name,stack,meta
 0:0:6,brick_block,,0
 0:0:7,dirt,,0
 0:0:8,grass,,0
-# BASE wood (prefix 0:10:00 = planks, 0:10:01 = slabs, 0:10:10 = doors, 0:10:11 = misc)
+
+# base/terrain additions — approved useful resources
+0:0:9,brick,,0
+0:0:10,clay,,0
+0:0:11,clay_ball,64,0
+0:0:12,flint,64,0
+0:0:13,glass_pane,,0
+0:0:14,grass_block,,0
+0:0:15,gravel,,0
+0:0:16,sandstone,,0
+0:0:17,stone_bricks,,0
+0:0:18,sugar_cane,,0
+
+# base/terrain/vegetation — deferred issue21 additions
+# base/terrain/manufactured-building — deferred issue21 additions
+# base/terrain/decorative — deferred issue21 additions
+
+# base/wood — allocation pool 010
+# base/wood/raw — legacy items
+0:10:11:2,oak_log,,0
+# base/wood/foliage — legacy items
+0:10:11:3,oak_leaves,,0
+# base/wood/planks — legacy allocation anchor 01000
 0:10:00:0,oak_planks,,0
 0:10:00:1,spruce_planks,,0
 0:10:00:2,birch_planks,,0
+# base/wood/slabs-stairs-fences — legacy allocation anchor 01001
 0:10:01:0,oak_slab,,0
 0:10:01:1,spruce_slab,,0
+# base/wood/doors-trapdoors-mechanisms — legacy allocation anchor 01010
 0:10:10:0,oak_door,,0
 0:10:10:1,spruce_door,,0
+# base/wood/containers-utility — legacy allocation anchor 01011
 0:10:11:0,chest,,0
 0:10:11:1,crafting_table,,0
-0:10:11:2,oak_log,,0
-0:10:11:3,oak_leaves,,0
-# INGOTS (0:110)
+
+
+# base/wood additions — approved useful wood variants
+0:10:3,acacia_log,,0
+0:10:4,acacia_planks,,0
+0:10:5,birch_leaves,,0
+0:10:6,birch_log,,0
+0:10:7,birch_sapling,,0
+0:10:8,birch_slab,,0
+0:10:9,birch_stairs,,0
+0:10:10,dark_oak_log,,0
+0:10:11,dark_oak_planks,,0
+0:10:12,jungle_log,,0
+0:10:13,jungle_planks,,0
+0:10:14,oak_fence,,0
+0:10:15,oak_fence_gate,,0
+0:10:16,oak_sapling,,0
+0:10:17,oak_stairs,,0
+0:10:18,oak_trapdoor,,0
+0:10:19,rubber_wood,,0
+0:10:20,spruce_fence,,0
+0:10:21,spruce_leaves,,0
+0:10:22,spruce_log,,0
+0:10:23,spruce_sapling,,0
+0:10:24,spruce_stairs,,0
+0:10:25,wood_pulp,,0
+
+# base/ingots — allocation pool 0110
+# base/ingots/base-metals — legacy items
 0:110:1,iron_ingot,,0
 0:110:2,gold_ingot,,0
 0:110:3,tin_ingot,,0
@@ -29,48 +84,178 @@ int,name,stack,meta
 0:110:5,uranium_ingot,,0
 0:110:6,bronze_ingot,,0
 0:110:7,copper_ingot,,0
+# base/ingots/precious — deferred issue21 additions
+# base/ingots/alloys — deferred issue21 additions
+# base/ingots/rare-endgame — deferred issue21 additions
+# base/ingots/non-metals — deferred issue21 additions
 
-# MATERIALS ingots/plates/dusts (0:1110)
 
-0:1110:0:0:0,bronze_plate,,0
+# base/ingots additions — recipe-required metals
+0:110:0,aluminium_ingot,,0
+0:110:8,brass_ingot,,0
+0:110:9,chromium_ingot,,0
+0:110:10,cupronickel_ingot,,0
+0:110:11,invar_ingot,,0
+0:110:12,iridium_ingot,,0
+0:110:13,kanthal_ingot,,0
+0:110:14,lead_ingot,,0
+0:110:15,nichrome_ingot,,0
+0:110:16,nickel_ingot,,0
+0:110:17,osmium_ingot,,0
+0:110:18,platinum_ingot,,0
+0:110:19,rubber_ingot,,0
+0:110:20,silver_ingot,,0
+0:110:21,stainless_steel_ingot,,0
+0:110:22,steel_ingot,,0
+0:110:23,titanium_ingot,,0
+0:110:24,tungsten_ingot,,0
+0:110:25,tungstensteel_ingot,,0
+0:110:26,zinc_ingot,,0
 
-0:1110:1:0:0,tin_dust,,0
-0:1110:1:0:1,copper_dust,,0
-0:1110:1:0:2,bronze_dust,,0
-0:1110:1:0:3,iron_dust,,0
-0:1110:1:0:4,gold_dust,,0
-0:1110:1:0:5,electrum_dust,,0
-0:1110:1:0:6,uranium_dust,,0
+# base/processed — allocation pool 01110
+# base/processed/plates — allocation prefix 0:1110:000
+0:1110:000:0,bronze_plate,,0
+0:1110:000:1,aluminium_plate,,0
+0:1110:000:2,brass_plate,,0
+0:1110:000:3,chromium_plate,,0
+0:1110:000:4,copper_plate,,0
+0:1110:000:5,gold_plate,,0
+0:1110:000:6,invar_plate,,0
+0:1110:000:7,iridium_plate,,0
+0:1110:000:8,iron_plate,,0
+0:1110:000:9,lead_plate,,0
+0:1110:000:10,osmium_plate,,0
+0:1110:000:11,platinum_plate,,0
+0:1110:000:12,silver_plate,,0
+0:1110:000:13,stainless_steel_plate,,0
+0:1110:000:14,steel_plate,,0
+0:1110:000:15,tin_plate,,0
+0:1110:000:16,titanium_plate,,0
+0:1110:000:17,tungsten_plate,,0
+0:1110:000:18,tungstensteel_plate,,0
+0:1110:000:19,wooden_pressure_plate,,0
+0:1110:000:20,zinc_plate,,0
+# base/processed/dusts — allocation prefix 0:1110:001
+0:1110:001:0,aluminium_dust,,0
+0:1110:001:1,brass_dust,,0
+0:1110:001:2,carbon_dust,,0
+0:1110:001:3,chromium_dust,,0
+0:1110:001:4,coal_dust,,0
+0:1110:001:5,crushed_copper,,0
+0:1110:001:6,crushed_gold,,0
+0:1110:001:7,crushed_iron,,0
+0:1110:001:8,crushed_lead,,0
+0:1110:001:9,crushed_silver,,0
+0:1110:001:10,crushed_tin,,0
+0:1110:001:11,crushed_zinc,,0
+0:1110:001:12,invar_dust,,0
+0:1110:001:13,iridium_dust,,0
+0:1110:001:14,lead_dust,,0
+0:1110:001:15,osmium_dust,,0
+0:1110:001:16,platinum_dust,,0
+0:1110:001:17,silicon_dust,,0
+0:1110:001:18,silver_dust,,0
+0:1110:001:19,steel_dust,,0
+0:1110:001:20,titanium_dust,,0
+0:1110:001:21,tungsten_dust,,0
+0:1110:001:22,zinc_dust,,0
+0:1110:001:23,tin_dust,,0
+0:1110:001:24,copper_dust,,0
+0:1110:001:25,bronze_dust,,0
+0:1110:001:26,iron_dust,,0
+0:1110:001:27,gold_dust,,0
+0:1110:001:28,electrum_dust,,0
+0:1110:001:29,uranium_dust,,0
+# base/processed/rods-bolts-screws — allocation prefix 0:1110:010
+0:1110:010:0,copper_rod,,0
+0:1110:010:1,iron_rod,,0
+0:1110:010:2,steel_rod,,0
+0:1110:010:3,tungsten_rod,,0
+0:1110:010:4,rod,,0
+# base/processed/gears-rings-foils-springs-rotors — allocation prefix 0:1110:011
+0:1110:011:0,copper_ring,,0
+0:1110:011:1,iron_gear,,0
+0:1110:011:2,steel_gear,,0
+0:1110:011:3,steel_ring,,0
+0:1110:011:4,steel_rotor,,0
+0:1110:011:5,steel_spring,,0
+0:1110:011:6,titanium_rotor,,0
+# base/processed/wires — allocation prefix 0:1110:100 (reserved, empty)
+# base/processed/gems-crystals — allocation prefix 0:1110:101
+0:1110:101:0,quartz,,0
+0:1110:101:1,crystal,,0
+0:1110:101:2,redstone,,0
+0:1110:101:3,lapis,,0
+0:1110:101:4,diamond,,0
 
-0:1110:1:1:1,rod,,0
-0:1110:1:1:2,quartz,,0
-0:1110:1:1:3,crystal,,0
-0:1110:1:1:4,redstone,,0
-0:1110:1:1:5,lapis,,0
-0:1110:1:1:6,diamond,,0
-
-# BASE manual tools (prefix 0:11110)
+# base/tools — allocation pool 011110
+# base/tools/utility — legacy items
 0:11110:0,stick,,0
 0:11110:1,torch,,0
 0:11110:2,coal,,0
+# base/tools/mining — legacy items
 0:11110:3,wooden_pickaxe,,0
 0:11110:4,stone_pickaxe,,0
 0:11110:5,iron_pickaxe,1,0
-0:11110:6,workbench_axe,,0
-0:11110:7,workbench_shovel,,0
-0:11110:8,workbench_sword,,0
-# BASE containers (prefix 0:11111)
+# base/tools/crafting — legacy items
+0:11110:6,wooden_axe,,0
+0:11110:7,wooden_shovel,,0
+# base/tools/combat — legacy items
+0:11110:8,wooden_sword,,0
+# base/tools/{mining,combat,crafting,utility} — issue21 additions deferred
+
+
+# base/tools additions — approved basic tools
+0:11110:9,arrow,1,0
+0:11110:10,bow,1,0
+0:11110:11,iron_axe,1,0
+0:11110:12,iron_shovel,1,0
+0:11110:13,iron_sword,1,0
+0:11110:14,shield,1,0
+0:11110:15,steel_pickaxe,1,0
+0:11110:16,steel_sword,1,0
+0:11110:17,stone_axe,1,0
+0:11110:18,stone_shovel,1,0
+0:11110:19,stone_sword,1,0
+
+# base/containers — allocation pool 011111
+# base/containers/fluid-containers — legacy items
 0:11111:0,water_bucket,16,0
 0:11111:1,hydrogen_bucket,16,0
 0:11111:2,sulfuric_acid_bucket,16,0
 0:11111:3,empty_bucket,64,0
 0:11111:4,coolant_bucket,16,0
+# base/containers/fuels-resources — deferred issue21 additions
+# base/containers/food-agriculture — deferred issue21 additions
+# base/containers/fluids-chemicals — deferred issue21 additions
 
-# ORES (prefix 10)
+
+# base/containers additions — approved basic resources and agriculture
+0:11111:5,apple,64,0
+0:11111:6,beetroot,64,0
+0:11111:7,book,,0
+0:11111:8,bookshelf,,0
+0:11111:9,bread,64,0
+0:11111:10,carrot,,0
+0:11111:11,charcoal,64,0
+0:11111:13,feather,64,0
+0:11111:16,lantern,,0
+0:11111:17,leather,,0
+0:11111:18,oil_bucket,16,0
+0:11111:19,paper,64,0
+0:11111:20,potato,64,0
+0:11111:21,rubber_drop,,0
+0:11111:22,string,64,0
+0:11111:23,wheat,64,0
+0:11111:24,wheat_seeds,64,0
+0:11111:25,wooden_button,,0
+
+# ores — allocation pool 10
+# ores/overworld — legacy items; existing packed IDs are preserved
 10:0,iron_ore,,0
 10:1,gold_ore,,0
 10:2,tin_ore,,0
-10:3,coper_ore,,0
+10:3,copper_ore,,0
 10:4,uranium_ore,,0
 10:5,quartz_ore,,0
 10:6,coal_ore,,0
@@ -78,58 +263,158 @@ int,name,stack,meta
 10:8,lapis_ore,,0
 10:9,diamond_ore,,0
 10:10,electrum_ore,,0
+# ores/nether — deferred issue21 additions
+# ores/end — deferred issue21 additions
+# ores/planetary — deferred issue21 additions
 
-#(prefix 110) empty
-# MACHINES (prefix 1110)
-# processing (111000) — furnace, macerator, compressor, extractor, mixer, smelter
-1110:00:0,heat_furnace,,0
-1110:00:1,heat_macerator,,0
-1110:00:2,heat_generator,,0
-1110:00:3,steam_macerator,,0
-1110:00:4,steam_compressor,,0
-1110:00:5,steam_extractor,,0
-1110:00:6,steam_mixer,,0
-1110:00:7,bronze_alloy_smelter,,0
-1110:00:8,rotare_macerator,,0
-# generation (111001) — produces energy/steam
-1110:01:0,steam_solid_boiler,,0
-1110:01:1,steam_heat_boiler,,0
-1110:01:2,creative_generator,,0
-1110:01:3,rotare_generator,,0
-# storage (111010) — batteries, tanks
-1110:10:0,battery_buffer_lv,,0
-1110:10:1,battery_buffer_mv,,0
-1110:10:2,battery_buffer_hv,,0
-1110:10:3,charger,,0
-1110:10:4,fluid_tank,,0
-# conversion (111011) — voltage transformation
-1110:11:0,transformer_mv_hv,,0
-1110:11:1,transformer_hv_ev,,0
 
-# TOOLS + INFRA (prefix 1111)
-# tools (111100)
+# ores additions — recipe-required ores
+10:11,chromium_ore,,0
+10:12,iridium_ore,,0
+10:13,lead_ore,,0
+10:14,nickel_ore,,0
+10:15,osmium_ore,,0
+10:16,platinum_ore,,0
+10:17,silver_ore,,0
+10:18,sulfur_ore,,0
+10:19,zinc_ore,,0
+
+# space — allocation pool 110
+# space/components-circuits — approved electrical components namespace
+# space/components-circuits/circuits — allocation prefix 110:000
+110:000:0,electronic_circuit_lv,64,0
+110:000:1,integrated_circuit_mv,64,0
+110:000:2,advanced_circuit_hv,64,0
+110:000:3,processor_circuit_ev,64,0
+# space/components-circuits/boards — allocation prefix 110:001
+110:001:0,circuit_board_empty,64,0
+110:001:1,circuit_board_basic,64,0
+110:001:2,fiberglass,64,0
+# space/components-circuits/mechanical — allocation prefix 110:010
+110:010:0,conveyor_module,64,0
+110:010:1,electric_motor,64,0
+110:010:2,electric_piston,64,0
+110:010:3,field_generator,64,0
+110:010:4,fluid_pump,64,0
+110:010:5,robot_arm,64,0
+110:010:6,solenoid,64,0
+# space/components-circuits/smd — allocation prefix 110:011
+110:011:0,capacitor_smd,64,0
+110:011:1,coil_smd,64,0
+110:011:2,diode_smd,64,0
+110:011:3,flip_flop_smd,64,0
+110:011:4,inductor_smd,64,0
+110:011:5,logic_chip_smd,64,0
+110:011:6,resistor_smd,64,0
+110:011:7,transistor_smd,64,0
+# space/components-circuits/passive — allocation prefix 110:101
+110:101:0,resistor,64,0
+110:101:1,capacitor,64,0
+110:101:2,transistor,64,0
+110:101:3,diode,64,0
+110:101:4,inductor,64,0
+110:101:5,coil,64,0
+# space/components-circuits/misc — allocation prefix 110:100
+110:100:0,emitter,64,0
+110:100:1,field_coil,64,0
+110:100:2,sensor,64,0
+# space/blocks — deferred issue21 additions
+# space/rocket-parts — deferred issue21 additions
+# space/equipment — deferred issue21 additions
+# space/armor — deferred issue21 additions
+# space/quest-special — deferred issue21 additions
+
+# machines — allocation pool 1110
+# machines/heat-processing — allocation prefix 1110:000
+1110:000:0,heat_furnace,,0
+1110:000:1,heat_macerator,,0
+1110:000:2,heat_generator,,0
+# machines/steam-processing — allocation prefix 1110:001
+1110:001:0,steam_macerator,,0
+1110:001:1,steam_compressor,,0
+1110:001:2,steam_extractor,,0
+1110:001:3,steam_mixer,,0
+1110:001:4,bronze_alloy_smelter,,0
+1110:001:5,rotare_macerator,,0
+# machines/electric-processing — allocation prefix 1110:010
+1110:010:0,alloy_smelter_lv,1,0
+1110:010:1,bender,1,0
+1110:010:2,centrifuge_lv,1,0
+1110:010:3,chemical_reactor_lv,1,0
+1110:010:4,compressor_lv,1,0
+1110:010:5,electric_furnace_hv,1,0
+1110:010:6,electric_furnace_lv,1,0
+1110:010:7,electric_furnace_mv,1,0
+1110:010:8,electrolyzer_lv,1,0
+1110:010:9,extractor_lv,1,0
+1110:010:10,extruder,1,0
+1110:010:11,macerator_lv,1,0
+1110:010:12,mixer_lv,1,0
+1110:010:13,wiremill,1,0
+# machines/boilers-generation — allocation prefix 1110:011
+1110:011:0,steam_solid_boiler,,0
+1110:011:1,steam_heat_boiler,,0
+# machines/generation — allocation prefix 1110:100
+1110:100:0,creative_generator,,0
+1110:100:1,rotare_generator,,0
+# machines/storage — allocation prefix 1110:101
+1110:101:0,battery_buffer_lv,,0
+1110:101:1,battery_buffer_mv,,0
+1110:101:2,battery_buffer_hv,,0
+1110:101:3,charger,,0
+1110:101:4,fluid_tank,,0
+# machines/transformers — allocation prefix 1110:110
+1110:110:0,transformer_mv_hv,,0
+1110:110:1,transformer_hv_ev,,0
+1110:110:2,transformer_lv_mv,,0
+# machines/multiblock-parts-casings — allocation prefix 1110:111 (reserved, empty)
+
+# infra — allocation pool 1111
+# infra/electric-tools — legacy allocation anchor 111100
 1111:00:0,drill_ulv,1,0
 1111:00:1,drill_lv,1,0
 1111:00:2,drill_mv,1,0
 1111:00:3,drill_hv,1,0
 1111:00:4,chainsaw_lv,1,0
 1111:00:5,wrench,1,0
-# cables (111101)
+1111:00:6,hammer,1,0
+1111:00:7,file,1,0
+1111:00:8,saw,1,0
+1111:00:9,screwdriver,1,0
+1111:00:10,wire_cutter,1,0
+1111:00:11,crowbar,1,0
+1111:00:12,soft_mallet,1,0
+# infra/cables-wires — legacy allocation anchor 111101
 1111:01:0,cable_tin,,0
 1111:01:1,cable_copper,,0
 1111:01:2,cable_gold,,0
-1111:01:3,cable_alu,,0
+1111:01:3,cable_aluminium,,0
 1111:01:4,cable_tungsten,,0
 1111:01:5,cable_platinum,,0
-# pipes (111110)
+
+# infra/cables-wires additions — recipe-required wire names
+1111:01:6,wire_aluminium,,0
+1111:01:7,wire_copper,,0
+1111:01:8,wire_electrum,,0
+1111:01:9,wire_gold,,0
+1111:01:10,wire_platinum,,0
+1111:01:11,wire_silver,,0
+1111:01:12,wire_tin,,0
+1111:01:13,wire_tungsten,,0
+
+# infra/pipes — legacy allocation anchor 111110
 1111:10:0,fluid_pipe,,0
 1111:10:1,item_pipe,,0
 1111:10:2,dense_item_pipe,,0
 1111:10:3,dense_fluid_pipe,,0
 1111:10:4,heat_pipe,,0
-# fluids (111111)
+# infra/fluids — legacy allocation anchor 111111 (water, steam, acids, gases)
 1111:11:0,water,,0
 1111:11:1,steam,,0
 1111:11:2,sulfuric_acid,,0
 1111:11:3,oxygen,,0
-
+1111:11:4,hydrogen,,0
+1111:11:5,coolant,,0
+1111:11:6,ethylene,,0
+1111:11:7,polyethylene,,0
+# infra/components-circuits — deferred issue21 additions; no current IDs

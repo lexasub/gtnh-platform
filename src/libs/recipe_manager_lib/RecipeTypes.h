@@ -46,6 +46,19 @@ struct OutputItem {
 /// Sentinel: recipe matches any machine energy type
 static constexpr uint8_t ENERGY_TYPE_ANY = 255;
 
+// One fluid the recipe takes in / produces per operation (openspec
+// add-recipe-fluid-io). Per-operation amounts in millibuckets — NOT the
+// per-tick semantics of ResourceRequirement above. fluid_id is the packed
+// canonical items.csv/fluids.csv id of the fluid (ItemId::isFluid).
+struct FluidIOItem {
+  uint16_t fluid_id = 0;
+  uint32_t amount_mb = 0;
+
+  [[nodiscard]] bool valid() const noexcept {
+    return fluid_id != 0 && amount_mb > 0;
+  }
+};
+
 // One externally supplied resource a recipe consumes (openspec
 // refactor-fluid-port-accounting 4.1.1). Generic by design so STEAM and
 // future electricity share the same orchestration contract:
@@ -99,6 +112,12 @@ struct Recipe {
   // contract before inputs are consumed or progress starts.
   std::vector<ResourceRequirement> resource_requirements;
 
+  // Per-operation fluid volumes (add-recipe-fluid-io). Reserved/credited
+  // through the same reservation contract as resource_requirements, but as
+  // one-shot full volumes, not per-tick charges.
+  std::vector<FluidIOItem> fluid_inputs;
+  std::vector<FluidIOItem> fluid_outputs;
+
   // Optional positional 3x3 pattern (crafting table / workbench).
   // When set, `matches` compares the container positionally (index 0 =
   // top-left, 8 = bottom-right) and `craft` consumes per-slot. Empty cell =
@@ -113,6 +132,25 @@ struct Recipe {
   /// orchestrated through the reservation contract (4.1.4 execution contract).
   [[nodiscard]] bool hasResourceRequirements() const noexcept {
     return !resource_requirements.empty();
+  }
+
+  /// True when the recipe consumes per-operation fluids that must be
+  /// reserved up-front through the reservation contract.
+  [[nodiscard]] bool hasFluidInputs() const noexcept {
+    return !fluid_inputs.empty();
+  }
+
+  /// True when the recipe produces per-operation fluids that must be
+  /// credited into the machine's fluid buffer on completion.
+  [[nodiscard]] bool hasFluidOutputs() const noexcept {
+    return !fluid_outputs.empty();
+  }
+
+  /// True when the recipe needs the external-resource reservation pipeline
+  /// (per-tick requirements OR per-operation fluid inputs) before any input
+  /// is consumed or progress starts.
+  [[nodiscard]] bool needsReservation() const noexcept {
+    return hasResourceRequirements() || hasFluidInputs();
   }
 
   /// Total per-tick amount across all requirements (0 when none).

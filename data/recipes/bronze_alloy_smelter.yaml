@@ -30,3 +30,174 @@ recipes:
     eu: 32
     resource_requirements:
       - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  # ── Alloys (ingot + dust variants) ───────────────────────
+  - name: gtnh:alloy_brass
+    inputs:
+      - { item: copper_dust, count: 3 }
+      - { item: zinc_dust, count: 1 }
+    outputs:
+      - { item: brass_dust, count: 4 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:alloy_brass_from_ingots
+    inputs:
+      - { item: copper_ingot, count: 3 }
+      - { item: zinc_ingot, count: 1 }
+    outputs:
+      - { item: brass_ingot, count: 4 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:alloy_invar_from_ingots
+    inputs:
+      - { item: iron_ingot, count: 2 }
+      - { item: nickel_ingot, count: 1 }
+    outputs:
+      - { item: invar_ingot, count: 3 }
+    duration: 250
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:alloy_steel
+    inputs:
+      - { item: iron_ingot, count: 1 }
+      - { item: coal, count: 1 }
+    outputs:
+      - { item: steel_ingot, count: 1 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:alloy_steel_dust
+    inputs:
+      - { item: iron_dust, count: 1 }
+      - { item: carbon_dust, count: 1 }
+    outputs:
+      - { item: steel_dust, count: 1 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:alloy_nichrome_from_ingots
+    inputs:
+      - { item: nickel_ingot, count: 4 }
+      - { item: chromium_ingot, count: 1 }
+    outputs:
+      - { item: nichrome_ingot, count: 5 }
+    duration: 250
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:alloy_kanthal_from_ingots
+    inputs:
+      - { item: iron_ingot, count: 3 }
+      - { item: aluminium_ingot, count: 1 }
+      - { item: chromium_ingot, count: 1 }
+    outputs:
+      - { item: kanthal_ingot, count: 5 }
+    duration: 250
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:alloy_cupronickel_from_ingots
+    inputs:
+      - { item: copper_ingot, count: 4 }
+      - { item: nickel_ingot, count: 1 }
+    outputs:
+      - { item: cupronickel_ingot, count: 5 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:alloy_stainless_steel_from_ingots
+    inputs:
+      - { item: iron_ingot, count: 6 }
+      - { item: chromium_ingot, count: 1 }
+      - { item: nickel_ingot, count: 1 }
+    outputs:
+      - { item: stainless_steel_ingot, count: 8 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:alloy_tungstensteel_from_ingots
+    inputs:
+      - { item: tungsten_ingot, count: 1 }
+      - { item: steel_ingot, count: 1 }
+    outputs:
+      - { item: tungstensteel_ingot, count: 2 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:alloy_electrum
+    inputs:
+      - { item: gold_dust, count: 1 }
+      - { item: silver_dust, count: 1 }
+    outputs:
+      - { item: electrum_dust, count: 2 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:alloy_electrum_from_ingots
+    inputs:
+      - { item: gold_ingot, count: 1 }
+      - { item: silver_ingot, count: 1 }
+    outputs:
+      - { item: electrum_ingot, count: 2 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }

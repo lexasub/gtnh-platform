@@ -3,3 +3,5 @@ item_id,name,color,density,gaseous,temperature
 1111:11:1,steam,e0e0e0,0.6,true,400
 1111:11:2,sulfuric_acid,d4a0a0,1840,false,300
 1111:11:3,oxygen,a0a0d4,1.429,true,300
+1111:11:4,hydrogen,90d8d8,0.09,true,20
+1111:11:5,coolant,4a6a9a,1100,false,300

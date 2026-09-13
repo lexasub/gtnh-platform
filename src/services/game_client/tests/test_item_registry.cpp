@@ -50,6 +50,55 @@ static void test_load_items_csv() {
     PASS();
 }
 
+static void test_component_subgroups() {
+    ItemRegistry::LoadFromCSV(DATA_DIR "/registry/items.csv");
+    struct Expected { const char* name; const char* id; };
+    const Expected expected[] = {
+        {"electronic_circuit_lv", "110:000:0"},
+        {"integrated_circuit_mv", "110:000:1"},
+        {"advanced_circuit_hv", "110:000:2"},
+        {"processor_circuit_ev", "110:000:3"},
+        {"circuit_board_empty", "110:001:0"},
+        {"circuit_board_basic", "110:001:1"},
+        {"fiberglass", "110:001:2"},
+        {"conveyor_module", "110:010:0"},
+        {"electric_motor", "110:010:1"},
+        {"electric_piston", "110:010:2"},
+        {"field_generator", "110:010:3"},
+        {"fluid_pump", "110:010:4"},
+        {"robot_arm", "110:010:5"},
+        {"solenoid", "110:010:6"},
+        {"capacitor_smd", "110:011:0"},
+        {"coil_smd", "110:011:1"},
+        {"diode_smd", "110:011:2"},
+        {"flip_flop_smd", "110:011:3"},
+        {"inductor_smd", "110:011:4"},
+        {"logic_chip_smd", "110:011:5"},
+        {"resistor_smd", "110:011:6"},
+        {"transistor_smd", "110:011:7"},
+        {"emitter", "110:100:0"},
+        {"field_coil", "110:100:1"},
+        {"sensor", "110:100:2"},
+        {"resistor", "110:101:0"},
+        {"capacitor", "110:101:1"},
+        {"transistor", "110:101:2"},
+        {"diode", "110:101:3"},
+        {"inductor", "110:101:4"},
+        {"coil", "110:101:5"},
+    };
+    for (const auto& item : expected) {
+        const auto id = ItemId::pack(item.id);
+        const auto* info = ItemRegistry::GetItem(id);
+        CHECK(info != nullptr, item.name);
+        if (info) {
+            CHECK_EQ(info->name, std::string(item.name), "component name");
+            CHECK_EQ(info->stackSize, uint8_t(64), "component stack size");
+            CHECK_EQ(info->meta, uint16_t(0), "component metadata");
+        }
+    }
+    PASS();
+}
+
 static void test_item_properties() {
     ItemRegistry::LoadFromCSV(DATA_DIR "/registry/items.csv");
 
@@ -75,6 +124,7 @@ static void test_item_properties() {
 int main(int, char**) {
     printf("=== GameClient Item Registry Test ===\n\n");
     TEST(load_items_csv);
+    TEST(component_subgroups);
     TEST(item_properties);
     printf("\n=== Results: %d tests, %d passed, %d failed ===\n",
            g_tests, g_passed, g_failed);

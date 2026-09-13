@@ -9,7 +9,7 @@
 
 constexpr bool isInfraBlock(uint16_t id) {
     return ItemId::isPipe(id) || ItemId::isCable(id)
-        || id == ItemId::pack("1110:11:0")|| id == ItemId::pack("1110:11:1");
+        || id == ItemId::pack("1110:110:0")|| id == ItemId::pack("1110:110:1");
 }
 
 namespace simcore {

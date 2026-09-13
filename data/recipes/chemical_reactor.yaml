@@ -57,3 +57,52 @@ recipes:
     max_tier: 32767
     resource_requirements:
       - { kind: EU, amount: 32, tier: 0 }
+
+  - name: gtnh:chemical_reactor_sulfuric_acid
+    inputs:
+      - { item: sulfur_ore, count: 1 }
+      - { item: water, count: 1 }
+    outputs:
+      - { item: sulfuric_acid, count: 2 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
+
+  - name: gtnh:chemical_reactor_sulfuric_acid_bucket
+    inputs:
+      - { item: sulfur_ore, count: 1 }
+      - { item: water_bucket, count: 1 }
+    outputs:
+      - { item: sulfuric_acid_bucket, count: 1 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
+
+  # ── Polyethylene chain (items2.csv temporary registry) ─────
+  # GTNH: crude oil → (distillation/cracking) → ethylene → polyethylene
+  - name: gtnh:chemical_reactor_oil_crack
+    inputs:
+      - { item: oil_bucket, count: 1 }
+    outputs:
+      - { item: ethylene, count: 1 }
+      - { item: empty_bucket, count: 1 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
+
+  - name: gtnh:chemical_reactor_polymerize_ethylene
+    inputs:
+      - { item: ethylene, count: 1 }
+    outputs:
+      - { item: polyethylene, count: 1 }
+    duration: 300
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }

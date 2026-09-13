@@ -1,7 +1,7 @@
 # questbook-era-transition Specification
 
 ## Purpose
-TBD - created by archiving change questbook-era-transition. Update Purpose after archive.
+Era transition events that gate quest tiers and questbook sections.
 ## Requirements
 ### Requirement: Era Transition
 The system SHALL track era completion and transition between eras.

@@ -14,6 +14,7 @@
 #include "ECS/components/RecipeProgress.h"
 #include "ECS/components/InventoryContainer.h"
 #include "ECS/components/EnergyStorage.h"
+#include "ECS/components/FluidStorage.h"
 #include "RecipeManager/RecipeManager.h"
 #include "ItemRegistry.h"
 #include "MachineRegistry.h"
@@ -400,6 +401,102 @@ void test_cancel_drops_outstanding_requests() {
     CHECK_EQ(fx.energy().current, 0, "response after cancel is ignored");
 }
 
+// -- add-recipe-fluid-io: per-operation fluid inputs --------------------------
+
+const char* kFluidInputRecipeYaml =
+    "class: macerator\n"
+    "recipes:\n"
+    "  - name: test_pending_fluid_input_recipe\n"
+    "    energy_in: STEAM\n"
+    "    inputs:\n"
+    "      - { item: \"0:11110:2\", count: 1 }\n"
+    "    outputs:\n"
+    "      - { item: \"0:11110:3\", count: 1 }\n"
+    "    eu: 32\n"
+    "    duration: 50\n"
+    "    min_tier: 0\n"
+    "    max_tier: 32767\n"
+    "    fluid_inputs:\n"
+    "      - { fluid: water, amount: 1000 }\n";
+
+void test_fluid_inputs_reserved_and_commit_only_on_full_acceptance() {
+    PendingCraftFixture fx(9101, EnergyType::STEAM, kFluidInputRecipeYaml,
+                           static_cast<std::uint8_t>(RecipeManager::EnergyType::STEAM));
+
+    fx.tick();
+    CHECK_EQ(fx.requestCount(), std::size_t(1), "fluid input publishes one request");
+    CHECK_EQ(fx.lastRequest().kind, gtnh::common::ResourceKind::FLUID,
+             "fluid kind on the wire");
+    CHECK_EQ(fx.lastRequest().resource_id, ItemId::pack("1111:11:0"),
+             "packed water id on the wire");
+    CHECK_EQ(fx.lastRequest().amount, 1000, "full per-operation volume reserved up front");
+
+    fx.deliver(fx.lastRequest().request_id, 0); // zero acceptance
+    fx.tick();
+    CHECK(fx.progress().recipe_id.empty(), "zero acceptance never starts the recipe");
+    CHECK_EQ(fx.inputSlot().count, std::uint8_t(1), "zero acceptance consumes no inputs");
+
+    // Bounded retry re-requests the full volume on a fresh request id; only
+    // that fresh request may commit the craft.
+    const std::size_t before = fx.requestCount();
+    for (int i = 0; i < 12; ++i) fx.tick(); // past the backoff deadline
+    CHECK_GT(fx.requestCount(), before, "retry re-requests the unaccepted fluid");
+    CHECK_EQ(fx.lastRequest().amount, 1000, "retry requests the full volume");
+
+    fx.deliver(fx.lastRequest().request_id, 1000); // full acceptance on the fresh id
+    fx.tick();
+    CHECK_EQ(fx.inputSlot().count, std::uint8_t(0), "full acceptance commits inputs");
+    CHECK(!fx.progress().recipe_id.empty(), "fluid input recipe started at commit");
+}
+
+// -- add-recipe-fluid-io: per-operation fluid outputs --------------------------
+// Completing a recipe with fluid_outputs must credit the produced fluids into a
+// lazily created machine fluid buffer (spec: "Output fluids enter machine tank").
+
+const char* kFluidOutputRecipeYaml =
+    "class: macerator\n"
+    "recipes:\n"
+    "  - name: test_pending_fluid_output_recipe\n"
+    "    energy_in: STEAM\n"
+    "    inputs:\n"
+    "      - { item: \"0:11110:2\", count: 1 }\n"
+    "    outputs:\n"
+    "      - { item: \"0:11110:3\", count: 1 }\n"
+    "    eu: 32\n"
+    "    duration: 50\n"
+    "    min_tier: 0\n"
+    "    max_tier: 32767\n"
+    "    resource_requirements:\n"
+    "      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }\n"
+    "    fluid_outputs:\n"
+    "      - { fluid: steam, amount: 250 }\n";
+
+void test_fluid_outputs_credited_into_machine_buffer_on_completion() {
+    PendingCraftFixture fx(9101, EnergyType::STEAM, kFluidOutputRecipeYaml,
+                           static_cast<std::uint8_t>(RecipeManager::EnergyType::STEAM));
+
+    fx.tick();
+    fx.deliver(fx.lastRequest().request_id, 32); // full steam reservation
+    fx.tick();                                   // commit + first tick advance
+    CHECK_EQ(fx.progress().remaining_ticks, std::uint32_t(49), "started at 49");
+
+    // Drive to completion: each accepted recurring charge advances one tick.
+    for (int i = 0; i < 60 && fx.progress().remaining_ticks > 0; ++i) {
+        fx.tick(); // request the recurring steam charge
+        fx.deliver(fx.lastRequest().request_id, 32);
+        fx.tick(); // debit + advance
+    }
+    CHECK_EQ(fx.progress().remaining_ticks, std::uint32_t(0), "recipe ran to completion");
+    CHECK(!fx.progress().is_processing, "completion ends processing");
+
+    auto* fluid = fx.reg.try_get<simcore::FluidStorage>(fx.machine);
+    CHECK(fluid != nullptr, "completion creates the machine fluid buffer");
+    CHECK_EQ(fluid->fluid_id, gtnh::common::steamItemId(),
+             "buffer holds the fluid output id");
+    CHECK_EQ(fluid->amount, 250, "fluid output credited into the buffer");
+    CHECK_EQ(fluid->capacity, 250, "lazy buffer sized to one operation");
+}
+
 } // namespace
 
 void test_pending_craft() {
@@ -419,4 +516,8 @@ void test_pending_craft() {
     test_mismatched_energy_declarations_rejected_at_load();
     printf("  TEST: cancel_drops_outstanding_requests\n");
     test_cancel_drops_outstanding_requests();
+    printf("  TEST: fluid_inputs_reserved_and_commit_only_on_full_acceptance\n");
+    test_fluid_inputs_reserved_and_commit_only_on_full_acceptance();
+    printf("  TEST: fluid_outputs_credited_into_machine_buffer_on_completion\n");
+    test_fluid_outputs_credited_into_machine_buffer_on_completion();
 }

@@ -1,7 +1,7 @@
 # multiblocks-l3 Specification
 
 ## Purpose
-TBD - created by archiving change implement-multiblocks-l3. Update Purpose after archive.
+L3 multiblock features: hatch detection, item IO, and advanced multiblock components.
 ## Requirements
 ### Requirement: Hatch Detection
 The system SHALL resolve and use multiblock hatches.

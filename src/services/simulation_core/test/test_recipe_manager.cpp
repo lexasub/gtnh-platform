@@ -32,6 +32,15 @@ void test_check(bool cond, const char* file, int line, const char* expr, const c
 #endif
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
+static std::string makeTempFile(const std::string& content) {
+    char tmpl[] = "/tmp/recipe_mgr_XXXXXX";
+    int fd = mkstemp(tmpl);
+    if (fd < 0) return {};
+    [[maybe_unused]] ssize_t wr = write(fd, content.data(), content.size());
+    close(fd);
+    return std::string(tmpl);
+}
+
 static void test_recipe_manager_empty() {
     RecipeManager::RecipeManager mgr;
     CHECK_EQ(mgr.recipeCount(), size_t(0), "no recipes initially");
@@ -435,6 +444,118 @@ static void test_recipe_manager_queries() {
     PASS();
 }
 
+// The extractor recipe remains EU-powered for the LV electric variant;
+// steam extractor recipes use the separate steam variant in the same class.
+static void test_recipe_manager_extractor_variants() {
+    RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
+    RecipeManager::RecipeManager mgr;
+    CHECK(mgr.loadRecipesFromYamlDirectory(DATA_DIR "/recipes"),
+          "extractor recipes load");
+    CHECK(mgr.loadMachinesFromYaml(DATA_DIR "/registry/machines.yaml"),
+          "machine variants load");
+
+    const auto* recipe = mgr.getRecipeById("gtnh:extract_rubber_wood");
+    CHECK_NE(recipe, nullptr, "rubber wood extractor recipe exists");
+    if (recipe) {
+        CHECK_EQ(recipe->energy_type,
+                 static_cast<uint8_t>(0),
+                 "rubber wood uses electricity");
+        const auto validation_errors = mgr.validateResourceRequirements(nullptr);
+        CHECK(validation_errors.empty(),
+              "extractor EU requirement matches an electric extractor variant");
+        CHECK_EQ(recipe->resource_requirements.size(), size_t(1),
+                 "rubber wood has one resource requirement");
+        if (recipe->resource_requirements.size() == 1) {
+            const auto& req = recipe->resource_requirements.front();
+            CHECK_EQ(req.kind, gtnh::common::ResourceKind::EU,
+                     "rubber wood requirement is EU");
+            CHECK_EQ(req.amount, uint32_t(32), "rubber wood EU amount");
+            CHECK_EQ(req.tier, int16_t(0), "rubber wood tier");
+        }
+    }
+
+    PASS();
+}
+
+// add-recipe-fluid-io: per-operation fluid inputs/outputs parse into the model
+// and are validated against the canonical fluid id domain (1111:11:*).
+static void test_recipe_manager_fluid_io() {
+    RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
+
+    const std::string valid =
+        "class: furnace\n"
+        "recipes:\n"
+        "  - name: fluid_io_valid\n"
+        "    inputs:\n"
+        "      - { item: 4, count: 1 }\n"
+        "    outputs:\n"
+        "      - { item: 4, count: 1 }\n"
+        "    duration: 100\n"
+        "    fluid_inputs:\n"
+        "      - { fluid: water, amount: 1000 }\n"
+        "    fluid_outputs:\n"
+        "      - { fluid: steam, amount: 250 }\n";
+    RecipeManager::RecipeManager mgr;
+    CHECK(mgr.loadRecipesFromYamlFile(makeTempFile(valid)), "fluid-io recipe loads");
+    auto* r = mgr.getRecipeById("fluid_io_valid");
+    CHECK(r != nullptr, "fluid-io recipe registered");
+    if (r) {
+        CHECK(r->hasFluidInputs(), "fluid_inputs present");
+        CHECK(r->hasFluidOutputs(), "fluid_outputs present");
+        CHECK(r->needsReservation(), "fluid inputs trigger reservation");
+        CHECK_EQ(r->fluid_inputs.size(), size_t(1), "one fluid input");
+        CHECK_EQ(r->fluid_inputs[0].fluid_id, ItemId::pack("1111:11:0"), "water resolved");
+        CHECK_EQ(r->fluid_inputs[0].amount_mb, uint32_t(1000), "input mB kept");
+        CHECK_EQ(r->fluid_outputs.size(), size_t(1), "one fluid output");
+        CHECK_EQ(r->fluid_outputs[0].fluid_id, ItemId::pack("1111:11:1"), "steam resolved");
+        CHECK_EQ(r->fluid_outputs[0].amount_mb, uint32_t(250), "output mB kept");
+    }
+
+    const std::string unknown_fluid =
+        "class: furnace\n"
+        "recipes:\n"
+        "  - name: fluid_io_unknown\n"
+        "    inputs:\n"
+        "      - { item: 4, count: 1 }\n"
+        "    outputs:\n"
+        "      - { item: 4, count: 1 }\n"
+        "    duration: 100\n"
+        "    fluid_inputs:\n"
+        "      - { fluid: not_a_fluid, amount: 100 }\n";
+    CHECK(!mgr.loadRecipesFromYamlFile(makeTempFile(unknown_fluid)),
+          "unknown fluid rejected");
+
+    const std::string non_fluid =
+        "class: furnace\n"
+        "recipes:\n"
+        "  - name: fluid_io_nonfluid\n"
+        "    inputs:\n"
+        "      - { item: 4, count: 1 }\n"
+        "    outputs:\n"
+        "      - { item: 4, count: 1 }\n"
+        "    duration: 100\n"
+        "    fluid_inputs:\n"
+        "      - { fluid: \"0:11110:2\", amount: 100 }\n";
+    CHECK(!mgr.loadRecipesFromYamlFile(makeTempFile(non_fluid)),
+          "non-fluid item id rejected");
+
+    const std::string zero_amount =
+        "class: furnace\n"
+        "recipes:\n"
+        "  - name: fluid_io_zero\n"
+        "    inputs:\n"
+        "      - { item: 4, count: 1 }\n"
+        "    outputs:\n"
+        "      - { item: 4, count: 1 }\n"
+        "    duration: 100\n"
+        "    fluid_inputs:\n"
+        "      - { fluid: water, amount: 0 }\n";
+    CHECK(!mgr.loadRecipesFromYamlFile(makeTempFile(zero_amount)),
+          "zero amount rejected");
+
+    PASS();
+}
+
 void test_recipe_manager() {
     TEST(recipe_manager_empty);
     TEST(recipe_manager_load_crafting_table);
@@ -444,4 +565,6 @@ void test_recipe_manager() {
     TEST(recipe_manager_craft_patterns);
     TEST(recipe_manager_unlock_era);
     TEST(recipe_manager_queries);
+    TEST(recipe_manager_extractor_variants);
+    TEST(recipe_manager_fluid_io);
 }

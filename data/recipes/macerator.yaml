@@ -44,7 +44,7 @@ recipes:
     min_tier: 0
     max_tier: 32767
 
-  # ── Name-based recipes (resolve via ItemRegistry) ─────────
+  # ── Name-based ore recipes (resolve via ItemRegistry) ─────
   - name: gtnh:mac_iron_ore
     inputs:
       - { item: iron_ore, count: 1 }
@@ -77,7 +77,7 @@ recipes:
 
   - name: gtnh:mac_copper_ore
     inputs:
-      - { item: coper_ore, count: 1 }
+      - { item: copper_ore, count: 1 }
     outputs:
       - { item: copper_dust, count: 2 }
     duration: 400
@@ -105,6 +105,68 @@ recipes:
     min_tier: 0
     max_tier: 32767
 
+  # Extended ores (registered in the todo_items registry merge).
+  - name: gtnh:mac_lead_ore
+    inputs:
+      - { item: lead_ore, count: 1 }
+    outputs:
+      - { item: lead_dust, count: 2 }
+    duration: 400
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_silver_ore
+    inputs:
+      - { item: silver_ore, count: 1 }
+    outputs:
+      - { item: silver_dust, count: 2 }
+    duration: 400
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_zinc_ore
+    inputs:
+      - { item: zinc_ore, count: 1 }
+    outputs:
+      - { item: zinc_dust, count: 2 }
+    duration: 400
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_osmium_ore
+    inputs:
+      - { item: osmium_ore, count: 1 }
+    outputs:
+      - { item: osmium_dust, count: 2 }
+    duration: 500
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_iridium_ore
+    inputs:
+      - { item: iridium_ore, count: 1 }
+    outputs:
+      - { item: iridium_dust, count: 2 }
+    duration: 500
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_platinum_ore
+    inputs:
+      - { item: platinum_ore, count: 1 }
+    outputs:
+      - { item: platinum_dust, count: 2 }
+    duration: 500
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
+  # Existing material-doubling recipes retain their direct outputs.
   - name: gtnh:mac_quartz_ore
     inputs:
       - { item: quartz_ore, count: 1 }
@@ -159,7 +221,7 @@ recipes:
   - name: gtnh:steam_mac_copper
     energy_in: STEAM
     inputs:
-      - { item: coper_ore, count: 1 }
+      - { item: copper_ore, count: 1 }
     outputs:
       - { item: copper_dust, count: 2 }
     duration: 160
@@ -199,7 +261,7 @@ recipes:
   - name: gtnh:rotare_mac_copper
     energy_in: ROTATION
     inputs:
-      - { item: coper_ore, count: 1 }
+      - { item: copper_ore, count: 1 }
     outputs:
       - { item: copper_dust, count: 2 }
     duration: 200
@@ -224,6 +286,27 @@ recipes:
       - { item: gold_ore, count: 1 }
     outputs:
       - { item: gold_dust, count: 2 }
+    duration: 200
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Chromium (items2.csv temporary registry) ──────────────
+  - name: gtnh:mac_chromium_ore
+    inputs:
+      - { item: chromium_ore, count: 1 }
+    outputs:
+      - { item: chromium_dust, count: 2 }
+    duration: 400
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_coal
+    inputs:
+      - { item: coal, count: 1 }
+    outputs:
+      - { item: coal_dust, count: 1 }
     duration: 200
     eu: 32
     min_tier: 0

@@ -49,9 +49,9 @@ uint16_t DrillSystem::oreToDrop(uint16_t oreBlockId) {
     case ORE_GOLD:      return ItemId::pack("0:110:2");
     case ORE_TIN:       return ItemId::pack("0:110:3");
     case ORE_ELECTRUM:  return ItemId::pack("0:110:4");
-    case ORE_COPPER:    return ItemId::pack("0:1110:1:0:1");
+    case ORE_COPPER:    return ItemId::pack("0:1110:001:24");
     case ORE_URANIUM:   return ItemId::pack("0:110:5");
-    case ORE_QUARTZ:    return ItemId::pack("0:1110:1:1:2");
+    case ORE_QUARTZ:    return ItemId::pack("0:1110:101:0");
     case ORE_COAL:      return ItemId::pack("0:11110:2");
     case ORE_REDSTONE:  return 0;
     case ORE_LAPIS:     return 0;

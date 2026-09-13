@@ -13,14 +13,14 @@ constexpr uint16_t ITEM_CHAINSAW_LV = ItemId::pack("1111:00:4");
 constexpr uint16_t ITEM_WRENCH = ItemId::pack("1111:00:5");
 
 // Battery buffers & charger — under MACHINES category
-constexpr uint16_t BLOCK_BATTERY_BUFFER_LV = ItemId::pack("1110:10:0");
-constexpr uint16_t BLOCK_BATTERY_BUFFER_MV = ItemId::pack("1110:10:1");
-constexpr uint16_t BLOCK_BATTERY_BUFFER_HV = ItemId::pack("1110:10:2");
-constexpr uint16_t BLOCK_CHARGER = ItemId::pack("1110:10:3");
+constexpr uint16_t BLOCK_BATTERY_BUFFER_LV = ItemId::pack("1110:101:0");
+constexpr uint16_t BLOCK_BATTERY_BUFFER_MV = ItemId::pack("1110:101:1");
+constexpr uint16_t BLOCK_BATTERY_BUFFER_HV = ItemId::pack("1110:101:2");
+constexpr uint16_t BLOCK_CHARGER = ItemId::pack("1110:101:3");
 
 // Rotare machines — under MACHINES category
-constexpr uint16_t BLOCK_ROTARE_GENERATOR = ItemId::pack("1110:01:3");
-constexpr uint16_t BLOCK_ROTARE_MACERATOR = ItemId::pack("1110:00:8");
+constexpr uint16_t BLOCK_ROTARE_GENERATOR = ItemId::pack("1110:100:1");
+constexpr uint16_t BLOCK_ROTARE_MACERATOR = ItemId::pack("1110:001:5");
 
 // Tool tier from item ID — uses payload encoding under 1111:00: prefix
 // Payload: [tier:5][type:6] — tier = (payload >> 6) & 0x1F

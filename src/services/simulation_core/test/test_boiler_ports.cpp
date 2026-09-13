@@ -105,7 +105,7 @@ class NullEventPublisher : public simcore::IEventPublisher {
 
 entt::entity MakeBoiler(entt::registry& reg) {
   auto ent = reg.create();
-  reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:01:1"), 0,
+  reg.emplace<simcore::MachineComponent>(ent, ItemId::pack("1110:011:1"), 0,
                                          5, 6, 7, 1);
   reg.emplace<simcore::EnergyStorage>(ent, 10000, 500, 0, 32, 1,
                                       EnergyType::HEAT);

@@ -1,7 +1,7 @@
 # questbook-reward-inventory Specification
 
 ## Purpose
-TBD - created by archiving change questbook-reward-inventory. Update Purpose after archive.
+Quest rewards delivered into the player inventory.
 ## Requirements
 ### Requirement: Rewards Integrated with Inventory
 The system SHALL add quest reward items to the player inventory upon redemption.

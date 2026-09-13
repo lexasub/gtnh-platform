@@ -1,7 +1,7 @@
 {
-  "database": "dolt",
   "backend": "dolt",
-  "dolt_mode": "embedded",
-  "dolt_database": "GTNH",
-  "project_id": "39ec9ddb-2689-427c-9b8e-4ef2f9f70c3f"
+  "database": "dolt",
+  "dolt_database": "gp",
+  "dolt_mode": "server",
+  "project_id": "gc-local-211c81b57a513c77a55c211e428e81c1"
 }

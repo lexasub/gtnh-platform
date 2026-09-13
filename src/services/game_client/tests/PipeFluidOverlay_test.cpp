@@ -46,7 +46,7 @@ const uint16_t kDenseFluidPipe = pipeTypeToBlockId(PipeType::DENSE_FLUID_PIPE);
 const uint16_t kItemPipe = pipeTypeToBlockId(PipeType::ITEM_PIPE);
 const uint16_t kCable = pipeTypeToBlockId(PipeType::CABLE_TIN);
 const uint16_t kSteamItem = ItemId::pack("1111:11:1");
-const uint16_t kMachine = ItemId::pack("1110:01:1");
+const uint16_t kMachine = ItemId::pack("1110:011:1");
 
 // Minimal read-only world for detectConnections: only GetBlock/GetMeta exist,
 // and block reads are counted to document that the overlay path only reads.

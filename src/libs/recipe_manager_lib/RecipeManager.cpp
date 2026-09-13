@@ -368,7 +368,7 @@ bool RecipeManager::parseYamlMachineClass(const YAML::Node& node) {
     for (size_t i = 0; i < variants.size(); ++i) {
         const auto& v = variants[i];
         MachineVariant mv;
-        // block_id is a hierarchical string ("1110:00:0") → pack to uint16.
+        // block_id is a hierarchical string ("1110:000:0") → pack to uint16.
         mv.block_id       = ItemId::pack(v["block_id"].as<std::string>(""));
         mv.name           = v["name"].as<std::string>("");
         mv.energy_in      = parseEnergyType(v["energy_in"].as<std::string>(""));
@@ -814,6 +814,50 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
             }
         }
         recipe.resource_requirements = std::move(parsed_requirements);
+
+        // Per-operation fluid volumes (add-recipe-fluid-io). Resolved through
+        // the canonical items.csv id domain like items; one bad entry (unknown
+        // name, non-fluid id, or zero amount) fails the whole recipe load.
+        auto parseFluidIOList = [this, &recipe, &yaml](
+                                    const char *key,
+                                    std::vector<FluidIOItem> &target) {
+            const YAML::Node list = yaml[key];
+            if (!list) return true;
+            if (!list.IsSequence()) {
+                spdlog::warn("YAML recipe '{}': {} must be a sequence",
+                             recipe.id, key);
+                return false;
+            }
+            for (size_t i = 0; i < list.size(); ++i) {
+                const auto &entry = list[i];
+                const std::string fluidName =
+                    entry["fluid"] ? entry["fluid"].as<std::string>("") : "";
+                if (fluidName.empty()) {
+                    spdlog::warn("YAML recipe '{}': {} entry {} has no 'fluid'",
+                                 recipe.id, key, i);
+                    return false;
+                }
+                const uint16_t packed = resolveItemId(fluidName);
+                if (!ItemRegistry::instance().isValid(packed) ||
+                    !ItemId::isFluid(packed)) {
+                    spdlog::warn("YAML recipe '{}': {} entry {}: '{}' is not a known fluid",
+                                 recipe.id, key, i, fluidName);
+                    return false;
+                }
+                const uint32_t amount_mb = entry["amount"].as<uint32_t>(0);
+                if (amount_mb == 0) {
+                    spdlog::warn("YAML recipe '{}': {} entry {}: amount must be > 0",
+                                 recipe.id, key, i);
+                    return false;
+                }
+                target.push_back(FluidIOItem{packed, amount_mb});
+            }
+            return true;
+        };
+        if (!parseFluidIOList("fluid_inputs", recipe.fluid_inputs) ||
+            !parseFluidIOList("fluid_outputs", recipe.fluid_outputs)) {
+            return false;
+        }
 
         // Legacy `energy_in`/`eu` remains the source of truth until Recipe can
         // expose the generic requirements. Validate its machine-compatible

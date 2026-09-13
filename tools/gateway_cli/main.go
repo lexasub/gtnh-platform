@@ -50,7 +50,7 @@ const (
 	kPipeContentsResp  = 49
 )
 
-// pack("1110:01:0") -> 0xE400 (steam_solid_boiler), pack("1111:10:0") -> 0xF800 (fluid_pipe)
+// pack("1110:011:0") -> 0xE400 (steam_solid_boiler), pack("1111:10:0") -> 0xF800 (fluid_pipe)
 func packID(prefix string, payload uint16) uint16 {
 	var p uint16
 	plen := 0
@@ -92,7 +92,7 @@ func parseItem(s string) (uint16, error) {
 	}
 	v, err := strconv.ParseUint(s, 10, 16)
 	if err != nil {
-		return 0, fmt.Errorf("bad item %q (use 0xHEX, decimal, or pack like 1110:01:0)", s)
+		return 0, fmt.Errorf("bad item %q (use 0xHEX, decimal, or pack like 1110:011:0)", s)
 	}
 	return uint16(v), nil
 }

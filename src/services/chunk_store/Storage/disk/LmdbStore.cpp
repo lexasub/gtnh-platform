@@ -46,6 +46,9 @@ void LmdbStore::open_() {
     }
 
     unsigned int env_flags = MDB_NOTLS;
+    // TODO(registry-migration): LMDB chunks may contain pre-migration packed
+    // item IDs (data/registry/item-id-migration.csv); old saves need a remap
+    // pass before they are safe to load.
     if (rc = mdb_env_open(env_, db_path_.c_str(), env_flags, 0664); rc != 0) {
         spdlog::error("mdb_env_open failed: {}", mdb_strerror(rc));
         return;

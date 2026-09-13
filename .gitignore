@@ -71,11 +71,17 @@ venv/
 
 # ── AI / Agent tooling (not for distribution) ──────────
 .agent/
+.agents/
 .opencode/
 .kilo/
 .omo/
 .codegraph/
 .cache/
+.agents/
+.gc/
+.gemini/
+.omp/
+.pi/
 agent/
 .sisyphus/plans/*.md
 !docs/
@@ -86,6 +92,7 @@ agent/
 *.tmp
 *.temp
 *.log
+*.bundle
 
 # ── Go binaries (built locally) ─────────────────────────
 src/services/message_router/routerd
@@ -121,6 +128,9 @@ test.sh
 sudo_perf.sh
 .claude
 cmake-build-offline
+todo_items/
+rebase_worktrees.sh
+tools/gateway_cli/gateway_cli
 
 # Beads / Dolt files (added by bd init)
 .beads/proxieddb/

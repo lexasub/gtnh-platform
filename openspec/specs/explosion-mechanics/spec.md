@@ -1,7 +1,7 @@
 # explosion-mechanics Specification
 
 ## Purpose
-TBD - created by archiving change implement-explosion-mechanics. Update Purpose after archive.
+Explosion behavior on critical overheat: damage, spread, and server-side handling.
 ## Requirements
 ### Requirement: Explosion on Critical Overheat
 The system SHALL destroy machines that remain at CRITICAL overheat for a sustained duration.

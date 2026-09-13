@@ -17,8 +17,8 @@ namespace {
 }
 
 bool TransformerSystem::isTransformer(uint16_t block_id) {
-    return block_id == ItemId::pack("1110:11:0")  // transformer_mv_hv
-        || block_id == ItemId::pack("1110:11:1"); // transformer_hv_ev
+    return block_id == ItemId::pack("1110:110:0")  // transformer_mv_hv
+        || block_id == ItemId::pack("1110:110:1"); // transformer_hv_ev
 }
 
 TransformerSystem::TransformerSystem(entt::registry& reg,

@@ -361,7 +361,7 @@ static void test_QuestManager_detection_block_placed() {
   seedProgress(mgr, player,
       {{11, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
 
-  mgr.checkBlockAction(player, 10, 20, 30, ItemId::pack("1110:00:0"));
+  mgr.checkBlockAction(player, 10, 20, 30, ItemId::pack("1110:000:0"));
   CHECK_EQ(lastAdvertisedStatus(pub, 14),
            static_cast<int>(quest::QuestStatus::COMPLETED),
            "BLOCK_PLACED quest 14 completes via checkBlockAction");
@@ -396,7 +396,7 @@ static void test_QuestManager_detection_side_configured() {
            "machine_id 0 (hatch) does not complete side-config quest");
 
   // Unrelated machine (heat furnace) does not match 71's detect target.
-  mgr.checkSideConfigured(player, ItemId::pack("1110:00:0"));
+  mgr.checkSideConfigured(player, ItemId::pack("1110:000:0"));
   CHECK_EQ(countTopic(pub, "quest.completed"), 0,
            "unrelated machine does not complete side-config quest");
   CHECK_EQ(lastAdvertisedStatus(pub, 71),
@@ -675,7 +675,7 @@ static void test_QuestManager_autoComplete_default_is_true() {
 // field declared) completes only when BOTH the produced item and the machine
 // match. Wrong machine → no completion; matching machine → COMPLETED +
 // quest.completed. The shipped seed has no machine quests, so quest 2 is
-// overridden: heat_furnace (1110:00:0) producing oak_planks (0:10:00:0).
+// overridden: heat_furnace (1110:000:0) producing oak_planks (0:10:00:0).
 // ─────────────────────────────────────────────────────────────────────────────
 static void test_QuestManager_detection_machine_output() {
   const uint64_t player = 222;
@@ -692,7 +692,7 @@ static void test_QuestManager_detection_machine_output() {
   "2": {
     "auto_complete": true,
     "requirements": [
-      {"kind": "machine", "item": "0:10:00:0", "count": 1, "consume": true, "machine": "1110:00:0"}
+      {"kind": "machine", "item": "0:10:00:0", "count": 1, "consume": true, "machine": "1110:000:0"}
     ]
   }
 })";
@@ -703,16 +703,16 @@ static void test_QuestManager_detection_machine_output() {
   seedProgress(mgr, player,
       {{1, static_cast<uint8_t>(quest::QuestStatus::COMPLETED), 100}});
 
-  // Wrong machine (battery_buffer_lv 1110:10:0): item matches, machine doesn't.
-  mgr.checkMachineOutput(player, ItemId::pack("1110:10:0"), ItemId::pack("0:10:00:0"), 1);
+  // Wrong machine (battery_buffer_lv 1110:101:0): item matches, machine doesn't.
+  mgr.checkMachineOutput(player, ItemId::pack("1110:101:0"), ItemId::pack("0:10:00:0"), 1);
   CHECK_EQ(countTopic(pub, "quest.completed"), 0,
            "wrong machine does not complete machine quest");
   CHECK_EQ(lastAdvertisedStatus(pub, 2),
            static_cast<int>(quest::QuestStatus::AVAILABLE),
            "quest 2 stays AVAILABLE after wrong-machine output");
 
-  // Matching machine (heat_furnace 1110:00:0) → completes.
-  mgr.checkMachineOutput(player, ItemId::pack("1110:00:0"), ItemId::pack("0:10:00:0"), 1);
+  // Matching machine (heat_furnace 1110:000:0) → completes.
+  mgr.checkMachineOutput(player, ItemId::pack("1110:000:0"), ItemId::pack("0:10:00:0"), 1);
   CHECK_EQ(lastAdvertisedStatus(pub, 2),
            static_cast<int>(quest::QuestStatus::COMPLETED),
            "machine quest completes on output take from matching machine");

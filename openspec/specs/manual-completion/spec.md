@@ -1,7 +1,7 @@
 # manual-completion Specification
 
 ## Purpose
-TBD - created by archiving change manual-completion. Update Purpose after archive.
+Manual quest completion requests, validated and authorized by MetaDB.
 ## Requirements
 ### Requirement: Manual completion request
 The client SHALL request quest completion via a dedicated server-authoritative message, never by setting status directly.

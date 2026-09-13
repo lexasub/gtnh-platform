@@ -1,7 +1,7 @@
 # heat-management Specification
 
 ## Purpose
-TBD - created by archiving change implement-heat-management. Update Purpose after archive.
+6-neighbor heat propagation, environment/coolant cooling, overheat detection, and heat network topology.
 ## Requirements
 ### Requirement: 6-Neighbor Heat Propagation
 Machines with `EnergyType::HEAT` SHALL propagate heat to adjacent machines (6-neighbor Manhattan) each tick.
@@ -52,31 +52,6 @@ The system SHALL detect overheat states on multiblock machines based on heat rat
 - **AND** `HeatIntakeComponent.ratio() < 0.90`
 - **WHEN** `HeatTransferSystem::tick()` runs (Pass 2)
 - **THEN** `OverheatComponent` is removed from the entity
-
-### Requirement: Boiler Steam Production
-A `steam_solid_boiler` machine SHALL convert water and heat into STEAM energy.
-
-#### Scenario: Boiler produces steam from heat and water
-- **GIVEN** a `steam_solid_boiler` machine (`1110:01:0`)
-- **AND** `HeatIntakeComponent.heat_stored > 0`
-- **AND** inventory slot 0 contains a water bucket (`0:11111:0`)
-- **WHEN** `BoilerSystem::tick()` runs
-- **THEN** 1 unit of heat is consumed from `HeatIntakeComponent`
-- **AND** water bucket count decrements (becomes empty bucket `0:11111:3` when depleted)
-- **AND** 1 unit of STEAM is produced into `EnergyStorage`
-- **AND** a PipeNetwork node update is published via `PipeEnergyClient`
-
-#### Scenario: Boiler idle without water (dry run)
-- **GIVEN** a `steam_solid_boiler` with heat but no water bucket in slot 0
-- **WHEN** `BoilerSystem::tick()` runs
-- **THEN** no steam is produced
-- **AND** heat builds up without consumption (overheat risk)
-
-#### Scenario: Boiler idle with full energy storage
-- **GIVEN** a `steam_solid_boiler` with `energy.isFull() == true`
-- **WHEN** `BoilerSystem::tick()` runs
-- **THEN** no water is consumed
-- **AND** no steam is produced
 
 ### Requirement: Coolant-Based Active Cooling
 The system SHALL support coolant items for active heat reduction during overheat on multiblock machines.
@@ -154,33 +129,6 @@ All heat-related ECS systems SHALL be registered in the SimulationEngine tick lo
   - `CreativeGeneratorSystem` (line 84)
 - **AND** `tickAll()` MUST call each system's `tick()` every cycle (line 310)
 
-### Requirement: Boiler Heat-to-Steam Conversion
-A `steam_heat_boiler` machine (`1110:01:1`) SHALL convert externally-supplied HEAT into STEAM energy. Water is NOT required; inventory slots SHALL be preserved. The machine SHALL act as a HEAT consumer (`MachineRole::CONSUMER`, `EnergyType::HEAT`) and receive heat from an adjacent heat-producing machine via `AdjacencyTransferSystem` **or from a heat pipe network via its HEAT sink node**; it SHALL act as a STEAM producer.
-
-#### Scenario: Converter produces steam from pipe-delivered heat
-- **GIVEN** a `steam_heat_boiler` (`1110:01:1`) connected to a `heat_pipe` network whose sources have excess heat
-- **AND** `HeatIntakeComponent.heat_stored` is below the replenish threshold
-- **AND** its steam output buffer is not full
-- **WHEN** `BoilerSystem::tick()` runs
-- **THEN** a HEAT sink node update is published (`is_sink=true`)
-- **AND** an `EnergyConsumeReq` (HEAT) is sent for the deficit
-- **AND** heat delivered by the network lands in `HeatIntakeComponent.heat_stored` (synced to `EnergyStorage.current`)
-- **AND** subsequent ticks convert HEAT into STEAM as before
-
-#### Scenario: Converter idle without heat
-- **GIVEN** a `steam_heat_boiler` with no heat available (`heat_stored == 0` and no adjacent heat source)
-- **WHEN** `BoilerSystem::tick()` runs
-- **THEN** no steam is produced
-
-### Requirement: Boiler Heat and Steam UI Display
-The machine UI (`MachineWindow`) for boiler machines SHALL display both a heat buffer bar and a steam buffer bar.
-
-#### Scenario: Boiler shows heat and steam bars
-- **GIVEN** a boiler machine (`1110:01:0` or `1110:01:1`) open in the machine window
-- **WHEN** the window renders
-- **THEN** a STEAM bar is shown from the steam output (`steam_current` / `steam_capacity`)
-- **AND** a HEAT bar is shown from `HeatIntakeComponent` (`heat_stored` / `heat_capacity`)
-
 ### Requirement: Heat Pipe Block
 The platform SHALL provide a `heat_pipe` block (`1111:10:4`) that transports HEAT through the pipe network. Its pipe node SHALL have `heatCapacity = 1000`.
 
@@ -214,4 +162,31 @@ The game client renderer SHALL draw a pipe/cable connection (flange + tube) to a
 - **GIVEN** a pipe with a same-type pipe neighbour
 - **WHEN** `detectConnections()` runs
 - **THEN** the face mask still includes that face
+
+### Requirement: Heat Network Topology Derived from Energy IO
+Heat-network topology SHALL be derived from each machine's declared energy IO
+(`energy_in` / `energy_out`) rather than a manual `MachineRole` flag.
+
+A machine is a **heat source** iff its `energy_out` is `HEAT`.
+A machine is a **heat sink** iff its `energy_in` is `HEAT`.
+
+This covers pure heat machines (e.g. `heat_generator`, `1110:00:2`) and
+converters (e.g. `steam_heat_boiler`, `1110:01:1`, which declares
+`energy_in: HEAT` and `energy_out: STEAM` — it is a heat sink even though its
+`EnergyStorage.type` resolves to `STEAM`).
+
+#### Scenario: Heat source emits into the network
+- **GIVEN** a machine with `energy_out: HEAT` (e.g. `heat_generator`)
+- **WHEN** `AdjacencyTransferSystem::tick()` runs
+- **THEN** it is treated as a heat source that can deliver heat to adjacent heat sinks
+
+#### Scenario: Heat sink receives from the network
+- **GIVEN** a machine with `energy_in: HEAT` (e.g. `steam_heat_boiler`)
+- **WHEN** `AdjacencyTransferSystem::tick()` runs
+- **THEN** it is treated as a heat sink that receives heat from adjacent heat sources
+
+#### Scenario: Non-heat machines are excluded
+- **GIVEN** a machine whose `energy_in`/`energy_out` are not `HEAT` (e.g. ELECTRICITY / STEAM / ROTATION)
+- **WHEN** `AdjacencyTransferSystem::tick()` runs
+- **THEN** it participates in neither the heat-source nor heat-sink pass
 

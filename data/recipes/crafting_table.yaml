@@ -126,6 +126,80 @@ recipes:
     min_tier: 0
     max_tier: 32767
 
+  # ── BASE containers (buckets) ─────────────────────────────
+  # Filled buckets: empty_bucket + fluid item → filled bucket.
+  # Fluids are regular items (1111:11:xx); hydrogen and coolant are
+  # registered in fluids.csv alongside the machine-usable fluids.
+
+  - name: empty_bucket
+    pattern:
+      - [iron_ingot, ~, ~]
+      - [iron_ingot, ~, ~]
+      - [~, iron_ingot, ~]
+    inputs:
+      - { item: iron_ingot, count: 3 }
+    outputs:
+      - { item: empty_bucket, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: water_bucket
+    pattern:
+      - [empty_bucket, ~, ~]
+      - [water, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: empty_bucket, count: 1 }
+      - { item: water, count: 1 }
+    outputs:
+      - { item: water_bucket, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: hydrogen_bucket
+    pattern:
+      - [empty_bucket, ~, ~]
+      - [hydrogen, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: empty_bucket, count: 1 }
+      - { item: hydrogen, count: 1 }
+    outputs:
+      - { item: hydrogen_bucket, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: sulfuric_acid_bucket
+    pattern:
+      - [empty_bucket, ~, ~]
+      - [sulfuric_acid, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: empty_bucket, count: 1 }
+      - { item: sulfuric_acid, count: 1 }
+    outputs:
+      - { item: sulfuric_acid_bucket, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: coolant_bucket
+    pattern:
+      - [empty_bucket, ~, ~]
+      - [coolant, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: empty_bucket, count: 1 }
+      - { item: coolant, count: 1 }
+    outputs:
+      - { item: coolant_bucket, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
   - name: torch
     pattern:
       - [coal, ~, ~]
@@ -149,7 +223,7 @@ recipes:
       - { item: oak_planks, count: 3 }
       - { item: stick, count: 2 }
     outputs:
-      - { item: workbench_axe, count: 1 }
+      - { item: wooden_axe, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
@@ -163,7 +237,7 @@ recipes:
       - { item: oak_planks, count: 1 }
       - { item: stick, count: 2 }
     outputs:
-      - { item: workbench_shovel, count: 1 }
+      - { item: wooden_shovel, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
@@ -177,7 +251,7 @@ recipes:
       - { item: oak_planks, count: 1 }
       - { item: stick, count: 2 }
     outputs:
-      - { item: workbench_sword, count: 1 }
+      - { item: wooden_sword, count: 1 }
     duration: 100
     min_tier: 0
     max_tier: 32767
@@ -412,6 +486,1258 @@ recipes:
       - { item: fluid_tank, count: 1 }
     outputs:
       - { item: steam_heat_boiler, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Pipes ─────────────────────────────────────────────────
+  # GT-style: normal pipe = 6 ingots (top/bottom rows), dense pipe = 8 ingots
+  # (ring with hollow center). Material is a placeholder — registry has a
+  # single generic pipe item per type, no per-material variants yet.
+
+  - name: fluid_pipe
+    pattern:
+      - [copper_ingot, copper_ingot, copper_ingot]
+      - [~, ~, ~]
+      - [copper_ingot, copper_ingot, copper_ingot]
+    inputs:
+      - { item: copper_ingot, count: 6 }
+    outputs:
+      - { item: fluid_pipe, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: item_pipe
+    pattern:
+      - [tin_ingot, tin_ingot, tin_ingot]
+      - [~, ~, ~]
+      - [tin_ingot, tin_ingot, tin_ingot]
+    inputs:
+      - { item: tin_ingot, count: 6 }
+    outputs:
+      - { item: item_pipe, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: dense_fluid_pipe
+    pattern:
+      - [bronze_ingot, bronze_ingot, bronze_ingot]
+      - [bronze_ingot, ~, bronze_ingot]
+      - [bronze_ingot, bronze_ingot, bronze_ingot]
+    inputs:
+      - { item: bronze_ingot, count: 8 }
+    outputs:
+      - { item: dense_fluid_pipe, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: dense_item_pipe
+    pattern:
+      - [iron_ingot, iron_ingot, iron_ingot]
+      - [iron_ingot, ~, iron_ingot]
+      - [iron_ingot, iron_ingot, iron_ingot]
+    inputs:
+      - { item: iron_ingot, count: 8 }
+    outputs:
+      - { item: dense_item_pipe, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: heat_pipe
+    pattern:
+      - [electrum_ingot, electrum_ingot, electrum_ingot]
+      - [~, ~, ~]
+      - [electrum_ingot, electrum_ingot, electrum_ingot]
+    inputs:
+      - { item: electrum_ingot, count: 6 }
+    outputs:
+      - { item: heat_pipe, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Cables ────────────────────────────────────────────────
+  # Bare cable recipes use three ingots in a row. The advanced cable
+  # ingredients are temporary stand-ins until their dedicated materials are
+  # registered: electrum → aluminium, uranium → tungsten, bronze → platinum.
+
+  - name: cable_tin
+    pattern:
+      - [tin_ingot, tin_ingot, tin_ingot]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: tin_ingot, count: 3 }
+    outputs:
+      - { item: cable_tin, count: 3 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: cable_copper
+    pattern:
+      - [copper_ingot, copper_ingot, copper_ingot]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: copper_ingot, count: 3 }
+    outputs:
+      - { item: cable_copper, count: 3 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: cable_gold
+    pattern:
+      - [gold_ingot, gold_ingot, gold_ingot]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: gold_ingot, count: 3 }
+    outputs:
+      - { item: cable_gold, count: 3 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: cable_aluminium
+    pattern:
+      - [electrum_ingot, electrum_ingot, electrum_ingot]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: electrum_ingot, count: 3 }
+    outputs:
+      - { item: cable_aluminium, count: 3 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: cable_tungsten
+    pattern:
+      - [uranium_ingot, uranium_ingot, uranium_ingot]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: uranium_ingot, count: 3 }
+    outputs:
+      - { item: cable_tungsten, count: 3 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: cable_platinum
+    pattern:
+      - [bronze_ingot, bronze_ingot, bronze_ingot]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: bronze_ingot, count: 3 }
+    outputs:
+      - { item: cable_platinum, count: 3 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Battery buffers ───────────────────────────────────────
+  # Tier escalation: LV (tin) → MV (copper) → HV (gold).
+  # Each higher tier wraps the previous buffer in cable + ingots.
+
+  - name: battery_buffer_lv
+    pattern:
+      - [iron_ingot, cable_tin, iron_ingot]
+      - [cable_tin, chest, cable_tin]
+      - [iron_ingot, redstone, iron_ingot]
+    inputs:
+      - { item: iron_ingot, count: 4 }
+      - { item: cable_tin, count: 4 }
+      - { item: chest, count: 1 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: battery_buffer_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: battery_buffer_mv
+    pattern:
+      - [bronze_plate, cable_copper, bronze_plate]
+      - [cable_copper, battery_buffer_lv, cable_copper]
+      - [bronze_plate, redstone, bronze_plate]
+    inputs:
+      - { item: bronze_plate, count: 4 }
+      - { item: cable_copper, count: 4 }
+      - { item: battery_buffer_lv, count: 1 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: battery_buffer_mv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: battery_buffer_hv
+    pattern:
+      - [gold_ingot, cable_gold, gold_ingot]
+      - [cable_gold, battery_buffer_mv, cable_gold]
+      - [gold_ingot, redstone, gold_ingot]
+    inputs:
+      - { item: gold_ingot, count: 4 }
+      - { item: cable_gold, count: 4 }
+      - { item: battery_buffer_mv, count: 1 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: battery_buffer_hv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Charger ───────────────────────────────────────────────
+  # Recharges tools (drills, chainsaws) — LV buffer + copper wiring.
+
+  - name: charger
+    pattern:
+      - [~, cable_copper, ~]
+      - [cable_copper, battery_buffer_lv, cable_copper]
+      - [~, redstone, ~]
+    inputs:
+      - { item: cable_copper, count: 3 }
+      - { item: battery_buffer_lv, count: 1 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: charger, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Transformers ──────────────────────────────────────────
+  # MV↔HV: copper input side, gold output side, iron core.
+  # HV↔EV: gold input side, aluminium output side, redstone core.
+
+  - name: transformer_mv_hv
+    pattern:
+      - [iron_ingot, cable_gold, iron_ingot]
+      - [cable_gold, redstone, cable_copper]
+      - [iron_ingot, cable_copper, iron_ingot]
+    inputs:
+      - { item: iron_ingot, count: 4 }
+      - { item: cable_gold, count: 3 }
+      - { item: cable_copper, count: 2 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: transformer_mv_hv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: transformer_hv_ev
+    pattern:
+      - [gold_ingot, cable_aluminium, gold_ingot]
+      - [cable_aluminium, redstone, cable_gold]
+      - [gold_ingot, cable_gold, gold_ingot]
+    inputs:
+      - { item: gold_ingot, count: 4 }
+      - { item: cable_aluminium, count: 3 }
+      - { item: cable_gold, count: 2 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: transformer_hv_ev, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  # ── Keys ─────────────────────────────────────────────────
+  # GTNH-style lock keys: bow of ingots over a stick shaft.
+
+  - name: hammer
+    pattern:
+      - [iron_ingot, iron_ingot, iron_ingot]
+      - [iron_ingot, stick, iron_ingot]
+      - [~, stick, ~]
+    inputs:
+      - { item: iron_ingot, count: 5 }
+      - { item: stick, count: 1 }
+    outputs:
+      - { item: hammer, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: file
+    pattern:
+      - [~, iron_ingot, ~]
+      - [~, iron_ingot, ~]
+      - [~, stick, ~]
+    inputs:
+      - { item: iron_ingot, count: 2 }
+      - { item: stick, count: 1 }
+    outputs:
+      - { item: file, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: saw
+    pattern:
+      - [iron_ingot, iron_ingot, ~]
+      - [stick, iron_ingot, ~]
+      - [~, stick, ~]
+    inputs:
+      - { item: iron_ingot, count: 3 }
+      - { item: stick, count: 2 }
+    outputs:
+      - { item: saw, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: screwdriver
+    pattern:
+      - [~, iron_ingot, ~]
+      - [~, stick, ~]
+      - [~, stick, ~]
+    inputs:
+      - { item: iron_ingot, count: 1 }
+      - { item: stick, count: 2 }
+    outputs:
+      - { item: screwdriver, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: wire_cutter
+    pattern:
+      - [~, iron_ingot, ~]
+      - [iron_ingot, ~, iron_ingot]
+      - [~, stick, ~]
+    inputs:
+      - { item: iron_ingot, count: 3 }
+      - { item: stick, count: 1 }
+    outputs:
+      - { item: wire_cutter, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: crowbar
+    pattern:
+      - [~, iron_ingot, iron_ingot]
+      - [~, iron_ingot, ~]
+      - [iron_ingot, ~, ~]
+    inputs:
+      - { item: iron_ingot, count: 4 }
+    outputs:
+      - { item: crowbar, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: soft_mallet
+    pattern:
+      - [~, oak_planks, ~]
+      - [~, stick, ~]
+      - [~, stick, ~]
+    inputs:
+      - { item: oak_planks, count: 1 }
+      - { item: stick, count: 2 }
+    outputs:
+      - { item: soft_mallet, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: wrench
+    pattern:
+      - [iron_ingot, ~, iron_ingot]
+      - [~, iron_ingot, ~]
+      - [~, iron_ingot, ~]
+    inputs:
+      - { item: iron_ingot, count: 4 }
+    outputs:
+      - { item: wrench, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Electric tools ───────────────────────────────────────
+  # Powered drills + chainsaw. Battery buffer = energy cell,
+  # cable = wiring, top row = cutterhead material.
+  # Tier follows the battery buffer ladder (LV tin → MV copper → HV gold).
+
+  - name: drill_ulv
+    pattern:
+      - [iron_ingot, iron_ingot, iron_ingot]
+      - [~, stick, battery_buffer_lv]
+      - [~, stick, ~]
+    inputs:
+      - { item: iron_ingot, count: 3 }
+      - { item: stick, count: 2 }
+      - { item: battery_buffer_lv, count: 1 }
+    outputs:
+      - { item: drill_ulv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: drill_lv
+    pattern:
+      - [bronze_plate, bronze_plate, bronze_plate]
+      - [~, stick, battery_buffer_lv]
+      - [~, stick, ~]
+    inputs:
+      - { item: bronze_plate, count: 3 }
+      - { item: stick, count: 2 }
+      - { item: battery_buffer_lv, count: 1 }
+    outputs:
+      - { item: drill_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: drill_mv
+    pattern:
+      - [bronze_plate, bronze_plate, bronze_plate]
+      - [cable_copper, stick, battery_buffer_mv]
+      - [~, stick, ~]
+    inputs:
+      - { item: bronze_plate, count: 3 }
+      - { item: cable_copper, count: 1 }
+      - { item: stick, count: 2 }
+      - { item: battery_buffer_mv, count: 1 }
+    outputs:
+      - { item: drill_mv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: drill_hv
+    pattern:
+      - [gold_ingot, gold_ingot, gold_ingot]
+      - [cable_gold, stick, battery_buffer_hv]
+      - [~, stick, ~]
+    inputs:
+      - { item: gold_ingot, count: 3 }
+      - { item: cable_gold, count: 1 }
+      - { item: stick, count: 2 }
+      - { item: battery_buffer_hv, count: 1 }
+    outputs:
+      - { item: drill_hv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: chainsaw_lv
+    pattern:
+      - [iron_ingot, iron_ingot, iron_ingot]
+      - [iron_ingot, stick, battery_buffer_lv]
+      - [~, stick, ~]
+    inputs:
+      - { item: iron_ingot, count: 4 }
+      - { item: stick, count: 2 }
+      - { item: battery_buffer_lv, count: 1 }
+    outputs:
+      - { item: chainsaw_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Wood products ──────────────────────────────────────────
+  - name: spruce_planks
+    pattern:
+      - [spruce_log, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: spruce_log, count: 1 }
+    outputs:
+      - { item: spruce_planks, count: 4 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: birch_planks
+    pattern:
+      - [birch_log, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: birch_log, count: 1 }
+    outputs:
+      - { item: birch_planks, count: 4 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: jungle_planks
+    pattern:
+      - [jungle_log, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: jungle_log, count: 1 }
+    outputs:
+      - { item: jungle_planks, count: 4 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: acacia_planks
+    pattern:
+      - [acacia_log, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: acacia_log, count: 1 }
+    outputs:
+      - { item: acacia_planks, count: 4 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: dark_oak_planks
+    pattern:
+      - [dark_oak_log, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: dark_oak_log, count: 1 }
+    outputs:
+      - { item: dark_oak_planks, count: 4 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: oak_slab
+    pattern:
+      - [oak_planks, oak_planks, oak_planks]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: oak_planks, count: 3 }
+    outputs:
+      - { item: oak_slab, count: 6 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: spruce_slab
+    pattern:
+      - [spruce_planks, spruce_planks, spruce_planks]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: spruce_planks, count: 3 }
+    outputs:
+      - { item: spruce_slab, count: 6 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: birch_slab
+    pattern:
+      - [birch_planks, birch_planks, birch_planks]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: birch_planks, count: 3 }
+    outputs:
+      - { item: birch_slab, count: 6 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: oak_door
+    pattern:
+      - [oak_planks, oak_planks, ~]
+      - [oak_planks, oak_planks, ~]
+      - [oak_planks, oak_planks, ~]
+    inputs:
+      - { item: oak_planks, count: 6 }
+    outputs:
+      - { item: oak_door, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: spruce_door
+    pattern:
+      - [spruce_planks, spruce_planks, ~]
+      - [spruce_planks, spruce_planks, ~]
+      - [spruce_planks, spruce_planks, ~]
+    inputs:
+      - { item: spruce_planks, count: 6 }
+    outputs:
+      - { item: spruce_door, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: oak_stairs
+    pattern:
+      - [oak_planks, ~, ~]
+      - [oak_planks, oak_planks, ~]
+      - [oak_planks, oak_planks, oak_planks]
+    inputs:
+      - { item: oak_planks, count: 6 }
+    outputs:
+      - { item: oak_stairs, count: 4 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: spruce_stairs
+    pattern:
+      - [spruce_planks, ~, ~]
+      - [spruce_planks, spruce_planks, ~]
+      - [spruce_planks, spruce_planks, spruce_planks]
+    inputs:
+      - { item: spruce_planks, count: 6 }
+    outputs:
+      - { item: spruce_stairs, count: 4 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: birch_stairs
+    pattern:
+      - [birch_planks, ~, ~]
+      - [birch_planks, birch_planks, ~]
+      - [birch_planks, birch_planks, birch_planks]
+    inputs:
+      - { item: birch_planks, count: 6 }
+    outputs:
+      - { item: birch_stairs, count: 4 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: oak_fence
+    pattern:
+      - [oak_planks, stick, oak_planks]
+      - [oak_planks, stick, oak_planks]
+      - [~, ~, ~]
+    inputs:
+      - { item: oak_planks, count: 4 }
+      - { item: stick, count: 2 }
+    outputs:
+      - { item: oak_fence, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: spruce_fence
+    pattern:
+      - [spruce_planks, stick, spruce_planks]
+      - [spruce_planks, stick, spruce_planks]
+      - [~, ~, ~]
+    inputs:
+      - { item: spruce_planks, count: 4 }
+      - { item: stick, count: 2 }
+    outputs:
+      - { item: spruce_fence, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: oak_fence_gate
+    pattern:
+      - [stick, oak_planks, stick]
+      - [stick, oak_planks, stick]
+      - [~, ~, ~]
+    inputs:
+      - { item: oak_planks, count: 2 }
+      - { item: stick, count: 4 }
+    outputs:
+      - { item: oak_fence_gate, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: oak_trapdoor
+    pattern:
+      - [oak_planks, oak_planks, oak_planks]
+      - [oak_planks, oak_planks, oak_planks]
+      - [~, ~, ~]
+    inputs:
+      - { item: oak_planks, count: 6 }
+    outputs:
+      - { item: oak_trapdoor, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: wooden_button
+    pattern:
+      - [oak_planks, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: oak_planks, count: 1 }
+    outputs:
+      - { item: wooden_button, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: wooden_pressure_plate
+    pattern:
+      - [oak_planks, oak_planks, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: oak_planks, count: 2 }
+    outputs:
+      - { item: wooden_pressure_plate, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Building blocks ────────────────────────────────────────
+  - name: paper
+    pattern:
+      - [sugar_cane, sugar_cane, sugar_cane]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: sugar_cane, count: 3 }
+    outputs:
+      - { item: paper, count: 3 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: book
+    pattern:
+      - [leather, ~, ~]
+      - [paper, paper, paper]
+      - [~, ~, ~]
+    inputs:
+      - { item: leather, count: 1 }
+      - { item: paper, count: 3 }
+    outputs:
+      - { item: book, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: bookshelf
+    pattern:
+      - [oak_planks, book, oak_planks]
+      - [oak_planks, book, oak_planks]
+      - [oak_planks, book, oak_planks]
+    inputs:
+      - { item: oak_planks, count: 6 }
+      - { item: book, count: 3 }
+    outputs:
+      - { item: bookshelf, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: glass_pane
+    pattern:
+      - [glass, glass, glass]
+      - [glass, glass, glass]
+      - [~, ~, ~]
+    inputs:
+      - { item: glass, count: 6 }
+    outputs:
+      - { item: glass_pane, count: 16 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: sandstone
+    pattern:
+      - [sand, sand, ~]
+      - [sand, sand, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: sand, count: 4 }
+    outputs:
+      - { item: sandstone, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: stone_bricks
+    pattern:
+      - [stone, stone, ~]
+      - [stone, stone, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: stone, count: 4 }
+    outputs:
+      - { item: stone_bricks, count: 4 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: brick_block
+    pattern:
+      - [brick, brick, ~]
+      - [brick, brick, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: brick, count: 4 }
+    outputs:
+      - { item: brick_block, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: lantern
+    pattern:
+      - [iron_ingot, torch, iron_ingot]
+      - [iron_ingot, ~, iron_ingot]
+      - [iron_ingot, iron_ingot, iron_ingot]
+    inputs:
+      - { item: iron_ingot, count: 7 }
+      - { item: torch, count: 1 }
+    outputs:
+      - { item: lantern, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Tools ──────────────────────────────────────────────────
+  - name: iron_axe
+    pattern:
+      - [iron_ingot, iron_ingot, ~]
+      - [iron_ingot, stick, ~]
+      - [~, stick, ~]
+    inputs:
+      - { item: iron_ingot, count: 3 }
+      - { item: stick, count: 2 }
+    outputs:
+      - { item: iron_axe, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: iron_shovel
+    pattern:
+      - [iron_ingot, ~, ~]
+      - [stick, ~, ~]
+      - [stick, ~, ~]
+    inputs:
+      - { item: iron_ingot, count: 1 }
+      - { item: stick, count: 2 }
+    outputs:
+      - { item: iron_shovel, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: iron_sword
+    pattern:
+      - [~, iron_ingot, ~]
+      - [iron_ingot, iron_ingot, ~]
+      - [~, stick, ~]
+    inputs:
+      - { item: iron_ingot, count: 3 }
+      - { item: stick, count: 1 }
+    outputs:
+      - { item: iron_sword, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: steel_pickaxe
+    pattern:
+      - [steel_ingot, steel_ingot, steel_ingot]
+      - [~, stick, ~]
+      - [~, stick, ~]
+    inputs:
+      - { item: steel_ingot, count: 3 }
+      - { item: stick, count: 2 }
+    outputs:
+      - { item: steel_pickaxe, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: steel_sword
+    pattern:
+      - [~, steel_ingot, ~]
+      - [~, steel_ingot, ~]
+      - [~, stick, ~]
+    inputs:
+      - { item: steel_ingot, count: 2 }
+      - { item: stick, count: 1 }
+    outputs:
+      - { item: steel_sword, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: bow
+    pattern:
+      - [~, stick, string]
+      - [stick, ~, string]
+      - [~, stick, string]
+    inputs:
+      - { item: stick, count: 3 }
+      - { item: string, count: 3 }
+    outputs:
+      - { item: bow, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: arrow
+    pattern:
+      - [flint, ~, ~]
+      - [stick, ~, ~]
+      - [feather, ~, ~]
+    inputs:
+      - { item: flint, count: 1 }
+      - { item: stick, count: 1 }
+      - { item: feather, count: 1 }
+    outputs:
+      - { item: arrow, count: 4 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: shield
+    pattern:
+      - [oak_planks, iron_ingot, oak_planks]
+      - [oak_planks, oak_planks, oak_planks]
+      - [~, ~, ~]
+    inputs:
+      - { item: oak_planks, count: 5 }
+      - { item: iron_ingot, count: 1 }
+    outputs:
+      - { item: shield, count: 1 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Wires ──────────────────────────────────────────────────
+  - name: wire_tin
+    pattern:
+      - [tin_ingot, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: tin_ingot, count: 1 }
+    outputs:
+      - { item: wire_tin, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: wire_copper
+    pattern:
+      - [copper_ingot, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: copper_ingot, count: 1 }
+    outputs:
+      - { item: wire_copper, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: wire_gold
+    pattern:
+      - [gold_ingot, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: gold_ingot, count: 1 }
+    outputs:
+      - { item: wire_gold, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: wire_aluminium
+    pattern:
+      - [aluminium_ingot, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: aluminium_ingot, count: 1 }
+    outputs:
+      - { item: wire_aluminium, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: wire_tungsten
+    pattern:
+      - [tungsten_ingot, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: tungsten_ingot, count: 1 }
+    outputs:
+      - { item: wire_tungsten, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: wire_platinum
+    pattern:
+      - [platinum_ingot, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: platinum_ingot, count: 1 }
+    outputs:
+      - { item: wire_platinum, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: wire_electrum
+    pattern:
+      - [electrum_ingot, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: electrum_ingot, count: 1 }
+    outputs:
+      - { item: wire_electrum, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  - name: wire_silver
+    pattern:
+      - [silver_ingot, ~, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: silver_ingot, count: 1 }
+    outputs:
+      - { item: wire_silver, count: 2 }
+    duration: 100
+    min_tier: 0
+    max_tier: 32767
+
+  # ── Electric machines (LV) ─────────────────────────────────
+  - name: electric_furnace_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, heat_furnace, cable_copper]
+      - [iron_plate, iron_plate, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 8 }
+      - { item: cable_copper, count: 2 }
+      - { item: heat_furnace, count: 1 }
+    outputs:
+      - { item: electric_furnace_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: electric_furnace_mv
+    pattern:
+      - [steel_plate, steel_plate, steel_plate]
+      - [cable_gold, electric_furnace_lv, cable_gold]
+      - [steel_plate, steel_plate, steel_plate]
+    inputs:
+      - { item: steel_plate, count: 8 }
+      - { item: cable_gold, count: 2 }
+      - { item: electric_furnace_lv, count: 1 }
+    outputs:
+      - { item: electric_furnace_mv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: electric_furnace_hv
+    pattern:
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+      - [cable_aluminium, electric_furnace_mv, cable_aluminium]
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+    inputs:
+      - { item: aluminium_plate, count: 8 }
+      - { item: cable_aluminium, count: 2 }
+      - { item: electric_furnace_mv, count: 1 }
+    outputs:
+      - { item: electric_furnace_hv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: macerator_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, heat_macerator, cable_copper]
+      - [iron_plate, circuit_board_basic, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 8 }
+      - { item: cable_copper, count: 2 }
+      - { item: heat_macerator, count: 1 }
+      - { item: circuit_board_basic, count: 1 }
+    outputs:
+      - { item: macerator_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: compressor_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, steam_compressor, cable_copper]
+      - [iron_plate, circuit_board_basic, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 8 }
+      - { item: cable_copper, count: 2 }
+      - { item: steam_compressor, count: 1 }
+      - { item: circuit_board_basic, count: 1 }
+    outputs:
+      - { item: compressor_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: extractor_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, steam_extractor, cable_copper]
+      - [iron_plate, circuit_board_basic, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 8 }
+      - { item: cable_copper, count: 2 }
+      - { item: steam_extractor, count: 1 }
+      - { item: circuit_board_basic, count: 1 }
+    outputs:
+      - { item: extractor_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: mixer_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, steam_mixer, cable_copper]
+      - [iron_plate, circuit_board_basic, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 8 }
+      - { item: cable_copper, count: 2 }
+      - { item: steam_mixer, count: 1 }
+      - { item: circuit_board_basic, count: 1 }
+    outputs:
+      - { item: mixer_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: alloy_smelter_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, bronze_alloy_smelter, cable_copper]
+      - [iron_plate, circuit_board_basic, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 8 }
+      - { item: cable_copper, count: 2 }
+      - { item: bronze_alloy_smelter, count: 1 }
+      - { item: circuit_board_basic, count: 1 }
+    outputs:
+      - { item: alloy_smelter_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: centrifuge_lv
+    pattern:
+      - [iron_plate, bronze_plate, iron_plate]
+      - [cable_copper, circuit_board_basic, cable_copper]
+      - [iron_plate, bronze_plate, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 4 }
+      - { item: bronze_plate, count: 4 }
+      - { item: cable_copper, count: 2 }
+      - { item: circuit_board_basic, count: 1 }
+    outputs:
+      - { item: centrifuge_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: electrolyzer_lv
+    pattern:
+      - [iron_plate, glass, iron_plate]
+      - [cable_copper, glass, cable_copper]
+      - [iron_plate, glass, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 4 }
+      - { item: glass, count: 6 }
+      - { item: cable_copper, count: 2 }
+    outputs:
+      - { item: electrolyzer_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: chemical_reactor_lv
+    pattern:
+      - [iron_plate, glass, iron_plate]
+      - [cable_copper, circuit_board_basic, cable_copper]
+      - [iron_plate, glass, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 4 }
+      - { item: glass, count: 4 }
+      - { item: cable_copper, count: 2 }
+      - { item: circuit_board_basic, count: 1 }
+    outputs:
+      - { item: chemical_reactor_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: wiremill
+    pattern:
+      - [iron_plate, iron_gear, iron_plate]
+      - [cable_copper, heat_furnace, cable_copper]
+      - [iron_plate, iron_gear, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 4 }
+      - { item: iron_gear, count: 4 }
+      - { item: cable_copper, count: 2 }
+      - { item: heat_furnace, count: 1 }
+    outputs:
+      - { item: wiremill, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: bender
+    pattern:
+      - [iron_plate, hammer, iron_plate]
+      - [cable_copper, heat_furnace, cable_copper]
+      - [iron_plate, hammer, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 4 }
+      - { item: hammer, count: 4 }
+      - { item: cable_copper, count: 2 }
+      - { item: heat_furnace, count: 1 }
+    outputs:
+      - { item: bender, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+
+  - name: extruder
+    pattern:
+      - [iron_plate, steel_gear, iron_plate]
+      - [cable_copper, steam_compressor, cable_copper]
+      - [iron_plate, steel_gear, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 4 }
+      - { item: steel_gear, count: 4 }
+      - { item: cable_copper, count: 2 }
+      - { item: steam_compressor, count: 1 }
+    outputs:
+      - { item: extruder, count: 1 }
     duration: 200
     min_tier: 0
     max_tier: 32767

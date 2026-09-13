@@ -5,11 +5,13 @@
 Define the accepted formats for item identifiers in recipe YAML files and how the RecipeManager resolves them to packed `uint16_t` item ids. Recipes may reference items by hierarchical prefix notation (`0:0:13`), flat numeric ids (`13`, backward compat), or string names (`iron_ingot`); the parser SHALL detect the format by pattern and resolve all three to the identical packed id with no ambiguity.
 ## Requirements
 ### Requirement: Recipe Item ID Format
-
 The system SHALL accept three unambiguous formats for item identifiers in recipe
 YAMLs, each detected by pattern, and SHALL resolve every resulting item ID
 against the canonical `items.csv` registry. A recipe referring to an unknown
-item SHALL fail validation rather than silently becoming item ID zero.
+item SHALL fail validation rather than silently becoming item ID zero. The same
+resolution rules SHALL apply to `fluid:` names inside `fluid_inputs` and
+`fluid_outputs`, with the additional constraint that the resolved id MUST have
+a `fluids.csv` properties row (see recipe-fluid-io).
 
 #### Scenario: Hierarchical prefix format
 - **GIVEN** a recipe YAML with `item: 0:0:4`
@@ -38,6 +40,13 @@ item SHALL fail validation rather than silently becoming item ID zero.
 - **THEN** `resolveItemName("iron_ingot")` resolves through the canonical
   `ItemRegistry::nameToId()`
 - **AND** the recipe loads only if that name exists in `items.csv`
+
+#### Scenario: Fluid name resolves through the same registry
+- **GIVEN** a recipe YAML with `fluid_inputs: [{ fluid: water, amount: 1000 }]`
+- **WHEN** the parser resolves `water`
+- **THEN** it uses the item-name resolution path
+- **AND** additionally requires a `fluids.csv` row for the packed id
+- **AND** the recipe loads only when both validations pass
 
 ### Requirement: No Fallback Parsing
 

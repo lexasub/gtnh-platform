@@ -1,7 +1,7 @@
 # implement-multiblocks-l2 Specification
 
 ## Purpose
-TBD - created by archiving change implement-multiblocks-l2. Update Purpose after archive.
+Multiblock pattern library: structure validation, assembly, controller ownership, and disassembly.
 ## Requirements
 ### Requirement: Multiblock Pattern Library
 The system SHALL support generic multiblock pattern matching.

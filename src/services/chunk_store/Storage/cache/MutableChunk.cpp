@@ -60,7 +60,10 @@ MutableChunk MutableChunk::fromBlocks(const uint16_t blocks[32768]) {
 void MutableChunk::encodeToWire(std::vector<uint8_t> &buf) const {
     buf.clear();
     writeU32(buf, MAGIC);
-    writeU8(buf, 1); // version
+    // TODO(registry-migration): version 1 chunks store pre-migration packed item
+    // IDs (see data/registry/item-id-migration.csv); they must be remapped on
+    // load before use, never silently accepted.
+    writeU8(buf, 2); // version
     writeU8(buf, SEC_CNT);
     for (int s = 0; s < SEC_CNT; ++s)
         sections[s].encodeToWire(buf);
@@ -73,6 +76,9 @@ bool MutableChunk::fromWire(const uint8_t *data, size_t size) {
     if (!r.readU32(magic) || magic != MAGIC) return false;
     uint8_t ver = 0;
     if (!r.readU8(ver) || ver < 1) return false;
+    // TODO(registry-migration): reject version 1 chunks until their pre-migration
+    // packed item IDs are remapped via data/registry/item-id-migration.csv.
+    if (ver < 2) return false;
     uint8_t sec_cnt = 0;
     if (!r.readU8(sec_cnt) || sec_cnt != SEC_CNT) return false;
 

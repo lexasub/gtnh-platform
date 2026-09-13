@@ -1,7 +1,7 @@
 # questbook Specification
 
 ## Purpose
-TBD - created by archiving change implement-questbook. Update Purpose after archive.
+Quest data model: structure, requirements, progression, and completion tracking.
 ## Requirements
 ### Requirement: Quest Data Model
 The system SHALL support a quest progression system with eras, sections, and individual quests.
@@ -16,12 +16,15 @@ The system SHALL support a quest progression system with eras, sections, and ind
 - **GIVEN** the system starts
 - **WHEN** the quest library loads data
 - **THEN** it SHALL parse `data/quests/quests.csv` for quest definitions (id, title, description, era, section, prereqs, detect_type, detect_target, reward_item, reward_count)
+- **AND** it SHALL parse the trailing `target_count` column (INVENTORY objective quantity; 0 → treated as ≥1)
+- **AND** it SHALL parse the EXCHANGE columns (`cost_item`, `cost_count`, `cooldown`)
 - **AND** it SHALL parse `data/quests/quest_graph.json` for DAG edges (prerequisites, position hints)
 - **AND** it SHALL fail gracefully with a log warning if either file is missing or malformed
 
 #### Scenario: Quest definition struct
 - **GIVEN** a quest is defined
-- **THEN** its definition SHALL include: unique id (uint32), title, description, era (enum: VAGRANT/APPRENTICE/EXPERT/ADMINISTRATOR), section name, prerequisites list, detection type (enum: CRAFT/BLOCK_PLACED/TOOL_CHARGED/SIDE_CONFIGURED), detection target string, reward item id (uint16), reward count (uint8)
+- **THEN** its definition SHALL include: unique id (uint32), title, description, era (enum: VAGRANT/APPRENTICE/EXPERT/ADMINISTRATOR), section name, prerequisites list, detection type (enum: CRAFT/BLOCK_PLACED/TOOL_CHARGED/SIDE_CONFIGURED/INVENTORY), detection target string, reward item id (uint16), reward count (uint8)
+- **AND** INVENTORY quests SHALL carry a `targetCount` (default 0 = ≥1)
 
 #### Scenario: BuildEraStructure produces UI-ready hierarchy
 - **GIVEN** quest data is loaded
@@ -34,20 +37,28 @@ The system SHALL define FlatBuffers schema for quest-related messages.
 
 #### Scenario: Client-Gateway quest message types
 - **GIVEN** the protocol schema
-- **THEN** `GatewayMsg::kQuestProgressUpdate` (type 19) SHALL carry `QuestProgressUpdate` FlatBuffer to client
-- **AND** `GatewayMsg::kQuestUnlockNotification` (type 20) SHALL carry `QuestUnlockNotification` FlatBuffer
-- **AND** `GatewayMsg::kQuestCompletedNotification` (type 21) SHALL carry `QuestCompletedNotification` FlatBuffer
+- **THEN** `GatewayMsg::kQuestProgressUpdate` (type 20) SHALL carry `QuestProgressUpdate` FlatBuffer to client
+- **AND** `GatewayMsg::kQuestUnlockNotification` (type 21) SHALL carry `QuestUnlockNotification` FlatBuffer
+- **AND** `GatewayMsg::kQuestCompletedNotification` (type 22) SHALL carry `QuestCompletedNotification` FlatBuffer
 
 #### Scenario: Quest status FlatBuffers enum
 - **GIVEN** the protocol schema
 - **THEN** `QuestStatus` SHALL be: LOCKED=0, AVAILABLE=1, IN_PROGRESS=2, COMPLETED=3
 - **AND** it SHALL match `quest::QuestStatus` in `QuestTypes.h` for cross-service consistency
 - **AND** the operative statuses SHALL be LOCKED/AVAILABLE/COMPLETED — IN_PROGRESS=2 and `progress` fields are reserved in the schema but no producer emits them
+- **AND** exchange quests SHALL remain AVAILABLE=1 indefinitely (never COMPLETED)
 
 #### Scenario: Quest events for pub/sub
 - **GIVEN** a quest event occurs
 - **THEN** `QuestCompleted` SHALL carry player_id, quest_id, timestamp (unix nanos)
 - **AND** `QuestUnlocked` SHALL carry player_id, list of unlocked quest IDs (uint32[])
+
+#### Scenario: Exchange message types
+- **GIVEN** the protocol schema
+- **THEN** `GatewayMsg::kQuestExchangeRequest` (26) SHALL carry `QuestExchangeRequest` (quest_id: uint32) from client
+- **AND** `GatewayMsg::kQuestExchangeResponse` (27) SHALL carry `QuestExchangeResponse` (quest_id: uint32, success: bool, error_message: string, cooldown_remaining_secs: uint32) to client
+- **AND** `GatewayMsg::kQuestExchangeCooldownGet` (28) SHALL carry `QuestExchangeCooldownGet` (quest_id: uint32) from client
+- **AND** `GatewayMsg::kQuestExchangeCooldown` (29) SHALL carry `QuestExchangeCooldown` (quest_id: uint32, cooldown_remaining_secs: uint32) to client
 
 ### Requirement: Quest Storage in MetaDB
 The system SHALL persist quest progress per player in MetaDB SQLite.
@@ -61,6 +72,12 @@ The system SHALL persist quest progress per player in MetaDB SQLite.
 - **GIVEN** MetaDB initializes
 - **THEN** `player_quest_rewards` table SHALL exist with: id (PK autoincrement), player_id (FK), quest_id, reward_type, reward_id, reward_count, redeemed (bool), reward_timestamp, metadata
 - **AND** it SHALL support filtering by redemption status (redeemed=0/1)
+- **AND** each exchange trade SHALL insert a new reward row (repeatable)
+
+#### Scenario: Exchange cooldown table schema
+- **GIVEN** MetaDB initializes
+- **THEN** `quest_exchange_cooldowns` table SHALL exist with: player_id (FK to players), quest_id, expires_at
+- **AND** primary key SHALL be (player_id, quest_id)
 
 #### Scenario: Quest progress CRUD operations
 - **GIVEN** a player interacts with quests
@@ -84,6 +101,16 @@ The system SHALL persist quest progress per player in MetaDB SQLite.
 - **WHEN** rewards need to be determined
 - **THEN** `GetQuestDefinition()` SHALL return the quest definition loaded at startup from `data/quests/quests.csv` (`loadQuestDefinitions()` in `definitions.go`)
 - **AND** return the reward_item_id and reward_count for that quest
+- **AND** return cost_item_id, cost_count, cooldown for exchange quests
+
+#### Scenario: Exchange processing in MetaDB
+- **GIVEN** a player requests an exchange (topic `quest.exchange.request`)
+- **WHEN** MetaDB processes it
+- **THEN** it SHALL validate the quest definition (exists, `detectType == EXCHANGE`)
+- **AND** SHALL check `quest_exchange_cooldowns` for an unexpired entry
+- **AND** SHALL verify the player has `cost_item × cost_count` in inventory
+- **AND** SHALL deduct cost items, insert cooldown entry (`expires_at = now + cooldown`), and grant the reward via `StorePlayerQuestReward` in a single SQLite transaction
+- **AND** SHALL publish `quest.exchange.response` with success flag, error message (if any), and remaining cooldown seconds
 
 ### Requirement: Quest Completion Detection
 The system SHALL automatically detect quest completion for supported detection types.
@@ -101,6 +128,12 @@ The system SHALL automatically detect quest completion for supported detection t
 - **GIVEN** a quest requires placing a specific block (`DetectionType::BLOCK_PLACED`, detectTarget = block_id)
 - **WHEN** the player places that block
 - **THEN** `QuestManager::checkBlockAction()` SHALL handle completion identically to craft detection
+
+#### Scenario: Exchange quests excluded from auto-detection
+- **GIVEN** a quest with `DetectionType::EXCHANGE`
+- **THEN** no passive detection path (`checkCraftCompletion`, `checkBlockAction`) SHALL complete it
+- **AND** `QuestManager::completeQuest()` SHALL reject it (log + return false)
+- **AND** completion SHALL happen only through the MetaDB exchange handler
 
 ### Requirement: DAG Unlock Logic
 The system SHALL unlock quests based on a DAG of prerequisites, using QuestGraph evaluation.
@@ -138,15 +171,32 @@ The system SHALL provide a quest book UI window.
 - **THEN** the right panel SHALL show: quest title, description, current status (colored badge), and reward info
 - **AND** no progress bar — progress tracking is reserved/unused (all quests are single-shot)
 
+#### Scenario: Exchange quest detail shows cost, reward, cooldown
+- **GIVEN** a selected quest has `DetectionType::EXCHANGE`
+- **THEN** the right panel SHALL show "Give: [cost_item_name] x[cost_count] → Receive: [reward_item_name] x[reward_count]"
+- **AND** SHALL show the cooldown duration
+- **AND** SHALL show an "Exchange" button
+- **AND** the button SHALL be disabled with a countdown when server-reported cooldown > 0
+- **AND** the button SHALL be disabled with a hint when the player lacks the cost items (client-side best-effort)
+- **AND** when the client opens the detail view it SHALL send `QuestExchangeCooldownGet` (wire 28) to fetch the remaining cooldown
+
+#### Scenario: Exchange response handled by UI
+- **GIVEN** the client receives `QuestExchangeResponse` (wire 27)
+- **WHEN** `success == true`
+- **THEN** the client SHALL show a success toast and refresh the cooldown state
+- **AND** when `success == false`
+- **THEN** the client SHALL show an error toast with the error message (`unknown_quest`, `not_exchange`, `cooldown_active`, `missing_items`)
+
 #### Scenario: Quest status reflected visually
 - **GIVEN** quests are listed
 - **THEN** LOCKED quests SHALL be gray
 - **AND** AVAILABLE SHALL be yellow
 - **AND** COMPLETED SHALL be green
 - **AND** IN_PROGRESS is reserved/unused (no producer sets it)
+- **AND** exchange quests SHALL always display AVAILABLE (yellow), never COMPLETED
 
 #### Scenario: Quest progress synced from server
-- **GIVEN** the client receives `QuestProgressUpdate` (msgType 19)
+- **GIVEN** the client receives `QuestProgressUpdate` (msgType 20)
 - **WHEN** `OnNetworkUpdate()` processes it
 - **THEN** quest statuses SHALL be updated locally
 - **AND** the UI SHALL reflect changes immediately
@@ -159,6 +209,12 @@ The system SHALL distribute quest rewards upon completion.
 - **WHEN** `QuestManager::distributeRewards()` runs
 - **THEN** QuestManager SHALL log the reward and publish a `QuestCompleted` event (player_id, quest_id, timestamp) on `quest.completed` — the event carries no reward fields
 - **AND** `MetaDB::HandleQuestCompleted` SHALL resolve the reward from `quests.csv` via `GetQuestDefinition()`, store it in `player_quest_rewards`, and forward a completion notification to the client
+
+#### Scenario: Exchange rewards granted directly by MetaDB
+- **GIVEN** an exchange quest is traded
+- **WHEN** the MetaDB exchange handler succeeds
+- **THEN** it SHALL store the reward in `player_quest_rewards` via `StorePlayerQuestReward` (a new row per trade)
+- **AND** SHALL NOT publish `QuestCompleted` (exchange quests never complete — `quest.completed` remains SimCore-only)
 
 ### Requirement: Quest Book Opens on Scenario Start
 
@@ -180,4 +236,24 @@ for the initial scenario.
 - **WHEN** it processes the response
 - **THEN** `QuestBookWindow` SHALL NOT be opened by the scenario
 - **AND** the error SHALL be printed to the console
+
+### Requirement: Inventory Detection
+The system SHALL detect quest completion from the player's held inventory (`DetectionType::INVENTORY = 5`), evaluated server-side against the authoritative player inventory when the quest book is opened.
+
+#### Scenario: Quest book open triggers inventory check
+- **GIVEN** the player opens the quest book
+- **WHEN** the client sends `QuestBookOpen` (`GatewayMsg::kQuestBookOpen = 33`) forwarded on the `quest.book.open` topic
+- **THEN** SimulationCore SHALL snapshot `PlayerInventoryStore::getSlots(playerId)` into `QuestManager::checkInventory(playerId, slots)`
+- **AND** it SHALL aggregate held quantity per hierarchical item id across all inventory slots
+
+#### Scenario: INVENTORY quest completes when objective met
+- **GIVEN** an INVENTORY quest with detectTarget and targetCount
+- **WHEN** the held quantity of detectTarget across the player inventory meets `QuestGraph::CanComplete` prerequisites
+- **AND** the objective (`targetCount`, 0 → ≥1) is satisfied
+- **THEN** the quest SHALL complete via the one-step path (quest.completed + reward + era transition + unlock cascade)
+
+#### Scenario: Objective shown in quest book UI
+- **GIVEN** an INVENTORY quest is displayed in the quest book
+- **THEN** the detail view SHALL show the objective ("Have X / N")
+- **AND** it SHALL be colored green when the objective is met
 

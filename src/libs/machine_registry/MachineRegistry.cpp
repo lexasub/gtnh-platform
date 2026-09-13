@@ -88,7 +88,7 @@ std::unique_ptr<MachineRegistry> MachineRegistry::LoadFromYaml(const char* yaml_
 bool MachineRegistry::ParseYamlMachineVariant(const YAML::Node& v, const std::string& className) {
     try {
         MachineInfo info;
-        // block_id is a hierarchical string ("1110:00:0") → pack to uint16.
+        // block_id is a hierarchical string ("1110:000:0") → pack to uint16.
         info.id = ItemId::pack(v["block_id"].as<std::string>(""));
         if (info.id == 0) return false; // skip placeholders
 

@@ -24,7 +24,7 @@ public:
 
   static constexpr int32_t kDefaultEnergyPerTick = 1024;
   static constexpr uint16_t kCreativeGeneratorBlockId =
-      ItemId::pack("1110:01:2");
+      ItemId::pack("1110:100:0");
 
   void setEnergyPerTick(int32_t val) { energyPerTick_ = val; }
 

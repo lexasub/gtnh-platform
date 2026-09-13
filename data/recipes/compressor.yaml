@@ -15,3 +15,238 @@ recipes:
     eu: 32
     resource_requirements:
       - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  # ── All metal plates (1 ingot → 1 plate) ─────────────────
+  - name: gtnh:compress_iron
+    energy_in: STEAM
+    inputs:
+      - { item: iron_ingot, count: 1 }
+    outputs:
+      - { item: iron_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_copper
+    energy_in: STEAM
+    inputs:
+      - { item: copper_ingot, count: 1 }
+    outputs:
+      - { item: copper_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_tin
+    energy_in: STEAM
+    inputs:
+      - { item: tin_ingot, count: 1 }
+    outputs:
+      - { item: tin_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_gold
+    energy_in: STEAM
+    inputs:
+      - { item: gold_ingot, count: 1 }
+    outputs:
+      - { item: gold_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_lead
+    energy_in: STEAM
+    inputs:
+      - { item: lead_ingot, count: 1 }
+    outputs:
+      - { item: lead_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_silver
+    energy_in: STEAM
+    inputs:
+      - { item: silver_ingot, count: 1 }
+    outputs:
+      - { item: silver_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_steel
+    energy_in: STEAM
+    inputs:
+      - { item: steel_ingot, count: 1 }
+    outputs:
+      - { item: steel_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_aluminium
+    energy_in: STEAM
+    inputs:
+      - { item: aluminium_ingot, count: 1 }
+    outputs:
+      - { item: aluminium_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_titanium
+    energy_in: STEAM
+    inputs:
+      - { item: titanium_ingot, count: 1 }
+    outputs:
+      - { item: titanium_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_tungsten
+    energy_in: STEAM
+    inputs:
+      - { item: tungsten_ingot, count: 1 }
+    outputs:
+      - { item: tungsten_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_tungstensteel
+    energy_in: STEAM
+    inputs:
+      - { item: tungstensteel_ingot, count: 1 }
+    outputs:
+      - { item: tungstensteel_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_chromium
+    energy_in: STEAM
+    inputs:
+      - { item: chromium_ingot, count: 1 }
+    outputs:
+      - { item: chromium_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_platinum
+    energy_in: STEAM
+    inputs:
+      - { item: platinum_ingot, count: 1 }
+    outputs:
+      - { item: platinum_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_iridium
+    energy_in: STEAM
+    inputs:
+      - { item: iridium_ingot, count: 1 }
+    outputs:
+      - { item: iridium_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_osmium
+    energy_in: STEAM
+    inputs:
+      - { item: osmium_ingot, count: 1 }
+    outputs:
+      - { item: osmium_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_brass
+    energy_in: STEAM
+    inputs:
+      - { item: brass_ingot, count: 1 }
+    outputs:
+      - { item: brass_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_invar
+    energy_in: STEAM
+    inputs:
+      - { item: invar_ingot, count: 1 }
+    outputs:
+      - { item: invar_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:compress_stainless_steel
+    energy_in: STEAM
+    inputs:
+      - { item: stainless_steel_ingot, count: 1 }
+    outputs:
+      - { item: stainless_steel_plate, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }

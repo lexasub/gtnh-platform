@@ -1,0 +1,1173 @@
+{
+  "version": 1,
+  "encoding": "packed-u16",
+  "baseline": {
+    "items_csv": "data/registry/items.csv",
+    "item_count": 311,
+    "immutable_ids": true,
+    "status": "reviewed-renumbered"
+  },
+  "policy": {
+    "membership": "explicit-item-ids",
+    "issue21_is_forecast_only": true,
+    "new_ids_require_review": true,
+    "minimum_child_capacity": 64,
+    "preferred_child_capacity": 128,
+    "minimum_free_ratio": 0.25,
+    "components_require_new_namespace": true
+  },
+  "legacy_anchors": [
+    {
+      "bits": "01000",
+      "range": [
+        16384,
+        18432
+      ],
+      "source": "items.csv wood planks"
+    },
+    {
+      "bits": "01001",
+      "range": [
+        18432,
+        20480
+      ],
+      "source": "items.csv wood slabs"
+    },
+    {
+      "bits": "01010",
+      "range": [
+        20480,
+        22528
+      ],
+      "source": "items.csv wood doors"
+    },
+    {
+      "bits": "01011",
+      "range": [
+        22528,
+        24576
+      ],
+      "source": "items.csv wood utility"
+    },
+    {
+      "bits": "111100",
+      "range": [
+        61440,
+        62464
+      ],
+      "source": "items.csv tools"
+    },
+    {
+      "bits": "111101",
+      "range": [
+        62464,
+        63488
+      ],
+      "source": "items.csv cables"
+    },
+    {
+      "bits": "111110",
+      "range": [
+        63488,
+        64512
+      ],
+      "source": "items.csv pipes"
+    },
+    {
+      "bits": "111111",
+      "range": [
+        64512,
+        65536
+      ],
+      "source": "items.csv fluids"
+    }
+  ],
+  "groups": [
+    {
+      "path": "base",
+      "label": "Base",
+      "status": "unassigned",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0
+    },
+    {
+      "path": "base/containers",
+      "label": "Containers and basic items",
+      "status": "allocatable",
+      "allocation_prefix": "011111",
+      "item_ids": [],
+      "reserve_ratio": 0.25,
+      "forecast": {
+        "source": "issue21.md",
+        "raw_entries": 82,
+        "confidence": "draft"
+      }
+    },
+    {
+      "path": "base/containers/fluid-containers",
+      "label": "Fluid containers",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:11111:0",
+        "0:11111:1",
+        "0:11111:2",
+        "0:11111:3",
+        "0:11111:4"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:573-593"
+      ]
+    },
+    {
+      "path": "base/containers/fluids-chemicals",
+      "label": "Fluids and chemicals",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:629-661"
+      ]
+    },
+    {
+      "path": "base/containers/food-agriculture",
+      "label": "Food and agriculture",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:616-627"
+      ]
+    },
+    {
+      "path": "base/containers/fuels-resources",
+      "label": "Fuels and basic resources",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:11111:10",
+        "0:11111:11",
+        "0:11111:13",
+        "0:11111:16",
+        "0:11111:17",
+        "0:11111:18",
+        "0:11111:19",
+        "0:11111:20",
+        "0:11111:21",
+        "0:11111:22",
+        "0:11111:23",
+        "0:11111:24",
+        "0:11111:25",
+        "0:11111:5",
+        "0:11111:6",
+        "0:11111:7",
+        "0:11111:8",
+        "0:11111:9"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:595-614"
+      ]
+    },
+    {
+      "path": "base/ingots",
+      "label": "Ingots and raw metals",
+      "status": "allocatable",
+      "allocation_prefix": "0110",
+      "item_ids": [],
+      "reserve_ratio": 0.25,
+      "forecast": {
+        "source": "issue21.md",
+        "raw_entries": 40,
+        "confidence": "draft"
+      }
+    },
+    {
+      "path": "base/ingots/alloys",
+      "label": "Alloys",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:403-415"
+      ]
+    },
+    {
+      "path": "base/ingots/base-metals",
+      "label": "Base metals",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:110:0",
+        "0:110:1",
+        "0:110:10",
+        "0:110:11",
+        "0:110:12",
+        "0:110:13",
+        "0:110:14",
+        "0:110:15",
+        "0:110:16",
+        "0:110:17",
+        "0:110:18",
+        "0:110:19",
+        "0:110:2",
+        "0:110:20",
+        "0:110:21",
+        "0:110:22",
+        "0:110:23",
+        "0:110:24",
+        "0:110:25",
+        "0:110:26",
+        "0:110:3",
+        "0:110:4",
+        "0:110:5",
+        "0:110:6",
+        "0:110:7",
+        "0:110:8",
+        "0:110:9"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:382-393"
+      ]
+    },
+    {
+      "path": "base/ingots/non-metals",
+      "label": "Non-metals",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:424-430"
+      ]
+    },
+    {
+      "path": "base/ingots/precious",
+      "label": "Precious metals",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:395-401"
+      ]
+    },
+    {
+      "path": "base/ingots/rare-endgame",
+      "label": "Rare and endgame",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:417-422"
+      ]
+    },
+    {
+      "path": "base/processed",
+      "label": "Processed materials",
+      "status": "allocatable",
+      "allocation_prefix": "01110",
+      "item_ids": [],
+      "reserve_ratio": 0.25,
+      "forecast": {
+        "source": "issue21.md",
+        "raw_entries": 77,
+        "confidence": "draft"
+      }
+    },
+    {
+      "path": "base/processed/dusts",
+      "label": "Dusts",
+      "status": "allocatable",
+      "allocation_prefix": "0:1110:001",
+      "item_ids": [
+        "0:1110:001:0",
+        "0:1110:001:1",
+        "0:1110:001:2",
+        "0:1110:001:3",
+        "0:1110:001:4",
+        "0:1110:001:5",
+        "0:1110:001:6",
+        "0:1110:001:7",
+        "0:1110:001:8",
+        "0:1110:001:9",
+        "0:1110:001:10",
+        "0:1110:001:11",
+        "0:1110:001:12",
+        "0:1110:001:13",
+        "0:1110:001:14",
+        "0:1110:001:15",
+        "0:1110:001:16",
+        "0:1110:001:17",
+        "0:1110:001:18",
+        "0:1110:001:19",
+        "0:1110:001:20",
+        "0:1110:001:21",
+        "0:1110:001:22",
+        "0:1110:001:23",
+        "0:1110:001:24",
+        "0:1110:001:25",
+        "0:1110:001:26",
+        "0:1110:001:27",
+        "0:1110:001:28",
+        "0:1110:001:29"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:452-471"
+      ]
+    },
+    {
+      "path": "base/processed/gears-rings-foils-springs-rotors",
+      "label": "Gears, rings, foils, springs, and rotors",
+      "status": "allocatable",
+      "allocation_prefix": "0:1110:011",
+      "item_ids": [
+        "0:1110:011:0",
+        "0:1110:011:1",
+        "0:1110:011:2",
+        "0:1110:011:3",
+        "0:1110:011:4",
+        "0:1110:011:5",
+        "0:1110:011:6"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:484-495"
+      ]
+    },
+    {
+      "path": "base/processed/gems-crystals",
+      "label": "Gems and crystals",
+      "status": "allocatable",
+      "allocation_prefix": "0:1110:101",
+      "item_ids": [
+        "0:1110:101:0",
+        "0:1110:101:1",
+        "0:1110:101:2",
+        "0:1110:101:3",
+        "0:1110:101:4"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:509-521"
+      ]
+    },
+    {
+      "path": "base/processed/plates",
+      "label": "Plates",
+      "status": "allocatable",
+      "allocation_prefix": "0:1110:000",
+      "item_ids": [
+        "0:1110:000:0",
+        "0:1110:000:1",
+        "0:1110:000:2",
+        "0:1110:000:3",
+        "0:1110:000:4",
+        "0:1110:000:5",
+        "0:1110:000:6",
+        "0:1110:000:7",
+        "0:1110:000:8",
+        "0:1110:000:9",
+        "0:1110:000:10",
+        "0:1110:000:11",
+        "0:1110:000:12",
+        "0:1110:000:13",
+        "0:1110:000:14",
+        "0:1110:000:15",
+        "0:1110:000:16",
+        "0:1110:000:17",
+        "0:1110:000:18",
+        "0:1110:000:19",
+        "0:1110:000:20"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:434-450"
+      ]
+    },
+    {
+      "path": "base/processed/rods-bolts-screws",
+      "label": "Rods, bolts, and screws",
+      "status": "allocatable",
+      "allocation_prefix": "0:1110:010",
+      "item_ids": [
+        "0:1110:010:0",
+        "0:1110:010:1",
+        "0:1110:010:2",
+        "0:1110:010:3",
+        "0:1110:010:4"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:473-482"
+      ]
+    },
+    {
+      "path": "base/processed/wires",
+      "label": "Wires",
+      "status": "allocatable",
+      "allocation_prefix": "0:1110:100",
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:497-507"
+      ]
+    },
+    {
+      "path": "base/terrain",
+      "label": "Terrain blocks",
+      "status": "allocatable",
+      "allocation_prefix": "00",
+      "item_ids": [],
+      "reserve_ratio": 0.25,
+      "forecast": {
+        "source": "issue21.md",
+        "raw_entries": 41,
+        "confidence": "draft"
+      }
+    },
+    {
+      "path": "base/terrain/decorative",
+      "label": "Decorative and misc terrain",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:304-312"
+      ]
+    },
+    {
+      "path": "base/terrain/manufactured-building",
+      "label": "Manufactured building",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:279-302"
+      ]
+    },
+    {
+      "path": "base/terrain/stone-ground",
+      "label": "Stone and ground",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:0:0",
+        "0:0:1",
+        "0:0:10",
+        "0:0:11",
+        "0:0:12",
+        "0:0:13",
+        "0:0:14",
+        "0:0:15",
+        "0:0:16",
+        "0:0:17",
+        "0:0:18",
+        "0:0:2",
+        "0:0:3",
+        "0:0:4",
+        "0:0:5",
+        "0:0:6",
+        "0:0:7",
+        "0:0:8",
+        "0:0:9"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:234-257"
+      ]
+    },
+    {
+      "path": "base/terrain/vegetation",
+      "label": "Vegetation",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:259-277"
+      ],
+      "notes": "Draft additions require review; mushrooms and nonessential vanilla items are deferred."
+    },
+    {
+      "path": "base/tools",
+      "label": "Basic tools",
+      "status": "allocatable",
+      "allocation_prefix": "011110",
+      "item_ids": [],
+      "reserve_ratio": 0.25,
+      "forecast": {
+        "source": "issue21.md",
+        "raw_entries": 38,
+        "confidence": "draft"
+      }
+    },
+    {
+      "path": "base/tools/combat",
+      "label": "Combat tools",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:11110:8"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:537-544"
+      ]
+    },
+    {
+      "path": "base/tools/crafting",
+      "label": "Crafting helpers",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:11110:6",
+        "0:11110:7"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:546-563"
+      ]
+    },
+    {
+      "path": "base/tools/mining",
+      "label": "Mining tools",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:11110:3",
+        "0:11110:4",
+        "0:11110:5"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:525-535"
+      ]
+    },
+    {
+      "path": "base/tools/utility",
+      "label": "Utility",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:11110:0",
+        "0:11110:1",
+        "0:11110:10",
+        "0:11110:11",
+        "0:11110:12",
+        "0:11110:13",
+        "0:11110:14",
+        "0:11110:15",
+        "0:11110:16",
+        "0:11110:17",
+        "0:11110:18",
+        "0:11110:19",
+        "0:11110:2",
+        "0:11110:9"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:565-569"
+      ],
+      "notes": "wooden_axe/wooden_shovel/wooden_sword names are canonicalized on their existing IDs."
+    },
+    {
+      "path": "base/wood",
+      "label": "Wood and organic",
+      "status": "allocatable",
+      "allocation_prefix": "010",
+      "item_ids": [],
+      "reserve_ratio": 0.25,
+      "forecast": {
+        "source": "issue21.md",
+        "raw_entries": 54,
+        "confidence": "draft"
+      },
+      "notes": " Legacy anchors are accounted for by legacy_anchors; no child allocation is reserved by this logical pool."
+    },
+    {
+      "path": "base/wood/containers-utility",
+      "label": "Wooden containers and utility",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:10:11:0",
+        "0:10:11:1"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:362-378"
+      ]
+    },
+    {
+      "path": "base/wood/doors-trapdoors-mechanisms",
+      "label": "Doors and mechanisms",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:10:10:0",
+        "0:10:10:1"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:352-360"
+      ]
+    },
+    {
+      "path": "base/wood/foliage",
+      "label": "Wood foliage",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:10:11:3"
+      ],
+      "reserve_ratio": 0.0
+    },
+    {
+      "path": "base/wood/planks",
+      "label": "Planks",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:10:00:0",
+        "0:10:00:1",
+        "0:10:00:2"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:330-336"
+      ]
+    },
+    {
+      "path": "base/wood/raw",
+      "label": "Raw wood",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:10:10",
+        "0:10:11",
+        "0:10:11:2",
+        "0:10:12",
+        "0:10:13",
+        "0:10:14",
+        "0:10:15",
+        "0:10:16",
+        "0:10:17",
+        "0:10:18",
+        "0:10:19",
+        "0:10:20",
+        "0:10:21",
+        "0:10:22",
+        "0:10:23",
+        "0:10:24",
+        "0:10:25",
+        "0:10:3",
+        "0:10:4",
+        "0:10:5",
+        "0:10:6",
+        "0:10:7",
+        "0:10:8",
+        "0:10:9"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:316-328"
+      ]
+    },
+    {
+      "path": "base/wood/slabs-stairs-fences",
+      "label": "Slabs, stairs, and fences",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "0:10:01:0",
+        "0:10:01:1"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:338-350"
+      ]
+    },
+    {
+      "path": "infra",
+      "label": "Infrastructure and components",
+      "status": "allocatable",
+      "allocation_prefix": "1111",
+      "item_ids": [],
+      "reserve_ratio": 0.25,
+      "forecast": {
+        "source": "issue21.md",
+        "raw_entries": 121,
+        "confidence": "draft"
+      },
+      "notes": " Legacy anchors are accounted for by legacy_anchors; no child allocation is reserved by this logical pool."
+    },
+    {
+      "path": "infra/cables-wires",
+      "label": "Cables and wires",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "1111:01:0",
+        "1111:01:1",
+        "1111:01:10",
+        "1111:01:11",
+        "1111:01:12",
+        "1111:01:13",
+        "1111:01:2",
+        "1111:01:3",
+        "1111:01:4",
+        "1111:01:5",
+        "1111:01:6",
+        "1111:01:7",
+        "1111:01:8",
+        "1111:01:9"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:971-999"
+      ],
+      "notes": "cable_aluminium spelling is canonicalized; existing packed ID is preserved."
+    },
+    {
+      "path": "space/components-circuits",
+      "label": "Electrical components and circuits",
+      "status": "allocatable",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.25,
+      "source_refs": [
+        "simcored.log missing registry items; issue21.md:1021-1079"
+      ],
+      "notes": "Approved namespace for runtime electrical components; infra/1111 remains reserved for tools, cables, pipes, and fluids."
+    },
+    {
+      "path": "space/components-circuits/boards",
+      "label": "Circuit boards and substrate materials",
+      "status": "allocatable",
+      "allocation_prefix": "110:001",
+      "item_ids": ["110:001:0", "110:001:1", "110:001:2"],
+      "reserve_ratio": 0.25
+    },
+    {
+      "path": "space/components-circuits/circuits",
+      "label": "Integrated circuits",
+      "status": "allocatable",
+      "allocation_prefix": "110:000",
+      "item_ids": ["110:000:0", "110:000:1", "110:000:2", "110:000:3"],
+      "reserve_ratio": 0.25
+    },
+    {
+      "path": "space/components-circuits/mechanical",
+      "label": "Electromechanical components",
+      "status": "allocatable",
+      "allocation_prefix": "110:010",
+      "item_ids": ["110:010:0", "110:010:1", "110:010:2", "110:010:3", "110:010:4", "110:010:5", "110:010:6"],
+      "reserve_ratio": 0.25
+    },
+    {
+      "path": "space/components-circuits/misc",
+      "label": "Sensors and field components",
+      "status": "allocatable",
+      "allocation_prefix": "110:100",
+      "item_ids": ["110:100:0", "110:100:1", "110:100:2"],
+      "reserve_ratio": 0.25
+    },
+    {
+      "path": "space/components-circuits/passive",
+      "label": "Passive electrical components",
+      "status": "allocatable",
+      "allocation_prefix": "110:101",
+      "item_ids": ["110:101:0", "110:101:1", "110:101:2", "110:101:3", "110:101:4", "110:101:5"],
+      "reserve_ratio": 0.25
+    },
+    {
+      "path": "space/components-circuits/smd",
+      "label": "SMD components",
+      "status": "allocatable",
+      "allocation_prefix": "110:011",
+      "item_ids": ["110:011:0", "110:011:1", "110:011:2", "110:011:3", "110:011:4", "110:011:5", "110:011:6", "110:011:7"],
+      "reserve_ratio": 0.25
+    },
+    {
+      "path": "infra/electric-tools",
+      "label": "Electric tools",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "1111:00:0",
+        "1111:00:1",
+        "1111:00:2",
+        "1111:00:3",
+        "1111:00:4",
+        "1111:00:5",
+        "1111:00:6",
+        "1111:00:7",
+        "1111:00:8",
+        "1111:00:9",
+        "1111:00:10",
+        "1111:00:11",
+        "1111:00:12"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:952-969"
+      ]
+    },
+    {
+      "path": "infra/fluids",
+      "label": "Fluids",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "1111:11:0",
+        "1111:11:1",
+        "1111:11:2",
+        "1111:11:3",
+        "1111:11:4",
+        "1111:11:5",
+        "1111:11:6",
+        "1111:11:7"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "data/registry/items.csv:184-190"
+      ],
+      "notes": "Current IDs are fluids; issue21 components/circuits additions remain deferred and must not share this ownership."
+    },
+    {
+      "path": "infra/pipes",
+      "label": "Pipes",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "1111:10:0",
+        "1111:10:1",
+        "1111:10:2",
+        "1111:10:3",
+        "1111:10:4"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:1001-1019"
+      ]
+    },
+    {
+      "path": "machines",
+      "label": "Machines",
+      "status": "allocatable",
+      "allocation_prefix": "1110",
+      "item_ids": [],
+      "reserve_ratio": 0.25,
+      "forecast": {
+        "source": "issue21.md",
+        "raw_entries": 142,
+        "confidence": "draft"
+      },
+      "notes": " Legacy anchors are accounted for by legacy_anchors; no child allocation is reserved by this logical pool."
+    },
+    {
+      "path": "machines/boilers-generation",
+      "label": "Boilers",
+      "status": "allocatable",
+      "allocation_prefix": "1110:011",
+      "item_ids": [
+        "1110:011:0",
+        "1110:011:1"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "data/registry/items.csv:307-308",
+        "issue21.md:808-810"
+      ]
+    },
+    {
+      "path": "machines/electric-processing",
+      "label": "Electric processing",
+      "status": "allocatable",
+      "allocation_prefix": "1110:010",
+      "item_ids": [
+        "1110:010:0",
+        "1110:010:1",
+        "1110:010:2",
+        "1110:010:3",
+        "1110:010:4",
+        "1110:010:5",
+        "1110:010:6",
+        "1110:010:7",
+        "1110:010:8",
+        "1110:010:9",
+        "1110:010:10",
+        "1110:010:11",
+        "1110:010:12",
+        "1110:010:13"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:823-862"
+      ]
+    },
+    {
+      "path": "machines/generation",
+      "label": "Generation",
+      "status": "allocatable",
+      "allocation_prefix": "1110:100",
+      "item_ids": [
+        "1110:100:0",
+        "1110:100:1"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "data/registry/items.csv:310-311",
+        "issue21.md:864-879"
+      ]
+    },
+    {
+      "path": "machines/heat-processing",
+      "label": "Heat processing",
+      "status": "allocatable",
+      "allocation_prefix": "1110:000",
+      "item_ids": [
+        "1110:000:0",
+        "1110:000:1",
+        "1110:000:2"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "data/registry/items.csv:297-302",
+        "data/registry/items.csv:328-340",
+        "issue21.md:798-806"
+      ]
+    },
+    {
+      "path": "machines/multiblock-parts-casings",
+      "label": "Multiblock parts and casings",
+      "status": "allocatable",
+      "allocation_prefix": "1110:111",
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:906-948"
+      ]
+    },
+    {
+      "path": "machines/steam-processing",
+      "label": "Steam processing",
+      "status": "allocatable",
+      "allocation_prefix": "1110:001",
+      "item_ids": [
+        "1110:001:0",
+        "1110:001:1",
+        "1110:001:2",
+        "1110:001:3",
+        "1110:001:4",
+        "1110:001:5"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "data/registry/items.csv:303-307",
+        "issue21.md:808-821"
+      ]
+    },
+    {
+      "path": "machines/storage",
+      "label": "Storage",
+      "status": "allocatable",
+      "allocation_prefix": "1110:101",
+      "item_ids": [
+        "1110:101:0",
+        "1110:101:1",
+        "1110:101:2",
+        "1110:101:3",
+        "1110:101:4"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "data/registry/items.csv:316-320",
+        "issue21.md:879-890"
+      ]
+    },
+    {
+      "path": "machines/transformers",
+      "label": "Transformers",
+      "status": "allocatable",
+      "allocation_prefix": "1110:110",
+      "item_ids": [
+        "1110:110:0",
+        "1110:110:1",
+        "1110:110:2"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "data/registry/items.csv:322-324",
+        "issue21.md:891-897"
+      ]
+    },
+    {
+      "path": "ores",
+      "label": "Ores",
+      "status": "allocatable",
+      "allocation_prefix": "10",
+      "item_ids": [],
+      "reserve_ratio": 0.25,
+      "forecast": {
+        "source": "issue21.md",
+        "raw_entries": 62,
+        "confidence": "draft"
+      }
+    },
+    {
+      "path": "ores/end",
+      "label": "End ores",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:710-718"
+      ]
+    },
+    {
+      "path": "ores/nether",
+      "label": "Nether ores",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:702-708"
+      ]
+    },
+    {
+      "path": "ores/overworld",
+      "label": "Overworld ores",
+      "status": "legacy-anchor",
+      "allocation_prefix": null,
+      "item_ids": [
+        "10:0",
+        "10:1",
+        "10:10",
+        "10:11",
+        "10:12",
+        "10:13",
+        "10:14",
+        "10:15",
+        "10:16",
+        "10:17",
+        "10:18",
+        "10:19",
+        "10:2",
+        "10:3",
+        "10:4",
+        "10:5",
+        "10:6",
+        "10:7",
+        "10:8",
+        "10:9"
+      ],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:665-700"
+      ],
+      "notes": "copper_ore spelling is canonicalized; existing packed ID is preserved."
+    },
+    {
+      "path": "ores/planetary",
+      "label": "Planetary ores",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:720-733"
+      ]
+    },
+    {
+      "path": "root",
+      "label": "All items",
+      "status": "unassigned",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0
+    },
+    {
+      "path": "space",
+      "label": "Space and special",
+      "status": "allocatable",
+      "allocation_prefix": "110",
+      "item_ids": [],
+      "reserve_ratio": 0.25,
+      "forecast": {
+        "source": "issue21.md",
+        "raw_entries": 50,
+        "confidence": "draft"
+      },
+      "notes": "Semantic category assignment is pending review against ItemId.h MATERIALS namespace comments."
+    },
+    {
+      "path": "space/armor",
+      "label": "Armor and wearable",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:770-788"
+      ]
+    },
+    {
+      "path": "space/blocks",
+      "label": "Space blocks",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:737-743"
+      ]
+    },
+    {
+      "path": "space/equipment",
+      "label": "Space equipment",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:758-768"
+      ]
+    },
+    {
+      "path": "space/quest-special",
+      "label": "Quest and special",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:790-794"
+      ]
+    },
+    {
+      "path": "space/rocket-parts",
+      "label": "Rocket parts",
+      "status": "deferred",
+      "allocation_prefix": null,
+      "item_ids": [],
+      "reserve_ratio": 0.0,
+      "source_refs": [
+        "issue21.md:745-756"
+      ]
+    }
+  ]
+}

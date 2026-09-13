@@ -1,4 +1,5 @@
 #pragma once
+#include <common/ItemId.h>
 #include <cstdint>
 #include <unordered_map>
 
@@ -14,14 +15,15 @@ struct CableDef {
   uint32_t ampacity;
 };
 
-// IDs must match data/registry/items.csv (cable_tin=66..cable_platinum=71)
+// IDs must match data/registry/items.csv (cable_tin=1111:01:0 .. cable_platinum=1111:01:5)
+// and ItemId::isCable()'s packed range [1111:01:0, 1111:10:0).
 const std::unordered_map<uint16_t, CableDef> CABLE_DEFS = {
-    {66, {66, 1, "cable_tin", 0x05f5e100, 0x20, 0x20}},
-    {67, {67, 1, "cable_copper", 0x03f5e100, 0x20, 0x40}},
-    {68, {68, 2, "cable_gold", 0x02f5e100, 0x80, 0x80}},
-    {69, {69, 2, "cable_alu", 0x02f5e100, 0x80, 0x100}},
-    {70, {70, 3, "cable_tungsten", 0x01f5e100, 0x200, 0x200}},
-    {71, {71, 4, "cable_platinum", 0x00f5e100, 0x800, 0x400}},
+    {ItemId::pack("1111:01:0"), {ItemId::pack("1111:01:0"), 1, "cable_tin", 0x05f5e100, 0x20, 0x20}},
+    {ItemId::pack("1111:01:1"), {ItemId::pack("1111:01:1"), 1, "cable_copper", 0x03f5e100, 0x20, 0x40}},
+    {ItemId::pack("1111:01:2"), {ItemId::pack("1111:01:2"), 2, "cable_gold", 0x02f5e100, 0x80, 0x80}},
+    {ItemId::pack("1111:01:3"), {ItemId::pack("1111:01:3"), 2, "cable_aluminium", 0x02f5e100, 0x80, 0x100}},
+    {ItemId::pack("1111:01:4"), {ItemId::pack("1111:01:4"), 3, "cable_tungsten", 0x01f5e100, 0x200, 0x200}},
+    {ItemId::pack("1111:01:5"), {ItemId::pack("1111:01:5"), 4, "cable_platinum", 0x00f5e100, 0x800, 0x400}},
 };
 
 inline bool isCableBlock(uint16_t block_id) {

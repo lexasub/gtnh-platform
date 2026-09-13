@@ -15,3 +15,42 @@ recipes:
     eu: 32
     resource_requirements:
       - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:extract_rubber
+    energy_in: STEAM
+    inputs:
+      - { item: rubber_drop, count: 3 }
+    outputs:
+      - { item: rubber_ingot, count: 1 }
+    duration: 180
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:extract_wood_pulp
+    energy_in: STEAM
+    inputs:
+      - { item: oak_log, count: 1 }
+    outputs:
+      - { item: wood_pulp, count: 4 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+  - name: gtnh:extract_rubber_wood
+    energy_in: ELECTRICITY
+    inputs:
+      - { item: rubber_wood, count: 1 }
+    outputs:
+      - { item: rubber_drop, count: 4 }
+    duration: 160
+    min_tier: 0
+    max_tier: 32767
+    eu: 32
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }

@@ -30,7 +30,7 @@ public:
   void activate(entt::entity ent);
 
   static constexpr uint16_t kRotareGeneratorBlockId =
-      ItemId::pack("1110:01:3");
+      ItemId::pack("1110:100:1");
   static constexpr int32_t kSpinDurationTicks = 100;
   static constexpr int32_t kEnergyPerTick = 32;
 

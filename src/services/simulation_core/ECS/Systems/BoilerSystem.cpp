@@ -23,14 +23,14 @@ BoilerSystem::BoilerSystem(entt::registry& reg,
 }
 
 void BoilerSystem::tick(float /*dt*/) {
-    // ── Steam heat boiler (1110:01:1): convert neighbour HEAT → STEAM ──
+    // ── Steam heat boiler (1110:011:1): convert neighbour HEAT → STEAM ──
     // Heat arrives via AdjacencyTransferSystem into HeatIntakeComponent.heat_stored
     // (which keeps EnergyStorage.current in sync for HEAT-type machines). BoilerSystem
     // consumes both synced fields and stores produced STEAM in SteamOutputComponent.
     auto heatView = reg_.view<MachineComponent, EnergyStorage, HeatIntakeComponent, SteamOutputComponent>();
     for (auto ent : heatView) {
         auto& machine = heatView.get<MachineComponent>(ent);
-        if (machine.machine_id != ItemId::pack("1110:01:1")) continue;
+        if (machine.machine_id != ItemId::pack("1110:011:1")) continue;
         auto& energy = heatView.get<EnergyStorage>(ent);
         auto& heatIntake = heatView.get<HeatIntakeComponent>(ent);
         auto& steam = heatView.get<SteamOutputComponent>(ent);

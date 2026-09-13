@@ -1,0 +1,621 @@
+name,source_rows,source_labels,proposed_ids,status,reason
+acacia,112,More wood types (prefix 0:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+advanced_circuit,124,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+advanced_jetpack,786,Armor & Wearable (110:3) — stack 1,110:3:15,deferred,not-yet-reviewed-or-namespace-conflict
+alloy_smelter_hv,837,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:13,deferred,not-yet-reviewed-or-namespace-conflict
+alloy_smelter_mv,836,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:12,deferred,not-yet-reviewed-or-namespace-conflict
+aluminium_foil,491,Gears / Rings / Foils / Springs / Rotors (01110:3),0:1110:011:6,deferred,not-yet-reviewed-or-namespace-conflict
+aluminium_wire_1x,503,Wires (01110:4),0:1110:100:5,deferred,not-yet-reviewed-or-namespace-conflict
+ancient_debris,705,Nether (10:1),10:1:2,deferred,not-yet-reviewed-or-namespace-conflict
+andesite,109;255,Terrain blocks (prefix 0:0:*),00:0:20,deferred,not-yet-reviewed-or-namespace-conflict
+antimony_ingot,390,Base Metals (0110:0),0110:0:7,deferred,not-yet-reviewed-or-namespace-conflict
+antimony_ore,674,Overworld (10:0),10:0:8,deferred,not-yet-reviewed-or-namespace-conflict
+apatite_ore,686,Overworld (10:0),10:0:20,deferred,not-yet-reviewed-or-namespace-conflict
+assembler,155,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+assembling_machine_lv,851,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:27,deferred,not-yet-reviewed-or-namespace-conflict
+assembling_machine_mv,852,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:28,deferred,not-yet-reviewed-or-namespace-conflict
+asteroid_diamond_ore,733,Planetary (10:3),10:3:12,deferred,not-yet-reviewed-or-namespace-conflict
+asteroid_gold_ore,732,Planetary (10:3),10:3:11,deferred,not-yet-reviewed-or-namespace-conflict
+asteroid_iron_ore,731,Planetary (10:3),10:3:10,deferred,not-yet-reviewed-or-namespace-conflict
+asteroid_rock,740,Space Blocks (110:0),110:0:2,deferred,not-yet-reviewed-or-namespace-conflict
+asteroid_stone,730,Planetary (10:3),10:3:9,deferred,not-yet-reviewed-or-namespace-conflict
+autoclave_lv,856,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:32,deferred,not-yet-reviewed-or-namespace-conflict
+barrel,368,Wooden Containers & Utility (010:4),010:4:5,deferred,not-yet-reviewed-or-namespace-conflict
+basalt,109;257,Terrain blocks (prefix 0:0:*),00:0:22,deferred,not-yet-reviewed-or-namespace-conflict
+basic_circuit,124,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+battery_buffer_ev,884,"Generation, Storage, Transformers (1110:11)",1110:101:19,deferred,not-yet-reviewed-or-namespace-conflict
+battery_buffer_iv,885,"Generation, Storage, Transformers (1110:11)",1110:101:20,deferred,not-yet-reviewed-or-namespace-conflict
+battery_buffer_luv,886,"Generation, Storage, Transformers (1110:11)",1110:101:21,deferred,not-yet-reviewed-or-namespace-conflict
+battery_buffer_ulv,880,"Generation, Storage, Transformers (1110:11)",1110:101:15,deferred,not-yet-reviewed-or-namespace-conflict
+battery_buffer_uv,888,"Generation, Storage, Transformers (1110:11)",1110:101:23,deferred,not-yet-reviewed-or-namespace-conflict
+battery_buffer_zpm,887,"Generation, Storage, Transformers (1110:11)",1110:101:22,deferred,not-yet-reviewed-or-namespace-conflict
+battery_hv,901,"Generation, Storage, Transformers (1110:11)",1110:101:36,deferred,not-yet-reviewed-or-namespace-conflict
+battery_lv,899,"Generation, Storage, Transformers (1110:11)",1110:101:34,deferred,not-yet-reviewed-or-namespace-conflict
+battery_mv,900,"Generation, Storage, Transformers (1110:11)",1110:101:35,deferred,not-yet-reviewed-or-namespace-conflict
+battery_pack,788,Armor & Wearable (110:3) — stack 1,110:3:17,deferred,not-yet-reviewed-or-namespace-conflict
+bauxite_ore,690,Overworld (10:0),10:0:24,deferred,not-yet-reviewed-or-namespace-conflict
+bedrock,247,Stone & Ground (00:0),00:0:12,deferred,not-yet-reviewed-or-namespace-conflict
+bending_machine_lv,846,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:22,deferred,not-yet-reviewed-or-namespace-conflict
+bending_machine_mv,847,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:23,deferred,not-yet-reviewed-or-namespace-conflict
+biocircuit,126,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+birch_door,355,Doors / Trapdoors / Mechanisms (010:3),010:3:2,deferred,not-yet-reviewed-or-namespace-conflict
+birch_fence,347,Slabs / Stairs / Fences (010:2),010:2:8,deferred,not-yet-reviewed-or-namespace-conflict
+birch_fence_gate,350,Slabs / Stairs / Fences (010:2),010:2:11,deferred,not-yet-reviewed-or-namespace-conflict
+birch_trapdoor,358,Doors / Trapdoors / Mechanisms (010:3),010:3:5,deferred,not-yet-reviewed-or-namespace-conflict
+birch_wood,328,Raw Wood (010:0),010:0:11,deferred,not-yet-reviewed-or-namespace-conflict
+bismuth_ingot,391,Base Metals (0110:0),0110:0:8,deferred,not-yet-reviewed-or-namespace-conflict
+bismuth_ore,675,Overworld (10:0),10:0:9,deferred,not-yet-reviewed-or-namespace-conflict
+blade,136,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+brick_slab,283,Manufactured Building (00:2),00:2:3,deferred,not-yet-reviewed-or-namespace-conflict
+brick_stairs,284,Manufactured Building (00:2),00:2:4,deferred,not-yet-reviewed-or-namespace-conflict
+bronze_pipe,180,Pipes (prefix 1111:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+buffer,165,Storage (1110:10:* — currently 0-3),,deferred,not-yet-reviewed-or-namespace-conflict
+button,113,More wood types (prefix 0:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+buzzsaw_lv,967,Electric Tools (1111:00) — stack 1,1111:00:14,deferred,not-yet-reviewed-or-namespace-conflict
+cable_aluminium_1x,982,Cables & Wires (1111:01) — stack 64,1111:01:10,deferred,not-yet-reviewed-or-namespace-conflict
+cable_aluminium_4x,983,Cables & Wires (1111:01) — stack 64,1111:01:11,deferred,not-yet-reviewed-or-namespace-conflict
+cable_annealed_copper,175,Cables (prefix 1111:01:*),,deferred,not-yet-reviewed-or-namespace-conflict
+cable_copper_1x,976,Cables & Wires (1111:01) — stack 64,1111:01:4,deferred,not-yet-reviewed-or-namespace-conflict
+cable_copper_2x,977,Cables & Wires (1111:01) — stack 64,1111:01:5,deferred,not-yet-reviewed-or-namespace-conflict
+cable_copper_4x,978,Cables & Wires (1111:01) — stack 64,1111:01:6,deferred,not-yet-reviewed-or-namespace-conflict
+cable_copper_8x,979,Cables & Wires (1111:01) — stack 64,1111:01:7,deferred,not-yet-reviewed-or-namespace-conflict
+cable_cupronickel,177,Cables (prefix 1111:01:*),,deferred,not-yet-reviewed-or-namespace-conflict
+cable_gold_1x,980,Cables & Wires (1111:01) — stack 64,1111:01:8,deferred,not-yet-reviewed-or-namespace-conflict
+cable_gold_4x,981,Cables & Wires (1111:01) — stack 64,1111:01:9,deferred,not-yet-reviewed-or-namespace-conflict
+cable_kanthal,176,Cables (prefix 1111:01:*),,deferred,not-yet-reviewed-or-namespace-conflict
+cable_nichrome_1x,987,Cables & Wires (1111:01) — stack 64,1111:01:15,deferred,not-yet-reviewed-or-namespace-conflict
+cable_niobium_titanium,178,Cables (prefix 1111:01:*),,deferred,not-yet-reviewed-or-namespace-conflict
+cable_osmium_1x,986,Cables & Wires (1111:01) — stack 64,1111:01:14,deferred,not-yet-reviewed-or-namespace-conflict
+cable_platinum_1x,985,Cables & Wires (1111:01) — stack 64,1111:01:13,deferred,not-yet-reviewed-or-namespace-conflict
+cable_red_alloy,175,Cables (prefix 1111:01:*),,deferred,not-yet-reviewed-or-namespace-conflict
+cable_steel,177,Cables (prefix 1111:01:*),,deferred,not-yet-reviewed-or-namespace-conflict
+cable_superconductor,176,Cables (prefix 1111:01:*),,deferred,not-yet-reviewed-or-namespace-conflict
+cable_tin_1x,972,Cables & Wires (1111:01) — stack 64,1111:01:0,deferred,not-yet-reviewed-or-namespace-conflict
+cable_tin_2x,973,Cables & Wires (1111:01) — stack 64,1111:01:1,deferred,not-yet-reviewed-or-namespace-conflict
+cable_tin_4x,974,Cables & Wires (1111:01) — stack 64,1111:01:2,deferred,not-yet-reviewed-or-namespace-conflict
+cable_tin_8x,975,Cables & Wires (1111:01) — stack 64,1111:01:3,deferred,not-yet-reviewed-or-namespace-conflict
+cable_tungsten_1x,984,Cables & Wires (1111:01) — stack 64,1111:01:12,deferred,not-yet-reviewed-or-namespace-conflict
+cable_vana,178,Cables (prefix 1111:01:*),,deferred,not-yet-reviewed-or-namespace-conflict
+cactus,274,Vegetation (00:1),00:1:14,deferred,not-yet-reviewed-or-namespace-conflict
+capacitor,1077,Components & Circuits (1111:11) — stack 64,1111:11:55,deferred,not-yet-reviewed-or-namespace-conflict
+carbon_fiber,134,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+carbon_fiber_ingot,429,Non-metals (0110:4),0110:4:4,deferred,not-yet-reviewed-or-namespace-conflict
+cartography_table,374,Wooden Containers & Utility (010:4),010:4:11,deferred,not-yet-reviewed-or-namespace-conflict
+casing,136,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+casing_ev,911,Multi-block Parts & Casings (1110:11:40+),1110:111:44,deferred,not-yet-reviewed-or-namespace-conflict
+casing_hv,910,Multi-block Parts & Casings (1110:11:40+),1110:111:43,deferred,not-yet-reviewed-or-namespace-conflict
+casing_iv,912,Multi-block Parts & Casings (1110:11:40+),1110:111:45,deferred,not-yet-reviewed-or-namespace-conflict
+casing_luv,913,Multi-block Parts & Casings (1110:11:40+),1110:111:46,deferred,not-yet-reviewed-or-namespace-conflict
+casing_lv,908,Multi-block Parts & Casings (1110:11:40+),1110:111:41,deferred,not-yet-reviewed-or-namespace-conflict
+casing_max,916,Multi-block Parts & Casings (1110:11:40+),1110:111:49,deferred,not-yet-reviewed-or-namespace-conflict
+casing_mv,909,Multi-block Parts & Casings (1110:11:40+),1110:111:42,deferred,not-yet-reviewed-or-namespace-conflict
+casing_ulv,907,Multi-block Parts & Casings (1110:11:40+),1110:111:40,deferred,not-yet-reviewed-or-namespace-conflict
+casing_uv,915,Multi-block Parts & Casings (1110:11:40+),1110:111:48,deferred,not-yet-reviewed-or-namespace-conflict
+casing_zpm,914,Multi-block Parts & Casings (1110:11:40+),1110:111:47,deferred,not-yet-reviewed-or-namespace-conflict
+cassiterite_ore,699,Overworld (10:0),10:0:33,deferred,not-yet-reviewed-or-namespace-conflict
+centrifuge,156,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+centrifuge_mv,843,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:19,deferred,not-yet-reviewed-or-namespace-conflict
+certus_quartz,518,Gems & Crystals (01110:5),0:1110:101:8,deferred,not-yet-reviewed-or-namespace-conflict
+chainsaw_hv,961,Electric Tools (1111:00) — stack 1,1111:00:8,deferred,not-yet-reviewed-or-namespace-conflict
+chainsaw_mv,960,Electric Tools (1111:00) — stack 1,1111:00:7,deferred,not-yet-reviewed-or-namespace-conflict
+chalcopyrite_ore,700,Overworld (10:0),10:0:34,deferred,not-yet-reviewed-or-namespace-conflict
+charcoal_dust,471,Dusts (01110:1),0:1110:001:18,deferred,not-yet-reviewed-or-namespace-conflict
+charger_hv,891,"Generation, Storage, Transformers (1110:11)",1110:101:26,deferred,not-yet-reviewed-or-namespace-conflict
+charger_lv,889,"Generation, Storage, Transformers (1110:11)",1110:101:24,deferred,not-yet-reviewed-or-namespace-conflict
+charger_mv,890,"Generation, Storage, Transformers (1110:11)",1110:101:25,deferred,not-yet-reviewed-or-namespace-conflict
+chemical_reactor,155,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+chemical_reactor_mv,839,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:15,deferred,not-yet-reviewed-or-namespace-conflict
+chlorine,658,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:28,deferred,not-yet-reviewed-or-namespace-conflict
+chrome_dust,121,Dusts (prefix 0:1110:1:0:*),,deferred,not-yet-reviewed-or-namespace-conflict
+chrome_ingot,115,Ingots (prefix 0:110:*),,deferred,not-yet-reviewed-or-namespace-conflict
+chrome_plate,118,Plates (prefix 0:1110:0:*),,deferred,not-yet-reviewed-or-namespace-conflict
+cinnabar_ore,696,Overworld (10:0),10:0:30,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_advanced,1025,Components & Circuits (1111:11) — stack 64,1111:11:3,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_basic,1023,Components & Circuits (1111:11) — stack 64,1111:11:1,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_board,127,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+circuit_board_advanced,1034,Components & Circuits (1111:11) — stack 64,1111:11:12,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_board_basic,1032,Components & Circuits (1111:11) — stack 64,1111:11:10,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_board_elite,1035,Components & Circuits (1111:11) — stack 64,1111:11:13,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_board_epoxy,1037,Components & Circuits (1111:11) — stack 64,1111:11:15,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_board_fiberglass,1038,Components & Circuits (1111:11) — stack 64,1111:11:16,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_board_good,1033,Components & Circuits (1111:11) — stack 64,1111:11:11,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_board_plastic,1036,Components & Circuits (1111:11) — stack 64,1111:11:14,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_crystal,1030,Components & Circuits (1111:11) — stack 64,1111:11:8,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_elite,1026,Components & Circuits (1111:11) — stack 64,1111:11:4,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_good,1024,Components & Circuits (1111:11) — stack 64,1111:11:2,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_master,1027,Components & Circuits (1111:11) — stack 64,1111:11:5,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_primitive,1022,Components & Circuits (1111:11) — stack 64,1111:11:0,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_quantum,1029,Components & Circuits (1111:11) — stack 64,1111:11:7,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_ultimate,1028,Components & Circuits (1111:11) — stack 64,1111:11:6,deferred,not-yet-reviewed-or-namespace-conflict
+circuit_wetware,1031,Components & Circuits (1111:11) — stack 64,1111:11:9,deferred,not-yet-reviewed-or-namespace-conflict
+cobalt_ingot,389,Base Metals (0110:0),0110:0:6,deferred,not-yet-reviewed-or-namespace-conflict
+cobalt_ore,673,Overworld (10:0),10:0:7,deferred,not-yet-reviewed-or-namespace-conflict
+coil_copper,135,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+coil_cupronickel,135;1066,Processed materials,1111:11:44,deferred,not-yet-reviewed-or-namespace-conflict
+coil_hss_g,1070,Components & Circuits (1111:11) — stack 64,1111:11:48,deferred,not-yet-reviewed-or-namespace-conflict
+coil_kanthal,1067,Components & Circuits (1111:11) — stack 64,1111:11:45,deferred,not-yet-reviewed-or-namespace-conflict
+coil_naquadah,1071,Components & Circuits (1111:11) — stack 64,1111:11:49,deferred,not-yet-reviewed-or-namespace-conflict
+coil_nichrome,1068,Components & Circuits (1111:11) — stack 64,1111:11:46,deferred,not-yet-reviewed-or-namespace-conflict
+coil_tungsten,135,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+coil_tungstensteel,1069,Components & Circuits (1111:11) — stack 64,1111:11:47,deferred,not-yet-reviewed-or-namespace-conflict
+coin,792,Quest / Special (110:4),110:4:1,deferred,not-yet-reviewed-or-namespace-conflict
+coke_coal,598,Fuels & Basic Resources (011111:1) — stack 64,011111:1:2,deferred,not-yet-reviewed-or-namespace-conflict
+collision,202,Items used in recipes but NOT in items.csv,,deferred,not-yet-reviewed-or-namespace-conflict
+combustion_generator_lv,865,"Generation, Storage, Transformers (1110:11)",1110:100:0,deferred,not-yet-reviewed-or-namespace-conflict
+combustion_generator_mv,866,"Generation, Storage, Transformers (1110:11)",1110:100:1,deferred,not-yet-reviewed-or-namespace-conflict
+composite_chestplate,780,Armor & Wearable (110:3) — stack 1,110:3:9,deferred,not-yet-reviewed-or-namespace-conflict
+composite_helmet,779,Armor & Wearable (110:3) — stack 1,110:3:8,deferred,not-yet-reviewed-or-namespace-conflict
+composter,369;378,Wooden Containers & Utility (010:4),010:4:6,deferred,not-yet-reviewed-or-namespace-conflict
+concrete,110;288,Terrain blocks (prefix 0:0:*),00:2:8,deferred,not-yet-reviewed-or-namespace-conflict
+concrete_powder,289,Manufactured Building (00:2),00:2:9,deferred,not-yet-reviewed-or-namespace-conflict
+conveyor_hv,1053,Components & Circuits (1111:11) — stack 64,1111:11:31,deferred,not-yet-reviewed-or-namespace-conflict
+conveyor_lv,1051,Components & Circuits (1111:11) — stack 64,1111:11:29,deferred,not-yet-reviewed-or-namespace-conflict
+conveyor_module,130,Mechanical components (need new sub-prefix),,deferred,requires-new-namespace
+conveyor_mv,1052,Components & Circuits (1111:11) — stack 64,1111:11:30,deferred,not-yet-reviewed-or-namespace-conflict
+copper_pipe,180,Pipes (prefix 1111:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+copper_wire_1x,498,Wires (01110:4),0:1110:100:0,deferred,not-yet-reviewed-or-namespace-conflict
+copper_wire_2x,499,Wires (01110:4),0:1110:100:1,deferred,not-yet-reviewed-or-namespace-conflict
+copper_wire_4x,500,Wires (01110:4),0:1110:100:2,deferred,not-yet-reviewed-or-namespace-conflict
+copper_wire_8x,501,Wires (01110:4),0:1110:100:3,deferred,not-yet-reviewed-or-namespace-conflict
+credit,793,Quest / Special (110:4),110:4:2,deferred,not-yet-reviewed-or-namespace-conflict
+creosote,642,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:12,deferred,not-yet-reviewed-or-namespace-conflict
+creosote_bucket,586,Fluid Containers (011111:0) — stack 16,011111:0:12,deferred,not-yet-reviewed-or-namespace-conflict
+crystal_circuit,125,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+crystallizer,155,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+cutter,550,Crafting Helpers (011110:2),011110:2:3,deferred,not-yet-reviewed-or-namespace-conflict
+cutting_machine_lv,850,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:26,deferred,not-yet-reviewed-or-namespace-conflict
+dark_oak,112,More wood types (prefix 0:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+dark_prismarine,297,Manufactured Building (00:2),00:2:17,deferred,not-yet-reviewed-or-namespace-conflict
+data_circuit,124,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+dead_bush,268,Vegetation (00:1),00:1:8,deferred,not-yet-reviewed-or-namespace-conflict
+diamond_dust,121,Dusts (prefix 0:1110:1:0:*),,deferred,not-yet-reviewed-or-namespace-conflict
+diesel,638,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:8,deferred,not-yet-reviewed-or-namespace-conflict
+diesel_bucket,584,Fluid Containers (011111:0) — stack 16,011111:0:10,deferred,not-yet-reviewed-or-namespace-conflict
+diesel_generator,160,Generation (1110:01:* — currently 0-2),,deferred,not-yet-reviewed-or-namespace-conflict
+diesel_generator_lv,869,"Generation, Storage, Transformers (1110:11)",1110:100:4,deferred,not-yet-reviewed-or-namespace-conflict
+diesel_generator_mv,870,"Generation, Storage, Transformers (1110:11)",1110:100:5,deferred,not-yet-reviewed-or-namespace-conflict
+diode,1078,Components & Circuits (1111:11) — stack 64,1111:11:56,deferred,not-yet-reviewed-or-namespace-conflict
+diorite,109;254,Terrain blocks (prefix 0:0:*),00:0:19,deferred,not-yet-reviewed-or-namespace-conflict
+distillation_tower,157,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+doors,112,More wood types (prefix 0:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+drill_ev,957,Electric Tools (1111:00) — stack 1,1111:00:4,deferred,not-yet-reviewed-or-namespace-conflict
+drill_iv,958,Electric Tools (1111:00) — stack 1,1111:00:5,deferred,not-yet-reviewed-or-namespace-conflict
+duranium_ingot,420,Rare / Endgame (0110:3),0110:3:2,deferred,not-yet-reviewed-or-namespace-conflict
+dynamo_hatch_lv,932,Multi-block Parts & Casings (1110:11:40+),1110:111:65,deferred,not-yet-reviewed-or-namespace-conflict
+dynamo_hatch_mv,933,Multi-block Parts & Casings (1110:11:40+),1110:111:66,deferred,not-yet-reviewed-or-namespace-conflict
+electric_compressor_hv,829,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:5,deferred,not-yet-reviewed-or-namespace-conflict
+electric_compressor_lv,153;827,"Processing (1110:00:* — currently 0-7, room for 1024)",1110:010:3,deferred,not-yet-reviewed-or-namespace-conflict
+electric_compressor_mv,828,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:4,deferred,not-yet-reviewed-or-namespace-conflict
+electric_extractor_lv,153;830,"Processing (1110:00:* — currently 0-7, room for 1024)",1110:010:6,deferred,not-yet-reviewed-or-namespace-conflict
+electric_extractor_mv,831,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:7,deferred,not-yet-reviewed-or-namespace-conflict
+electric_macerator_hv,826,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:2,deferred,not-yet-reviewed-or-namespace-conflict
+electric_macerator_lv,152;824,"Processing (1110:00:* — currently 0-7, room for 1024)",1110:010:0,deferred,not-yet-reviewed-or-namespace-conflict
+electric_macerator_mv,825,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:1,deferred,not-yet-reviewed-or-namespace-conflict
+electric_mixer_lv,154,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+electric_motor,129,Mechanical components (need new sub-prefix),,deferred,requires-new-namespace
+electric_pump,129,Mechanical components (need new sub-prefix),,deferred,requires-new-namespace
+electric_smelter_lv,154,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+electric_wrench_hv,964,Electric Tools (1111:00) — stack 1,1111:00:11,deferred,not-yet-reviewed-or-namespace-conflict
+electric_wrench_lv,963,Electric Tools (1111:00) — stack 1,1111:00:10,deferred,not-yet-reviewed-or-namespace-conflict
+electrolyser,155,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+electrolyzer_mv,841,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:17,deferred,not-yet-reviewed-or-namespace-conflict
+electromagnetic_separator_lv,861,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:37,deferred,not-yet-reviewed-or-namespace-conflict
+emerald,511,Gems & Crystals (01110:5),0:1110:101:1,deferred,not-yet-reviewed-or-namespace-conflict
+emerald_ore,679,Overworld (10:0),10:0:13,deferred,not-yet-reviewed-or-namespace-conflict
+emitter,130,Mechanical components (need new sub-prefix),,deferred,requires-new-namespace
+emitter_hv,1062,Components & Circuits (1111:11) — stack 64,1111:11:40,deferred,not-yet-reviewed-or-namespace-conflict
+emitter_lv,1060,Components & Circuits (1111:11) — stack 64,1111:11:38,deferred,not-yet-reviewed-or-namespace-conflict
+emitter_mv,1061,Components & Circuits (1111:11) — stack 64,1111:11:39,deferred,not-yet-reviewed-or-namespace-conflict
+empty_cell,590,Fluid Containers (011111:0) — stack 16,011111:0:16,deferred,not-yet-reviewed-or-namespace-conflict
+end_copper_ore,713,End (10:2),10:2:2,deferred,not-yet-reviewed-or-namespace-conflict
+end_gold_ore,712,End (10:2),10:2:1,deferred,not-yet-reviewed-or-namespace-conflict
+end_iron_ore,711,End (10:2),10:2:0,deferred,not-yet-reviewed-or-namespace-conflict
+end_lead_ore,715,End (10:2),10:2:4,deferred,not-yet-reviewed-or-namespace-conflict
+end_naquadah_ore,717,End (10:2),10:2:6,deferred,not-yet-reviewed-or-namespace-conflict
+end_osmium_ore,716,End (10:2),10:2:5,deferred,not-yet-reviewed-or-namespace-conflict
+end_platinum_ore,718,End (10:2),10:2:7,deferred,not-yet-reviewed-or-namespace-conflict
+end_stone,250,Stone & Ground (00:0),00:0:15,deferred,not-yet-reviewed-or-namespace-conflict
+end_tin_ore,714,End (10:2),10:2:3,deferred,not-yet-reviewed-or-namespace-conflict
+energy_crystal,166;902,Storage (1110:10:* — currently 0-3),1110:101:37,deferred,not-yet-reviewed-or-namespace-conflict
+energy_hatch_hv,931,Multi-block Parts & Casings (1110:11:40+),1110:111:64,deferred,not-yet-reviewed-or-namespace-conflict
+energy_hatch_lv,929,Multi-block Parts & Casings (1110:11:40+),1110:111:62,deferred,not-yet-reviewed-or-namespace-conflict
+energy_hatch_mv,930,Multi-block Parts & Casings (1110:11:40+),1110:111:63,deferred,not-yet-reviewed-or-namespace-conflict
+epoxy_board,127,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+epoxy_ingot,430,Non-metals (0110:4),0110:4:5,deferred,not-yet-reviewed-or-namespace-conflict
+epoxy_resin,645,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:15,deferred,not-yet-reviewed-or-namespace-conflict
+ethanol,643,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:13,deferred,not-yet-reviewed-or-namespace-conflict
+ethanol_bucket,588,Fluid Containers (011111:0) — stack 16,011111:0:14,deferred,not-yet-reviewed-or-namespace-conflict
+extruder_shape_pipe,562,Crafting Helpers (011110:2),011110:2:15,deferred,not-yet-reviewed-or-namespace-conflict
+extruder_shape_plate,560,Crafting Helpers (011110:2),011110:2:13,deferred,not-yet-reviewed-or-namespace-conflict
+extruder_shape_rod,561,Crafting Helpers (011110:2),011110:2:14,deferred,not-yet-reviewed-or-namespace-conflict
+extruder_shape_wire,563,Crafting Helpers (011110:2),011110:2:16,deferred,not-yet-reviewed-or-namespace-conflict
+fallen_meteor,743,Space Blocks (110:0),110:0:5,deferred,not-yet-reviewed-or-namespace-conflict
+fence,113,More wood types (prefix 0:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+fern,267,Vegetation (00:1),00:1:7,deferred,not-yet-reviewed-or-namespace-conflict
+fiber_optic_cable,999,Cables & Wires (1111:01) — stack 64,1111:01:27,deferred,not-yet-reviewed-or-namespace-conflict
+field_generator,131,Mechanical components (need new sub-prefix),,deferred,requires-new-namespace
+field_generator_hv,1065,Components & Circuits (1111:11) — stack 64,1111:11:43,deferred,not-yet-reviewed-or-namespace-conflict
+field_generator_lv,1063,Components & Circuits (1111:11) — stack 64,1111:11:41,deferred,not-yet-reviewed-or-namespace-conflict
+field_generator_mv,1064,Components & Circuits (1111:11) — stack 64,1111:11:42,deferred,not-yet-reviewed-or-namespace-conflict
+fine_copper_wire,505,Wires (01110:4),0:1110:100:7,deferred,not-yet-reviewed-or-namespace-conflict
+fine_gold_wire,506,Wires (01110:4),0:1110:100:8,deferred,not-yet-reviewed-or-namespace-conflict
+fine_tungsten_wire,507,Wires (01110:4),0:1110:100:9,deferred,not-yet-reviewed-or-namespace-conflict
+fish_cooked,627,Food & Agriculture (011111:2) — stack 64,011111:2:10,deferred,not-yet-reviewed-or-namespace-conflict
+fish_raw,626,Food & Agriculture (011111:2) — stack 64,011111:2:9,deferred,not-yet-reviewed-or-namespace-conflict
+fletching_table,375,Wooden Containers & Utility (010:4),010:4:12,deferred,not-yet-reviewed-or-namespace-conflict
+flower_blue,271,Vegetation (00:1),00:1:11,deferred,not-yet-reviewed-or-namespace-conflict
+flower_red,269,Vegetation (00:1),00:1:9,deferred,not-yet-reviewed-or-namespace-conflict
+flower_yellow,270,Vegetation (00:1),00:1:10,deferred,not-yet-reviewed-or-namespace-conflict
+fluid_pipe_copper,1003,Pipes (1111:10) — stack 64,1111:10:1,deferred,not-yet-reviewed-or-namespace-conflict
+fluid_pipe_plastic,1008,Pipes (1111:10) — stack 64,1111:10:6,deferred,not-yet-reviewed-or-namespace-conflict
+fluid_pipe_stainless_steel,1005,Pipes (1111:10) — stack 64,1111:10:3,deferred,not-yet-reviewed-or-namespace-conflict
+fluid_pipe_steel,1004,Pipes (1111:10) — stack 64,1111:10:2,deferred,not-yet-reviewed-or-namespace-conflict
+fluid_pipe_tin,1002,Pipes (1111:10) — stack 64,1111:10:0,deferred,not-yet-reviewed-or-namespace-conflict
+fluid_pipe_titanium,1006,Pipes (1111:10) — stack 64,1111:10:4,deferred,not-yet-reviewed-or-namespace-conflict
+fluid_pipe_tungstensteel,1007,Pipes (1111:10) — stack 64,1111:10:5,deferred,not-yet-reviewed-or-namespace-conflict
+fluid_solidifier_lv,858,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:34,deferred,not-yet-reviewed-or-namespace-conflict
+forming_press_lv,853,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:29,deferred,not-yet-reviewed-or-namespace-conflict
+fractionating_column,157,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+fuel_tank_t1,750,Rocket Parts (110:1),110:1:4,deferred,not-yet-reviewed-or-namespace-conflict
+fuel_tank_t2,751,Rocket Parts (110:1),110:1:5,deferred,not-yet-reviewed-or-namespace-conflict
+fuel_tank_t3,752,Rocket Parts (110:1),110:1:6,deferred,not-yet-reviewed-or-namespace-conflict
+fusion_reactor,162;876,Generation (1110:01:* — currently 0-2),1110:100:11,deferred,not-yet-reviewed-or-namespace-conflict
+galena_ore,698,Overworld (10:0),10:0:32,deferred,not-yet-reviewed-or-namespace-conflict
+gallium,178,Cables (prefix 1111:01:*),,deferred,not-yet-reviewed-or-namespace-conflict
+gas_pipe_stainless_steel,1019,Pipes (1111:10) — stack 64,1111:10:17,deferred,not-yet-reviewed-or-namespace-conflict
+gas_pipe_steel,1018,Pipes (1111:10) — stack 64,1111:10:16,deferred,not-yet-reviewed-or-namespace-conflict
+gas_turbine,160,Generation (1110:01:* — currently 0-2),,deferred,not-yet-reviewed-or-namespace-conflict
+gas_turbine_lv,867,"Generation, Storage, Transformers (1110:11)",1110:100:2,deferred,not-yet-reviewed-or-namespace-conflict
+gas_turbine_mv,868,"Generation, Storage, Transformers (1110:11)",1110:100:3,deferred,not-yet-reviewed-or-namespace-conflict
+gasoline,639,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:9,deferred,not-yet-reviewed-or-namespace-conflict
+gasoline_bucket,585,Fluid Containers (011111:0) — stack 16,011111:0:11,deferred,not-yet-reviewed-or-namespace-conflict
+gate,113,More wood types (prefix 0:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+gear,136,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+generic_dust,203,Items used in recipes but NOT in items.csv,,deferred,not-yet-reviewed-or-namespace-conflict
+geothermal_generator,161,Generation (1110:01:* — currently 0-2),,deferred,not-yet-reviewed-or-namespace-conflict
+glass_liquid,648,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:18,deferred,not-yet-reviewed-or-namespace-conflict
+glass_tube,135,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+glazed_terracotta,291,Manufactured Building (00:2),00:2:11,deferred,not-yet-reviewed-or-namespace-conflict
+glowstone,299,Manufactured Building (00:2),00:2:19,deferred,not-yet-reviewed-or-namespace-conflict
+gold_wire_1x,502,Wires (01110:4),0:1110:100:4,deferred,not-yet-reviewed-or-namespace-conflict
+good_circuit,124,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+granite,109;253,Terrain blocks (prefix 0:0:*),00:0:18,deferred,not-yet-reviewed-or-namespace-conflict
+graphene_ingot,428,Non-metals (0110:4),0110:4:3,deferred,not-yet-reviewed-or-namespace-conflict
+graphite_dust,121,Dusts (prefix 0:1110:1:0:*),,deferred,not-yet-reviewed-or-namespace-conflict
+grinder_lv,862,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:38,deferred,not-yet-reviewed-or-namespace-conflict
+grindstone,377,Wooden Containers & Utility (010:4),010:4:14,deferred,not-yet-reviewed-or-namespace-conflict
+hay_bale,311,Decorative / Misc Terrain (00:3),00:3:6,deferred,not-yet-reviewed-or-namespace-conflict
+heat_alloy_smelter,801,Heat & Rotare Processing (1110:00),1110:000:2,deferred,not-yet-reviewed-or-namespace-conflict
+heating_element,1072,Components & Circuits (1111:11) — stack 64,1111:11:50,deferred,not-yet-reviewed-or-namespace-conflict
+heavy_plate_t1,753,Rocket Parts (110:1),110:1:7,deferred,not-yet-reviewed-or-namespace-conflict
+heavy_plate_t2,754,Rocket Parts (110:1),110:1:8,deferred,not-yet-reviewed-or-namespace-conflict
+heavy_plate_t3,755,Rocket Parts (110:1),110:1:9,deferred,not-yet-reviewed-or-namespace-conflict
+huge_fluid_pipe,1015,Pipes (1111:10) — stack 64,1111:10:13,deferred,not-yet-reviewed-or-namespace-conflict
+hydrochloric_acid_bucket,582,Fluid Containers (011111:0) — stack 16,011111:0:8,deferred,not-yet-reviewed-or-namespace-conflict
+ice,300,Manufactured Building (00:2),00:2:20,deferred,not-yet-reviewed-or-namespace-conflict
+impure_iron_dust,465,Dusts (01110:1),0:1110:001:12,deferred,not-yet-reviewed-or-namespace-conflict
+inductor,1079,Components & Circuits (1111:11) — stack 64,1111:11:57,deferred,not-yet-reviewed-or-namespace-conflict
+input_bus_hv,919,Multi-block Parts & Casings (1110:11:40+),1110:111:52,deferred,not-yet-reviewed-or-namespace-conflict
+input_bus_lv,917,Multi-block Parts & Casings (1110:11:40+),1110:111:50,deferred,not-yet-reviewed-or-namespace-conflict
+input_bus_mv,918,Multi-block Parts & Casings (1110:11:40+),1110:111:51,deferred,not-yet-reviewed-or-namespace-conflict
+input_hatch_hv,925,Multi-block Parts & Casings (1110:11:40+),1110:111:58,deferred,not-yet-reviewed-or-namespace-conflict
+input_hatch_lv,923,Multi-block Parts & Casings (1110:11:40+),1110:111:56,deferred,not-yet-reviewed-or-namespace-conflict
+input_hatch_mv,924,Multi-block Parts & Casings (1110:11:40+),1110:111:57,deferred,not-yet-reviewed-or-namespace-conflict
+integrated_logic_circuit,1075,Components & Circuits (1111:11) — stack 64,1111:11:53,deferred,not-yet-reviewed-or-namespace-conflict
+iron_bolt,479,Rods / Bolts / Screws (01110:2),0:1110:010:5,deferred,not-yet-reviewed-or-namespace-conflict
+iron_boots,774,Armor & Wearable (110:3) — stack 1,110:3:3,deferred,not-yet-reviewed-or-namespace-conflict
+iron_chestplate,772,Armor & Wearable (110:3) — stack 1,110:3:1,deferred,not-yet-reviewed-or-namespace-conflict
+iron_double_plate,449,Plates (01110:0),0:1110:000:14,deferred,not-yet-reviewed-or-namespace-conflict
+iron_helmet,771,Armor & Wearable (110:3) — stack 1,110:3:0,deferred,not-yet-reviewed-or-namespace-conflict
+iron_leggings,773,Armor & Wearable (110:3) — stack 1,110:3:2,deferred,not-yet-reviewed-or-namespace-conflict
+iron_screw,481,Rods / Bolts / Screws (01110:2),0:1110:010:7,deferred,not-yet-reviewed-or-namespace-conflict
+item_pipe_brass,1009,Pipes (1111:10) — stack 64,1111:10:7,deferred,not-yet-reviewed-or-namespace-conflict
+item_pipe_steel,1010,Pipes (1111:10) — stack 64,1111:10:8,deferred,not-yet-reviewed-or-namespace-conflict
+jack_o_lantern,308,Decorative / Misc Terrain (00:3),00:3:3,deferred,not-yet-reviewed-or-namespace-conflict
+jackhammer,172,"More drill tiers (EV, IV, LuV, ZPM, UV)",,deferred,not-yet-reviewed-or-namespace-conflict
+jackhammer_lv,965,Electric Tools (1111:00) — stack 1,1111:00:12,deferred,not-yet-reviewed-or-namespace-conflict
+jackhammer_mv,966,Electric Tools (1111:00) — stack 1,1111:00:13,deferred,not-yet-reviewed-or-namespace-conflict
+jetpack,785,Armor & Wearable (110:3) — stack 1,110:3:14,deferred,not-yet-reviewed-or-namespace-conflict
+jukebox,372,Wooden Containers & Utility (010:4),010:4:9,deferred,not-yet-reviewed-or-namespace-conflict
+jungle,112,More wood types (prefix 0:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+knife,173,"More drill tiers (EV, IV, LuV, ZPM, UV)",,deferred,not-yet-reviewed-or-namespace-conflict
+lapis_lazuli,520,Gems & Crystals (01110:5),0:1110:101:10,deferred,not-yet-reviewed-or-namespace-conflict
+lapotron_crystal,903,"Generation, Storage, Transformers (1110:11)",1110:101:38,deferred,not-yet-reviewed-or-namespace-conflict
+lapotronic_energy_orb,904,"Generation, Storage, Transformers (1110:11)",1110:101:39,deferred,not-yet-reviewed-or-namespace-conflict
+large_fluid_pipe,1017,Pipes (1111:10) — stack 64,1111:10:15,deferred,not-yet-reviewed-or-namespace-conflict
+laser_engraver_lv,857,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:33,deferred,not-yet-reviewed-or-namespace-conflict
+lathe_lv,848,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:24,deferred,not-yet-reviewed-or-namespace-conflict
+lathe_mv,849,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:25,deferred,not-yet-reviewed-or-namespace-conflict
+lava_bucket,576,Fluid Containers (011111:0) — stack 16,011111:0:2,deferred,not-yet-reviewed-or-namespace-conflict
+lava_cell,593,Fluid Containers (011111:0) — stack 16,011111:0:19,deferred,not-yet-reviewed-or-namespace-conflict
+lectern,370,Wooden Containers & Utility (010:4),010:4:7,deferred,not-yet-reviewed-or-namespace-conflict
+lignite_coal,599,Fuels & Basic Resources (011111:1) — stack 64,011111:1:3,deferred,not-yet-reviewed-or-namespace-conflict
+lily_pad,277,Vegetation (00:1),00:1:17,deferred,not-yet-reviewed-or-namespace-conflict
+lithium_ore,689,Overworld (10:0),10:0:23,deferred,not-yet-reviewed-or-namespace-conflict
+long_steel_rod,477,Rods / Bolts / Screws (01110:2),0:1110:010:3,deferred,not-yet-reviewed-or-namespace-conflict
+loom,373,Wooden Containers & Utility (010:4),010:4:10,deferred,not-yet-reviewed-or-namespace-conflict
+lubricant,641,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:11,deferred,not-yet-reviewed-or-namespace-conflict
+lubricant_bucket,587,Fluid Containers (011111:0) — stack 16,011111:0:13,deferred,not-yet-reviewed-or-namespace-conflict
+magnesium_ingot,115,Ingots (prefix 0:110:*),,deferred,not-yet-reviewed-or-namespace-conflict
+magnetic_steel_rod,132,Mechanical components (need new sub-prefix),,deferred,requires-new-namespace
+maintenance_hatch,934,Multi-block Parts & Casings (1110:11:40+),1110:111:67,deferred,not-yet-reviewed-or-namespace-conflict
+manganese_ingot,392,Base Metals (0110:0),0110:0:9,deferred,not-yet-reviewed-or-namespace-conflict
+marble,109;256,Terrain blocks (prefix 0:0:*),00:0:21,deferred,not-yet-reviewed-or-namespace-conflict
+mars_copper_ore,727,Planetary (10:3),10:3:6,deferred,not-yet-reviewed-or-namespace-conflict
+mars_desh_ore,728,Planetary (10:3),10:3:7,deferred,not-yet-reviewed-or-namespace-conflict
+mars_iron_ore,726,Planetary (10:3),10:3:5,deferred,not-yet-reviewed-or-namespace-conflict
+mars_stone,725,Planetary (10:3),10:3:4,deferred,not-yet-reviewed-or-namespace-conflict
+mars_stone_block,739,Space Blocks (110:0),110:0:1,deferred,not-yet-reviewed-or-namespace-conflict
+mars_uranium_ore,729,Planetary (10:3),10:3:8,deferred,not-yet-reviewed-or-namespace-conflict
+mass_fabricator,156,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+material,180,Pipes (prefix 1111:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+measuring_tape,569,Utility (011110:3),011110:3:3,deferred,not-yet-reviewed-or-namespace-conflict
+meat_cooked,625,Food & Agriculture (011111:2) — stack 64,011111:2:8,deferred,not-yet-reviewed-or-namespace-conflict
+meat_raw,624,Food & Agriculture (011111:2) — stack 64,011111:2:7,deferred,not-yet-reviewed-or-namespace-conflict
+melon,309,Decorative / Misc Terrain (00:3),00:3:4,deferred,not-yet-reviewed-or-namespace-conflict
+mercury,657,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:27,deferred,not-yet-reviewed-or-namespace-conflict
+meteoric_iron,742,Space Blocks (110:0),110:0:4,deferred,not-yet-reviewed-or-namespace-conflict
+methane,636,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:6,deferred,not-yet-reviewed-or-namespace-conflict
+methanol,644,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:14,deferred,not-yet-reviewed-or-namespace-conflict
+methanol_bucket,589,Fluid Containers (011111:0) — stack 16,011111:0:15,deferred,not-yet-reviewed-or-namespace-conflict
+mixer_electric_lv,855,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:31,deferred,not-yet-reviewed-or-namespace-conflict
+mold_bolt,558,Crafting Helpers (011110:2),011110:2:11,deferred,not-yet-reviewed-or-namespace-conflict
+mold_gear,556,Crafting Helpers (011110:2),011110:2:9,deferred,not-yet-reviewed-or-namespace-conflict
+mold_plate,555,Crafting Helpers (011110:2),011110:2:8,deferred,not-yet-reviewed-or-namespace-conflict
+mold_ring,559,Crafting Helpers (011110:2),011110:2:12,deferred,not-yet-reviewed-or-namespace-conflict
+mold_rod,557,Crafting Helpers (011110:2),011110:2:10,deferred,not-yet-reviewed-or-namespace-conflict
+molten_aluminium,653,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:23,deferred,not-yet-reviewed-or-namespace-conflict
+molten_copper,650,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:20,deferred,not-yet-reviewed-or-namespace-conflict
+molten_gold,652,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:22,deferred,not-yet-reviewed-or-namespace-conflict
+molten_iron,649,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:19,deferred,not-yet-reviewed-or-namespace-conflict
+molten_naquadah,656,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:26,deferred,not-yet-reviewed-or-namespace-conflict
+molten_steel,651,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:21,deferred,not-yet-reviewed-or-namespace-conflict
+molten_titanium,654,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:24,deferred,not-yet-reviewed-or-namespace-conflict
+molten_tungsten,655,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:25,deferred,not-yet-reviewed-or-namespace-conflict
+monazite_ore,687,Overworld (10:0),10:0:21,deferred,not-yet-reviewed-or-namespace-conflict
+moon_aluminium_ore,724,Planetary (10:3),10:3:3,deferred,not-yet-reviewed-or-namespace-conflict
+moon_iron_ore,722,Planetary (10:3),10:3:1,deferred,not-yet-reviewed-or-namespace-conflict
+moon_stone,721,Planetary (10:3),10:3:0,deferred,not-yet-reviewed-or-namespace-conflict
+moon_stone_block,738,Space Blocks (110:0),110:0:0,deferred,not-yet-reviewed-or-namespace-conflict
+moon_tin_ore,723,Planetary (10:3),10:3:2,deferred,not-yet-reviewed-or-namespace-conflict
+mortar,553,Crafting Helpers (011110:2),011110:2:6,deferred,not-yet-reviewed-or-namespace-conflict
+mossy_cobblestone,238,Stone & Ground (00:0),00:0:3,deferred,not-yet-reviewed-or-namespace-conflict
+motor_ev,1042,Components & Circuits (1111:11) — stack 64,1111:11:20,deferred,not-yet-reviewed-or-namespace-conflict
+motor_hv,1041,Components & Circuits (1111:11) — stack 64,1111:11:19,deferred,not-yet-reviewed-or-namespace-conflict
+motor_iv,1043,Components & Circuits (1111:11) — stack 64,1111:11:21,deferred,not-yet-reviewed-or-namespace-conflict
+motor_lv,1039,Components & Circuits (1111:11) — stack 64,1111:11:17,deferred,not-yet-reviewed-or-namespace-conflict
+motor_mv,1040,Components & Circuits (1111:11) — stack 64,1111:11:18,deferred,not-yet-reviewed-or-namespace-conflict
+muffler_hatch,935,Multi-block Parts & Casings (1110:11:40+),1110:111:68,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_blast_furnace,936,Multi-block Parts & Casings (1110:11:40+),1110:111:69,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_distillation_tower,939,Multi-block Parts & Casings (1110:11:40+),1110:111:72,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_fusion_mk1,945,Multi-block Parts & Casings (1110:11:40+),1110:111:78,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_fusion_mk2,946,Multi-block Parts & Casings (1110:11:40+),1110:111:79,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_fusion_mk3,947,Multi-block Parts & Casings (1110:11:40+),1110:111:80,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_implosion_compressor,938,Multi-block Parts & Casings (1110:11:40+),1110:111:71,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_large_boiler,941,Multi-block Parts & Casings (1110:11:40+),1110:111:74,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_large_gas_turbine,943,Multi-block Parts & Casings (1110:11:40+),1110:111:76,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_large_plasma_generator,944,Multi-block Parts & Casings (1110:11:40+),1110:111:77,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_large_steam_turbine,942,Multi-block Parts & Casings (1110:11:40+),1110:111:75,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_processing_array,948,Multi-block Parts & Casings (1110:11:40+),1110:111:81,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_pyrolyse_oven,940,Multi-block Parts & Casings (1110:11:40+),1110:111:73,deferred,not-yet-reviewed-or-namespace-conflict
+multi_controller_vacuum_freezer,937,Multi-block Parts & Casings (1110:11:40+),1110:111:70,deferred,not-yet-reviewed-or-namespace-conflict
+mushroom_brown,272,Vegetation (00:1),00:1:12,deferred,not-yet-reviewed-or-namespace-conflict
+mushroom_red,273,Vegetation (00:1),00:1:13,deferred,not-yet-reviewed-or-namespace-conflict
+mycelium,245,Stone & Ground (00:0),00:0:10,deferred,not-yet-reviewed-or-namespace-conflict
+nano_chestplate,782,Armor & Wearable (110:3) — stack 1,110:3:11,deferred,not-yet-reviewed-or-namespace-conflict
+nano_circuit,125,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+nano_helmet,781,Armor & Wearable (110:3) — stack 1,110:3:10,deferred,not-yet-reviewed-or-namespace-conflict
+naquadah_alloy_ingot,419,Rare / Endgame (0110:3),0110:3:1,deferred,not-yet-reviewed-or-namespace-conflict
+naquadah_ingot,418,Rare / Endgame (0110:3),0110:3:0,deferred,not-yet-reviewed-or-namespace-conflict
+neodymium_ore,688,Overworld (10:0),10:0:22,deferred,not-yet-reviewed-or-namespace-conflict
+nether_cobalt_ore,708,Nether (10:1),10:1:5,deferred,not-yet-reviewed-or-namespace-conflict
+nether_gold_ore,704,Nether (10:1),10:1:1,deferred,not-yet-reviewed-or-namespace-conflict
+nether_quartz,519,Gems & Crystals (01110:5),0:1110:101:9,deferred,not-yet-reviewed-or-namespace-conflict
+nether_quartz_ore,703,Nether (10:1),10:1:0,deferred,not-yet-reviewed-or-namespace-conflict
+nether_sulfur_ore,706,Nether (10:1),10:1:3,deferred,not-yet-reviewed-or-namespace-conflict
+nether_tungsten_ore,707,Nether (10:1),10:1:4,deferred,not-yet-reviewed-or-namespace-conflict
+netherrack,249,Stone & Ground (00:0),00:0:14,deferred,not-yet-reviewed-or-namespace-conflict
+neutronium_ingot,422,Rare / Endgame (0110:3),0110:3:4,deferred,not-yet-reviewed-or-namespace-conflict
+nightvision_goggles,787,Armor & Wearable (110:3) — stack 1,110:3:16,deferred,not-yet-reviewed-or-namespace-conflict
+nitric_acid_bucket,581,Fluid Containers (011111:0) — stack 16,011111:0:7,deferred,not-yet-reviewed-or-namespace-conflict
+nitrogen,635,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:5,deferred,not-yet-reviewed-or-namespace-conflict
+nitrogen_bucket,579,Fluid Containers (011111:0) — stack 16,011111:0:5,deferred,not-yet-reviewed-or-namespace-conflict
+note_block,371,Wooden Containers & Utility (010:4),010:4:8,deferred,not-yet-reviewed-or-namespace-conflict
+nuclear_reactor,162;874,Generation (1110:01:* — currently 0-2),1110:100:9,deferred,not-yet-reviewed-or-namespace-conflict
+oak_boat,367,Wooden Containers & Utility (010:4),010:4:4,deferred,not-yet-reviewed-or-namespace-conflict
+oak_sign,366,Wooden Containers & Utility (010:4),010:4:3,deferred,not-yet-reviewed-or-namespace-conflict
+oak_wood,326,Raw Wood (010:0),010:0:9,deferred,not-yet-reviewed-or-namespace-conflict
+oil,640,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:10,deferred,not-yet-reviewed-or-namespace-conflict
+oil_sand,692,Overworld (10:0),10:0:26,deferred,not-yet-reviewed-or-namespace-conflict
+oil_shale,601,Fuels & Basic Resources (011111:1) — stack 64,011111:1:5,deferred,not-yet-reviewed-or-namespace-conflict
+olivine,514,Gems & Crystals (01110:5),0:1110:101:4,deferred,not-yet-reviewed-or-namespace-conflict
+opal,515,Gems & Crystals (01110:5),0:1110:101:5,deferred,not-yet-reviewed-or-namespace-conflict
+optical_circuit,126,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+output_bus_hv,922,Multi-block Parts & Casings (1110:11:40+),1110:111:55,deferred,not-yet-reviewed-or-namespace-conflict
+output_bus_lv,920,Multi-block Parts & Casings (1110:11:40+),1110:111:53,deferred,not-yet-reviewed-or-namespace-conflict
+output_bus_mv,921,Multi-block Parts & Casings (1110:11:40+),1110:111:54,deferred,not-yet-reviewed-or-namespace-conflict
+output_hatch_hv,928,Multi-block Parts & Casings (1110:11:40+),1110:111:61,deferred,not-yet-reviewed-or-namespace-conflict
+output_hatch_lv,926,Multi-block Parts & Casings (1110:11:40+),1110:111:59,deferred,not-yet-reviewed-or-namespace-conflict
+output_hatch_mv,927,Multi-block Parts & Casings (1110:11:40+),1110:111:60,deferred,not-yet-reviewed-or-namespace-conflict
+oxygen_bucket,578,Fluid Containers (011111:0) — stack 16,011111:0:4,deferred,not-yet-reviewed-or-namespace-conflict
+oxygen_gear,764,Space Equipment (110:2),110:2:5,deferred,not-yet-reviewed-or-namespace-conflict
+oxygen_mask,763,Space Equipment (110:2),110:2:4,deferred,not-yet-reviewed-or-namespace-conflict
+oxygen_tank_heavy,767,Space Equipment (110:2),110:2:8,deferred,not-yet-reviewed-or-namespace-conflict
+oxygen_tank_light,765,Space Equipment (110:2),110:2:6,deferred,not-yet-reviewed-or-namespace-conflict
+oxygen_tank_medium,766,Space Equipment (110:2),110:2:7,deferred,not-yet-reviewed-or-namespace-conflict
+packager_lv,859,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:35,deferred,not-yet-reviewed-or-namespace-conflict
+packed_ice,301,Manufactured Building (00:2),00:2:21,deferred,not-yet-reviewed-or-namespace-conflict
+palladium_ingot,115;401,Ingots (prefix 0:110:*),0110:1:5,deferred,not-yet-reviewed-or-namespace-conflict
+parachute,768,Space Equipment (110:2),110:2:9,deferred,not-yet-reviewed-or-namespace-conflict
+peat,600,Fuels & Basic Resources (011111:1) — stack 64,011111:1:4,deferred,not-yet-reviewed-or-namespace-conflict
+phenolic_board,127,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+piston,129,Mechanical components (need new sub-prefix),,deferred,requires-new-namespace
+piston_hv,1050,Components & Circuits (1111:11) — stack 64,1111:11:28,deferred,not-yet-reviewed-or-namespace-conflict
+piston_lv,1048,Components & Circuits (1111:11) — stack 64,1111:11:26,deferred,not-yet-reviewed-or-namespace-conflict
+piston_mv,1049,Components & Circuits (1111:11) — stack 64,1111:11:27,deferred,not-yet-reviewed-or-namespace-conflict
+placeholders,155,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+planks,112,More wood types (prefix 0:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+plasma_generator,875,"Generation, Storage, Transformers (1110:11)",1110:100:10,deferred,not-yet-reviewed-or-namespace-conflict
+plastic,134;646,Processed materials,011111:3:16,deferred,not-yet-reviewed-or-namespace-conflict
+plastic_circuit_board,127,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+plastic_ingot,426,Non-metals (0110:4),0110:4:1,deferred,not-yet-reviewed-or-namespace-conflict
+pliers,173,"More drill tiers (EV, IV, LuV, ZPM, UV)",,deferred,not-yet-reviewed-or-namespace-conflict
+podzol,244,Stone & Ground (00:0),00:0:9,deferred,not-yet-reviewed-or-namespace-conflict
+polarizer_lv,860,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:36,deferred,not-yet-reviewed-or-namespace-conflict
+pressure_plate,113,More wood types (prefix 0:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+prismarine,295,Manufactured Building (00:2),00:2:15,deferred,not-yet-reviewed-or-namespace-conflict
+prismarine_bricks,296,Manufactured Building (00:2),00:2:16,deferred,not-yet-reviewed-or-namespace-conflict
+propane,637,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:7,deferred,not-yet-reviewed-or-namespace-conflict
+prospector,568,Utility (011110:3),011110:3:2,deferred,not-yet-reviewed-or-namespace-conflict
+pump_ev,1047,Components & Circuits (1111:11) — stack 64,1111:11:25,deferred,not-yet-reviewed-or-namespace-conflict
+pump_hv,1046,Components & Circuits (1111:11) — stack 64,1111:11:24,deferred,not-yet-reviewed-or-namespace-conflict
+pump_lv,1044,Components & Circuits (1111:11) — stack 64,1111:11:22,deferred,not-yet-reviewed-or-namespace-conflict
+pump_mv,1045,Components & Circuits (1111:11) — stack 64,1111:11:23,deferred,not-yet-reviewed-or-namespace-conflict
+pumpkin,310,Decorative / Misc Terrain (00:3),00:3:5,deferred,not-yet-reviewed-or-namespace-conflict
+purified_copper_dust,466,Dusts (01110:1),0:1110:001:13,deferred,not-yet-reviewed-or-namespace-conflict
+pyrite_ore,695,Overworld (10:0),10:0:29,deferred,not-yet-reviewed-or-namespace-conflict
+quantum_chestplate,784,Armor & Wearable (110:3) — stack 1,110:3:13,deferred,not-yet-reviewed-or-namespace-conflict
+quantum_circuit,125,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+quantum_helmet,783,Armor & Wearable (110:3) — stack 1,110:3:12,deferred,not-yet-reviewed-or-namespace-conflict
+quartz_block,292,Manufactured Building (00:2),00:2:12,deferred,not-yet-reviewed-or-namespace-conflict
+quartz_crystal,517,Gems & Crystals (01110:5),0:1110:101:7,deferred,not-yet-reviewed-or-namespace-conflict
+quartz_dust,121,Dusts (prefix 0:1110:1:0:*),,deferred,not-yet-reviewed-or-namespace-conflict
+quartz_sand,468,Dusts (01110:1),0:1110:001:15,deferred,not-yet-reviewed-or-namespace-conflict
+quartz_slab,293,Manufactured Building (00:2),00:2:13,deferred,not-yet-reviewed-or-namespace-conflict
+quartz_stairs,294,Manufactured Building (00:2),00:2:14,deferred,not-yet-reviewed-or-namespace-conflict
+quest_book,791,Quest / Special (110:4),110:4:0,deferred,not-yet-reviewed-or-namespace-conflict
+recycler,156,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+red_sand,240,Stone & Ground (00:0),00:0:5,deferred,not-yet-reviewed-or-namespace-conflict
+red_sandstone,252,Stone & Ground (00:0),00:0:17,deferred,not-yet-reviewed-or-namespace-conflict
+reinforced_stone,110,Terrain blocks (prefix 0:0:*),,deferred,not-yet-reviewed-or-namespace-conflict
+resistor,1076,Components & Circuits (1111:11) — stack 64,1111:11:54,deferred,not-yet-reviewed-or-namespace-conflict
+restricter_pipe,181,Pipes (prefix 1111:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+restrictive_fluid_pipe,1014,Pipes (1111:10) — stack 64,1111:10:12,deferred,not-yet-reviewed-or-namespace-conflict
+restrictive_item_pipe,1013,Pipes (1111:10) — stack 64,1111:10:11,deferred,not-yet-reviewed-or-namespace-conflict
+ring,136,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+robot_arm,130,Mechanical components (need new sub-prefix),,deferred,requires-new-namespace
+robot_arm_hv,1056,Components & Circuits (1111:11) — stack 64,1111:11:34,deferred,not-yet-reviewed-or-namespace-conflict
+robot_arm_lv,1054,Components & Circuits (1111:11) — stack 64,1111:11:32,deferred,not-yet-reviewed-or-namespace-conflict
+robot_arm_mv,1055,Components & Circuits (1111:11) — stack 64,1111:11:33,deferred,not-yet-reviewed-or-namespace-conflict
+rocket_chest,749,Rocket Parts (110:1),110:1:3,deferred,not-yet-reviewed-or-namespace-conflict
+rocket_control_computer,756,Rocket Parts (110:1),110:1:10,deferred,not-yet-reviewed-or-namespace-conflict
+rocket_engine,747,Rocket Parts (110:1),110:1:1,deferred,not-yet-reviewed-or-namespace-conflict
+rocket_fins,746,Rocket Parts (110:1),110:1:0,deferred,not-yet-reviewed-or-namespace-conflict
+rocket_nose_cone,748,Rocket Parts (110:1),110:1:2,deferred,not-yet-reviewed-or-namespace-conflict
+rotare_motor,804,Heat & Rotare Processing (1110:00),1110:000:5,deferred,not-yet-reviewed-or-namespace-conflict
+rotare_pump,806,Heat & Rotare Processing (1110:00),1110:000:7,deferred,not-yet-reviewed-or-namespace-conflict
+rotare_transmission,805,Heat & Rotare Processing (1110:00),1110:000:6,deferred,not-yet-reviewed-or-namespace-conflict
+rotor,136,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+rubber,134;202,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+rubber_liquid,647,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:17,deferred,not-yet-reviewed-or-namespace-conflict
+ruby,512,Gems & Crystals (01110:5),0:1110:101:2,deferred,not-yet-reviewed-or-namespace-conflict
+salt_ore,691,Overworld (10:0),10:0:25,deferred,not-yet-reviewed-or-namespace-conflict
+sapphire,513,Gems & Crystals (01110:5),0:1110:101:3,deferred,not-yet-reviewed-or-namespace-conflict
+scanner,794,Quest / Special (110:4),110:4:3,deferred,not-yet-reviewed-or-namespace-conflict
+screw,136,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+screwdriver_electric,968,Electric Tools (1111:00) — stack 1,1111:00:15,deferred,not-yet-reviewed-or-namespace-conflict
+scythe,173,"More drill tiers (EV, IV, LuV, ZPM, UV)",,deferred,not-yet-reviewed-or-namespace-conflict
+sea_lantern,298,Manufactured Building (00:2),00:2:18,deferred,not-yet-reviewed-or-namespace-conflict
+sensor,131,Mechanical components (need new sub-prefix),,deferred,requires-new-namespace
+sensor_hv,1059,Components & Circuits (1111:11) — stack 64,1111:11:37,deferred,not-yet-reviewed-or-namespace-conflict
+sensor_lv,1057,Components & Circuits (1111:11) — stack 64,1111:11:35,deferred,not-yet-reviewed-or-namespace-conflict
+sensor_mv,1058,Components & Circuits (1111:11) — stack 64,1111:11:36,deferred,not-yet-reviewed-or-namespace-conflict
+sifter,156,"Processing (1110:00:* — currently 0-7, room for 1024)",,deferred,not-yet-reviewed-or-namespace-conflict
+sifter_lv,854,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:30,deferred,not-yet-reviewed-or-namespace-conflict
+silicon,134,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+silicone_ingot,427,Non-metals (0110:4),0110:4:2,deferred,not-yet-reviewed-or-namespace-conflict
+slabs,112,More wood types (prefix 0:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+small_copper_dust,463,Dusts (01110:1),0:1110:001:10,deferred,not-yet-reviewed-or-namespace-conflict
+small_fluid_pipe,1016,Pipes (1111:10) — stack 64,1111:10:14,deferred,not-yet-reviewed-or-namespace-conflict
+small_iron_dust,462,Dusts (01110:1),0:1110:001:9,deferred,not-yet-reviewed-or-namespace-conflict
+small_steel_gear,487,Gears / Rings / Foils / Springs / Rotors (01110:3),0:1110:011:2,deferred,not-yet-reviewed-or-namespace-conflict
+smithing_table,376,Wooden Containers & Utility (010:4),010:4:13,deferred,not-yet-reviewed-or-namespace-conflict
+snow_block,302,Manufactured Building (00:2),00:2:22,deferred,not-yet-reviewed-or-namespace-conflict
+sodium_persulfate,661,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:31,deferred,not-yet-reviewed-or-namespace-conflict
+solar_panel,131;161,Mechanical components (need new sub-prefix),,deferred,requires-new-namespace
+solar_panel_hv,879,"Generation, Storage, Transformers (1110:11)",1110:100:14,deferred,not-yet-reviewed-or-namespace-conflict
+solar_panel_lv,877,"Generation, Storage, Transformers (1110:11)",1110:100:12,deferred,not-yet-reviewed-or-namespace-conflict
+solar_panel_mv,878,"Generation, Storage, Transformers (1110:11)",1110:100:13,deferred,not-yet-reviewed-or-namespace-conflict
+soldering_iron,554,Crafting Helpers (011110:2),011110:2:7,deferred,not-yet-reviewed-or-namespace-conflict
+soldering_iron_electric,969,Electric Tools (1111:00) — stack 1,1111:00:16,deferred,not-yet-reviewed-or-namespace-conflict
+space_boots,762,Space Equipment (110:2),110:2:3,deferred,not-yet-reviewed-or-namespace-conflict
+space_chestplate,760,Space Equipment (110:2),110:2:1,deferred,not-yet-reviewed-or-namespace-conflict
+space_helmet,759,Space Equipment (110:2),110:2:0,deferred,not-yet-reviewed-or-namespace-conflict
+space_leggings,761,Space Equipment (110:2),110:2:2,deferred,not-yet-reviewed-or-namespace-conflict
+space_stone,741,Space Blocks (110:0),110:0:3,deferred,not-yet-reviewed-or-namespace-conflict
+sphalerite_ore,697,Overworld (10:0),10:0:31,deferred,not-yet-reviewed-or-namespace-conflict
+sponge,305,Decorative / Misc Terrain (00:3),00:3:0,deferred,not-yet-reviewed-or-namespace-conflict
+spring,136,Processed materials,,deferred,not-yet-reviewed-or-namespace-conflict
+spruce_fence_gate,349,Slabs / Stairs / Fences (010:2),010:2:10,deferred,not-yet-reviewed-or-namespace-conflict
+spruce_trapdoor,357,Doors / Trapdoors / Mechanisms (010:3),010:3:4,deferred,not-yet-reviewed-or-namespace-conflict
+spruce_wood,327,Raw Wood (010:0),010:0:10,deferred,not-yet-reviewed-or-namespace-conflict
+steam_alloy_smelter,816,Steam Processing (1110:01),1110:001:7,deferred,not-yet-reviewed-or-namespace-conflict
+steam_bending_machine,820,Steam Processing (1110:01),1110:001:11,deferred,not-yet-reviewed-or-namespace-conflict
+steam_cell,592,Fluid Containers (011111:0) — stack 16,011111:0:18,deferred,not-yet-reviewed-or-namespace-conflict
+steam_fluid,631,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:1,deferred,not-yet-reviewed-or-namespace-conflict
+steam_furnace,815,Steam Processing (1110:01),1110:001:6,deferred,not-yet-reviewed-or-namespace-conflict
+steam_hammer,817,Steam Processing (1110:01),1110:001:8,deferred,not-yet-reviewed-or-namespace-conflict
+steam_lathe,818,Steam Processing (1110:01),1110:001:9,deferred,not-yet-reviewed-or-namespace-conflict
+steam_turbine,160;821,Generation (1110:01:* — currently 0-2),1110:001:12,deferred,not-yet-reviewed-or-namespace-conflict
+steam_turbine_hv,873,"Generation, Storage, Transformers (1110:11)",1110:100:8,deferred,not-yet-reviewed-or-namespace-conflict
+steam_turbine_lv,871,"Generation, Storage, Transformers (1110:11)",1110:100:6,deferred,not-yet-reviewed-or-namespace-conflict
+steam_turbine_mv,872,"Generation, Storage, Transformers (1110:11)",1110:100:7,deferred,not-yet-reviewed-or-namespace-conflict
+steam_wiremill,819,Steam Processing (1110:01),1110:001:10,deferred,not-yet-reviewed-or-namespace-conflict
+steel_bolt,480,Rods / Bolts / Screws (01110:2),0:1110:010:6,deferred,not-yet-reviewed-or-namespace-conflict
+steel_boots,778,Armor & Wearable (110:3) — stack 1,110:3:7,deferred,not-yet-reviewed-or-namespace-conflict
+steel_chestplate,776,Armor & Wearable (110:3) — stack 1,110:3:5,deferred,not-yet-reviewed-or-namespace-conflict
+steel_double_plate,450,Plates (01110:0),0:1110:000:15,deferred,not-yet-reviewed-or-namespace-conflict
+steel_helmet,775,Armor & Wearable (110:3) — stack 1,110:3:4,deferred,not-yet-reviewed-or-namespace-conflict
+steel_leggings,777,Armor & Wearable (110:3) — stack 1,110:3:6,deferred,not-yet-reviewed-or-namespace-conflict
+steel_pipe,180,Pipes (prefix 1111:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+steel_screw,482,Rods / Bolts / Screws (01110:2),0:1110:010:8,deferred,not-yet-reviewed-or-namespace-conflict
+stone_brick_slab,286,Manufactured Building (00:2),00:2:6,deferred,not-yet-reviewed-or-namespace-conflict
+stone_brick_stairs,287,Manufactured Building (00:2),00:2:7,deferred,not-yet-reviewed-or-namespace-conflict
+stone_dust,467,Dusts (01110:1),0:1110:001:14,deferred,not-yet-reviewed-or-namespace-conflict
+stripped_birch_log,325,Raw Wood (010:0),010:0:8,deferred,not-yet-reviewed-or-namespace-conflict
+stripped_oak_log,323,Raw Wood (010:0),010:0:6,deferred,not-yet-reviewed-or-namespace-conflict
+stripped_spruce_log,324,Raw Wood (010:0),010:0:7,deferred,not-yet-reviewed-or-namespace-conflict
+sulfur_dioxide,659,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:29,deferred,not-yet-reviewed-or-namespace-conflict
+sulfur_trioxide,660,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:30,deferred,not-yet-reviewed-or-namespace-conflict
+super_capacitor,166,Storage (1110:10:* — currently 0-3),,deferred,not-yet-reviewed-or-namespace-conflict
+terracotta,290,Manufactured Building (00:2),00:2:10,deferred,not-yet-reviewed-or-namespace-conflict
+thorium_ore,683,Overworld (10:0),10:0:17,deferred,not-yet-reviewed-or-namespace-conflict
+tiny_tin_dust,464,Dusts (01110:1),0:1110:001:11,deferred,not-yet-reviewed-or-namespace-conflict
+titanium_pipe,180,Pipes (prefix 1111:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+tnt,312,Decorative / Misc Terrain (00:3),00:3:7,deferred,not-yet-reviewed-or-namespace-conflict
+topaz,516,Gems & Crystals (01110:5),0:1110:101:6,deferred,not-yet-reviewed-or-namespace-conflict
+transformer_ev_iv,895,"Generation, Storage, Transformers (1110:11)",1110:110:30,deferred,not-yet-reviewed-or-namespace-conflict
+transformer_iv_luv,896,"Generation, Storage, Transformers (1110:11)",1110:110:31,deferred,not-yet-reviewed-or-namespace-conflict
+transformer_luv_zpm,897,"Generation, Storage, Transformers (1110:11)",1110:110:32,deferred,not-yet-reviewed-or-namespace-conflict
+transformer_zpm_uv,898,"Generation, Storage, Transformers (1110:11)",1110:110:33,deferred,not-yet-reviewed-or-namespace-conflict
+transistor,1074,Components & Circuits (1111:11) — stack 64,1111:11:52,deferred,not-yet-reviewed-or-namespace-conflict
+trapdoor,113,More wood types (prefix 0:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+tritanium_ingot,421,Rare / Endgame (0110:3),0110:3:3,deferred,not-yet-reviewed-or-namespace-conflict
+tungsten_wire_1x,504,Wires (01110:4),0:1110:100:6,deferred,not-yet-reviewed-or-namespace-conflict
+tungstensteel_gear,488,Gears / Rings / Foils / Springs / Rotors (01110:3),0:1110:011:3,deferred,not-yet-reviewed-or-namespace-conflict
+tungstensteel_rotor,495,Gears / Rings / Foils / Springs / Rotors (01110:3),0:1110:011:10,deferred,not-yet-reviewed-or-namespace-conflict
+type,180,Pipes (prefix 1111:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+vacuum_pipe,181,Pipes (prefix 1111:10:*),,deferred,not-yet-reviewed-or-namespace-conflict
+vacuum_tube,1073,Components & Circuits (1111:11) — stack 64,1111:11:51,deferred,not-yet-reviewed-or-namespace-conflict
+vine,276,Vegetation (00:1),00:1:16,deferred,not-yet-reviewed-or-namespace-conflict
+water_cell,591,Fluid Containers (011111:0) — stack 16,011111:0:17,deferred,not-yet-reviewed-or-namespace-conflict
+water_fluid,630,Fluids as Items / Chemicals (011111:3) — stack 64 (или 16 если вёдра),011111:3:0,deferred,not-yet-reviewed-or-namespace-conflict
+wet_sponge,306,Decorative / Misc Terrain (00:3),00:3:1,deferred,not-yet-reviewed-or-namespace-conflict
+wetware_circuit,126,Circuits (need new sub-prefix),,deferred,requires-new-namespace
+wind_turbine,161,Generation (1110:01:* — currently 0-2),,deferred,not-yet-reviewed-or-namespace-conflict
+wire_aluminium_1x,992,Cables & Wires (1111:01) — stack 64,1111:01:20,deferred,not-yet-reviewed-or-namespace-conflict
+wire_annealed_copper,132,Mechanical components (need new sub-prefix),,deferred,requires-new-namespace
+wire_copper_1x,988,Cables & Wires (1111:01) — stack 64,1111:01:16,deferred,not-yet-reviewed-or-namespace-conflict
+wire_copper_2x,989,Cables & Wires (1111:01) — stack 64,1111:01:17,deferred,not-yet-reviewed-or-namespace-conflict
+wire_copper_4x,990,Cables & Wires (1111:01) — stack 64,1111:01:18,deferred,not-yet-reviewed-or-namespace-conflict
+wire_gold_1x,991,Cables & Wires (1111:01) — stack 64,1111:01:19,deferred,not-yet-reviewed-or-namespace-conflict
+wire_superconductor_ev,997,Cables & Wires (1111:01) — stack 64,1111:01:25,deferred,not-yet-reviewed-or-namespace-conflict
+wire_superconductor_hv,996,Cables & Wires (1111:01) — stack 64,1111:01:24,deferred,not-yet-reviewed-or-namespace-conflict
+wire_superconductor_iv,998,Cables & Wires (1111:01) — stack 64,1111:01:26,deferred,not-yet-reviewed-or-namespace-conflict
+wire_superconductor_lv,994,Cables & Wires (1111:01) — stack 64,1111:01:22,deferred,not-yet-reviewed-or-namespace-conflict
+wire_superconductor_mv,995,Cables & Wires (1111:01) — stack 64,1111:01:23,deferred,not-yet-reviewed-or-namespace-conflict
+wire_tungsten_1x,993,Cables & Wires (1111:01) — stack 64,1111:01:21,deferred,not-yet-reviewed-or-namespace-conflict
+wiremill_lv,844,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:20,deferred,not-yet-reviewed-or-namespace-conflict
+wiremill_mv,845,Electric Processing (1110:10) — LV/MV/HV основные,1110:010:21,deferred,not-yet-reviewed-or-namespace-conflict
+wood_dust,469,Dusts (01110:1),0:1110:001:16,deferred,not-yet-reviewed-or-namespace-conflict
+wool,612,Fuels & Basic Resources (011111:1) — stack 64,011111:1:16,deferred,not-yet-reviewed-or-namespace-conflict

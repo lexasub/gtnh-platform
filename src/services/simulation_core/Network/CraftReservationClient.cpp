@@ -50,7 +50,7 @@ bool CraftReservationClient::beginReservation(entt::entity entity,
                                               std::uint64_t now_tick) {
     auto* progress = reg_.try_get<RecipeProgress>(entity);
     if (!progress || progress->pending_craft) return false;
-    if (!recipe.hasResourceRequirements()) return false;
+    if (!recipe.needsReservation()) return false;
 
     PendingCraft craft;
     craft.recipe_id = recipe.id;
@@ -88,6 +88,39 @@ bool CraftReservationClient::beginReservation(entt::entity entity,
             // Publish failure: leave request_id 0 so the next retry
             // re-requests this requirement instead of waiting for a
             // response that was never sent.
+            reservation.request_id = 0;
+        }
+        craft.requirements.push_back(reservation);
+        if (craft.request_id == 0) {
+            craft.request_id = reservation.request_id;
+        }
+    }
+
+    // Per-operation fluid inputs reserve their FULL volume up front (one-shot
+    // leg, not a per-tick charge). Same request/acceptance path as the
+    // per-tick requirements above.
+    for (const auto& fluid : recipe.fluid_inputs) {
+        ++requirement_index;
+        RequirementReservation reservation;
+        reservation.requirement_id = requirement_index;
+        reservation.kind = ResourceKind::FLUID;
+        reservation.resource_id = fluid.fluid_id;
+        reservation.required_amount = static_cast<std::int32_t>(fluid.amount_mb);
+        reservation.epoch = craft.epoch;
+
+        const std::int32_t amount = reservation.remainingAmount();
+        if (amount <= 0) {
+            craft.requirements.push_back(reservation);
+            continue;
+        }
+        const std::uint64_t request_id = mintRequestId();
+        reservation.request_id = request_id;
+        if (publishConsumeRequest(request_id, ResourceKind::FLUID,
+                                  fluid.fluid_id, amount)) {
+            outstanding_.emplace(request_id,
+                                 OutstandingRequest{entity, requirement_index, amount});
+            requested_any = true;
+        } else {
             reservation.request_id = 0;
         }
         craft.requirements.push_back(reservation);
