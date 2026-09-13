@@ -80,6 +80,16 @@ machine_classes:
           usage: 32
         multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
 
+      - block_id: "1110:010:4"
+        name: compressor_lv
+        energy_in: ELECTRICITY
+        tier: 0
+        slots: { input: 1, output: 1 }
+        energy:
+          capacity: 10000
+          usage: 32
+        multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
+
   # ── Alloy Smelter ───────────────────────────────────────
   - class: alloy_smelter
     variants:
@@ -122,6 +132,16 @@ machine_classes:
       - block_id: "1110:001:3"
         name: steam_mixer
         energy_in: STEAM
+        tier: 0
+        slots: { input: 2, output: 1 }
+        energy:
+          capacity: 10000
+          usage: 32
+        multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
+
+      - block_id: "1110:010:12"
+        name: mixer_lv
+        energy_in: ELECTRICITY
         tier: 0
         slots: { input: 2, output: 1 }
         energy:

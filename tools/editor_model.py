@@ -464,7 +464,7 @@ MIGRATION_POOLS: Tuple[Mapping[str, Any], ...] = (
                 "iron_plate", "lead_plate", "osmium_plate", "platinum_plate",
                 "silver_plate", "stainless_steel_plate", "steel_plate", "tin_plate",
                 "titanium_plate", "tungsten_plate", "tungstensteel_plate",
-                "zinc_plate", "wooden_pressure_plate",
+                "zinc_plate", "wooden_pressure_plate", "graphene", "carbon_fiber",
             )),
             ("base/processed/dusts", "0:1110:001", (
                 "tin_dust", "copper_dust", "bronze_dust", "iron_dust", "gold_dust",
@@ -504,6 +504,16 @@ MIGRATION_POOLS: Tuple[Mapping[str, Any], ...] = (
                 "chemical_reactor_lv", "compressor_lv", "electric_furnace_hv",
                 "electric_furnace_lv", "electric_furnace_mv", "electrolyzer_lv",
                 "extractor_lv", "extruder", "macerator_lv", "mixer_lv", "wiremill",
+                "forge_hammer_lv", "ore_washer_lv", "thermal_centrifuge_lv",
+                "assembling_machine_lv", "macerator_mv", "compressor_mv",
+                "extractor_mv", "mixer_mv", "alloy_smelter_mv", "assembling_machine_mv",
+                "assembling_machine_hv", "circuit_assembler", "precision_laser_welder",
+                "implosion_compressor", "vacuum_freezer", "industrial_smelter",
+                "industrial_grinder", "industrial_squeezer", "industrial_brewery",
+                "large_turbine", "multi_smelter", "cracker", "distillation_tower",
+                "chemical_plant", "pyrolyse_oven", "large_combustion_reactor",
+                "assembly_line", "extreme_combustion_reactor", "naquadah_reactor",
+                "coke_oven", "steam_turbine", "large_chemical_reactor", "advanced_database",
             )),
             ("machines/boilers-generation", "1110:011", (
                 "steam_solid_boiler", "steam_heat_boiler",
@@ -513,12 +523,18 @@ MIGRATION_POOLS: Tuple[Mapping[str, Any], ...] = (
             )),
             ("machines/storage", "1110:101", (
                 "battery_buffer_lv", "battery_buffer_mv", "battery_buffer_hv",
-                "charger", "fluid_tank",
+                "charger", "fluid_tank", "battery_buffer_ev", "battery_buffer_iv",
             )),
             ("machines/transformers", "1110:110", (
                 "transformer_mv_hv", "transformer_hv_ev", "transformer_lv_mv",
+                "transformer_ev_iv", "transformer_iv_luv",
             )),
-            ("machines/multiblock-parts-casings", "1110:111", ()),
+            ("machines/multiblock-parts-casings", "1110:111", (
+                "hull_lv", "hull_mv", "hull_hv", "hull_luv", "hull_zpm",
+                "hatch_input_lv", "hatch_output_lv", "hatch_bus_input_lv",
+                "hatch_bus_output_lv", "hatch_energy_input_lv", "hatch_maintenance",
+                "multi_volume_hatch",
+            )),
         ),
     },
 )

@@ -112,6 +112,12 @@ int,name,stack,meta
 0:110:25,tungstensteel_ingot,,0
 0:110:26,zinc_ingot,,0
 
+# base/ingots additions — quest category C endgame materials
+0:110:27,naquadah_ingot,,0
+0:110:28,naquadah_alloy_ingot,,0
+0:110:29,hss_e_ingot,,0
+0:110:30,neutronium_ingot,,0
+
 # base/processed — allocation pool 01110
 # base/processed/plates — allocation prefix 0:1110:000
 0:1110:000:0,bronze_plate,,0
@@ -135,6 +141,10 @@ int,name,stack,meta
 0:1110:000:18,tungstensteel_plate,,0
 0:1110:000:19,wooden_pressure_plate,,0
 0:1110:000:20,zinc_plate,,0
+
+# base/processed/plates additions — quest category C advanced materials
+0:1110:000:21,graphene,,0
+0:1110:000:22,carbon_fiber,,0
 # base/processed/dusts — allocation prefix 0:1110:001
 0:1110:001:0,aluminium_dust,,0
 0:1110:001:1,brass_dust,,0
@@ -286,10 +296,15 @@ int,name,stack,meta
 110:000:1,integrated_circuit_mv,64,0
 110:000:2,advanced_circuit_hv,64,0
 110:000:3,processor_circuit_ev,64,0
+# space/components-circuits/circuits additions — quest category C
+110:000:4,wetware_circuit_iv,64,0
+110:000:5,quantum_circuit_luv,64,0
 # space/components-circuits/boards — allocation prefix 110:001
 110:001:0,circuit_board_empty,64,0
 110:001:1,circuit_board_basic,64,0
 110:001:2,fiberglass,64,0
+# space/components-circuits/boards additions — quest category C
+110:001:3,pcb,64,0
 # space/components-circuits/mechanical — allocation prefix 110:010
 110:010:0,conveyor_module,64,0
 110:010:1,electric_motor,64,0
@@ -351,6 +366,40 @@ int,name,stack,meta
 1110:010:11,macerator_lv,1,0
 1110:010:12,mixer_lv,1,0
 1110:010:13,wiremill,1,0
+# machines/electric-processing additions — quest category C machines (LV/MV/HV + multiblock machines)
+1110:010:14,forge_hammer_lv,1,0
+1110:010:15,ore_washer_lv,1,0
+1110:010:16,thermal_centrifuge_lv,1,0
+1110:010:17,assembling_machine_lv,1,0
+1110:010:18,macerator_mv,1,0
+1110:010:19,compressor_mv,1,0
+1110:010:20,extractor_mv,1,0
+1110:010:21,mixer_mv,1,0
+1110:010:22,alloy_smelter_mv,1,0
+1110:010:23,assembling_machine_mv,1,0
+1110:010:24,assembling_machine_hv,1,0
+1110:010:25,circuit_assembler,1,0
+1110:010:26,precision_laser_welder,1,0
+1110:010:27,implosion_compressor,1,0
+1110:010:28,vacuum_freezer,1,0
+1110:010:29,industrial_smelter,1,0
+1110:010:30,industrial_grinder,1,0
+1110:010:31,industrial_squeezer,1,0
+1110:010:32,industrial_brewery,1,0
+1110:010:33,large_turbine,1,0
+1110:010:34,multi_smelter,1,0
+1110:010:35,cracker,1,0
+1110:010:36,distillation_tower,1,0
+1110:010:37,chemical_plant,1,0
+1110:010:38,pyrolyse_oven,1,0
+1110:010:39,large_combustion_reactor,1,0
+1110:010:40,assembly_line,1,0
+1110:010:41,extreme_combustion_reactor,1,0
+1110:010:42,naquadah_reactor,1,0
+1110:010:43,coke_oven,1,0
+1110:010:44,steam_turbine,1,0
+1110:010:45,large_chemical_reactor,1,0
+1110:010:46,advanced_database,1,0
 # machines/boilers-generation — allocation prefix 1110:011
 1110:011:0,steam_solid_boiler,,0
 1110:011:1,steam_heat_boiler,,0
@@ -363,11 +412,30 @@ int,name,stack,meta
 1110:101:2,battery_buffer_hv,,0
 1110:101:3,charger,,0
 1110:101:4,fluid_tank,,0
+# machines/storage additions — quest category C battery buffers
+1110:101:5,battery_buffer_ev,,0
+1110:101:6,battery_buffer_iv,,0
 # machines/transformers — allocation prefix 1110:110
 1110:110:0,transformer_mv_hv,,0
 1110:110:1,transformer_hv_ev,,0
 1110:110:2,transformer_lv_mv,,0
-# machines/multiblock-parts-casings — allocation prefix 1110:111 (reserved, empty)
+# machines/transformers additions — quest category C
+1110:110:3,transformer_ev_iv,,0
+1110:110:4,transformer_iv_luv,,0
+# machines/multiblock-parts-casings — allocation prefix 1110:111
+# machines/multiblock-parts-casings additions — quest category C hulls and hatches
+1110:111:0,hull_lv,,0
+1110:111:1,hull_mv,,0
+1110:111:2,hull_hv,,0
+1110:111:3,hull_luv,,0
+1110:111:4,hull_zpm,,0
+1110:111:10,hatch_input_lv,,0
+1110:111:11,hatch_output_lv,,0
+1110:111:12,hatch_bus_input_lv,,0
+1110:111:13,hatch_bus_output_lv,,0
+1110:111:14,hatch_energy_input_lv,,0
+1110:111:15,hatch_maintenance,,0
+1110:111:16,multi_volume_hatch,,0
 
 # infra — allocation pool 1111
 # infra/electric-tools — legacy allocation anchor 111100
@@ -384,6 +452,11 @@ int,name,stack,meta
 1111:00:10,wire_cutter,1,0
 1111:00:11,crowbar,1,0
 1111:00:12,soft_mallet,1,0
+# infra/electric-tools additions — quest category C
+1111:00:13,chainsaw_mv,1,0
+1111:00:14,chainsaw_hv,1,0
+1111:00:15,jackhammer,1,0
+1111:00:16,electric_soldering_iron,1,0
 # infra/cables-wires — legacy allocation anchor 111101
 1111:01:0,cable_tin,,0
 1111:01:1,cable_copper,,0

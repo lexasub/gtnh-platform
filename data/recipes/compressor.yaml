@@ -4,7 +4,8 @@ class: compressor
 recipes:
 
   - name: gtnh:compress_bronze
-    energy_in: STEAM
+  - name: gtnh:compress_bronze_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: bronze_ingot, count: 1 }
     outputs:
@@ -14,11 +15,12 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   # ── All metal plates (1 ingot → 1 plate) ─────────────────
   - name: gtnh:compress_iron
-    energy_in: STEAM
+  - name: gtnh:compress_iron_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: iron_ingot, count: 1 }
     outputs:
@@ -28,10 +30,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_copper
-    energy_in: STEAM
+  - name: gtnh:compress_copper_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: copper_ingot, count: 1 }
     outputs:
@@ -41,10 +44,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_tin
-    energy_in: STEAM
+  - name: gtnh:compress_tin_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: tin_ingot, count: 1 }
     outputs:
@@ -54,10 +58,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_gold
-    energy_in: STEAM
+  - name: gtnh:compress_gold_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: gold_ingot, count: 1 }
     outputs:
@@ -67,10 +72,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_lead
-    energy_in: STEAM
+  - name: gtnh:compress_lead_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: lead_ingot, count: 1 }
     outputs:
@@ -80,10 +86,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_silver
-    energy_in: STEAM
+  - name: gtnh:compress_silver_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: silver_ingot, count: 1 }
     outputs:
@@ -93,10 +100,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_steel
-    energy_in: STEAM
+  - name: gtnh:compress_steel_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: steel_ingot, count: 1 }
     outputs:
@@ -106,10 +114,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_aluminium
-    energy_in: STEAM
+  - name: gtnh:compress_aluminium_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: aluminium_ingot, count: 1 }
     outputs:
@@ -119,10 +128,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_titanium
-    energy_in: STEAM
+  - name: gtnh:compress_titanium_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: titanium_ingot, count: 1 }
     outputs:
@@ -132,10 +142,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_tungsten
-    energy_in: STEAM
+  - name: gtnh:compress_tungsten_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: tungsten_ingot, count: 1 }
     outputs:
@@ -145,10 +156,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_tungstensteel
-    energy_in: STEAM
+  - name: gtnh:compress_tungstensteel_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: tungstensteel_ingot, count: 1 }
     outputs:
@@ -158,10 +170,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_chromium
-    energy_in: STEAM
+  - name: gtnh:compress_chromium_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: chromium_ingot, count: 1 }
     outputs:
@@ -171,10 +184,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_platinum
-    energy_in: STEAM
+  - name: gtnh:compress_platinum_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: platinum_ingot, count: 1 }
     outputs:
@@ -184,10 +198,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_iridium
-    energy_in: STEAM
+  - name: gtnh:compress_iridium_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: iridium_ingot, count: 1 }
     outputs:
@@ -197,10 +212,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_osmium
-    energy_in: STEAM
+  - name: gtnh:compress_osmium_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: osmium_ingot, count: 1 }
     outputs:
@@ -210,10 +226,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_brass
-    energy_in: STEAM
+  - name: gtnh:compress_brass_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: brass_ingot, count: 1 }
     outputs:
@@ -223,10 +240,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_invar
-    energy_in: STEAM
+  - name: gtnh:compress_invar_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: invar_ingot, count: 1 }
     outputs:
@@ -236,10 +254,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:compress_stainless_steel
-    energy_in: STEAM
+  - name: gtnh:compress_stainless_steel_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: stainless_steel_ingot, count: 1 }
     outputs:
@@ -249,4 +268,4 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }

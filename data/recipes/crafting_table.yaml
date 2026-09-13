@@ -1741,3 +1741,778 @@ recipes:
     duration: 200
     min_tier: 0
     max_tier: 32767
+
+# New 62 Category-C item recipes (quests Q44-Q163)
+
+  - name: forge_hammer_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, hammer, cable_copper]
+      - [iron_plate, circuit_board_basic, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 8 }
+      - { item: cable_copper, count: 2 }
+      - { item: hammer, count: 1 }
+      - { item: circuit_board_basic, count: 1 }
+    outputs:
+      - { item: forge_hammer_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: ore_washer_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, steam_mixer, cable_copper]
+      - [iron_plate, circuit_board_basic, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 8 }
+      - { item: cable_copper, count: 2 }
+      - { item: steam_mixer, count: 1 }
+      - { item: circuit_board_basic, count: 1 }
+    outputs:
+      - { item: ore_washer_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: thermal_centrifuge_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, heat_furnace, cable_copper]
+      - [iron_plate, circuit_board_basic, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 8 }
+      - { item: cable_copper, count: 2 }
+      - { item: heat_furnace, count: 1 }
+      - { item: circuit_board_basic, count: 1 }
+    outputs:
+      - { item: thermal_centrifuge_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: assembling_machine_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, crafting_table, cable_copper]
+      - [iron_plate, circuit_board_basic, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 8 }
+      - { item: cable_copper, count: 2 }
+      - { item: crafting_table, count: 1 }
+      - { item: circuit_board_basic, count: 1 }
+    outputs:
+      - { item: assembling_machine_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: macerator_mv
+    pattern:
+      - [steel_plate, steel_plate, steel_plate]
+      - [cable_gold, macerator_lv, cable_gold]
+      - [steel_plate, steel_plate, steel_plate]
+    inputs:
+      - { item: steel_plate, count: 8 }
+      - { item: cable_gold, count: 2 }
+      - { item: macerator_lv, count: 1 }
+    outputs:
+      - { item: macerator_mv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: compressor_mv
+    pattern:
+      - [steel_plate, steel_plate, steel_plate]
+      - [cable_gold, compressor_lv, cable_gold]
+      - [steel_plate, steel_plate, steel_plate]
+    inputs:
+      - { item: steel_plate, count: 8 }
+      - { item: cable_gold, count: 2 }
+      - { item: compressor_lv, count: 1 }
+    outputs:
+      - { item: compressor_mv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: extractor_mv
+    pattern:
+      - [steel_plate, steel_plate, steel_plate]
+      - [cable_gold, extractor_lv, cable_gold]
+      - [steel_plate, steel_plate, steel_plate]
+    inputs:
+      - { item: steel_plate, count: 8 }
+      - { item: cable_gold, count: 2 }
+      - { item: extractor_lv, count: 1 }
+    outputs:
+      - { item: extractor_mv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: mixer_mv
+    pattern:
+      - [steel_plate, steel_plate, steel_plate]
+      - [cable_gold, mixer_lv, cable_gold]
+      - [steel_plate, steel_plate, steel_plate]
+    inputs:
+      - { item: steel_plate, count: 8 }
+      - { item: cable_gold, count: 2 }
+      - { item: mixer_lv, count: 1 }
+    outputs:
+      - { item: mixer_mv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: alloy_smelter_mv
+    pattern:
+      - [steel_plate, steel_plate, steel_plate]
+      - [cable_gold, alloy_smelter_lv, cable_gold]
+      - [steel_plate, steel_plate, steel_plate]
+    inputs:
+      - { item: steel_plate, count: 8 }
+      - { item: cable_gold, count: 2 }
+      - { item: alloy_smelter_lv, count: 1 }
+    outputs:
+      - { item: alloy_smelter_mv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: assembling_machine_mv
+    pattern:
+      - [steel_plate, steel_plate, steel_plate]
+      - [cable_gold, assembling_machine_lv, cable_gold]
+      - [steel_plate, steel_plate, steel_plate]
+    inputs:
+      - { item: steel_plate, count: 8 }
+      - { item: cable_gold, count: 2 }
+      - { item: assembling_machine_lv, count: 1 }
+    outputs:
+      - { item: assembling_machine_mv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: assembling_machine_hv
+    pattern:
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+      - [cable_aluminium, assembling_machine_mv, cable_aluminium]
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+    inputs:
+      - { item: aluminium_plate, count: 8 }
+      - { item: cable_aluminium, count: 2 }
+      - { item: assembling_machine_mv, count: 1 }
+    outputs:
+      - { item: assembling_machine_hv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: circuit_assembler
+    pattern:
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+      - [cable_aluminium, assembling_machine_lv, cable_aluminium]
+      - [aluminium_plate, integrated_circuit_mv, aluminium_plate]
+    inputs:
+      - { item: aluminium_plate, count: 8 }
+      - { item: cable_aluminium, count: 2 }
+      - { item: assembling_machine_lv, count: 1 }
+      - { item: integrated_circuit_mv, count: 1 }
+    outputs:
+      - { item: circuit_assembler, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: precision_laser_welder
+    pattern:
+      - [titanium_plate, titanium_plate, titanium_plate]
+      - [cable_platinum, circuit_assembler, cable_platinum]
+      - [titanium_plate, advanced_circuit_hv, titanium_plate]
+    inputs:
+      - { item: titanium_plate, count: 8 }
+      - { item: cable_platinum, count: 2 }
+      - { item: circuit_assembler, count: 1 }
+      - { item: advanced_circuit_hv, count: 1 }
+    outputs:
+      - { item: precision_laser_welder, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: implosion_compressor
+    pattern:
+      - [steel_plate, steel_plate, steel_plate]
+      - [cable_gold, compressor_mv, cable_gold]
+      - [steel_plate, advanced_circuit_hv, steel_plate]
+    inputs:
+      - { item: steel_plate, count: 8 }
+      - { item: cable_gold, count: 2 }
+      - { item: compressor_mv, count: 1 }
+      - { item: advanced_circuit_hv, count: 1 }
+    outputs:
+      - { item: implosion_compressor, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: vacuum_freezer
+    pattern:
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+      - [cable_aluminium, compressor_mv, cable_aluminium]
+      - [aluminium_plate, integrated_circuit_mv, aluminium_plate]
+    inputs:
+      - { item: aluminium_plate, count: 8 }
+      - { item: cable_aluminium, count: 2 }
+      - { item: compressor_mv, count: 1 }
+      - { item: integrated_circuit_mv, count: 1 }
+    outputs:
+      - { item: vacuum_freezer, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: industrial_smelter
+    pattern:
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+      - [cable_aluminium, electric_furnace_mv, cable_aluminium]
+      - [aluminium_plate, advanced_circuit_hv, aluminium_plate]
+    inputs:
+      - { item: aluminium_plate, count: 8 }
+      - { item: cable_aluminium, count: 2 }
+      - { item: electric_furnace_mv, count: 1 }
+      - { item: advanced_circuit_hv, count: 1 }
+    outputs:
+      - { item: industrial_smelter, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: industrial_grinder
+    pattern:
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+      - [cable_aluminium, macerator_mv, cable_aluminium]
+      - [aluminium_plate, advanced_circuit_hv, aluminium_plate]
+    inputs:
+      - { item: aluminium_plate, count: 8 }
+      - { item: cable_aluminium, count: 2 }
+      - { item: macerator_mv, count: 1 }
+      - { item: advanced_circuit_hv, count: 1 }
+    outputs:
+      - { item: industrial_grinder, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: industrial_squeezer
+    pattern:
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+      - [cable_aluminium, extractor_mv, cable_aluminium]
+      - [aluminium_plate, advanced_circuit_hv, aluminium_plate]
+    inputs:
+      - { item: aluminium_plate, count: 8 }
+      - { item: cable_aluminium, count: 2 }
+      - { item: extractor_mv, count: 1 }
+      - { item: advanced_circuit_hv, count: 1 }
+    outputs:
+      - { item: industrial_squeezer, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: industrial_brewery
+    pattern:
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+      - [cable_aluminium, mixer_mv, cable_aluminium]
+      - [aluminium_plate, advanced_circuit_hv, aluminium_plate]
+    inputs:
+      - { item: aluminium_plate, count: 8 }
+      - { item: cable_aluminium, count: 2 }
+      - { item: mixer_mv, count: 1 }
+      - { item: advanced_circuit_hv, count: 1 }
+    outputs:
+      - { item: industrial_brewery, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: large_turbine
+    pattern:
+      - [titanium_plate, titanium_plate, titanium_plate]
+      - [cable_tungsten, steam_turbine, cable_tungsten]
+      - [titanium_plate, advanced_circuit_hv, titanium_plate]
+    inputs:
+      - { item: titanium_plate, count: 8 }
+      - { item: cable_tungsten, count: 2 }
+      - { item: steam_turbine, count: 1 }
+      - { item: advanced_circuit_hv, count: 1 }
+    outputs:
+      - { item: large_turbine, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: multi_smelter
+    pattern:
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+      - [cable_aluminium, electric_furnace_hv, cable_aluminium]
+      - [aluminium_plate, advanced_circuit_hv, aluminium_plate]
+    inputs:
+      - { item: aluminium_plate, count: 8 }
+      - { item: cable_aluminium, count: 2 }
+      - { item: electric_furnace_hv, count: 1 }
+      - { item: advanced_circuit_hv, count: 1 }
+    outputs:
+      - { item: multi_smelter, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: cracker
+    pattern:
+      - [titanium_plate, titanium_plate, titanium_plate]
+      - [cable_platinum, extractor_mv, cable_platinum]
+      - [titanium_plate, processor_circuit_ev, titanium_plate]
+    inputs:
+      - { item: titanium_plate, count: 8 }
+      - { item: cable_platinum, count: 2 }
+      - { item: extractor_mv, count: 1 }
+      - { item: processor_circuit_ev, count: 1 }
+    outputs:
+      - { item: cracker, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: distillation_tower
+    pattern:
+      - [titanium_plate, titanium_plate, titanium_plate]
+      - [cable_platinum, fluid_tank, cable_platinum]
+      - [titanium_plate, processor_circuit_ev, titanium_plate]
+    inputs:
+      - { item: titanium_plate, count: 8 }
+      - { item: cable_platinum, count: 2 }
+      - { item: fluid_tank, count: 1 }
+      - { item: processor_circuit_ev, count: 1 }
+    outputs:
+      - { item: distillation_tower, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: chemical_plant
+    pattern:
+      - [titanium_plate, titanium_plate, titanium_plate]
+      - [cable_platinum, mixer_mv, cable_platinum]
+      - [titanium_plate, processor_circuit_ev, titanium_plate]
+    inputs:
+      - { item: titanium_plate, count: 8 }
+      - { item: cable_platinum, count: 2 }
+      - { item: mixer_mv, count: 1 }
+      - { item: processor_circuit_ev, count: 1 }
+    outputs:
+      - { item: chemical_plant, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: pyrolyse_oven
+    pattern:
+      - [titanium_plate, titanium_plate, titanium_plate]
+      - [cable_platinum, heat_furnace, cable_platinum]
+      - [titanium_plate, processor_circuit_ev, titanium_plate]
+    inputs:
+      - { item: titanium_plate, count: 8 }
+      - { item: cable_platinum, count: 2 }
+      - { item: heat_furnace, count: 1 }
+      - { item: processor_circuit_ev, count: 1 }
+    outputs:
+      - { item: pyrolyse_oven, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: large_combustion_reactor
+    pattern:
+      - [titanium_plate, titanium_plate, titanium_plate]
+      - [cable_tungsten, heat_generator, cable_tungsten]
+      - [titanium_plate, processor_circuit_ev, titanium_plate]
+    inputs:
+      - { item: titanium_plate, count: 8 }
+      - { item: cable_tungsten, count: 2 }
+      - { item: heat_generator, count: 1 }
+      - { item: processor_circuit_ev, count: 1 }
+    outputs:
+      - { item: large_combustion_reactor, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: assembly_line
+    pattern:
+      - [tungstensteel_plate, tungstensteel_plate, tungstensteel_plate]
+      - [cable_tungsten, assembling_machine_hv, cable_tungsten]
+      - [tungstensteel_plate, processor_circuit_ev, tungstensteel_plate]
+    inputs:
+      - { item: tungstensteel_plate, count: 8 }
+      - { item: cable_tungsten, count: 2 }
+      - { item: assembling_machine_hv, count: 1 }
+      - { item: processor_circuit_ev, count: 1 }
+    outputs:
+      - { item: assembly_line, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: extreme_combustion_reactor
+    pattern:
+      - [tungstensteel_plate, tungstensteel_plate, tungstensteel_plate]
+      - [cable_tungsten, large_combustion_reactor, cable_tungsten]
+      - [tungstensteel_plate, processor_circuit_ev, tungstensteel_plate]
+    inputs:
+      - { item: tungstensteel_plate, count: 8 }
+      - { item: cable_tungsten, count: 2 }
+      - { item: large_combustion_reactor, count: 1 }
+      - { item: processor_circuit_ev, count: 1 }
+    outputs:
+      - { item: extreme_combustion_reactor, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: naquadah_reactor
+    pattern:
+      - [tungstensteel_plate, tungstensteel_plate, tungstensteel_plate]
+      - [cable_tungsten, extreme_combustion_reactor, cable_tungsten]
+      - [tungstensteel_plate, quantum_circuit_luv, tungstensteel_plate]
+    inputs:
+      - { item: tungstensteel_plate, count: 8 }
+      - { item: cable_tungsten, count: 2 }
+      - { item: extreme_combustion_reactor, count: 1 }
+      - { item: quantum_circuit_luv, count: 1 }
+    outputs:
+      - { item: naquadah_reactor, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: coke_oven
+    pattern:
+      - [steel_plate, steel_plate, steel_plate]
+      - [cable_gold, heat_furnace, cable_gold]
+      - [steel_plate, integrated_circuit_mv, steel_plate]
+    inputs:
+      - { item: steel_plate, count: 8 }
+      - { item: cable_gold, count: 2 }
+      - { item: heat_furnace, count: 1 }
+      - { item: integrated_circuit_mv, count: 1 }
+    outputs:
+      - { item: coke_oven, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: steam_turbine
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, steam_solid_boiler, cable_copper]
+      - [iron_plate, circuit_board_basic, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 8 }
+      - { item: cable_copper, count: 2 }
+      - { item: steam_solid_boiler, count: 1 }
+      - { item: circuit_board_basic, count: 1 }
+    outputs:
+      - { item: steam_turbine, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: large_chemical_reactor
+    pattern:
+      - [tungstensteel_plate, tungstensteel_plate, tungstensteel_plate]
+      - [cable_tungsten, chemical_plant, cable_tungsten]
+      - [tungstensteel_plate, processor_circuit_ev, tungstensteel_plate]
+    inputs:
+      - { item: tungstensteel_plate, count: 8 }
+      - { item: cable_tungsten, count: 2 }
+      - { item: chemical_plant, count: 1 }
+      - { item: processor_circuit_ev, count: 1 }
+    outputs:
+      - { item: large_chemical_reactor, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: advanced_database
+    pattern:
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+      - [cable_aluminium, chest, cable_aluminium]
+      - [aluminium_plate, processor_circuit_ev, aluminium_plate]
+    inputs:
+      - { item: aluminium_plate, count: 8 }
+      - { item: cable_aluminium, count: 2 }
+      - { item: chest, count: 1 }
+      - { item: processor_circuit_ev, count: 1 }
+    outputs:
+      - { item: advanced_database, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+  - name: transformer_ev_iv
+    pattern:
+      - [aluminium_ingot, cable_platinum, aluminium_ingot]
+      - [cable_platinum, redstone, cable_aluminium]
+      - [aluminium_ingot, cable_aluminium, aluminium_ingot]
+    inputs:
+      - { item: aluminium_ingot, count: 4 }
+      - { item: cable_platinum, count: 3 }
+      - { item: cable_aluminium, count: 2 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: transformer_ev_iv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: transformer_iv_luv
+    pattern:
+      - [platinum_ingot, cable_tungsten, platinum_ingot]
+      - [cable_tungsten, redstone, cable_platinum]
+      - [platinum_ingot, cable_platinum, platinum_ingot]
+    inputs:
+      - { item: platinum_ingot, count: 4 }
+      - { item: cable_tungsten, count: 3 }
+      - { item: cable_platinum, count: 2 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: transformer_iv_luv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: battery_buffer_ev
+    pattern:
+      - [aluminium_ingot, cable_aluminium, aluminium_ingot]
+      - [cable_aluminium, battery_buffer_hv, cable_aluminium]
+      - [aluminium_ingot, redstone, aluminium_ingot]
+    inputs:
+      - { item: aluminium_ingot, count: 4 }
+      - { item: cable_aluminium, count: 4 }
+      - { item: battery_buffer_hv, count: 1 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: battery_buffer_ev, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: battery_buffer_iv
+    pattern:
+      - [platinum_ingot, cable_platinum, platinum_ingot]
+      - [cable_platinum, battery_buffer_ev, cable_platinum]
+      - [platinum_ingot, redstone, platinum_ingot]
+    inputs:
+      - { item: platinum_ingot, count: 4 }
+      - { item: cable_platinum, count: 4 }
+      - { item: battery_buffer_ev, count: 1 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: battery_buffer_iv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: hull_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, cable_copper, cable_copper]
+      - [iron_plate, redstone, iron_plate]
+    inputs:
+      - { item: iron_plate, count: 8 }
+      - { item: cable_copper, count: 2 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: hull_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: hull_mv
+    pattern:
+      - [steel_plate, steel_plate, steel_plate]
+      - [cable_gold, cable_gold, cable_gold]
+      - [steel_plate, redstone, steel_plate]
+    inputs:
+      - { item: steel_plate, count: 8 }
+      - { item: cable_gold, count: 2 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: hull_mv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: hull_hv
+    pattern:
+      - [aluminium_plate, aluminium_plate, aluminium_plate]
+      - [cable_aluminium, cable_aluminium, cable_aluminium]
+      - [aluminium_plate, redstone, aluminium_plate]
+    inputs:
+      - { item: aluminium_plate, count: 8 }
+      - { item: cable_aluminium, count: 2 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: hull_hv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: hull_luv
+    pattern:
+      - [titanium_plate, titanium_plate, titanium_plate]
+      - [cable_platinum, cable_platinum, cable_platinum]
+      - [titanium_plate, redstone, titanium_plate]
+    inputs:
+      - { item: titanium_plate, count: 8 }
+      - { item: cable_platinum, count: 2 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: hull_luv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: hull_zpm
+    pattern:
+      - [tungstensteel_plate, tungstensteel_plate, tungstensteel_plate]
+      - [cable_tungsten, cable_tungsten, cable_tungsten]
+      - [tungstensteel_plate, redstone, tungstensteel_plate]
+    inputs:
+      - { item: tungstensteel_plate, count: 8 }
+      - { item: cable_tungsten, count: 2 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: hull_zpm, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: hatch_input_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [item_pipe, hull_lv, iron_plate]
+      - [iron_plate, iron_plate, ~]
+    inputs:
+      - { item: iron_plate, count: 6 }
+      - { item: hull_lv, count: 1 }
+      - { item: item_pipe, count: 1 }
+    outputs:
+      - { item: hatch_input_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: hatch_output_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [item_pipe, hull_lv, iron_plate]
+      - [iron_plate, iron_plate, ~]
+    inputs:
+      - { item: iron_plate, count: 6 }
+      - { item: hull_lv, count: 1 }
+      - { item: item_pipe, count: 1 }
+    outputs:
+      - { item: hatch_output_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: hatch_bus_input_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [dense_item_pipe, hull_lv, iron_plate]
+      - [iron_plate, iron_plate, ~]
+    inputs:
+      - { item: iron_plate, count: 6 }
+      - { item: hull_lv, count: 1 }
+      - { item: dense_item_pipe, count: 1 }
+    outputs:
+      - { item: hatch_bus_input_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: hatch_bus_output_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [dense_item_pipe, hull_lv, iron_plate]
+      - [iron_plate, iron_plate, ~]
+    inputs:
+      - { item: iron_plate, count: 6 }
+      - { item: hull_lv, count: 1 }
+      - { item: dense_item_pipe, count: 1 }
+    outputs:
+      - { item: hatch_bus_output_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: hatch_energy_input_lv
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [cable_copper, hull_lv, iron_plate]
+      - [iron_plate, iron_plate, ~]
+    inputs:
+      - { item: iron_plate, count: 6 }
+      - { item: hull_lv, count: 1 }
+      - { item: cable_copper, count: 1 }
+    outputs:
+      - { item: hatch_energy_input_lv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: hatch_maintenance
+    pattern:
+      - [iron_plate, iron_plate, iron_plate]
+      - [wrench, hull_lv, iron_plate]
+      - [iron_plate, iron_plate, ~]
+    inputs:
+      - { item: iron_plate, count: 6 }
+      - { item: hull_lv, count: 1 }
+      - { item: wrench, count: 1 }
+    outputs:
+      - { item: hatch_maintenance, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: multi_volume_hatch
+    pattern:
+      - [steel_plate, steel_plate, steel_plate]
+      - [dense_fluid_pipe, hull_mv, steel_plate]
+      - [steel_plate, steel_plate, ~]
+    inputs:
+      - { item: steel_plate, count: 6 }
+      - { item: hull_mv, count: 1 }
+      - { item: dense_fluid_pipe, count: 1 }
+    outputs:
+      - { item: multi_volume_hatch, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: chainsaw_mv
+    pattern:
+      - [iron_ingot, iron_ingot, iron_ingot]
+      - [~, stick, battery_buffer_mv]
+      - [~, stick, ~]
+    inputs:
+      - { item: iron_ingot, count: 4 }
+      - { item: stick, count: 2 }
+      - { item: battery_buffer_mv, count: 1 }
+    outputs:
+      - { item: chainsaw_mv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: chainsaw_hv
+    pattern:
+      - [steel_ingot, steel_ingot, steel_ingot]
+      - [~, stick, battery_buffer_hv]
+      - [~, stick, ~]
+    inputs:
+      - { item: steel_ingot, count: 4 }
+      - { item: stick, count: 2 }
+      - { item: battery_buffer_hv, count: 1 }
+    outputs:
+      - { item: chainsaw_hv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: jackhammer
+    pattern:
+      - [bronze_plate, bronze_plate, bronze_plate]
+      - [~, stick, battery_buffer_mv]
+      - [~, stick, ~]
+    inputs:
+      - { item: bronze_plate, count: 3 }
+      - { item: stick, count: 2 }
+      - { item: battery_buffer_mv, count: 1 }
+    outputs:
+      - { item: jackhammer, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
+  - name: electric_soldering_iron
+    pattern:
+      - [copper_ingot, copper_ingot, copper_ingot]
+      - [~, stick, battery_buffer_lv]
+      - [~, ~, ~]
+    inputs:
+      - { item: copper_ingot, count: 3 }
+      - { item: stick, count: 1 }
+      - { item: battery_buffer_lv, count: 1 }
+    outputs:
+      - { item: electric_soldering_iron, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767

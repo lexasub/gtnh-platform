@@ -477,7 +477,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:0:1:0",
+        "item": "1110:111:0",
         "count": 1,
         "consume": false
       }
@@ -532,7 +532,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:0:0",
+        "item": "110:010:1",
         "count": 1,
         "consume": false
       }
@@ -543,7 +543,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:0:1",
+        "item": "110:010:2",
         "count": 1,
         "consume": false
       }
@@ -554,7 +554,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:0:2",
+        "item": "110:010:4",
         "count": 1,
         "consume": false
       }
@@ -565,7 +565,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:0:3",
+        "item": "110:010:0",
         "count": 1,
         "consume": false
       }
@@ -576,7 +576,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:0:13",
+        "item": "110:100:0",
         "count": 1,
         "consume": false
       }
@@ -587,7 +587,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:0:10",
+        "item": "110:100:2",
         "count": 1,
         "consume": false
       }
@@ -598,7 +598,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:9",
+        "item": "1110:010:6",
         "count": 1,
         "consume": false
       }
@@ -609,7 +609,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:31",
+        "item": "1110:010:11",
         "count": 1,
         "consume": false
       }
@@ -620,7 +620,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:27",
+        "item": "1110:010:4",
         "count": 1,
         "consume": false
       }
@@ -631,7 +631,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:29",
+        "item": "1110:010:9",
         "count": 1,
         "consume": false
       }
@@ -642,7 +642,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:33",
+        "item": "1110:010:12",
         "count": 1,
         "consume": false
       }
@@ -653,7 +653,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:25",
+        "item": "1110:010:0",
         "count": 1,
         "consume": false
       }
@@ -664,7 +664,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:22",
+        "item": "1110:010:13",
         "count": 1,
         "consume": false
       }
@@ -675,7 +675,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:23",
+        "item": "1110:010:1",
         "count": 1,
         "consume": false
       }
@@ -686,7 +686,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:24",
+        "item": "1110:010:10",
         "count": 1,
         "consume": false
       }
@@ -697,7 +697,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:40",
+        "item": "1110:010:14",
         "count": 1,
         "consume": false
       }
@@ -708,7 +708,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:35",
+        "item": "1110:010:15",
         "count": 1,
         "consume": false
       }
@@ -719,7 +719,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:36",
+        "item": "1110:010:16",
         "count": 1,
         "consume": false
       }
@@ -730,7 +730,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:0",
+        "item": "110:001:0",
         "count": 1,
         "consume": false
       }
@@ -741,7 +741,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:1",
+        "item": "110:001:1",
         "count": 1,
         "consume": false
       }
@@ -752,7 +752,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:2",
+        "item": "110:000:0",
         "count": 1,
         "consume": false
       }
@@ -763,7 +763,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:10",
+        "item": "1110:010:17",
         "count": 1,
         "consume": false
       }
@@ -774,7 +774,7 @@
     "requirements": [
       {
         "kind": "side_configured",
-        "item": "1:0:0:0:9",
+        "item": "1110:010:6",
         "count": 1,
         "consume": false
       }
@@ -796,7 +796,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:0:1:1",
+        "item": "1110:111:1",
         "count": 1,
         "consume": false
       }
@@ -807,7 +807,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:0",
+        "item": "1110:110:2",
         "count": 1,
         "consume": false
       }
@@ -840,7 +840,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:0:0:6",
+        "item": "1111:00:13",
         "count": 1,
         "consume": false
       }
@@ -851,7 +851,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:10",
+        "item": "1110:010:7",
         "count": 1,
         "consume": false
       }
@@ -862,7 +862,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:32",
+        "item": "1110:010:18",
         "count": 1,
         "consume": false
       }
@@ -873,7 +873,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:28",
+        "item": "1110:010:19",
         "count": 1,
         "consume": false
       }
@@ -884,7 +884,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:30",
+        "item": "1110:010:20",
         "count": 1,
         "consume": false
       }
@@ -895,7 +895,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:34",
+        "item": "1110:010:21",
         "count": 1,
         "consume": false
       }
@@ -906,7 +906,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:26",
+        "item": "1110:010:22",
         "count": 1,
         "consume": false
       }
@@ -917,7 +917,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:0:20",
+        "item": "110:011:6",
         "count": 1,
         "consume": false
       }
@@ -928,7 +928,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:0:21",
+        "item": "110:011:0",
         "count": 1,
         "consume": false
       }
@@ -939,7 +939,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:0:22",
+        "item": "110:011:7",
         "count": 1,
         "consume": false
       }
@@ -950,7 +950,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:0:23",
+        "item": "110:011:2",
         "count": 1,
         "consume": false
       }
@@ -961,7 +961,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:3",
+        "item": "110:000:1",
         "count": 1,
         "consume": false
       }
@@ -972,7 +972,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:11",
+        "item": "1110:010:23",
         "count": 1,
         "consume": false
       }
@@ -994,7 +994,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:0:1:2",
+        "item": "1110:111:2",
         "count": 1,
         "consume": false
       }
@@ -1038,7 +1038,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:0:0:7",
+        "item": "1111:00:14",
         "count": 1,
         "consume": false
       }
@@ -1049,7 +1049,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:0:11",
+        "item": "1110:010:5",
         "count": 1,
         "consume": false
       }
@@ -1060,7 +1060,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:4",
+        "item": "110:000:2",
         "count": 1,
         "consume": false
       }
@@ -1071,7 +1071,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:12",
+        "item": "1110:010:24",
         "count": 1,
         "consume": false
       }
@@ -1093,7 +1093,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:5",
+        "item": "110:000:3",
         "count": 1,
         "consume": false
       }
@@ -1126,7 +1126,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:0:1:0:6",
+        "item": "0:110:13",
         "count": 1,
         "consume": false
       }
@@ -1137,7 +1137,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:0:1:0:7",
+        "item": "0:110:15",
         "count": 1,
         "consume": false
       }
@@ -1148,7 +1148,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:0:1:0:8",
+        "item": "0:110:21",
         "count": 1,
         "consume": false
       }
@@ -1159,7 +1159,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:0:1:0:9",
+        "item": "0:110:23",
         "count": 1,
         "consume": false
       }
@@ -1170,7 +1170,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:0:1:0:10",
+        "item": "0:110:25",
         "count": 1,
         "consume": false
       }
@@ -1181,7 +1181,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:0:1:0:11",
+        "item": "0:110:0",
         "count": 1,
         "consume": false
       }
@@ -1192,7 +1192,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:0:1:0:12",
+        "item": "0:110:9",
         "count": 1,
         "consume": false
       }
@@ -1203,7 +1203,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:0:1:0:13",
+        "item": "0:110:18",
         "count": 1,
         "consume": false
       }
@@ -1214,7 +1214,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:0:1:0:14",
+        "item": "0:110:12",
         "count": 1,
         "consume": false
       }
@@ -1225,7 +1225,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:0:1:0:15",
+        "item": "0:110:17",
         "count": 1,
         "consume": false
       }
@@ -1236,7 +1236,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:0:1:0:16",
+        "item": "0:110:27",
         "count": 1,
         "consume": false
       }
@@ -1247,7 +1247,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:13",
+        "item": "1110:010:25",
         "count": 1,
         "consume": false
       }
@@ -1258,7 +1258,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:14",
+        "item": "1110:010:26",
         "count": 1,
         "consume": false
       }
@@ -1269,7 +1269,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:15",
+        "item": "1110:010:27",
         "count": 1,
         "consume": false
       }
@@ -1280,7 +1280,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:1:0:0",
+        "item": "1110:111:10",
         "count": 1,
         "consume": false
       }
@@ -1291,7 +1291,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:1:0:10",
+        "item": "1110:111:11",
         "count": 1,
         "consume": false
       }
@@ -1302,7 +1302,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:1:0:20",
+        "item": "1110:111:12",
         "count": 1,
         "consume": false
       }
@@ -1313,7 +1313,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:1:0:30",
+        "item": "1110:111:13",
         "count": 1,
         "consume": false
       }
@@ -1324,7 +1324,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:1:0:40",
+        "item": "1110:111:14",
         "count": 1,
         "consume": false
       }
@@ -1335,7 +1335,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:1:0:60",
+        "item": "1110:111:15",
         "count": 1,
         "consume": false
       }
@@ -1346,7 +1346,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:30",
+        "item": "1110:010:43",
         "count": 1,
         "consume": false
       }
@@ -1357,7 +1357,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:1:14",
+        "item": "1110:010:44",
         "count": 1,
         "consume": false
       }
@@ -1368,7 +1368,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:16",
+        "item": "1110:010:45",
         "count": 1,
         "consume": false
       }
@@ -1379,7 +1379,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:24",
+        "item": "1110:010:46",
         "count": 1,
         "consume": false
       }
@@ -1390,7 +1390,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:3",
+        "item": "1110:110:3",
         "count": 1,
         "consume": false
       }
@@ -1401,7 +1401,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:0:4",
+        "item": "1110:101:5",
         "count": 1,
         "consume": false
       }
@@ -1412,7 +1412,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:0:5",
+        "item": "1110:101:6",
         "count": 1,
         "consume": false
       }
@@ -1423,7 +1423,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:6",
+        "item": "110:000:4",
         "count": 1,
         "consume": false
       }
@@ -1434,7 +1434,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:17",
+        "item": "1110:010:28",
         "count": 1,
         "consume": false
       }
@@ -1445,7 +1445,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:18",
+        "item": "1110:010:29",
         "count": 1,
         "consume": false
       }
@@ -1456,7 +1456,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:19",
+        "item": "1110:010:30",
         "count": 1,
         "consume": false
       }
@@ -1467,7 +1467,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:20",
+        "item": "1110:010:31",
         "count": 1,
         "consume": false
       }
@@ -1478,7 +1478,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:21",
+        "item": "1110:010:32",
         "count": 1,
         "consume": false
       }
@@ -1489,7 +1489,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:22",
+        "item": "1110:010:33",
         "count": 1,
         "consume": false
       }
@@ -1500,7 +1500,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:23",
+        "item": "1110:010:34",
         "count": 1,
         "consume": false
       }
@@ -1511,7 +1511,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:25",
+        "item": "1110:010:35",
         "count": 1,
         "consume": false
       }
@@ -1522,7 +1522,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:26",
+        "item": "1110:010:36",
         "count": 1,
         "consume": false
       }
@@ -1533,7 +1533,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:28",
+        "item": "1110:010:37",
         "count": 1,
         "consume": false
       }
@@ -1544,7 +1544,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:29",
+        "item": "1110:010:38",
         "count": 1,
         "consume": false
       }
@@ -1555,7 +1555,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:31",
+        "item": "1110:010:39",
         "count": 1,
         "consume": false
       }
@@ -1566,7 +1566,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:4",
+        "item": "1110:110:4",
         "count": 1,
         "consume": false
       }
@@ -1577,7 +1577,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:7",
+        "item": "110:000:5",
         "count": 1,
         "consume": false
       }
@@ -1588,7 +1588,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:27",
+        "item": "1110:010:40",
         "count": 1,
         "consume": false
       }
@@ -1599,7 +1599,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:32",
+        "item": "1110:010:41",
         "count": 1,
         "consume": false
       }
@@ -1610,7 +1610,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:0:1:13",
+        "item": "1110:010:42",
         "count": 1,
         "consume": false
       }
@@ -1621,7 +1621,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:0:1:1:33",
+        "item": "1110:111:16",
         "count": 1,
         "consume": false
       }
@@ -1632,7 +1632,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:10",
+        "item": "0:1110:000:22",
         "count": 1,
         "consume": false
       }
@@ -1643,7 +1643,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:11",
+        "item": "0:1110:000:21",
         "count": 1,
         "consume": false
       }
@@ -1654,7 +1654,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:12",
+        "item": "0:110:30",
         "count": 1,
         "consume": false
       }
@@ -1665,7 +1665,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:13",
+        "item": "0:110:28",
         "count": 1,
         "consume": false
       }
@@ -1676,7 +1676,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:14",
+        "item": "0:110:29",
         "count": 1,
         "consume": false
       }
@@ -1687,7 +1687,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:15",
+        "item": "1111:11:7",
         "count": 1,
         "consume": false
       }
@@ -1698,7 +1698,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:16",
+        "item": "110:001:3",
         "count": 1,
         "consume": false
       }
@@ -1709,7 +1709,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "0:1:1:1:17",
+        "item": "110:001:2",
         "count": 1,
         "consume": false
       }
@@ -1753,7 +1753,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:0:1:5",
+        "item": "1110:111:3",
         "count": 1,
         "consume": false
       }
@@ -1764,7 +1764,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:0:1:6",
+        "item": "1110:111:4",
         "count": 1,
         "consume": false
       }
@@ -1775,7 +1775,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:0:0:10",
+        "item": "1111:00:15",
         "count": 1,
         "consume": false
       }
@@ -1786,7 +1786,7 @@
     "requirements": [
       {
         "kind": "craft",
-        "item": "1:1:0:0:11",
+        "item": "1111:00:16",
         "count": 1,
         "consume": false
       }

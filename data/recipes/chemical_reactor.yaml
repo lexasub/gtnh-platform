@@ -106,3 +106,62 @@ recipes:
     max_tier: 32767
     resource_requirements:
       - { kind: EU, amount: 32, tier: 0 }
+
+# New 62 Category-C item recipes (quests Q44-Q163)
+
+  - name: pcb
+    inputs:
+      - { item: circuit_board_empty, count: 1 }
+      - { item: copper_plate, count: 2 }
+      - { item: tin_plate, count: 2 }
+    outputs:
+      - { item: pcb, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
+  - name: wetware_circuit_iv
+    inputs:
+      - { item: processor_circuit_ev, count: 1 }
+      - { item: platinum_plate, count: 2 }
+      - { item: osmium_dust, count: 2 }
+    outputs:
+      - { item: wetware_circuit_iv, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
+  - name: quantum_circuit_luv
+    inputs:
+      - { item: wetware_circuit_iv, count: 1 }
+      - { item: tungstensteel_plate, count: 2 }
+      - { item: naquadah_ingot, count: 1 }
+    outputs:
+      - { item: quantum_circuit_luv, count: 1 }
+    duration: 600
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
+  - name: graphene
+    inputs:
+      - { item: carbon_dust, count: 4 }
+    outputs:
+      - { item: graphene, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
+  - name: carbon_fiber
+    inputs:
+      - { item: carbon_dust, count: 4 }
+    outputs:
+      - { item: carbon_fiber, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }

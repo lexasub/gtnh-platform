@@ -4,7 +4,8 @@ class: mixer
 recipes:
 
   - name: gtnh:mix_bronze_dust
-    energy_in: STEAM
+  - name: gtnh:mix_bronze_dust_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: copper_dust, count: 3 }
       - { item: tin_dust, count: 1 }
@@ -15,10 +16,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:mix_brass_dust
-    energy_in: STEAM
+  - name: gtnh:mix_brass_dust_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: copper_dust, count: 3 }
       - { item: zinc_dust, count: 1 }
@@ -29,10 +31,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:mix_electrum_dust
-    energy_in: STEAM
+  - name: gtnh:mix_electrum_dust_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: gold_dust, count: 1 }
       - { item: silver_dust, count: 1 }
@@ -43,10 +46,11 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }
 
   - name: gtnh:mix_steel_dust
-    energy_in: STEAM
+  - name: gtnh:mix_steel_dust_ele
+    energy_in: ELECTRICITY
     inputs:
       - { item: iron_dust, count: 1 }
       - { item: carbon_dust, count: 1 }
@@ -57,4 +61,4 @@ recipes:
     max_tier: 32767
     eu: 32
     resource_requirements:
-      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+      - { kind: EU, amount: 32, tier: 0 }

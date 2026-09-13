@@ -201,3 +201,61 @@ recipes:
     eu: 32
     resource_requirements:
       - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+
+# New 62 Category-C item recipes (quests Q44-Q163)
+
+  - name: naquadah_ingot
+    inputs:
+      - { item: iridium_ingot, count: 1 }
+      - { item: osmium_ingot, count: 1 }
+      - { item: uranium_ingot, count: 2 }
+    outputs:
+      - { item: naquadah_ingot, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+  - name: naquadah_alloy_ingot
+    inputs:
+      - { item: naquadah_ingot, count: 1 }
+      - { item: iridium_ingot, count: 1 }
+    outputs:
+      - { item: naquadah_alloy_ingot, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+  - name: hss_e_ingot
+    inputs:
+      - { item: tungstensteel_ingot, count: 2 }
+      - { item: chromium_ingot, count: 1 }
+      - { item: steel_ingot, count: 2 }
+    outputs:
+      - { item: hss_e_ingot, count: 3 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
+  - name: neutronium_ingot
+    inputs:
+      - { item: naquadah_alloy_ingot, count: 1 }
+      - { item: iridium_ingot, count: 2 }
+      - { item: osmium_ingot, count: 1 }
+    outputs:
+      - { item: neutronium_ingot, count: 1 }
+    duration: 600
+    min_tier: 0
+    max_tier: 32767
+    energy_in: STEAM
+    eu: 32
+    resource_requirements:
+      - { kind: FLUID, resource_id: steam, amount: 32, tier: 0 }
