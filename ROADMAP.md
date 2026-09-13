@@ -448,3 +448,4 @@ Go-сервисы (routerd, metadbd) собираются через `go build` 
 
 **Legend:** ✅ DONE | 🟡 WIP | 🔴 TODO | ⏸ DEFERRED
 **Updated:** 2026-08-07 — docs refreshed to current state; WIP tracked as openspec changes.
+
