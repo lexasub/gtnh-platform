@@ -42,7 +42,7 @@ private:
     uint64_t totalTicks_ = 0;
 
     void tickLCR(uint64_t ctrl_id, MultiblockController& ctrl);
-    void tickOrchestratedStart(entt::entity entity, MachineComponent& machine,
+    void tickOrchestratedStart(entt::entity entity,
                                const RecipeManager::Recipe& recipe,
                                int input_start, int input_end);
 };

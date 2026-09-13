@@ -54,7 +54,7 @@ private:
     static constexpr int COIL_DZ = 1;
 
     void tickEBF(uint64_t ctrl_id, MultiblockController& ctrl);
-    void tickOrchestratedStart(entt::entity entity, MachineComponent& machine,
+    void tickOrchestratedStart(entt::entity entity,
                                const RecipeManager::Recipe& recipe,
                                int input_start, int input_end);
     int detectHeatTier(const MultiblockController& ctrl) const;

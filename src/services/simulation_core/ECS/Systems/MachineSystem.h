@@ -67,7 +67,7 @@ private:
 
   // Reservation-driven recipe start (4.2.2/4.3.3): begin/tick/commit the
   // pending craft for `recipe` on an idle machine.
-  void tickOrchestratedStart(entt::entity entity, MachineComponent& machine,
+  void tickOrchestratedStart(entt::entity entity,
                              const RecipeManager::Recipe& recipe);
 
   entt::registry &reg_;

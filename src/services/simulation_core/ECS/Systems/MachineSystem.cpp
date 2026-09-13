@@ -164,7 +164,7 @@ void MachineSystem::tick(float /*dt*/) {
                     // 4.2.2/4.3.2: reserve every requirement first; inputs
                     // are consumed and progress starts only on full
                     // acceptance (commitPendingCraft).
-                    tickOrchestratedStart(ent, machine, *recipe);
+                    tickOrchestratedStart(ent, *recipe);
                 } else {
                     // ── Consume input items immediately when recipe starts ──
                     for (const auto& req : recipe->inputs) {
@@ -547,7 +547,6 @@ void MachineSystem::tick(float /*dt*/) {
 }
 
 void MachineSystem::tickOrchestratedStart(entt::entity ent,
-                                          MachineComponent& machine,
                                           const RecipeManager::Recipe& recipe) {
     auto& progress = reg_.get<RecipeProgress>(ent);
 

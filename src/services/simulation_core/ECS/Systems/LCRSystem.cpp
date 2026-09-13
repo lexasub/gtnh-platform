@@ -172,7 +172,7 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
         if (recipe) {
             if (reservations_ && recipe->hasResourceRequirements()) {
                 // 4.2.2/4.3.2: reserve before touching inputs or progress.
-                tickOrchestratedStart(entity, machine, *recipe,
+                tickOrchestratedStart(entity, *recipe,
                                       input_start, input_end_capped);
             } else {
                 progress.recipe_id = recipe->id;
@@ -224,7 +224,6 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
 }
 
 void LCRSystem::tickOrchestratedStart(entt::entity entity,
-                                      MachineComponent& machine,
                                       const RecipeManager::Recipe& recipe,
                                       int input_start, int input_end) {
     auto& progress = reg_.get<RecipeProgress>(entity);
@@ -304,7 +303,7 @@ void LCRSystem::commitPendingCraft(entt::entity entity) {
                 reservations_->cancel(entity, "recipe vanished");
                 return;
             }
-            tickOrchestratedStart(entity, *machine, *pending_recipe,
+            tickOrchestratedStart(entity, *pending_recipe,
                                   input_start,
                                   std::min(input_end, static_cast<int>(reg_.get<InventoryContainer>(entity).slots.size())));
             return;
