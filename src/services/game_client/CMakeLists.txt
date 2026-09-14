@@ -11,11 +11,12 @@ add_custom_command(
         ${FBS_GEN_DIR}/quest_generated.h
         ${FBS_GEN_DIR}/client_state_generated.h
         ${FBS_GEN_DIR}/pipe_network_generated.h
+        ${FBS_GEN_DIR}/service_health_generated.h
     COMMAND flatbuffers::flatc
         --gen-mutable
         -I ${FBS_DIR}
         -o ${FBS_GEN_DIR}
-        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/machine_state.fbs ${FBS_DIR}/client_state.fbs ${FBS_DIR}/pipe_network.fbs
+        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/machine_state.fbs ${FBS_DIR}/client_state.fbs ${FBS_DIR}/pipe_network.fbs ${FBS_DIR}/service_health.fbs
     DEPENDS flatbuffers::flatc
             ${FBS_DIR}/core.fbs
             ${FBS_DIR}/gateway.fbs
@@ -24,6 +25,7 @@ add_custom_command(
             ${FBS_DIR}/machine_state.fbs
             ${FBS_DIR}/client_state.fbs
             ${FBS_DIR}/pipe_network.fbs
+            ${FBS_DIR}/service_health.fbs
     COMMENT "Generating FlatBuffers headers for game_client"
 )
 
@@ -35,6 +37,7 @@ add_custom_target(game_client_fbs
         ${FBS_GEN_DIR}/quest_generated.h
         ${FBS_GEN_DIR}/client_state_generated.h
         ${FBS_GEN_DIR}/pipe_network_generated.h
+        ${FBS_GEN_DIR}/service_health_generated.h
 )
 
 # Set output directories for binaries
@@ -66,6 +69,7 @@ add_executable(gameclientd
     Network/NetClient.cpp
     Network/ResourceBufferStateStore.cpp
     Network/PipeContentsStateStore.cpp
+    Network/ServiceHealthStore.cpp
 
     Cache/ChunkMeshCache.cpp
     Cache/ChunkNeighborCache.cpp
@@ -381,4 +385,19 @@ if(BUILD_TESTING)
     )
     add_dependencies(gameclient_pipe_fluid_overlay_test game_client_fbs)
     add_test(NAME gameclient_pipe_fluid_overlay_test COMMAND gameclient_pipe_fluid_overlay_test)
+
+    add_executable(gameclient_service_health_store_test
+        tests/ServiceHealthStore_test.cpp
+        Network/ServiceHealthStore.cpp
+    )
+    target_include_directories(gameclient_service_health_store_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${FBS_GEN_DIR}
+    )
+    target_link_libraries(gameclient_service_health_store_test PRIVATE
+        flatbuffers::flatbuffers
+    )
+    add_dependencies(gameclient_service_health_store_test game_client_fbs)
+    add_test(NAME gameclient_service_health_store_test COMMAND gameclient_service_health_store_test)
 endif()

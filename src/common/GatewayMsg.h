@@ -68,6 +68,9 @@ inline constexpr uint8_t kResourceBufferState = 47;
 // pipe_network.fbs). Client → gateway → PipeNetwork → gateway → client ctrl.
 inline constexpr uint8_t kPipeContentsReq = 48;
 inline constexpr uint8_t kPipeContentsResp = 49;
+// Service health debug snapshot (Protocol::ServiceHealthReq/Resp).
+inline constexpr uint8_t kServiceHealthReq = 50;
+inline constexpr uint8_t kServiceHealthResp = 51;
 // Client-side historical alias for kEntitySnapshot (NetClient.h).
 inline constexpr uint8_t kEntitySnap = kEntitySnapshot;
 } // namespace GatewayMsg

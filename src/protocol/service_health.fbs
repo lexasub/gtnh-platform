@@ -1,0 +1,26 @@
+// Gateway-mediated service health debug protocol.
+namespace Protocol;
+
+enum ServiceHealthProbeState : uint8 {
+  UNKNOWN = 0,
+  UP = 1,
+  DOWN = 2
+}
+
+table ServiceHealthReq {
+  request_id: uint32;
+}
+
+table ServiceHealth {
+  name: string (required);
+  transport_alive: bool = false;
+  probe_state: ServiceHealthProbeState = UNKNOWN;
+  last_response_age_ms: uint64 = 0;
+}
+
+table ServiceHealthResp {
+  request_id: uint32;
+  services: [ServiceHealth];
+}
+
+root_type ServiceHealthResp;

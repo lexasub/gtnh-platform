@@ -1,17 +1,13 @@
 // MessageRouter: TCP pub/sub bus + service discovery.
 //
 // Wire frame format:
-//   [4 bytes: payload length (big-endian)] [1 byte: message type] [payload]
+//
+//	[4 bytes: payload length (big-endian)] [1 byte: message type] [payload]
 //
 // Message types:
-//   0x01 Subscribe   — payload: [2 bytes topic len BE][topic]
-//   0x02 Unsubscribe — payload: [2 bytes topic len BE][topic]
-//   0x03 Publish     — payload: [2 bytes topic len BE][topic][opaque data]
-//   0x04 Register    — payload: [2 bytes name len BE][name][2 bytes ntopics BE][topic...]
-//   0x05 Heartbeat   — payload: none
 //
-// Topic patterns support MQTT-style wildcards:
-//   '+' matches exactly one segment, '#' matches trailing segments, no wildcard = exact.
+//	0x01 Subscribe, 0x02 Unsubscribe, 0x03 Publish, 0x04 Register,
+//	0x05 Heartbeat, 0x06 HealthRequest, 0x07 HealthResponse.
 package main
 
 import (
@@ -20,6 +16,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,66 +26,39 @@ import (
 type MsgType byte
 
 const (
-	MsgSubscribe   MsgType = 0x01
-	MsgUnsubscribe MsgType = 0x02
-	MsgPublish     MsgType = 0x03
-	MsgRegister    MsgType = 0x04
-	MsgHeartbeat   MsgType = 0x05
+	MsgSubscribe      MsgType = 0x01
+	MsgUnsubscribe    MsgType = 0x02
+	MsgPublish        MsgType = 0x03
+	MsgRegister       MsgType = 0x04
+	MsgHeartbeat      MsgType = 0x05
+	MsgHealthRequest  MsgType = 0x06
+	MsgHealthResponse MsgType = 0x07
 )
 
 const (
-	frameHeaderSize = 5
-	sendChSize      = 4096
-	cleanupInterval = 120 * time.Second
-	idleTimeout     = 60 * time.Second
+	frameHeaderSize    = 5
+	sendChSize         = 4096
+	cleanupInterval    = 120 * time.Second
+	idleTimeout        = 60 * time.Second
+	healthProbeTimeout = 2 * time.Second
 )
 
 var errShortFrame = errors.New("frame too short")
 
-var framePool = sync.Pool{
-	New: func() any {
-		buf := make([]byte, 0, 64*1024)
-		return &buf
-	},
-}
-
-// ---------------------------------------------------------------------------
-// Priority levels for subscriber send channels
-// ---------------------------------------------------------------------------
-//
-// Each subscriber client has one send channel per priority level. A flood on
-// a lower-priority topic (e.g. world.blocks.changed) cannot starve or drop
-// messages on higher-priority topics (e.g. player.actions.ack).
-//
-// The writer goroutine uses a strict-priority cascade:
-//
-//	        ┌──────────┐
-//	        │ PrioHigh │  ← player.actions.ack
-//	        ├──────────┤
-//	        │PriNormal │  ← world.*, player.inventory.*, player.joined, meta_db.inventory.*, metadb.player.online
-//	        ├──────────┤
-//	        │ PrioLow  │  ← entities.*, simulation.*, catch-all
-//	        └──────────┘
-//
-//	PrioHigh messages are checked first at every opportunity,
-//	so they are effectively never blocked behind lower priority traffic.
+var framePool = sync.Pool{New: func() any {
+	buf := make([]byte, 0, 64*1024)
+	return &buf
+}}
 
 type Priority int
 
 const (
-	PrioHigh   Priority = 0 // player.actions.ack — must never be dropped
-	PrioNormal Priority = 1 // world.*, player.inventory.*, player.joined, meta_db.inventory.*, metadb.player.online
-	PrioLow    Priority = 2 // entities.*, simulation.*, catch-all
-
-	PrioCount Priority = 3 // number of priority levels
+	PrioHigh   Priority = 0
+	PrioNormal Priority = 1
+	PrioLow    Priority = 2
+	PrioCount  Priority = 3
 )
 
-// classifyTopic maps a topic to its delivery priority.
-// Topics not explicitly listed default to PrioLow.
-//
-// PrioHigh: latency-sensitive, must never be delayed by chunk traffic.
-// PrioNormal: bulk data (chunks, inventory).
-// PrioLow: best-effort (entities, simulation internals).
 func classifyTopic(topic string) Priority {
 	switch {
 	case topic == "player.actions.ack", topic == "player.actions":
@@ -104,17 +74,13 @@ func classifyTopic(topic string) Priority {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// client — per-connection state
-// ---------------------------------------------------------------------------
-
 type client struct {
 	conn      net.Conn
 	sendChs   []chan *[]byte
 	lastSeen  atomic.Int64
 	dropped   atomic.Uint64
 	closeOnce sync.Once
-	done      chan struct{} // closed by Close(); Publish selects on this to avoid send-on-closed
+	done      chan struct{}
 }
 
 func newClient(conn net.Conn) *client {
@@ -122,19 +88,12 @@ func newClient(conn net.Conn) *client {
 	for i := range chs {
 		chs[i] = make(chan *[]byte, sendChSize)
 	}
-	c := &client{
-		conn:    conn,
-		sendChs: chs,
-		done:    make(chan struct{}),
-	}
-	c.lastSeen.Store(time.Now().UnixNano())
-	go c.writer()
-	return c
+	cl := &client{conn: conn, sendChs: chs, done: make(chan struct{})}
+	cl.lastSeen.Store(time.Now().UnixNano())
+	go cl.writer()
+	return cl
 }
 
-// writeBuf writes the frame bytes to the connection and returns the
-// pooled buffer to framePool.  Must ONLY be called for frames allocated
-// via allocPublishFrame (i.e. from framePool).
 func (c *client) writeBuf(bp *[]byte) bool {
 	if bp == nil || *bp == nil {
 		return false
@@ -153,14 +112,6 @@ func (c *client) writeBuf(bp *[]byte) bool {
 	return true
 }
 
-// writer delivers frames from the priority send channels to the TCP
-// connection using a strict-priority cascade:
-//  1. Non-blocking check of PrioHigh only
-//  2. Non-blocking check of PrioHigh + PrioNormal
-//  3. Blocking check of PrioHigh + PrioNormal + PrioLow
-//
-// This ensures PrioHigh is always serviced first when data is available,
-// while PrioLow only gets processed when higher channels are empty.
 func (c *client) writer() {
 	for {
 		var bp *[]byte
@@ -179,10 +130,7 @@ func (c *client) writer() {
 				}
 			}
 		}
-		if !ok {
-			return
-		}
-		if !c.writeBuf(bp) {
+		if !ok || !c.writeBuf(bp) {
 			return
 		}
 	}
@@ -198,24 +146,38 @@ func (c *client) Close() {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// ServiceInfo
-// ---------------------------------------------------------------------------
-
 type ServiceInfo struct {
 	Name   string
 	Topics []string
 }
 
-// ---------------------------------------------------------------------------
-// Router — core pub/sub + service registry
-// ---------------------------------------------------------------------------
+type healthStatus struct {
+	transportAlive bool
+	probeState     byte
+	lastResponse   time.Time
+}
+
+type healthRow struct {
+	name           string
+	transportAlive bool
+	probeState     byte
+	ageMs          uint64
+}
+
+type healthProbe struct {
+	requester *client
+	services  map[*client]string
+	responses map[*client]time.Time
+}
 
 type Router struct {
 	mu           sync.RWMutex
 	subs         map[string]map[*client]struct{}
 	services     map[string]ServiceInfo
 	connServices map[*client]string
+	healthMu     sync.Mutex
+	health       map[string]healthStatus
+	healthProbes map[uint64]*healthProbe
 }
 
 func NewRouter() *Router {
@@ -223,6 +185,8 @@ func NewRouter() *Router {
 		subs:         make(map[string]map[*client]struct{}),
 		services:     make(map[string]ServiceInfo),
 		connServices: make(map[*client]string),
+		health:       make(map[string]healthStatus),
+		healthProbes: make(map[uint64]*healthProbe),
 	}
 }
 
@@ -254,9 +218,6 @@ func (r *Router) UnsubscribeAll(cl *client) {
 	r.unsubscribeAllLocked(cl)
 }
 
-// unsubscribeAllLocked removes cl from all subscriber sets and the service
-// registry. Caller must hold r.mu. Separate from UnsubscribeAll so cleanupOnce
-// (which already holds the lock) does not deadlock on a non-reentrant mutex.
 func (r *Router) unsubscribeAllLocked(cl *client) {
 	for pattern, subs := range r.subs {
 		delete(subs, cl)
@@ -264,53 +225,197 @@ func (r *Router) unsubscribeAllLocked(cl *client) {
 			delete(r.subs, pattern)
 		}
 	}
-
 	if name, ok := r.connServices[cl]; ok {
 		delete(r.services, name)
 		delete(r.connServices, cl)
+		r.healthMu.Lock()
+		delete(r.health, name)
+		r.healthMu.Unlock()
 		log.Printf("[router] unregister: conn=%s service=%s", cl.conn.RemoteAddr(), name)
 	}
-
 	log.Printf("[router] cleanup: conn=%s", cl.conn.RemoteAddr())
 }
 
 func (r *Router) RegisterService(name string, topics []string, cl *client) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
 	if prevName, ok := r.connServices[cl]; ok {
 		delete(r.services, prevName)
 	}
-
 	r.services[name] = ServiceInfo{Name: name, Topics: topics}
 	r.connServices[cl] = name
-
+	r.healthMu.Lock()
+	r.health[name] = healthStatus{transportAlive: true}
+	r.healthMu.Unlock()
 	for _, topic := range topics {
 		if r.subs[topic] == nil {
 			r.subs[topic] = make(map[*client]struct{})
 		}
 		r.subs[topic][cl] = struct{}{}
 	}
-
 	log.Printf("[router] register: conn=%s service=%s topics=%v", cl.conn.RemoteAddr(), name, topics)
 }
 
-// Publish fans out opaque data to all subscribers whose pattern matches topic.
-//
-// Messages are delivered on a per-subscriber, per-priority sendCh determined by
-// classifyTopic(). PrioHigh uses blocking send — never drops, propagates
-// backpressure to the publisher. PrioNormal/PrioLow use non-blocking send with
-// drop-oldest when the channel is full.
-//
-// Because each priority level has its own sendCh, a flood on world.blocks.changed
-// (PrioNormal) cannot cause ack messages (PrioHigh) to be dropped.
+func makeControlFrame(msgType MsgType, payload []byte) *[]byte {
+	frame := make([]byte, frameHeaderSize+1+len(payload))
+	binary.BigEndian.PutUint32(frame[:4], uint32(1+len(payload)))
+	frame[4] = byte(msgType)
+	copy(frame[5:], payload)
+	return &frame
+}
+
+func encodeNonce(nonce uint64) []byte {
+	payload := make([]byte, 8)
+	binary.BigEndian.PutUint64(payload, nonce)
+	return payload
+}
+
+func encodeHealthSnapshot(nonce uint64, rows []healthRow) []byte {
+	payload := make([]byte, 10)
+	binary.BigEndian.PutUint64(payload[:8], nonce)
+	binary.BigEndian.PutUint16(payload[8:10], uint16(len(rows)))
+	for _, row := range rows {
+		name := []byte(row.name)
+		entry := make([]byte, 2+len(name)+10)
+		binary.BigEndian.PutUint16(entry[:2], uint16(len(name)))
+		copy(entry[2:], name)
+		entry[2+len(name)] = row.probeState
+		if row.transportAlive {
+			entry[3+len(name)] = 1
+		}
+		binary.BigEndian.PutUint64(entry[4+len(name):], row.ageMs)
+		payload = append(payload, entry...)
+	}
+	return payload
+}
+
+func (r *Router) healthSnapshot(requester *client, nonce uint64) {
+	log.Printf("[health] snapshot request nonce=%d services=%d", nonce, len(r.connServices))
+	r.mu.RLock()
+	services := make(map[*client]string, len(r.connServices))
+	for cl, name := range r.connServices {
+		services[cl] = name
+	}
+	r.mu.RUnlock()
+
+	probe := &healthProbe{requester: requester, services: services, responses: make(map[*client]time.Time)}
+	r.healthMu.Lock()
+	r.healthProbes[nonce] = probe
+	r.healthMu.Unlock()
+	for cl := range services {
+		if cl == requester {
+			// The gateway is the requester, so the successful snapshot exchange
+			// itself proves that its Router transport and handler are alive.
+			probe.responses[cl] = time.Now()
+			continue
+		}
+		select {
+		case cl.sendChs[PrioHigh] <- makeControlFrame(MsgHealthRequest, encodeNonce(nonce)):
+		case <-cl.done:
+		}
+	}
+	go func() {
+		time.Sleep(healthProbeTimeout)
+		r.finishHealthProbe(nonce)
+	}()
+}
+
+func (r *Router) finishHealthProbe(nonce uint64) {
+	r.healthMu.Lock()
+	probe, ok := r.healthProbes[nonce]
+	if !ok {
+		r.healthMu.Unlock()
+		return
+	}
+	delete(r.healthProbes, nonce)
+	now := time.Now()
+	rows := make([]healthRow, 0, len(probe.services))
+	services := make([]struct {
+		cl   *client
+		name string
+	}, 0, len(probe.services))
+	for cl, name := range probe.services {
+		services = append(services, struct {
+			cl   *client
+			name string
+		}{cl: cl, name: name})
+	}
+	sort.Slice(services, func(i, j int) bool { return services[i].name < services[j].name })
+	for _, service := range services {
+		cl, name := service.cl, service.name
+		status := r.health[name]
+		status.transportAlive = r.clientAlive(cl)
+		if responseAt, ok := probe.responses[cl]; ok {
+			status.probeState = 1
+			status.lastResponse = responseAt
+		} else {
+			status.probeState = 2
+		}
+		r.health[name] = status
+		age := uint64(0)
+		if !status.lastResponse.IsZero() {
+			age = uint64(now.Sub(status.lastResponse).Milliseconds())
+		}
+		rows = append(rows, healthRow{name: name, transportAlive: status.transportAlive, probeState: status.probeState, ageMs: age})
+	}
+	r.healthMu.Unlock()
+	select {
+	case probe.requester.sendChs[PrioHigh] <- makeControlFrame(MsgHealthResponse, encodeHealthSnapshot(nonce, rows)):
+	case <-probe.requester.done:
+	}
+}
+
+func (r *Router) clientAlive(cl *client) bool {
+	select {
+	case <-cl.done:
+		return false
+	default:
+		return true
+	}
+}
+
+func (r *Router) serviceName(cl *client) (string, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	name, ok := r.connServices[cl]
+	return name, ok
+}
+
+func (r *Router) handleHealthRequest(cl *client, payload []byte) {
+	if len(payload) != 8 {
+		return
+	}
+	nonce := binary.BigEndian.Uint64(payload)
+	name, registered := r.serviceName(cl)
+	log.Printf("[health] request nonce=%d requester=%s registered=%v", nonce, name, registered)
+	if registered && name != "gateway" {
+		select {
+		case cl.sendChs[PrioHigh] <- makeControlFrame(MsgHealthResponse, payload):
+		case <-cl.done:
+		}
+		return
+	}
+	r.healthSnapshot(cl, nonce)
+}
+
+func (r *Router) handleHealthResponse(cl *client, payload []byte) {
+	if len(payload) != 8 {
+		return
+	}
+	nonce := binary.BigEndian.Uint64(payload)
+	r.healthMu.Lock()
+	if probe, ok := r.healthProbes[nonce]; ok {
+		probe.responses[cl] = time.Now()
+	}
+	r.healthMu.Unlock()
+}
+
 func (r *Router) Publish(topic string, data []byte) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	matched, dropped := 0, 0
 	prio := classifyTopic(topic)
-
 	for pattern, clients := range r.subs {
 		if !topicMatches(pattern, topic) {
 			continue
@@ -318,10 +423,6 @@ func (r *Router) Publish(topic string, data []byte) {
 		for cl := range clients {
 			bp := framePool.Get().(*[]byte)
 			allocPublishFrame(bp, topic, data)
-
-			// Use done channel to avoid send-on-closed-channel panic when
-			// writeBuf calls Close() on write error while Publish holds only
-			// an RLock on subs.
 			select {
 			case cl.sendChs[prio] <- bp:
 				matched++
@@ -332,10 +433,6 @@ func (r *Router) Publish(topic string, data []byte) {
 				framePool.Put(bp)
 			default:
 				if prio == PrioHigh {
-					// PrioHigh: blocking send without drop — but channel was
-					// non-blocking-available AND client isn't done AND channel
-					// isn't full — this shouldn't fire unless writer is
-					// saturated. Re-select blocking.
 					select {
 					case cl.sendChs[prio] <- bp:
 						matched++
@@ -346,7 +443,6 @@ func (r *Router) Publish(topic string, data []byte) {
 						framePool.Put(bp)
 					}
 				} else {
-					// PrioNormal/PrioLow: drop-oldest on full channel
 					select {
 					case old := <-cl.sendChs[prio]:
 						*old = (*old)[:0]
@@ -375,17 +471,11 @@ func (r *Router) Publish(topic string, data []byte) {
 			}
 		}
 	}
-
 	if dropped > 0 {
-		log.Printf("[router] publish: topic=%s bytes=%d delivered=%d dropped=%d (prio=%d)",
-			topic, len(data), matched, dropped, prio)
-	} else {
-		log.Printf("[router] publish: topic=%s bytes=%d subscribers=%d (prio=%d)",
-			topic, len(data), matched, prio)
+		log.Printf("[router] publish: topic=%s bytes=%d delivered=%d dropped=%d (prio=%d)", topic, len(data), matched, dropped, prio)
 	}
 }
 
-// StartCleanup runs a background loop that disconnects clients idle longer than timeout.
 func (r *Router) StartCleanup() {
 	go func() {
 		ticker := time.NewTicker(cleanupInterval)
@@ -399,26 +489,18 @@ func (r *Router) StartCleanup() {
 func (r *Router) cleanupOnce() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
 	now := time.Now()
 	seen := make(map[*client]struct{})
-
 	for _, clients := range r.subs {
 		for cl := range clients {
 			if _, ok := seen[cl]; ok {
 				continue
 			}
 			seen[cl] = struct{}{}
-			// Never idle-kill a registered service: it may legitimately be
-			// silent (e.g. chunkstore with no chunk.requests). A dead service
-			// is detected via TCP RST/EOF by handleConn, not by a timer.
-			if _, isService := r.connServices[cl]; isService {
+			if _, ok := r.connServices[cl]; ok {
 				continue
 			}
-			lastSeen := time.Unix(0, cl.lastSeen.Load())
-			if now.Sub(lastSeen) > idleTimeout {
-				log.Printf("[router] idle timeout: conn=%s lastSeen=%s",
-					cl.conn.RemoteAddr(), lastSeen.Format(time.RFC3339))
+			if now.Sub(time.Unix(0, cl.lastSeen.Load())) > idleTimeout {
 				r.unsubscribeAllLocked(cl)
 				cl.Close()
 			}
@@ -426,7 +508,6 @@ func (r *Router) cleanupOnce() {
 	}
 }
 
-// Services returns a copy of all registered services.
 func (r *Router) Services() map[string]ServiceInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -437,7 +518,6 @@ func (r *Router) Services() map[string]ServiceInfo {
 	return cp
 }
 
-// ClientCount returns the number of unique connected clients.
 func (r *Router) ClientCount() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -450,25 +530,13 @@ func (r *Router) ClientCount() int {
 	return len(seen)
 }
 
-// TopicCount returns the number of topics with active subscribers.
-func (r *Router) TopicCount() int {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return len(r.subs)
-}
-
-// ---------------------------------------------------------------------------
-// Topic matching (MQTT-style)
-// ---------------------------------------------------------------------------
+func (r *Router) TopicCount() int { r.mu.RLock(); defer r.mu.RUnlock(); return len(r.subs) }
 
 func topicMatches(pattern, topic string) bool {
 	if !strings.ContainsAny(pattern, "+#") {
 		return pattern == topic
 	}
-
-	pSegs := strings.Split(pattern, ".")
-	tSegs := strings.Split(topic, ".")
-
+	pSegs, tSegs := strings.Split(pattern, "."), strings.Split(topic, ".")
 	pi, ti := 0, 0
 	for pi < len(pSegs) && ti < len(tSegs) {
 		if pSegs[pi] == "#" {
@@ -480,82 +548,60 @@ func topicMatches(pattern, topic string) bool {
 		pi++
 		ti++
 	}
-
-	if pi == len(pSegs) && ti == len(tSegs) {
-		return true
-	}
-	if pi == len(pSegs)-1 && pSegs[pi] == "#" && ti == len(tSegs) {
-		return true
-	}
-	return false
+	return (pi == len(pSegs) && ti == len(tSegs)) || (pi == len(pSegs)-1 && pSegs[pi] == "#" && ti == len(tSegs))
 }
 
-// ---------------------------------------------------------------------------
-// Frame I/O
-// ---------------------------------------------------------------------------
-
-// readFrame reads one frame from conn using buf as scratch space.
-// buf is NOT safe for concurrent use — caller must own it (one goroutine).
 func readFrame(conn net.Conn, buf []byte) (MsgType, []byte, error) {
-	header := buf[:frameHeaderSize]
-	if _, err := io.ReadFull(conn, header); err != nil {
+	if len(buf) < frameHeaderSize {
+		return 0, nil, errShortFrame
+	}
+	if _, err := io.ReadFull(conn, buf[:frameHeaderSize]); err != nil {
 		return 0, nil, err
 	}
-
-	payloadLen := binary.BigEndian.Uint32(header[:4])
+	payloadLen := binary.BigEndian.Uint32(buf[:4])
 	if payloadLen < 1 {
 		return 0, nil, errShortFrame
 	}
-
-	msgType := MsgType(header[4])
-
-	var payload []byte
+	msgType := MsgType(buf[4])
 	totalLen := int(payloadLen) - 1
-	if totalLen > 0 {
-		if totalLen <= cap(buf)-frameHeaderSize {
-			payload = buf[frameHeaderSize : frameHeaderSize+totalLen]
-		} else {
-			payload = make([]byte, totalLen)
-		}
-		if _, err := io.ReadFull(conn, payload); err != nil {
-			return 0, nil, err
-		}
+	if totalLen <= 0 {
+		return msgType, nil, nil
 	}
-
+	var payload []byte
+	if totalLen <= cap(buf)-frameHeaderSize {
+		payload = buf[frameHeaderSize : frameHeaderSize+totalLen]
+	} else {
+		payload = make([]byte, totalLen)
+	}
+	if _, err := io.ReadFull(conn, payload); err != nil {
+		return 0, nil, err
+	}
 	return msgType, payload, nil
 }
 
-// allocPublishFrame fills a pooled buffer with a publish frame.
-// Caller owns the returned slice; must return *buf to framePool when done.
 func allocPublishFrame(buf *[]byte, topic string, data []byte) []byte {
 	topicBytes := []byte(topic)
-	// payload_len = type(1) + topic_len_prefix(2) + topic + data
 	payloadLen := 1 + 2 + len(topicBytes) + len(data)
-	frameSize := 4 + payloadLen // 4-byte length header + payload
-
+	frameSize := 4 + payloadLen
 	if cap(*buf) < frameSize {
 		*buf = make([]byte, frameSize)
 	}
 	*buf = (*buf)[:frameSize]
 	frame := *buf
-
-	binary.BigEndian.PutUint32(frame[0:4], uint32(payloadLen))
+	binary.BigEndian.PutUint32(frame[:4], uint32(payloadLen))
 	frame[4] = byte(MsgPublish)
 	binary.BigEndian.PutUint16(frame[5:7], uint16(len(topicBytes)))
 	copy(frame[7:], topicBytes)
 	copy(frame[7+len(topicBytes):], data)
-
 	return frame
 }
 
 func makeFrame(msgType MsgType, payload []byte) []byte {
 	payloadLen := 1 + len(payload)
 	frame := make([]byte, frameHeaderSize+payloadLen)
-
-	binary.BigEndian.PutUint32(frame[0:4], uint32(payloadLen))
+	binary.BigEndian.PutUint32(frame[:4], uint32(payloadLen))
 	frame[4] = byte(msgType)
 	copy(frame[5:], payload)
-
 	return frame
 }
 

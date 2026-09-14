@@ -366,10 +366,10 @@ void test_mismatched_energy_declarations_rejected_at_load() {
     CHECK(!recipes->loadRecipesFromYamlFile(makeTempFile(kind_mismatch)),
           "requirement kind contradicting energy_in must fail validation");
 
-    // kind not consumed by any variant of the machine class: compressor is
+    // kind not consumed by any variant of the machine class: alloy_smelter is
     // STEAM-only in machines.yaml, so an EU requirement has no provider.
     const std::string class_mismatch =
-        "class: compressor\n"
+        "class: alloy_smelter\n"
         "recipes:\n"
         "  - name: test_class_mismatch\n"
         "    inputs:\n"

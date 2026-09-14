@@ -372,9 +372,9 @@ static void test_QuestManager_detection_block_placed() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SIDE_CONFIGURED detection (task 2.2): quest 71 (Side Configuration, prereqs
-// 40+55) targets "1:0:0:0:9", which is absent from items.csv — so no packed
-// machine id can satisfy it. Test the reachable invariants: hatch wrenching
-// (machine_id == 0) and unrelated machines never complete a side-config quest.
+// 40+55) targets "1110:010:6" (Electric Furnace LV, in items.csv). Hatch
+// wrenching (machine_id == 0) and unrelated machines never complete a
+// side-config quest; the matching machine does.
 // ─────────────────────────────────────────────────────────────────────────────
 static void test_QuestManager_detection_side_configured() {
   const uint64_t player = 41;
@@ -399,9 +399,14 @@ static void test_QuestManager_detection_side_configured() {
   mgr.checkSideConfigured(player, ItemId::pack("1110:000:0"));
   CHECK_EQ(countTopic(pub, "quest.completed"), 0,
            "unrelated machine does not complete side-config quest");
+
+  // Electric Furnace LV (1110:010:6) matches 71's detect target → completes.
+  mgr.checkSideConfigured(player, ItemId::pack("1110:010:6"));
+  CHECK_EQ(countTopic(pub, "quest.completed"), 1,
+           "matching machine completes side-config quest 71");
   CHECK_EQ(lastAdvertisedStatus(pub, 71),
-           static_cast<int>(quest::QuestStatus::AVAILABLE),
-           "side-config quest 71 stays AVAILABLE (target not in items.csv)");
+           static_cast<int>(quest::QuestStatus::COMPLETED),
+           "side-config quest 71 completes via Electric Furnace LV");
   PASS();
 }
 

@@ -2,33 +2,22 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Write|Edit",
         "hooks": [
           {
-            "type": "command",
             "command": "python3 /home/su/src/local/gtnh-platform/.claude/hooks/syntax-check.py",
+            "statusMessage": "Syntax-checking edited file...",
             "timeout": 60,
-            "statusMessage": "Syntax-checking edited file..."
-          }
-        ]
-      }
-    ],
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "command": "bd prime",
             "type": "command"
           }
         ],
-        "matcher": ""
+        "matcher": "Write|Edit"
       }
     ],
     "SessionStart": [
       {
         "hooks": [
           {
-            "command": "bd prime",
+            "command": "bd prime --hook-json",
             "type": "command"
           }
         ],

@@ -2,6 +2,8 @@
 #include "Render/WrenchOverlay.h"
 #include "Render/PipeFluidOverlay.h"
 #include "Network/PipeContentsStateStore.h"
+#include "Network/NetClient.h"
+#include "Network/ServiceHealthStore.h"
 #include "Render/MinimapWorldAdapter.h"
 #include "World/World.h"
 #include "Camera/Camera.h"
@@ -125,6 +127,24 @@ void RenderBridge::ImGuiOverlay(const renderlib::FrameRenderData& frame) {
     ImGui::Text("pipeOverlay=%s highlight=%s",
                 frame.ext.showPipeFluidOverlay ? "ON" : "OFF",
                 frame.ext.hasHighlight ? "yes" : "no");
+    if (g_uiMgr && g_uiMgr->GetActions().ServiceHealthOn()) {
+        ImGui::Separator();
+        ImGui::TextUnformatted("Service health");
+        if (ImGui::Button("Refresh")) {
+            if (auto *nc = g_uiMgr->GetNetClient()) nc->SendServiceHealthReq(1);
+        }
+        if (auto *store = g_uiMgr->GetServiceHealthStore()) {
+            for (const auto &row : store->Snapshot()) {
+                const char *state = row.probeState == 1 ? "UP" : row.probeState == 2 ? "DOWN" : "UNKNOWN";
+                if (row.probeState == 1 || row.lastResponseAgeMs != 0) {
+                    ImGui::Text("%s: %s (%llums)", row.name.c_str(), state,
+                                static_cast<unsigned long long>(row.lastResponseAgeMs));
+                } else {
+                    ImGui::Text("%s: %s", row.name.c_str(), state);
+                }
+            }
+        }
+    }
     if (frame.ext.showPipeFluidOverlay) {
         const BlockPos pipePos{frame.ext.highlightedBlock.x,
                                frame.ext.highlightedBlock.y,

@@ -153,6 +153,10 @@ func handleConn(r *Router, conn net.Conn) {
 			conn.SetReadDeadline(time.Time{})
 
 		case MsgHeartbeat:
+		case MsgHealthRequest:
+			r.handleHealthRequest(cl, payload)
+		case MsgHealthResponse:
+			r.handleHealthResponse(cl, payload)
 
 		default:
 			log.Printf("[conn] unknown msg type %d from %s", msgType, conn.RemoteAddr())

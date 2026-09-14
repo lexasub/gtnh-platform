@@ -19,11 +19,13 @@ import (
 type msgType byte
 
 const (
-	msgSubscribe   msgType = 0x01
-	msgUnsubscribe msgType = 0x02
-	msgPublish     msgType = 0x03
-	msgRegister    msgType = 0x04
-	msgHeartbeat   msgType = 0x05
+	msgSubscribe      msgType = 0x01
+	msgUnsubscribe    msgType = 0x02
+	msgPublish        msgType = 0x03
+	msgRegister       msgType = 0x04
+	msgHeartbeat      msgType = 0x05
+	msgHealthRequest  msgType = 0x06
+	msgHealthResponse msgType = 0x07
 )
 
 const routerAddr = "127.0.0.1:4000"
@@ -165,6 +167,12 @@ func (rc *RouterClient) handleRouterFrame(mt msgType, payload []byte) {
 		rc.handlePublish(payload)
 	case msgHeartbeat:
 		// router sends heartbeat to check liveness; nothing to do
+	case msgHealthRequest:
+		if err := writeFrame(rc.conn, msgHealthResponse, payload); err != nil {
+			log.Printf("[router] health response write failed: %v", err)
+		}
+	case msgHealthResponse:
+		// Health snapshots are consumed by the gateway requester.
 	default:
 		log.Printf("[router] unexpected message type %d", mt)
 	}
@@ -190,7 +198,9 @@ func (rc *RouterClient) handlePublish(payload []byte) {
 
 	if topic == "meta_db.inventory.set" {
 		maxHex := len(fbData)
-		if maxHex > 48 { maxHex = 48 }
+		if maxHex > 48 {
+			maxHex = 48
+		}
 		log.Printf("[router] meta_db.inventory.set: fb_len=%d hex=%x", len(fbData), fbData[:maxHex])
 	}
 
@@ -408,4 +418,3 @@ func handlePlayerLeft(data []byte, m *MetaDB) {
 		log.Printf("[router] player.left: SavePlayerPosition error: %v", err)
 	}
 }
-

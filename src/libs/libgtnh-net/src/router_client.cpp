@@ -131,40 +131,59 @@ void RouterClient::heartbeat() {
     conn_->send_raw(std::move(frame));
 }
 
+void RouterClient::health_response(const uint8_t *nonce, size_t len) {
+    if (!connected_ || !nonce || len != sizeof(uint64_t)) return;
+    auto frame = frame::pack_router(static_cast<uint8_t>(RouterMsg::kHealthResponse),
+                                     nonce, len);
+    conn_->send_raw(std::move(frame));
+}
+
+void RouterClient::health_request(uint64_t nonce) {
+    if (!connected_) return;
+    uint8_t payload[sizeof(nonce)];
+    for (size_t i = 0; i < sizeof(nonce); ++i)
+        payload[sizeof(nonce) - 1 - i] = static_cast<uint8_t>(nonce >> (i * 8));
+    auto frame = frame::pack_router(static_cast<uint8_t>(RouterMsg::kHealthRequest),
+                                     payload, sizeof(payload));
+    conn_->send_raw(std::move(frame));
+}
+
 // =========================================================================
 //  Read callback — called from IoUringContext poll thread
 // =========================================================================
 
 void RouterClient::on_frame(uint8_t msg_type, const uint8_t* data, size_t len) {
     switch (static_cast<RouterMsg>(msg_type)) {
+    case RouterMsg::kHealthRequest:
+        health_response(data, len);
+        return;
+    case RouterMsg::kHealthResponse:
+        if (on_health_response)
+            on_health_response(std::make_shared<std::vector<uint8_t>>(data, data + len));
+        return;
     case RouterMsg::kPublish: {
         if (len < 2) {
             spdlog::warn("Router: publish frame too short ({} bytes)", len);
             return;
         }
         uint16_t topic_len = (static_cast<uint16_t>(data[0]) << 8) |
-                             (static_cast<uint16_t>(data[1]));
+                             static_cast<uint16_t>(data[1]);
         if (static_cast<size_t>(2 + topic_len) > len) {
             spdlog::warn("Router: publish topic truncated (topic_len={}, frame={})",
                          topic_len, len);
             return;
         }
-
         std::string topic(reinterpret_cast<const char*>(data + 2), topic_len);
         auto msg_data = std::make_shared<std::vector<uint8_t>>(
             data + 2 + topic_len, data + len);
-
-        if (on_publish) {
-            on_publish(topic, std::move(msg_data));
-        }
-        break;
+        if (on_publish) on_publish(topic, std::move(msg_data));
+        return;
     }
     case RouterMsg::kHeartbeat:
-        break;
+        return;
     default:
-        spdlog::trace("Router: unhandled msg type 0x{:02x} ({} bytes)",
-                      msg_type, len);
-        break;
+        spdlog::trace("Router: unhandled msg type 0x{:02x} ({} bytes)", msg_type, len);
+        return;
     }
 }
 
@@ -178,9 +197,7 @@ std::vector<uint8_t> RouterClient::make_frame(RouterMsg msg_type,
     std::vector<uint8_t> frame(4 + payload_len);
     frame::write_be32(frame.data(), payload_len);
     frame[4] = static_cast<uint8_t>(msg_type);
-    if (!payload.empty()) {
-        std::memcpy(frame.data() + 5, payload.data(), payload.size());
-    }
+    if (!payload.empty()) std::memcpy(frame.data() + 5, payload.data(), payload.size());
     return frame;
 }
 
@@ -188,8 +205,8 @@ std::vector<uint8_t> RouterClient::make_publish_frame(
     const std::string& topic, const std::vector<uint8_t>& payload) {
     std::vector<uint8_t> topic_prefixed;
     uint16_t topic_len = static_cast<uint16_t>(topic.size());
-    topic_prefixed.push_back(static_cast<uint8_t>((topic_len >> 8) & 0xFF));
-    topic_prefixed.push_back(static_cast<uint8_t>(topic_len & 0xFF));
+    topic_prefixed.push_back(static_cast<uint8_t>(topic_len >> 8));
+    topic_prefixed.push_back(static_cast<uint8_t>(topic_len));
     topic_prefixed.insert(topic_prefixed.end(), topic.begin(), topic.end());
     topic_prefixed.insert(topic_prefixed.end(), payload.begin(), payload.end());
     return make_frame(RouterMsg::kPublish, topic_prefixed);
@@ -199,18 +216,17 @@ std::vector<uint8_t> RouterClient::make_register_frame(
     const std::string& service_name, const std::vector<std::string>& topics) {
     std::vector<uint8_t> payload;
     uint16_t name_len = static_cast<uint16_t>(service_name.size());
-    payload.push_back(static_cast<uint8_t>((name_len >> 8) & 0xFF));
-    payload.push_back(static_cast<uint8_t>(name_len & 0xFF));
+    payload.push_back(static_cast<uint8_t>(name_len >> 8));
+    payload.push_back(static_cast<uint8_t>(name_len));
     payload.insert(payload.end(), service_name.begin(), service_name.end());
-
     uint16_t ntopics = static_cast<uint16_t>(topics.size());
-    payload.push_back(static_cast<uint8_t>((ntopics >> 8) & 0xFF));
-    payload.push_back(static_cast<uint8_t>(ntopics & 0xFF));
-    for (const auto& t : topics) {
-        uint16_t topic_len = static_cast<uint16_t>(t.size());
-        payload.push_back(static_cast<uint8_t>((topic_len >> 8) & 0xFF));
-        payload.push_back(static_cast<uint8_t>(topic_len & 0xFF));
-        payload.insert(payload.end(), t.begin(), t.end());
+    payload.push_back(static_cast<uint8_t>(ntopics >> 8));
+    payload.push_back(static_cast<uint8_t>(ntopics));
+    for (const auto& topic : topics) {
+        uint16_t topic_len = static_cast<uint16_t>(topic.size());
+        payload.push_back(static_cast<uint8_t>(topic_len >> 8));
+        payload.push_back(static_cast<uint8_t>(topic_len));
+        payload.insert(payload.end(), topic.begin(), topic.end());
     }
     return make_frame(RouterMsg::kRegister, payload);
 }
@@ -218,8 +234,8 @@ std::vector<uint8_t> RouterClient::make_register_frame(
 std::vector<uint8_t> RouterClient::make_subscribe_frame(const std::string& topic) {
     std::vector<uint8_t> payload;
     uint16_t topic_len = static_cast<uint16_t>(topic.size());
-    payload.push_back(static_cast<uint8_t>((topic_len >> 8) & 0xFF));
-    payload.push_back(static_cast<uint8_t>(topic_len & 0xFF));
+    payload.push_back(static_cast<uint8_t>(topic_len >> 8));
+    payload.push_back(static_cast<uint8_t>(topic_len));
     payload.insert(payload.end(), topic.begin(), topic.end());
     return make_frame(RouterMsg::kSubscribe, payload);
 }

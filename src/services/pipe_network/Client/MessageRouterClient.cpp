@@ -155,11 +155,12 @@ void MessageRouterClient::readFrame() {
             auto payload = std::make_shared<std::vector<uint8_t>>(data_len);
             asio::async_read(socket_, asio::buffer(*payload),
                 [this, payload, msg_type, data_len](asio::error_code ec2, size_t) {
+                    if (!ec2 && msg_type == static_cast<uint8_t>(RouterMsg::kHealthRequest))
+                        writeFrame(makeFrame(RouterMsg::kHealthResponse, *payload));
                     onReadFrame(ec2, msg_type, data_len, payload);
                 });
         });
 }
-
 
 void MessageRouterClient::writeFrame(const std::vector<uint8_t> &frame) {
     if (frame.empty() || !socket_.is_open()) return;

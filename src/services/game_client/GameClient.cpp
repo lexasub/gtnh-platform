@@ -122,6 +122,10 @@ void GameClient::subscribeNetClient() {
         [this](std::shared_ptr<std::vector<uint8_t>> data) {
             resourceBuffers_.Enqueue(data);
         });
+    netClient_->SetServiceHealthCallback(
+        [this](std::shared_ptr<std::vector<uint8_t>> data) {
+            serviceHealth_.Apply(std::move(data));
+        });
     // Debug pipe-contents replies: enqueue only; render thread applies them
     // in Update() and drains via ApplyPending().
     netClient_->SetPipeContentsCallback(
@@ -267,6 +271,7 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
     uiMgr_.SetNetClient(netClient_.get());
     uiMgr_.SetResourceBufferStore(&resourceBuffers_);
     uiMgr_.SetPipeContentsStore(&pipeContents_);
+    uiMgr_.SetServiceHealthStore(&serviceHealth_);
 
     // Server-driven recipe store (catalog + LRU caches)
     recipeDb_.Init(netClient_.get());

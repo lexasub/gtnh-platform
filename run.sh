@@ -16,10 +16,10 @@ LOKI_BRIDGE_PORT=1514
 cd cmake-build-debug; ninja -j5; cd ..
 cp -r data/ /mnt/nfs/src/cpp/gtnh-platform/
 cp "${BUILD_DIR}"/bin/gameclientd /mnt/nfs/
-pushd ${SCRIPT_DIR}/src/services/message_router/
-go build *.go
-popd
-cp ${SCRIPT_DIR}/src/services/message_router/message_router $BUILD_DIR/src/services/message_router/routerd
+pushd "${SCRIPT_DIR}/src/services/message_router/" > /dev/null
+go build -o "${BUILD_DIR}/src/services/message_router/routerd" main.go router.go
+popd > /dev/null
+printf "  → MessageRouter rebuilt\n"
 
 cp -r ${SCRIPT_DIR}/src/services/game_client /mnt/nfs/src/cpp/gtnh-platform/src/services
 pushd ${SCRIPT_DIR}/src/services/meta_db/ > /dev/null

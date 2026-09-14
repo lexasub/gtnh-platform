@@ -25,7 +25,9 @@ public:
   void DoToggleQuestBook();
   void DoToggleConsole();
   void DoTogglePipeFluidOverlay();
+  void DoToggleServiceHealth();
   [[nodiscard]] bool PipeFluidOverlayOn() const;
+  [[nodiscard]] bool ServiceHealthOn() const { return serviceHealthOn_; }
 
   // Direct call (from UI clicks, not keybindings)
   void SpawnItem(uint16_t itemId, uint8_t count, int16_t targetSlot = -1);
@@ -38,4 +40,5 @@ private:
   // Persistent pipe fluid debug overlay (toggle_pipe_fluid_overlay, default
   // L). Read by GameClient each frame via uiMgr_.GetActions().
   bool pipeFluidOverlayOn_ = false;
+  bool serviceHealthOn_ = false;
 };

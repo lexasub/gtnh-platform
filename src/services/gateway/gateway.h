@@ -88,6 +88,7 @@ public:
 
   void shutdown();
   void sendHeartbeat();
+  void request_service_health(uint32_t request_id);
   bool is_router_connected() const { return router_.is_connected(); }
   bool connect_router();                                           // re-registers with stored topics
 
@@ -96,6 +97,7 @@ public:
       on_router_message;
 
 private:
+  void configure_router_callbacks();
   void on_router_publish(const std::string &topic,
                          std::shared_ptr<std::vector<uint8_t>> data);
   void on_client_ctrl_message(uint8_t msg_type, const uint8_t *data,

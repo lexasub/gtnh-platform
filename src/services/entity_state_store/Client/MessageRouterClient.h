@@ -17,6 +17,8 @@ enum class RouterMsg : uint8_t {
   kPublish = 0x03,
   kRegister = 0x04,
   kHeartbeat = 0x05,
+  kHealthRequest = 0x06,
+  kHealthResponse = 0x07,
 };
 
 // Frame header: [4 bytes: payload size] [1 byte: msg type]

@@ -107,7 +107,9 @@ bool MessageRouterClient::onReadFrame(std::shared_ptr<std::array<unsigned char, 
                              return;
                          }
 
-                         if (msg_type == static_cast<uint8_t>(RouterMsg::kPublish)) {
+                         if (msg_type == static_cast<uint8_t>(RouterMsg::kHealthRequest)) {
+                             writeFrame(makeFrame(RouterMsg::kHealthResponse, *payload));
+                         } else if (msg_type == static_cast<uint8_t>(RouterMsg::kPublish)) {
                              // Publish payload: [2B topic_len BE] [topic] [data...]
                              if (data_len >= 2) {
                                  uint16_t topic_len =

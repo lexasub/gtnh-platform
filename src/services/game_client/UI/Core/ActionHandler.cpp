@@ -37,6 +37,8 @@ void ActionHandler::Init(ActionRegistry* reg, UIManager* mgr, NetClient* nc,
     reg->Register("toggle_quest_book", [this]() { DoToggleQuestBook(); });
     reg->Register("toggle_console",    [this]() { DoToggleConsole(); });
     reg->Register("toggle_pipe_fluid_overlay", [this]() { DoTogglePipeFluidOverlay(); });
+    reg->Register("toggle_service_health", [this]() { DoToggleServiceHealth(); });
+    if (uiMgr_) uiMgr_->GetBinder().Bind(GLFW_KEY_F3, "toggle_service_health");
     reg->Register("INVENTORY",         [this]() { DoToggleInventory(); });
     reg->Register("CREATIVE_MENU",     [this]() { DoToggleCreativeMenu(); });
     for (int i = 0; i < 10; ++i) {
@@ -150,6 +152,12 @@ void ActionHandler::DoToggleConsole() {
 void ActionHandler::DoTogglePipeFluidOverlay() {
     pipeFluidOverlayOn_ = !pipeFluidOverlayOn_;
     spdlog::debug("[PipeFluid] Toggle overlay: on={}", pipeFluidOverlayOn_);
+}
+
+void ActionHandler::DoToggleServiceHealth() {
+    serviceHealthOn_ = !serviceHealthOn_;
+    if (serviceHealthOn_ && netClient_)
+        netClient_->SendServiceHealthReq(1);
 }
 
 bool ActionHandler::PipeFluidOverlayOn() const {

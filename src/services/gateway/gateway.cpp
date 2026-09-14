@@ -3,6 +3,7 @@
 #include "client_state_generated.h"
 #include "gateway_generated.h"
 #include "pipe_network_generated.h"
+#include "service_health_generated.h"
 #include "quest_generated.h"
 #include "recipe_generated.h"
 #include "common/ResourceBufferStateCodec.h"
@@ -170,13 +171,50 @@ bool IoUringGateway::listen(uint16_t ctrl_port, uint16_t bulk_port) {
 //  Router connection
 // =========================================================================
 
-bool IoUringGateway::connect_router(const std::string& host, uint16_t port) {
-    router_host_ = host;
-    router_port_ = port;
+void IoUringGateway::configure_router_callbacks() {
     router_.on_publish = [this](const std::string& topic,
                                  std::shared_ptr<std::vector<uint8_t>> data) {
         on_router_publish(topic, std::move(data));
     };
+    router_.set_health_response_callback(
+        [this](std::shared_ptr<std::vector<uint8_t>> data) {
+            if (!data || data->size() < 10) return;
+            const auto &raw = *data;
+            uint64_t nonce = 0;
+            for (size_t i = 0; i < sizeof(nonce); ++i)
+                nonce = (nonce << 8) | raw[i];
+            const uint32_t request_id = static_cast<uint32_t>(nonce >> 32);
+            size_t offset = sizeof(nonce);
+            const uint16_t count = static_cast<uint16_t>(raw[offset] << 8 | raw[offset + 1]);
+            offset += 2;
+            flatbuffers::FlatBufferBuilder builder(256);
+            std::vector<flatbuffers::Offset<Protocol::ServiceHealth>> rows;
+            rows.reserve(count);
+            for (uint16_t i = 0; i < count; ++i) {
+                if (offset + 2 > raw.size()) return;
+                const uint16_t name_len = static_cast<uint16_t>(raw[offset] << 8 | raw[offset + 1]);
+                offset += 2;
+                if (offset + name_len + 10 > raw.size()) return;
+                auto name = builder.CreateString(reinterpret_cast<const char *>(raw.data() + offset), name_len);
+                offset += name_len;
+                const auto state = static_cast<Protocol::ServiceHealthProbeState>(raw[offset++]);
+                const bool transport = raw[offset++] != 0;
+                uint64_t age = 0;
+                for (size_t j = 0; j < sizeof(age); ++j) age = (age << 8) | raw[offset++];
+                rows.push_back(Protocol::CreateServiceHealth(builder, name, transport, state, age));
+            }
+            auto vector = builder.CreateVector(rows);
+            auto response = Protocol::CreateServiceHealthResp(builder, request_id, vector);
+            builder.Finish(response);
+            send_to_client_ctrl_raw(GatewayMsg::kServiceHealthResp,
+                                    builder.GetBufferPointer(), builder.GetSize());
+        });
+}
+
+bool IoUringGateway::connect_router(const std::string& host, uint16_t port) {
+    router_host_ = host;
+    router_port_ = port;
+    configure_router_callbacks();
     return router_.connect(host.c_str(), port, "gateway");
 }
 
@@ -186,10 +224,7 @@ bool IoUringGateway::connect_router() {
         return false;
     }
     spdlog::info("Gateway: reconnecting to router {}:{}", router_host_, router_port_);
-    router_.on_publish = [this](const std::string& topic,
-                                 std::shared_ptr<std::vector<uint8_t>> data) {
-        on_router_publish(topic, std::move(data));
-    };
+    configure_router_callbacks();
     return router_.connect(router_host_.c_str(), router_port_, "gateway");
 }
 
@@ -199,6 +234,13 @@ bool IoUringGateway::connect_router() {
 
 void IoUringGateway::sendHeartbeat() {
     router_.heartbeat();
+}
+
+void IoUringGateway::request_service_health(uint32_t request_id) {
+    static std::atomic<uint64_t> sequence{1};
+    const uint64_t nonce = (static_cast<uint64_t>(request_id) << 32) |
+                           sequence.fetch_add(1, std::memory_order_relaxed);
+    router_.health_request(nonce);
 }
 
 void IoUringGateway::subscribe(const std::string& topic) {
@@ -678,6 +720,18 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
             spdlog::error("Gateway: invalid PipeContentsReq on ctrl"); return;
         }
         publish("pipe.contents.request", data, len);
+        break;
+    }
+    case GatewayMsg::kServiceHealthReq: {
+        flatbuffers::Verifier v(data, len);
+        if (!v.VerifyBuffer<Protocol::ServiceHealthReq>(nullptr)) {
+            spdlog::error("Gateway: invalid ServiceHealthReq on ctrl"); return;
+        }
+        const auto *req = flatbuffers::GetRoot<Protocol::ServiceHealthReq>(data);
+        if (req) {
+            spdlog::info("Gateway: received ServiceHealthReq request_id={}", req->request_id());
+            request_service_health(req->request_id());
+        }
         break;
     }
     default: spdlog::warn("Gateway: unknown ctrl client msg type {}", msg_type); break;

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "Common/InputState.h"
@@ -13,6 +14,7 @@
 #include "Panels/ISidePanel.h"
 #include "UI/Core/DragManager.h"
 #include "Windows/IUIWindow.h"
+class ServiceHealthStore;
 struct InventoryState;
 struct BlockPos;
 class NetClient;
@@ -77,6 +79,12 @@ public:
 
   // ── Network access ───────────────────────────────────────────────────────
   void SetNetClient(NetClient *nc);
+  [[nodiscard]] ServiceHealthStore *GetServiceHealthStore() const {
+    return serviceHealthStore_;
+  }
+  void SetServiceHealthStore(ServiceHealthStore *store) {
+    serviceHealthStore_ = store;
+  }
   NetClient *GetNetClient() const { return netClient_; }
 
   // ── Server-driven recipe store (shared by windows/panels) ────────────────
@@ -170,6 +178,7 @@ private:
   ServerRecipeDB *recipeDb_ = nullptr;
   ResourceBufferStateStore *resourceBufferStore_ = nullptr;
   PipeContentsStateStore *pipeContentsStore_ = nullptr;
+  ServiceHealthStore *serviceHealthStore_ = nullptr;
   InventoryState *playerInv_ = nullptr;
   uint8_t currentEra_ = 0; // player quest era; default VAGRANT
   std::array<bool, 512> prevKeys_{};

@@ -19,6 +19,8 @@ enum class RouterMsg : uint8_t {
   kPublish = 0x03,
   kRegister = 0x04,
   kHeartbeat = 0x05,
+  kHealthRequest = 0x06,
+  kHealthResponse = 0x07,
 };
 
 // High-level Router pub/sub client.
@@ -56,11 +58,21 @@ public:
   // Send heartbeat (must be called periodically from main loop).
   void heartbeat();
 
+  // Respond to a Router health probe or request a snapshot.
+  void health_response(const uint8_t *nonce, size_t len);
+  void health_request(uint64_t nonce);
+  using HealthResponseCallback =
+      std::function<void(std::shared_ptr<std::vector<uint8_t>> data)>;
+  void set_health_response_callback(HealthResponseCallback callback) {
+    on_health_response = std::move(callback);
+  }
+
   // Callback for incoming publish messages.
   // Called from IoUringContext poll thread — do not block.
   std::move_only_function<void(const std::string &topic,
                                std::shared_ptr<std::vector<uint8_t>> data)>
       on_publish;
+  HealthResponseCallback on_health_response;
 
   // Access underlying connection for CQE dispatch chaining.
   IoUringConnection *connection() const { return conn_.get(); }

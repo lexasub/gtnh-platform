@@ -10,6 +10,7 @@
 #include "Network/NetClient.h"
 #include "Network/ResourceBufferStateStore.h"
 #include "Network/PipeContentsStateStore.h"
+#include "Network/ServiceHealthStore.h"
 #include "Render/RenderBridge.h"
 #include "UI/InputManager.h"
 #include "UI/UIManager.h"
@@ -59,6 +60,7 @@ private:
   // Debug pipe-contents replies (PipeNetworkService). Last-write-wins by pos;
   // render-thread applied, cleared on reconnect.
   PipeContentsStateStore pipeContents_;
+  ServiceHealthStore serviceHealth_;
 
   // Debug query throttle: last requested pos + cooldown before re-asking.
   BlockPos pipeContentsQueryPos_{std::numeric_limits<int32_t>::max(), 0, 0};

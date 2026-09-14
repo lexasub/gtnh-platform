@@ -6,6 +6,7 @@
 #include "recipe_generated.h"
 #include "quest_generated.h"
 #include "pipe_network_generated.h"
+#include "service_health_generated.h"
 
 #include <gtnh/net/io_uring_connection.h>
 #include <gtnh/net/tcp_connector.h>
@@ -350,6 +351,16 @@ void NetClient::OnMessage(uint8_t msg_type,
             if (onPipeContents_)
                 onPipeContents_(data);
             break;
+        case GatewayMsg::kServiceHealthResp: {
+            flatbuffers::Verifier verifier(payload, plen);
+            if (!verifier.VerifyBuffer<Protocol::ServiceHealthResp>(nullptr)) {
+                spdlog::warn("NetClient: invalid ServiceHealthResp");
+                return;
+            }
+            if (onServiceHealth_)
+                onServiceHealth_(std::move(data));
+            return;
+        }
         case GatewayMsg::kGridUpdate: {
             if (onGridUpdate_) {
                 flatbuffers::Verifier v(payload, plen);
@@ -884,6 +895,15 @@ void NetClient::SendMachineCloseReq(uint64_t player_id, int32_t x, int32_t y, in
     EnqueueWrite(GatewayMsg::kMachineCloseReq, builder.GetBufferPointer(), builder.GetSize());
     spdlog::debug("[Machine] SendMachineCloseReq: pos=({},{},{}) player={}",
                   x, y, z, player_id);
+}
+
+void NetClient::SendServiceHealthReq(uint32_t request_id) {
+    if (!ctrl_conn_ || !connected_ctrl_) return;
+    flatbuffers::FlatBufferBuilder builder(32);
+    auto req = Protocol::CreateServiceHealthReq(builder, request_id);
+    builder.Finish(req);
+    EnqueueWrite(GatewayMsg::kServiceHealthReq, builder.GetBufferPointer(), builder.GetSize());
+    spdlog::info("NetClient: sent ServiceHealthReq request_id={}", request_id);
 }
 
 void NetClient::SendPipeContentsReq(uint64_t player_id, int32_t x, int32_t y, int32_t z) {

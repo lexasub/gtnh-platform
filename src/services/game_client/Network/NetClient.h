@@ -82,6 +82,11 @@ public:
   using StartScenarioRespCallback = std::function<void(
       std::shared_ptr<std::vector<uint8_t>>)>;
   using ReconnectCallback = std::function<void()>;
+  using ServiceHealthCallback =
+      std::function<void(std::shared_ptr<std::vector<uint8_t>>) >;
+  void SetServiceHealthCallback(ServiceHealthCallback cb) {
+    onServiceHealth_ = std::move(cb);
+  }
 
   explicit NetClient();
   ~NetClient();
@@ -173,6 +178,7 @@ public:
   // Debug: request the fluid state of the pipe node at (x,y,z) from
   // PipeNetworkService. Reply arrives asynchronously via SetPipeContentsCallback.
   void SendPipeContentsReq(uint64_t player_id, int32_t x, int32_t y, int32_t z);
+  void SendServiceHealthReq(uint32_t request_id);
   void SendToolAction(uint64_t player_id, Protocol::ToolActionType action,
                       int32_t x, int32_t y, int32_t z, uint8_t face,
                       uint16_t item_id = 0);
@@ -279,4 +285,5 @@ private:
     ResourceBufferStateCallback onResourceBufferState_;
     PipeContentsCallback onPipeContents_;
     ReconnectCallback onReconnect_;
+  ServiceHealthCallback onServiceHealth_;
 };
