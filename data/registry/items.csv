@@ -407,6 +407,11 @@ int,name,stack,meta
 1110:100:0,creative_generator,,0
 1110:100:1,rotare_generator,,0
 # machines/storage — allocation prefix 1110:101
+# Rechargeable batteries use the 1110:111 reserved component range. Their
+# damage/meta field stores current EU, while the item count remains stackable.
+1110:111:20,battery_lv,1,0
+1110:111:21,battery_mv,1,0
+1110:111:22,battery_hv,1,0
 1110:101:0,battery_buffer_lv,,0
 1110:101:1,battery_buffer_mv,,0
 1110:101:2,battery_buffer_hv,,0

@@ -26,12 +26,25 @@ func startServices(sm *testutil.ServiceManager) func() {
 	projectRoot := filepath.Clean(filepath.Join(testutil.DataRoot, ".."))
 	registryRoot := filepath.Join(testutil.DataRoot, "registry")
 	machinesYAML := filepath.Join(registryRoot, "machines.yaml")
-	if err := os.Chdir(projectRoot); err != nil {
-		fmt.Printf("SKIP: cannot enter project root: %v\n", err)
+	chunkdbDir, err := os.MkdirTemp("", "gtnh-test-chunkdb-")
+	if err != nil {
+		fmt.Printf("SKIP: cannot create isolated ChunkStore database: %v\n", err)
 		return sm.Shutdown
 	}
+	var metadbDir string
+	cleanup := func() {
+		sm.Shutdown()
+		os.RemoveAll(chunkdbDir)
+		if metadbDir != "" {
+			os.RemoveAll(metadbDir)
+		}
+	}
+	if err := os.Chdir(projectRoot); err != nil {
+		fmt.Printf("SKIP: cannot enter project root: %v\n", err)
+		cleanup()
+		return func() {}
+	}
 
-	// Start MessageRouter
 	if err := sm.StartService(testutil.ServiceConfig{
 		Name:   "routerd",
 		Binary: "routerd",
@@ -46,10 +59,79 @@ func startServices(sm *testutil.ServiceManager) func() {
 		},
 	}); err != nil {
 		fmt.Printf("SKIP: routerd not available: %v\n", err)
-		return sm.Shutdown
+		cleanup()
+		return func() {}
 	}
 
-	// Start Gateway
+	if err := sm.StartService(testutil.ServiceConfig{
+		Name:       "pipe_networkd",
+		Binary:     "pipe_networkd",
+		Args:       []string{"--router-host", "127.0.0.1", "--router-port", "4000"},
+		ReadyCheck: func() bool { return true },
+	}); err != nil {
+		fmt.Printf("SKIP: pipenetworkd not available: %v\n", err)
+		cleanup()
+		return func() {}
+	}
+
+	if err := sm.StartService(testutil.ServiceConfig{
+		Name:   "chunkd",
+		Binary: "chunkd",
+		Args:   []string{chunkdbDir, "5001", "127.0.0.1", "4000"},
+		ReadyCheck: func() bool {
+			conn, err := net.DialTimeout("tcp", "127.0.0.1:5001", 100*time.Millisecond)
+			if err != nil {
+				return false
+			}
+			conn.Close()
+			return true
+		},
+	}); err != nil {
+		fmt.Printf("SKIP: chunkd not available: %v\n", err)
+		cleanup()
+		return func() {}
+	}
+
+	if err := sm.StartService(testutil.ServiceConfig{
+		Name:   "entitystated",
+		Binary: "entitystated",
+		ReadyCheck: func() bool {
+			conn, err := net.DialTimeout("tcp", "127.0.0.1:5200", 100*time.Millisecond)
+			if err != nil {
+				return false
+			}
+			conn.Close()
+			return true
+		},
+	}); err != nil {
+		fmt.Printf("SKIP: entitystated not available: %v\n", err)
+		cleanup()
+		return func() {}
+	}
+
+	if err := sm.StartService(testutil.ServiceConfig{
+		Name:   "simcored",
+		Binary: "simcored",
+		Args: []string{
+			"127.0.0.1", "4000",
+			"127.0.0.1", "5001",
+			filepath.Join(testutil.DataRoot, "recipes"),
+			machinesYAML,
+		},
+		ReadyCheck: func() bool {
+			conn, err := net.DialTimeout("tcp", "127.0.0.1:4000", 100*time.Millisecond)
+			if err != nil {
+				return false
+			}
+			conn.Close()
+			return true
+		},
+	}); err != nil {
+		fmt.Printf("SKIP: simcored not available: %v\n", err)
+		cleanup()
+		return func() {}
+	}
+
 	if err := sm.StartService(testutil.ServiceConfig{
 		Name:   "gatewayd",
 		Binary: "gatewayd",
@@ -64,66 +146,16 @@ func startServices(sm *testutil.ServiceManager) func() {
 		},
 	}); err != nil {
 		fmt.Printf("SKIP: gatewayd not available: %v\n", err)
-		return sm.Shutdown
+		cleanup()
+		return func() {}
 	}
 
-	// Start PipeNetwork before simulation nodes begin publishing resource state.
-	if err := sm.StartService(testutil.ServiceConfig{
-		Name:   "pipe_networkd",
-		Binary: "pipe_networkd",
-		Args:   []string{"--router-host", "127.0.0.1", "--router-port", "4000"},
-		ReadyCheck: func() bool {
-			return true // PipeNetwork has no dedicated readiness port.
-		},
-	}); err != nil {
-		fmt.Printf("SKIP: pipenetworkd not available: %v\n", err)
-		return sm.Shutdown
+	metadbDir, err = os.MkdirTemp("", "gtnh-test-metadb-")
+	if err != nil {
+		fmt.Printf("SKIP: cannot create isolated MetaDB directory: %v\n", err)
+		cleanup()
+		return func() {}
 	}
-
-	// Start ChunkStore
-	if err := sm.StartService(testutil.ServiceConfig{
-		Name:   "chunkd",
-		Binary: "chunkd",
-		Args:   []string{"/tmp/gtnh-test-chunkdb", "5001", "127.0.0.1", "4000"},
-		ReadyCheck: func() bool {
-			conn, err := net.DialTimeout("tcp", "127.0.0.1:5001", 100*time.Millisecond)
-			if err != nil {
-				return false
-			}
-			conn.Close()
-			return true
-		},
-	}); err != nil {
-		fmt.Printf("SKIP: chunkd not available: %v\n", err)
-		return sm.Shutdown
-	}
-
-	// Start SimulationCore
-	if err := sm.StartService(testutil.ServiceConfig{
-		Name:   "simcored",
-		Binary: "simcored",
-		Args: []string{
-			"127.0.0.1", "4000", // router host, port
-			"127.0.0.1", "5001", // chunkstore host, port
-			filepath.Join(testutil.DataRoot, "recipes"),
-			machinesYAML,
-		},
-		ReadyCheck: func() bool {
-			// SimCore doesn't have a direct TCP port; check router connectivity.
-			conn, err := net.DialTimeout("tcp", "127.0.0.1:4000", 100*time.Millisecond)
-			if err != nil {
-				return false
-			}
-			conn.Close()
-			return true
-		},
-	}); err != nil {
-		fmt.Printf("SKIP: simcored not available: %v\n", err)
-		return sm.Shutdown
-	}
-
-	// Start MetaDB (inventory persistence)
-	metadbDir, _ := os.MkdirTemp("", "gtnh-test-metadb")
 	if err := sm.StartService(testutil.ServiceConfig{
 		Name:    "metadbd",
 		Binary:  "metadbd",
@@ -131,11 +163,6 @@ func startServices(sm *testutil.ServiceManager) func() {
 		ReadyCheck: func() bool {
 			conn, err := net.DialTimeout("tcp", "127.0.0.1:5006", 100*time.Millisecond)
 			if err != nil {
-				conn2, err2 := net.DialTimeout("tcp", "127.0.0.1:4000", 100*time.Millisecond)
-				if err2 == nil {
-					conn2.Close()
-					return true
-				}
 				return false
 			}
 			conn.Close()
@@ -143,14 +170,10 @@ func startServices(sm *testutil.ServiceManager) func() {
 		},
 	}); err != nil {
 		fmt.Printf("SKIP: metadbd not available: %v\n", err)
-		return sm.Shutdown
+		cleanup()
+		return func() {}
 	}
 
-	// Let services settle and subscribe to topics before tests start.
 	time.Sleep(3 * time.Second)
-
-	return func() {
-		sm.Shutdown()
-		os.RemoveAll(metadbDir)
-	}
+	return cleanup
 }

@@ -123,7 +123,14 @@ int main(int argc, char* argv[]) {
     const char*  recipes_dir     = (argc > 5) ? argv[5] : "/home/su/src/local/gtnh-platform/data/recipes";
     const char*  machines_yaml   = (argc > 6) ? argv[6] : "data/registry/machines.yaml";
 
-    spdlog::set_level(spdlog::level::debug);
+    spdlog::set_level(spdlog::level::info);
+    if (const char* level = std::getenv("GTNH_LOG_LEVEL")) {
+        std::string value(level);
+        if (value == "trace") spdlog::set_level(spdlog::level::trace);
+        else if (value == "debug") spdlog::set_level(spdlog::level::debug);
+        else if (value == "warn") spdlog::set_level(spdlog::level::warn);
+        else if (value == "error") spdlog::set_level(spdlog::level::err);
+    }
     spdlog::info("Starting SimulationCore...");
 
     // ── Machine registry (from YAML) ──────────────────────────────────────
@@ -553,6 +560,7 @@ int main(int argc, char* argv[]) {
     routerClient->Subscribe("player.actions.setblock");
     routerClient->Subscribe("world.blocks.changed");
     routerClient->Subscribe("fluid.consume.response");
+    routerClient->Subscribe("energy.consume.response");
     routerClient->Subscribe("item.flow");
     routerClient->Subscribe("item.transfer.response");
     routerClient->Subscribe("player.chest.open");

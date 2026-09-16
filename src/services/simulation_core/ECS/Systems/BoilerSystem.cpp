@@ -40,6 +40,12 @@ void BoilerSystem::tick(float /*dt*/) {
         // Fail-closed: without a resolved Steam id the produced steam could
         // never be identified or drained, so no heat is converted.
         int32_t maxOut = 0;
+        // A boiler's HEAT node is populated by AdjacencyTransferSystem before
+        // this system runs; keep the component mirror authoritative for the
+        // conversion even when a legacy node update is delayed.
+        if (auto* current_energy = reg_.try_get<EnergyStorage>(ent)) {
+            heatIntake.heat_stored = std::max(heatIntake.heat_stored, current_energy->current);
+        }
         if (steam_id_ != 0 && heatIntake.heat_stored > 0 &&
             steam.steam_stored < steam.steam_capacity) {
             double toConvert = std::min({

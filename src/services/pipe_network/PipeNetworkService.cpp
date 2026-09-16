@@ -375,6 +375,7 @@ void PipeNetworkService::onRouterMessage(const std::string& topic, const std::ve
 }
 
 void PipeNetworkService::handleBlockChanged(const std::vector<uint8_t>& data) {
+    spdlog::debug("[PipeNet] block change received ({} bytes)", data.size());
     flatbuffers::Verifier verifier(data.data(), data.size());
     if (!verifier.VerifyBuffer<Protocol::BlockChangedEvent>()) {
         spdlog::warn("[PipeNet] invalid BlockChangedEvent");
@@ -392,6 +393,8 @@ void PipeNetworkService::handleBlockChanged(const std::vector<uint8_t>& data) {
     int32_t y = pos->y();
     int32_t z = pos->z();
     uint16_t block_id = event->block_id();
+    spdlog::debug("[PipeNet] block change at ({},{},{}) id={} meta={}", x, y, z, block_id, event->meta());
+
     uint64_t key = posKey(x, y, z);
 
     if (block_id == 0) {
@@ -606,6 +609,9 @@ void PipeNetworkService::connectNodeNeighbors(uint64_t sourceNodeId,
     // Rebuild once after the full six-face scan. addEdge() intentionally keeps
     // its immediate-rebuild API for existing callers, while this hot path must
     // not rebuild the whole graph once per connected face.
+    if (!candidateEdges.empty()) {
+        spdlog::debug("[PipeNet] node {} at ({},{},{}) edges={}", sourceNodeId, x, y, z, candidateEdges.size());
+    }
     network_manager_.addEdges(candidateEdges);
 }
 
@@ -866,21 +872,24 @@ void PipeNetworkService::handleNodeUpdate(const std::vector<uint8_t>& data) {
     auto it = protocol_to_mgr_.find(protocol_id);
     uint64_t mgr_id;
     if (it == protocol_to_mgr_.end()) {
-        if (!network_manager_.addNodeWithId(protocol_id, x, y, z, 1)) {
-            // Chunk hydration allocates local pipe IDs before the simulation
-            // publishes machine IDs. Keep the protocol ID as the lookup key,
-            // but allocate a collision-free manager ID for this machine.
-            mgr_id = network_manager_.findNodeAtPosition(x, y, z);
-            const auto* existing = mgr_id != 0 ? network_manager_.getNode(mgr_id) : nullptr;
-            if (existing != nullptr && existing->block_id != 1) {
-                mgr_id = network_manager_.addNode(x, y, z, 1);
-            }
-            if (mgr_id == 0) {
-                spdlog::warn("Unable to register energy node {}", protocol_id);
-                return;
-            }
-        } else {
+        // EnTT may legitimately assign entity 0 to the first machine. The
+        // network manager uses 0 as its "not found" sentinel, so protocol id
+        // zero always gets a separately allocated non-zero manager node.
+        const auto existing_at_position = network_manager_.findNodeAtPosition(x, y, z);
+        const auto* existing = existing_at_position != 0
+            ? network_manager_.getNode(existing_at_position) : nullptr;
+        if (existing != nullptr && existing->block_id == 1) {
+            mgr_id = existing_at_position;
+        } else if (protocol_id != 0 &&
+                   network_manager_.addNodeWithId(protocol_id, x, y, z, 1)) {
             mgr_id = protocol_id;
+        } else {
+            mgr_id = network_manager_.addNode(x, y, z, 1);
+        }
+        if (mgr_id == 0) {
+            spdlog::warn("Unable to register energy node {} at ({},{},{})",
+                         protocol_id, x, y, z);
+            return;
         }
         protocol_to_mgr_[protocol_id] = mgr_id;
         machine_nodes_[posKey(x, y, z)] = mgr_id;
@@ -901,8 +910,11 @@ void PipeNetworkService::handleNodeUpdate(const std::vector<uint8_t>& data) {
     st.is_source = update->is_source();
     st.is_sink = update->is_sink();
 
-    // Wire up CableGraph for ELECTRICITY / ROTATION nodes
+    // Keep the legacy manager mirror authoritative as well as CableGraph. The
+    // consume path uses node_states for accounting, while manager topology is
+    // used to discover the connected cable network.
     if (st.type == Protocol::EnergyType_ELECTRICITY || st.type == Protocol::EnergyType_ROTATION) {
+        network_manager_.setNodeEnergy(mgr_id, st.energy, st.capacity, st.is_source, st.is_sink);
         if (st.is_source) cable_graph_.registerGenerator(mgr_id, x, y, z, st.tier);
         if (st.is_sink)   cable_graph_.registerMachine(mgr_id, x, y, z, st.tier);
     } else if (st.type == Protocol::EnergyType_HEAT || st.type == Protocol::EnergyType_STEAM) {

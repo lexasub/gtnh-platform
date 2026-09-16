@@ -132,13 +132,13 @@ func BuildBreakBlockActionWithOptions(playerID uint64, x, y, z int32, expectedBl
 // BuildPlayerAction builds a PlayerAction FlatBuffer (for ITEM_ACTION, CHUNK_REQUEST, etc).
 func BuildPlayerAction(playerID uint64, actionType Protocol.PlayerActionType, x, y, z int32, itemID uint16, count byte) []byte {
 	b := flatbuffers.NewBuilder(64)
-	pos := Protocol.CreateVec3i(b, x, y, z)
 	Protocol.PlayerActionStart(b)
 	Protocol.PlayerActionAddPlayerId(b, playerID)
 	Protocol.PlayerActionAddAction(b, actionType)
-	Protocol.PlayerActionAddPos(b, pos)
 	Protocol.PlayerActionAddBlockId(b, itemID)
 	Protocol.PlayerActionAddCount(b, count)
+	pos := Protocol.CreateVec3i(b, x, y, z)
+	Protocol.PlayerActionAddPos(b, pos)
 	act := Protocol.PlayerActionEnd(b)
 	b.Finish(act)
 	return b.FinishedBytes()
@@ -160,6 +160,17 @@ func BuildInventoryAction(playerID uint64, actionType uint8, sourceSlot, targetS
 }
 
 // BuildSetMachineSlotReq builds a SetMachineSlotReq FlatBuffer.
+func BuildContainerOpenReq(playerID uint64, x, y, z int32) []byte {
+	b := flatbuffers.NewBuilder(64)
+	Protocol.ContainerOpenReqStart(b)
+	Protocol.ContainerOpenReqAddPlayerId(b, playerID)
+	pos := Protocol.CreateVec3i(b, x, y, z)
+	Protocol.ContainerOpenReqAddPos(b, pos)
+	req := Protocol.ContainerOpenReqEnd(b)
+	b.Finish(req)
+	return b.FinishedBytes()
+}
+
 func BuildSetMachineSlotReq(playerID uint64, x, y, z int32, slotIndex uint16, itemID uint16, count byte, meta uint16, playerSlot byte) []byte {
 	b := flatbuffers.NewBuilder(64)
 	Protocol.SetMachineSlotReqStart(b)

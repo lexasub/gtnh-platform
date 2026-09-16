@@ -22,20 +22,25 @@ import (
 
 // Gateway message types (mirrors GatewayMsg in gateway.h)
 const (
-	MsgPlayerAction      = 1
-	MsgChunkSnapshot     = 2
-	MsgEntitySnapshot    = 3
-	MsgBlockUpdate       = 4
-	MsgBlockAck          = 5
-	MsgInventoryUpdate   = 6
-	MsgInventoryAction   = 7
-	MsgBlockEntityUpdate = 8
-	MsgCraftRequest      = 9
-	MsgCraftResponse     = 10
-	MsgSetBlockAction    = 11
-	MsgCompressedChunk   = 12
-	MsgSetMachineSlot    = 15
-	MsgMultiblockEvent   = 23
+	MsgPlayerAction        = 1
+	MsgChunkSnapshot       = 2
+	MsgEntitySnapshot      = 3
+	MsgBlockUpdate         = 4
+	MsgBlockAck            = 5
+	MsgInventoryUpdate     = 6
+	MsgInventoryAction     = 7
+	MsgBlockEntityUpdate   = 8
+	MsgCraftRequest        = 9
+	MsgCraftResponse       = 10
+	MsgSetBlockAction      = 11
+	MsgCompressedChunk     = 12
+	MsgSetMachineSlot      = 15
+	MsgSetMachineSlotResp  = 16
+	MsgMachineOpenReq      = 18
+	MsgMultiblockEvent     = 23
+	MsgResourceBufferState = 47
+	MsgPipeContentsReq     = 48
+	MsgPipeContentsResp    = 49
 )
 
 // GatewayAddress holds ctrl and bulk addresses.
@@ -150,7 +155,9 @@ func (c *GatewayClient) ExpectMsgType(expected uint8, timeout time.Duration) ([]
 
 // WaitForBlockAck waits for the ACK matching both request ID and status.
 // Gateway pushes may be interleaved with ACKs, so unrelated complete frames
-// are consumed and ignored.
+// are consumed and ignored. The ACCEPTED status is the placement protocol's
+// immediate client acknowledgement; the asynchronous CAS result is observed
+// separately by the server and must not add a five-second delay to each step.
 func (c *GatewayClient) WaitForBlockAck(requestID uint32, status Protocol.BlockAckStatus, timeout time.Duration) ([]byte, error) {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -175,6 +182,19 @@ func (c *GatewayClient) WaitForBlockAck(requestID uint32, status Protocol.BlockA
 		}
 	}
 	return nil, fmt.Errorf("timeout waiting for BlockAck request_id=%d status=%v", requestID, status)
+}
+
+// RequestChunk asks Gateway/ChunkStore to generate and cache a chunk before
+// a CAS placement touches it. This removes the generation-vs-CAS startup race.
+func (c *GatewayClient) RequestChunk(playerID uint64, chunkX, chunkY, chunkZ int32) error {
+	return c.SendCtrl(MsgPlayerAction, BuildPlayerAction(playerID,
+		Protocol.PlayerActionTypeCHUNK_REQUEST, chunkX, chunkY, chunkZ, 0, 0))
+}
+
+// WaitForChunkGeneration gives the asynchronous world generator time to
+// persist a requested chunk. The chunk protocol has no request ACK.
+func (c *GatewayClient) WaitForChunkGeneration(timeout time.Duration) {
+	time.Sleep(timeout)
 }
 
 // MultiblockEventKind identifies the typed payload carried by message 23.

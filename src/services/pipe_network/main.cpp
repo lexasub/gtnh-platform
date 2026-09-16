@@ -26,6 +26,14 @@ int main(int argc, char** argv) {
     metrics.install();
 
     spdlog::set_default_logger(spdlog::stdout_color_mt("pipe_networkd"));
+    spdlog::set_level(spdlog::level::info);
+    if (const char* level = std::getenv("GTNH_LOG_LEVEL")) {
+        const std::string value(level);
+        if (value == "trace") spdlog::set_level(spdlog::level::trace);
+        else if (value == "debug") spdlog::set_level(spdlog::level::debug);
+        else if (value == "warn") spdlog::set_level(spdlog::level::warn);
+        else if (value == "error") spdlog::set_level(spdlog::level::err);
+    }
 
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
@@ -61,7 +69,7 @@ int main(int argc, char** argv) {
         if (metrics.poll()) {
             metrics.printMetrics("PipeNetwork Service (pipe_networkd)");
         }
-        
+
         // Drain all completions that are already ready. Processing only one
         // handler per 10 ms starves the router read/write continuations while
         // block updates arrive in bursts, which in turn trips its write

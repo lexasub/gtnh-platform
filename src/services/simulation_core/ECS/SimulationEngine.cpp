@@ -234,17 +234,30 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
         int maxOutput = 32;
         int tier = 1;
         
+        const MachineInfo* machine_info = nullptr;
         if (machine_registry_) {
-            if (auto* info = machine_registry_->Get(block_id)) {
-                if (info->energy_in.has_value()) etype = info->energy_in.value();
-                else if (info->energy_out.has_value()) etype = info->energy_out.value();
-                capacity = info->capacity;
-                maxInput = info->maxInput;
-                maxOutput = info->maxOutput;
-                tier = info->tier;
+            machine_info = machine_registry_->Get(block_id);
+            if (machine_info) {
+                if (machine_info->energy_in.has_value()) etype = machine_info->energy_in.value();
+                else if (machine_info->energy_out.has_value()) etype = machine_info->energy_out.value();
+                capacity = machine_info->capacity;
+                maxInput = machine_info->maxInput;
+                maxOutput = machine_info->maxOutput;
+                tier = machine_info->tier;
+                // Dedicated systems own fuel generators, heat boilers, steam
+                // turbines, and battery buffers. Keep them out of the generic
+                // recipe loop, which would otherwise publish a conflicting
+                // sink state or consume their inventory as a recipe input.
+                if (machine_info->machine_class == "generator" ||
+                    machine_info->machine_class == "boiler" ||
+                    machine_info->machine_class == "steam_turbine" ||
+                    machine_info->machine_class == "battery_buffer") {
+                    reg_.get<MachineComponent>(entity).managed_externally = true;
+                }
             }
         }
         reg_.emplace_or_replace<EnergyStorage>(entity, capacity, 0, maxInput, maxOutput, tier, etype);
+
 
         if (etype == EnergyType::HEAT) {
             reg_.emplace_or_replace<HeatIntakeComponent>(entity);

@@ -61,22 +61,29 @@ type ServiceManager struct {
 // findBinary resolves the binary path checking multiple locations.
 func findBinary(name string) (string, error) {
 	serviceDir := map[string]string{
-		"routerd":      "message_router",
-		"gatewayd":     "gateway",
-		"chunkd":       "chunk_store",
-		"simcored":     "simulation_core",
-		"entitystated": "entity_state_store",
-		"pipenetworkd": "pipe_network",
+		"routerd":           "message_router",
+		"gatewayd":          "gateway",
+		"chunkd":            "chunk_store",
+		"simcored":          "simulation_core",
+		"entitystated":      "entity_state_store",
+		"metadbd":           "meta_db",
+		"pipenetworkd":      "pipe_network",
+		"pipe_networkd":     "pipe_network",
+		"pipe_network":      "pipe_network",
+		"pipe_network_exec": "pipe_network",
+		"pipenetwork":       "pipe_network",
 	}
 	dir := name
 	if mapped, ok := serviceDir[name]; ok {
 		dir = mapped
 	}
+	repoRoot := filepath.Clean(filepath.Join(BuildRoot, ".."))
 	candidates := []string{
 		filepath.Join(BuildRoot, "bin", name),
 		filepath.Join(BuildRoot, name),
 		filepath.Join(BuildRoot, "src", "services", dir, name),
 		filepath.Join(BuildRoot, "src", "services", dir, name+"_exec"),
+		filepath.Join(repoRoot, "src", "services", dir, name),
 		filepath.Join(BuildRoot, "src", "services", "message_router", name),
 	}
 	for _, p := range candidates {
