@@ -142,10 +142,18 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
             }
 
             if (old_mb_id != 0) {
-                if (controllers_.count(old_mb_id) != 0) {
-                    destroyController(old_mb_id);
-                } else {
-                    removeBlockFromController(old_mb_id, x, y, z);
+                auto controller = controllers_.find(old_mb_id);
+                if (controller != controllers_.end()) {
+                    const bool is_anchor = controller->second.x == x &&
+                                           controller->second.y == y &&
+                                           controller->second.z == z;
+                    if (is_anchor) {
+                        destroyController(old_mb_id);
+                    } else {
+                        // Removing a member invalidates only that member. The
+                        // controller remains alive until its anchor is removed.
+                        removeBlockFromController(old_mb_id, x, y, z);
+                    }
                 }
             }
 
@@ -169,18 +177,26 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
     }
 
     bool was_machine = false;
+    uint32_t effective_mb_id = mb_id;
     {
         auto* old_block = reg_.try_get<Block>(entity);
-        if (old_block && old_block->mb_id != 0 && old_block->mb_id != mb_id) {
-            removeBlockFromController(old_block->mb_id, x, y, z);
+        if (old_block && old_block->mb_id != 0) {
+            // BlockChangedEvent currently carries mb_id=0 for action echoes.
+            // Preserve an existing controller membership when the echoed block
+            // is unchanged; otherwise a later anchor break cannot find its owner.
+            if (mb_id == 0 && old_block->id == block_id) {
+                effective_mb_id = old_block->mb_id;
+            } else if (old_block->mb_id != mb_id) {
+                removeBlockFromController(old_block->mb_id, x, y, z);
+            }
         }
         was_machine = reg_.all_of<MachineComponent>(entity);
     }
 
-    auto& block = reg_.get_or_emplace<Block>(entity, block_id, meta, mb_id);
+    auto& block = reg_.get_or_emplace<Block>(entity, block_id, meta, effective_mb_id);
     block.id = block_id;
     block.meta = meta;
-    block.mb_id = mb_id;
+    block.mb_id = effective_mb_id;
 
     if (mb_id != 0) {
         removeBlockFromController(mb_id, x, y, z);

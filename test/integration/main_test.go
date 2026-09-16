@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -22,6 +23,13 @@ func TestMain(m *testing.M) {
 
 func startServices(sm *testutil.ServiceManager) func() {
 	gw = testutil.DefaultGateway()
+	projectRoot := filepath.Clean(filepath.Join(testutil.DataRoot, ".."))
+	registryRoot := filepath.Join(testutil.DataRoot, "registry")
+	machinesYAML := filepath.Join(registryRoot, "machines.yaml")
+	if err := os.Chdir(projectRoot); err != nil {
+		fmt.Printf("SKIP: cannot enter project root: %v\n", err)
+		return sm.Shutdown
+	}
 
 	// Start MessageRouter
 	if err := sm.StartService(testutil.ServiceConfig{
@@ -82,16 +90,14 @@ func startServices(sm *testutil.ServiceManager) func() {
 		Name:   "simcored",
 		Binary: "simcored",
 		Args: []string{
-			"127.0.0.1", "4000",   // router host, port
-			"127.0.0.1", "5001",   // chunkstore host, port
-			testutil.DataRoot + "/recipes",
-			testutil.DataRoot + "/registry/consumers.csv",
-			testutil.DataRoot + "/registry/producers.csv",
+			"127.0.0.1", "4000", // router host, port
+			"127.0.0.1", "5001", // chunkstore host, port
+			filepath.Join(testutil.DataRoot, "recipes"),
+			machinesYAML,
 		},
 		ReadyCheck: func() bool {
-			// SimCore doesn't have a direct TCP port; check router connection by
-			// verifying gateway is still up (proxy for "system is ready")
-			conn, err := net.DialTimeout("tcp", "127.0.0.1:7777", 100*time.Millisecond)
+			// SimCore doesn't have a direct TCP port; check router connectivity.
+			conn, err := net.DialTimeout("tcp", "127.0.0.1:4000", 100*time.Millisecond)
 			if err != nil {
 				return false
 			}
@@ -112,11 +118,10 @@ func startServices(sm *testutil.ServiceManager) func() {
 		ReadyCheck: func() bool {
 			conn, err := net.DialTimeout("tcp", "127.0.0.1:5006", 100*time.Millisecond)
 			if err != nil {
-				// MetaDB may not expose :5006 immediately; check router
 				conn2, err2 := net.DialTimeout("tcp", "127.0.0.1:4000", 100*time.Millisecond)
 				if err2 == nil {
 					conn2.Close()
-					return true // router port is up, metadbd may still be connecting
+					return true
 				}
 				return false
 			}
@@ -128,7 +133,7 @@ func startServices(sm *testutil.ServiceManager) func() {
 		return sm.Shutdown
 	}
 
-	// Let services settle and subscribe to topics before tests start
+	// Let services settle and subscribe to topics before tests start.
 	time.Sleep(3 * time.Second)
 
 	return func() {

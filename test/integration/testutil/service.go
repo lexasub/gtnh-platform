@@ -11,6 +11,8 @@ import (
 // BuildRoot is the project build directory.
 var BuildRoot = func() string {
 	candidates := []string{
+		"../../cmake-build-debug",
+		"../../../cmake-build-debug",
 		"../../build",
 		"../../../build",
 	}
@@ -46,7 +48,7 @@ type ServiceConfig struct {
 	Name       string
 	Binary     string
 	Args       []string
-	Port       int // 0 = ephemeral
+	Port       int    // 0 = ephemeral
 	WorkDir    string // working directory (empty = inherit)
 	ReadyCheck func() bool
 }
@@ -58,11 +60,24 @@ type ServiceManager struct {
 
 // findBinary resolves the binary path checking multiple locations.
 func findBinary(name string) (string, error) {
+	serviceDir := map[string]string{
+		"routerd":      "message_router",
+		"gatewayd":     "gateway",
+		"chunkd":       "chunk_store",
+		"simcored":     "simulation_core",
+		"entitystated": "entity_state_store",
+		"pipenetworkd": "pipe_network",
+	}
+	dir := name
+	if mapped, ok := serviceDir[name]; ok {
+		dir = mapped
+	}
 	candidates := []string{
 		filepath.Join(BuildRoot, "bin", name),
 		filepath.Join(BuildRoot, name),
-		filepath.Join(BuildRoot, "src", "services", name, name),
-		filepath.Join(BuildRoot, "src", "services", name, name+"_exec"),
+		filepath.Join(BuildRoot, "src", "services", dir, name),
+		filepath.Join(BuildRoot, "src", "services", dir, name+"_exec"),
+		filepath.Join(BuildRoot, "src", "services", "message_router", name),
 	}
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {

@@ -26,6 +26,7 @@ Built with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + TC
 | **Game modes** | Survival (no mobs — ore gen, gating, tools), Creative (build mode), Adventure, Spectator |
 | **Protocol** | Resolve GatewayMsg C++ constants vs FlatBuffers `GatewayPayload` union divergence |
 | **Tests** | Contract/integration tests: protocol frames, router pub/sub flows, RPC boundaries, service handoff |
+| **Headless Gateway client** | GUI-free TCP/FlatBuffers testing via `test/integration/` and `tools/gateway_cli/`; multiblock E2E extension is documented in [`docs/gateway-headless-client.md`](docs/gateway-headless-client.md) |
 
 Overall **everything works**, but there are bugs — code was written fast, architecture changed on the fly. Many places have **hardcoded values** that need architectural workarounds.
 

@@ -27,6 +27,7 @@ import (
 	"encoding/binary"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -38,16 +39,17 @@ import (
 )
 
 const (
-	kPlayerAction      = 1
-	kBlockAck          = 5
-	kBlockEntityUpdate = 8
-	kSetBlockAction    = 11
-	kSetMachineSlot    = 15
+	kPlayerAction       = 1
+	kBlockAck           = 5
+	kBlockEntityUpdate  = 8
+	kSetBlockAction     = 11
+	kSetMachineSlot     = 15
 	kSetMachineSlotResp = 16
-	kMachineOpenReq    = 18
-	kMachineCloseReq   = 46
-	kPipeContentsReq   = 48
-	kPipeContentsResp  = 49
+	kMachineOpenReq     = 18
+	kMachineCloseReq    = 46
+	kPipeContentsReq    = 48
+	kPipeContentsResp   = 49
+	kMultiblockEvent    = 23
 )
 
 // pack("1110:011:0") -> 0xE400 (steam_solid_boiler), pack("1111:10:0") -> 0xF800 (fluid_pipe)
@@ -226,7 +228,8 @@ func formatSlots(u *Protocol.BlockEntityUpdate, input bool) string {
 	return strings.Join(parts, " ")
 }
 
-func statusName(s Protocol.BlockAckStatus) string {	switch s {
+func statusName(s Protocol.BlockAckStatus) string {
+	switch s {
 	case 0:
 		return "REJECTED"
 	case 1:
@@ -241,7 +244,7 @@ func (c *client) startReader() {
 	go func() {
 		header := make([]byte, 5)
 		for {
-			if _, err := c.conn.Read(header); err != nil {
+			if _, err := io.ReadFull(c.conn, header); err != nil {
 				return
 			}
 			payloadLen := binary.BigEndian.Uint32(header[:4])
@@ -249,10 +252,22 @@ func (c *client) startReader() {
 				continue
 			}
 			payload := make([]byte, payloadLen-1)
-			if _, err := c.conn.Read(payload); err != nil {
+			if _, err := io.ReadFull(c.conn, payload); err != nil {
 				return
 			}
 			switch header[4] {
+			case kMultiblockEvent:
+				if created := Protocol.GetRootAsMultiblockCreatedEvent(payload, 0); created != nil {
+					var pos Protocol.Vec3i
+					if created.Anchor(&pos) != nil {
+						fmt.Printf("  MULTIBLOCK created controller=%d anchor=(%d,%d,%d) type=%d\n", created.ControllerId(), pos.X(), pos.Y(), pos.Z(), created.MbType())
+						break
+					}
+				}
+				destroyed := Protocol.GetRootAsMultiblockDestroyedEvent(payload, 0)
+				if destroyed != nil {
+					fmt.Printf("  MULTIBLOCK destroyed controller=%d\n", destroyed.ControllerId())
+				}
 			case kBlockAck:
 				ack := Protocol.GetRootAsBlockAck(payload, 0)
 				var pos Protocol.Vec3i

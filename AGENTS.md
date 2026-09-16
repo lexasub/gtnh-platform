@@ -82,6 +82,7 @@ Key libs: RecipeManagerLib `src/libs/recipe_manager_lib/`, libgtnh-net `src/libs
 | Block data storage        | `src/services/chunk_store/`          | LMDB, chunk serialization          |
 | Terrain generation        | `src/services/world_generator/`      | Noise functions, biomes            |
 | ECS, multiblocks, mobs    | `src/services/simulation_core/`      | EnTT, pattern matching             |
+| Headless Gateway tests    | `test/integration/`, `tools/gateway_cli/`, `docs/gateway-headless-client.md` | TCP/FlatBuffers client without GUI; multiblock E2E plan |
 | Energy/liquid networks    | `src/services/pipe_network/`         | Graph algorithms, flow solving     |
 | Spatial queries           | `src/services/spatial_index/`        | STUB — not implemented, not built   |
 | Entity state persistence  | `src/services/entity_state_store/`   | LMDB-backed, TCP RPC port 5200     |

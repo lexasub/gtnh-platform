@@ -10,20 +10,32 @@ import (
 // BuildSetBlockAction builds a SetBlockAction FlatBuffer.
 // NOTE: In Go FlatBuffers, struct fields must be written AFTER StartObject
 // and ALL scalar fields, immediately before AddPos (struct data is inline).
+// SetBlockActionOptions contains optional client correlation and placement fields.
+type SetBlockActionOptions struct {
+	RequestID uint32
+	Face      byte
+	HeldItem  uint16
+}
+
 // BuildSetBlockAction builds a SetBlockAction FlatBuffer for placing a block.
 // Uses RIGHT_MOUSE_CLICK (place). For breaking blocks, use BuildBreakBlockAction.
 func BuildSetBlockAction(playerID uint64, x, y, z int32, expectedBlockID, newBlockID uint16) []byte {
+	return BuildSetBlockActionWithOptions(playerID, x, y, z, expectedBlockID, newBlockID, SetBlockActionOptions{})
+}
+
+// BuildSetBlockActionWithOptions builds a placement action with request-aware fields.
+func BuildSetBlockActionWithOptions(playerID uint64, x, y, z int32, expectedBlockID, newBlockID uint16, opts SetBlockActionOptions) []byte {
 	b := flatbuffers.NewBuilder(128)
 	Protocol.SetBlockActionStart(b)
-	// Scalar fields first (any order among themselves)
 	Protocol.SetBlockActionAddPlayerId(b, playerID)
 	Protocol.SetBlockActionAddAction(b, Protocol.PlayerActionTypeRIGHT_MOUSE_CLICK)
-	// Struct field: write data then immediately record vtable position
 	pos := Protocol.CreateVec3i(b, x, y, z)
 	Protocol.SetBlockActionAddPos(b, pos)
-	// Remaining scalar fields
 	Protocol.SetBlockActionAddExpectedBlockId(b, expectedBlockID)
 	Protocol.SetBlockActionAddNewBlockId(b, newBlockID)
+	Protocol.SetBlockActionAddRequestId(b, opts.RequestID)
+	Protocol.SetBlockActionAddFace(b, opts.Face)
+	Protocol.SetBlockActionAddHeldItem(b, opts.HeldItem)
 	action := Protocol.SetBlockActionEnd(b)
 	b.Finish(action)
 	return b.FinishedBytes()
@@ -96,6 +108,11 @@ func AssertCraftResponse(t *testing.T, data []byte, expectSuccess bool) *Protoco
 // BuildBreakBlockAction builds a SetBlockAction FlatBuffer for breaking a block.
 // Uses LEFT_MOUSE_CLICK (break). expectedBlockID = 0 means "any block".
 func BuildBreakBlockAction(playerID uint64, x, y, z int32, expectedBlockID uint16) []byte {
+	return BuildBreakBlockActionWithOptions(playerID, x, y, z, expectedBlockID, SetBlockActionOptions{})
+}
+
+// BuildBreakBlockActionWithOptions builds a break action with request correlation.
+func BuildBreakBlockActionWithOptions(playerID uint64, x, y, z int32, expectedBlockID uint16, opts SetBlockActionOptions) []byte {
 	b := flatbuffers.NewBuilder(128)
 	Protocol.SetBlockActionStart(b)
 	Protocol.SetBlockActionAddPlayerId(b, playerID)
@@ -103,7 +120,10 @@ func BuildBreakBlockAction(playerID uint64, x, y, z int32, expectedBlockID uint1
 	pos := Protocol.CreateVec3i(b, x, y, z)
 	Protocol.SetBlockActionAddPos(b, pos)
 	Protocol.SetBlockActionAddExpectedBlockId(b, expectedBlockID)
-	Protocol.SetBlockActionAddNewBlockId(b, 0) // break → 0 = air
+	Protocol.SetBlockActionAddNewBlockId(b, 0)
+	Protocol.SetBlockActionAddRequestId(b, opts.RequestID)
+	Protocol.SetBlockActionAddFace(b, opts.Face)
+	Protocol.SetBlockActionAddHeldItem(b, opts.HeldItem)
 	action := Protocol.SetBlockActionEnd(b)
 	b.Finish(action)
 	return b.FinishedBytes()
@@ -125,15 +145,15 @@ func BuildPlayerAction(playerID uint64, actionType Protocol.PlayerActionType, x,
 }
 
 // BuildInventoryAction builds an InventoryAction FlatBuffer.
+// The current schema represents the source slot as Slot; targetSlot and meta
+// remain parameters for compatibility with older callers.
 func BuildInventoryAction(playerID uint64, actionType uint8, sourceSlot, targetSlot int16, count uint8, meta uint16) []byte {
 	b := flatbuffers.NewBuilder(64)
 	Protocol.InventoryActionStart(b)
 	Protocol.InventoryActionAddPlayerId(b, playerID)
 	Protocol.InventoryActionAddActionType(b, actionType)
-	Protocol.InventoryActionAddSourceSlot(b, byte(sourceSlot))
-	Protocol.InventoryActionAddTargetSlot(b, byte(targetSlot))
+	Protocol.InventoryActionAddSlot(b, uint16(sourceSlot))
 	Protocol.InventoryActionAddCount(b, count)
-	Protocol.InventoryActionAddMeta(b, meta)
 	act := Protocol.InventoryActionEnd(b)
 	b.Finish(act)
 	return b.FinishedBytes()

@@ -1,18 +1,23 @@
 // Package testutil provides TCP client helpers for GTNH Platform integration tests.
 //
 // Wire format (Gateway ↔ Client):
-//   Ctrl: [4 bytes BE payload size][1 byte message type][FlatBuffer]
-//   Bulk: push only (server→client)
+//
+//	Ctrl: [4 bytes BE payload size][1 byte message type][FlatBuffer]
+//	Bulk: push only (server→client)
 //
 // Wire format (Message Router):
-//   [4 bytes BE payload size][1 byte message type][topics/data...]
+//
+//	[4 bytes BE payload size][1 byte message type][topics/data...]
 package testutil
 
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"net"
 	"time"
+
+	Protocol "github.com/gtnh-platform/protocol/generated/go/Protocol"
 )
 
 // Gateway message types (mirrors GatewayMsg in gateway.h)
@@ -30,6 +35,7 @@ const (
 	MsgSetBlockAction    = 11
 	MsgCompressedChunk   = 12
 	MsgSetMachineSlot    = 15
+	MsgMultiblockEvent   = 23
 )
 
 // GatewayAddress holds ctrl and bulk addresses.
@@ -49,8 +55,9 @@ func DefaultGateway() GatewayAddress {
 
 // GatewayClient is a TCP connection to the Gateway ctrl port.
 type GatewayClient struct {
-	conn net.Conn
-	addr GatewayAddress
+	conn                   net.Conn
+	addr                   GatewayAddress
+	pendingMultiblockEvent [][]byte
 }
 
 // DialGateway connects to the Gateway ctrl port.
@@ -91,7 +98,7 @@ func (c *GatewayClient) ReadCtrl(timeout time.Duration) (uint8, []byte, error) {
 	}
 
 	header := make([]byte, 5)
-	if _, err := c.conn.Read(header); err != nil {
+	if _, err := io.ReadFull(c.conn, header); err != nil {
 		return 0, nil, fmt.Errorf("read header: %w", err)
 	}
 
@@ -108,7 +115,7 @@ func (c *GatewayClient) ReadCtrl(timeout time.Duration) (uint8, []byte, error) {
 	}
 
 	fbData := make([]byte, fbLen)
-	if _, err := c.conn.Read(fbData); err != nil {
+	if _, err := io.ReadFull(c.conn, fbData); err != nil {
 		return 0, nil, fmt.Errorf("read fb data: %w", err)
 	}
 
@@ -118,6 +125,11 @@ func (c *GatewayClient) ReadCtrl(timeout time.Duration) (uint8, []byte, error) {
 // ExpectMsgType reads and verifies the message type is the expected one.
 // Skips unexpected message types (push notifications from gateway) in a loop.
 func (c *GatewayClient) ExpectMsgType(expected uint8, timeout time.Duration) ([]byte, error) {
+	if expected == MsgMultiblockEvent && len(c.pendingMultiblockEvent) > 0 {
+		data := c.pendingMultiblockEvent[0]
+		c.pendingMultiblockEvent = c.pendingMultiblockEvent[1:]
+		return data, nil
+	}
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		remaining := time.Until(deadline)
@@ -134,6 +146,75 @@ func (c *GatewayClient) ExpectMsgType(expected uint8, timeout time.Duration) ([]
 		// Unexpected type — skip and retry (push notifications are interleaved)
 	}
 	return nil, fmt.Errorf("timeout waiting for msg_type %d", expected)
+}
+
+// WaitForBlockAck waits for the ACK matching both request ID and status.
+// Gateway pushes may be interleaved with ACKs, so unrelated complete frames
+// are consumed and ignored.
+func (c *GatewayClient) WaitForBlockAck(requestID uint32, status Protocol.BlockAckStatus, timeout time.Duration) ([]byte, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		remaining := time.Until(deadline)
+		if remaining < 10*time.Millisecond {
+			remaining = 10 * time.Millisecond
+		}
+		msgType, data, err := c.ReadCtrl(remaining)
+		if err != nil {
+			return nil, err
+		}
+		if msgType == MsgMultiblockEvent {
+			c.pendingMultiblockEvent = append(c.pendingMultiblockEvent, data)
+			continue
+		}
+		if msgType != MsgBlockAck {
+			continue
+		}
+		ack := Protocol.GetRootAsBlockAck(data, 0)
+		if ack != nil && ack.RequestId() == requestID && ack.Status() == status {
+			return data, nil
+		}
+	}
+	return nil, fmt.Errorf("timeout waiting for BlockAck request_id=%d status=%v", requestID, status)
+}
+
+// MultiblockEventKind identifies the typed payload carried by message 23.
+type MultiblockEventKind uint8
+
+const (
+	MultiblockEventUnknown   MultiblockEventKind = 0
+	MultiblockEventCreated   MultiblockEventKind = 1
+	MultiblockEventDestroyed MultiblockEventKind = 2
+)
+
+// DecodeMultiblockEvent decodes a type-23 payload as a created or destroyed event.
+func DecodeMultiblockEvent(data []byte) (MultiblockEventKind, *Protocol.MultiblockCreatedEvent, *Protocol.MultiblockDestroyedEvent, error) {
+	if len(data) == 0 {
+		return MultiblockEventUnknown, nil, nil, fmt.Errorf("empty multiblock event")
+	}
+	created := Protocol.GetRootAsMultiblockCreatedEvent(data, 0)
+	var anchor Protocol.Vec3i
+	if created != nil && created.Anchor(&anchor) != nil {
+		return MultiblockEventCreated, created, nil, nil
+	}
+	destroyed := Protocol.GetRootAsMultiblockDestroyedEvent(data, 0)
+	if destroyed != nil {
+		return MultiblockEventDestroyed, nil, destroyed, nil
+	}
+	return MultiblockEventUnknown, nil, nil, fmt.Errorf("unknown multiblock event payload")
+}
+
+// ExpectMultiblockEvent waits for a typed message-23 lifecycle event.
+func (c *GatewayClient) ExpectMultiblockEvent(timeout time.Duration) (MultiblockEventKind, *Protocol.MultiblockCreatedEvent, *Protocol.MultiblockDestroyedEvent, error) {
+	if len(c.pendingMultiblockEvent) > 0 {
+		data := c.pendingMultiblockEvent[0]
+		c.pendingMultiblockEvent = c.pendingMultiblockEvent[1:]
+		return DecodeMultiblockEvent(data)
+	}
+	data, err := c.ExpectMsgType(MsgMultiblockEvent, timeout)
+	if err != nil {
+		return MultiblockEventUnknown, nil, nil, err
+	}
+	return DecodeMultiblockEvent(data)
 }
 
 // DrainUnexpected reads and discards all pending messages up to timeout.
@@ -199,7 +280,7 @@ func ReadFrameRaw(conn net.Conn, timeout time.Duration) ([]byte, error) {
 		conn.SetReadDeadline(time.Now().Add(timeout))
 	}
 	lenBuf := make([]byte, 4)
-	if _, err := conn.Read(lenBuf); err != nil {
+	if _, err := io.ReadFull(conn, lenBuf); err != nil {
 		return nil, fmt.Errorf("read frame length: %w", err)
 	}
 	payloadLen := binary.BigEndian.Uint32(lenBuf)
@@ -207,7 +288,7 @@ func ReadFrameRaw(conn net.Conn, timeout time.Duration) ([]byte, error) {
 		return nil, nil
 	}
 	payload := make([]byte, payloadLen)
-	if _, err := conn.Read(payload); err != nil {
+	if _, err := io.ReadFull(conn, payload); err != nil {
 		return nil, fmt.Errorf("read frame payload: %w", err)
 	}
 	return payload, nil
@@ -250,14 +331,14 @@ func (r *RouterClient) ReadFrame(timeout time.Duration) (uint8, []byte, error) {
 		r.conn.SetReadDeadline(time.Now().Add(timeout))
 	}
 	header := make([]byte, 5)
-	if _, err := r.conn.Read(header); err != nil {
+	if _, err := io.ReadFull(r.conn, header); err != nil {
 		return 0, nil, fmt.Errorf("read frame header: %w", err)
 	}
 	payloadLen := binary.BigEndian.Uint32(header[0:4])
 	msgType := header[4]
 	payload := make([]byte, payloadLen)
 	if payloadLen > 0 {
-		if _, err := r.conn.Read(payload); err != nil {
+		if _, err := io.ReadFull(r.conn, payload); err != nil {
 			return 0, nil, fmt.Errorf("read frame payload: %w", err)
 		}
 	}
