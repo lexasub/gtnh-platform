@@ -7,6 +7,7 @@
 #include <spdlog/spdlog.h>
 #include "../chunk_store/Storage/cache/MutableChunk.h"
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <unordered_set>
@@ -397,6 +398,10 @@ void PipeNetworkService::handleBlockChanged(const std::vector<uint8_t>& data) {
         for (auto& [chunk_key, positions] : chunk_pipe_positions_) {
             positions.erase(key);
         }
+        if (auto cableIt = cable_nodes_.find(key); cableIt != cable_nodes_.end()) {
+            network_manager_.removeNode(cableIt->second);
+            cable_nodes_.erase(cableIt);
+        }
         auto it = pipe_nodes_.find(key);
         if (it != pipe_nodes_.end()) {
             network_manager_.removeNode(it->second);
@@ -454,6 +459,30 @@ void PipeNetworkService::handleBlockChanged(const std::vector<uint8_t>& data) {
 
     // Cable handling must run before the isPipeBlock early-return: cables are
     // not isPipeBlock, so their masks would otherwise never reach CableGraph.
+    if (isCableBlock(block_id)) {
+        const auto* cableDef = getCableDef(block_id);
+        if (cableDef) {
+            const uint8_t meta = event->meta();
+            if (cable_graph_.hasCableNode(key)) {
+                cable_graph_.setCableMeta(key, meta);
+            } else {
+                cable_graph_.addCableNode(key, *cableDef, x, y, z, meta);
+            }
+            // Also register a zero-buffer legacy node so machine source/sink
+            // updates can discover and connect to cable positions.
+            auto cableIt = cable_nodes_.find(key);
+            uint64_t nodeId = cableIt == cable_nodes_.end()
+                ? network_manager_.addNode(x, y, z, block_id) : cableIt->second;
+            cable_nodes_[key] = nodeId;
+            pipe_meta_[key] = meta;
+            network_manager_.setNodeMeta(nodeId, meta);
+            connectEnergyNeighbors(nodeId, x, y, z);
+        }
+    } else if (auto oldCable = cable_nodes_.find(key); oldCable != cable_nodes_.end()) {
+        network_manager_.removeNode(oldCable->second);
+        cable_nodes_.erase(oldCable);
+    }
+
     if (isCableBlock(block_id)) {
         const auto* cableDef = getCableDef(block_id);
         if (cableDef) {
@@ -679,6 +708,27 @@ void PipeNetworkService::refreshPipeConnections(uint64_t node_id, int32_t x,
                          /*sourceIsPipe=*/true);
 }
 
+void PipeNetworkService::connectEnergyNeighbors(uint64_t sourceNodeId,
+                                                int32_t x, int32_t y,
+                                                int32_t z) {
+    constexpr int32_t dx[6] = {1, -1, 0, 0, 0, 0};
+    constexpr int32_t dy[6] = {0, 0, 1, -1, 0, 0};
+    constexpr int32_t dz[6] = {0, 0, 0, 0, 1, -1};
+    for (int i = 0; i < 6; ++i) {
+        auto it = cable_nodes_.find(posKey(x + dx[i], y + dy[i], z + dz[i]));
+        if (it != cable_nodes_.end()) network_manager_.addEdge(sourceNodeId, it->second);
+    }
+    for (const auto& [key, node] : machine_nodes_) {
+        (void)key;
+        const auto* candidate = network_manager_.getNode(node);
+        if (!candidate) continue;
+        const bool adjacent = std::abs(candidate->x - x) +
+                              std::abs(candidate->y - y) +
+                              std::abs(candidate->z - z) == 1;
+        if (adjacent) network_manager_.addEdge(sourceNodeId, node);
+    }
+}
+
 bool PipeNetworkService::isPipeBlock(uint16_t block_id) {
     switch (block_id) {
         case BLOCK_ID_ITEM_PIPE:
@@ -866,6 +916,8 @@ void PipeNetworkService::handleNodeUpdate(const std::vector<uint8_t>& data) {
         connectNodeNeighbors(mgr_id, x, y, z,
                              /*sourceMeta=*/0, /*isItem=*/false, /*isHeat=*/true,
                              /*sourceIsPipe=*/false);
+    } else if (st.type == 0 || st.type == 3) {
+        connectEnergyNeighbors(mgr_id, x, y, z);
     }
 
     if (update->connected_nodes() && update->connected_nodes()->size() > 0) {

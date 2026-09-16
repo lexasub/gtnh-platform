@@ -67,6 +67,19 @@ func startServices(sm *testutil.ServiceManager) func() {
 		return sm.Shutdown
 	}
 
+	// Start PipeNetwork before simulation nodes begin publishing resource state.
+	if err := sm.StartService(testutil.ServiceConfig{
+		Name:   "pipe_networkd",
+		Binary: "pipe_networkd",
+		Args:   []string{"--router-host", "127.0.0.1", "--router-port", "4000"},
+		ReadyCheck: func() bool {
+			return true // PipeNetwork has no dedicated readiness port.
+		},
+	}); err != nil {
+		fmt.Printf("SKIP: pipenetworkd not available: %v\n", err)
+		return sm.Shutdown
+	}
+
 	// Start ChunkStore
 	if err := sm.StartService(testutil.ServiceConfig{
 		Name:   "chunkd",

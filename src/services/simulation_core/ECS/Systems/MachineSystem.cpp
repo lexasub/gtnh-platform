@@ -208,6 +208,10 @@ void MachineSystem::tick(float /*dt*/) {
         auto& energy = view.get<EnergyStorage>(ent);
 
         if (machine.managed_externally) continue;
+        // Recipe-driven steam requests use the recipe's exact per-tick cost in
+        // Pass 2; passive top-up is only for an idle steam machine.
+        if (auto* progress = reg_.try_get<RecipeProgress>(ent);
+            progress && !progress->recipe_id.empty()) continue;
         if (energy.type != EnergyType::STEAM) continue;
         if (steam_item_id_ == 0) continue;
         if (energy.current >= energy.capacity) continue;
@@ -320,6 +324,22 @@ void MachineSystem::tick(float /*dt*/) {
                 if (pending_it == pendingConsumes_.end()) {
                     int32_t needed = static_cast<int32_t>(recipe->energy_cost);
                     if (pipeClient_) {
+                        // Register the EU sink before requesting energy. This
+                        // is required when the consumer is connected through
+                        // cable nodes rather than a direct machine edge.
+                        pipeClient_->publishNodeUpdate(
+                            node_id,
+                            static_cast<int32_t>(machine.x),
+                            static_cast<int32_t>(machine.y),
+                            static_cast<int32_t>(machine.z),
+                            energy.current,
+                            energy.capacity,
+                            energy.maxInput,
+                            energy.maxOutput,
+                            energy.tier,
+                            static_cast<int32_t>(energy.type),
+                            false,
+                            true);
                         pipeClient_->sendConsumeRequest(
                             node_id,
                             static_cast<int32_t>(machine.x),

@@ -26,6 +26,7 @@
 #include "ECS/Systems/MachineSystem.h"
 #include "ECS/Systems/CreativeGeneratorSystem.h"
 #include "ECS/Systems/BoilerSystem.h"
+#include "ECS/Systems/SteamTurbineSystem.h"
 #include "ECS/Systems/BatteryBufferSystem.h"
 #include "ECS/Systems/DrillSystem.h"
 #include "ECS/components/DrillComponent.h"
@@ -1114,6 +1115,53 @@ static void test_DrillSystem_falls_back_to_machine_energy() {
     PASS();
 }
 
+static void test_SteamTurbineSystem_converts_steam_to_eu() {
+    setupMachineRegistry();
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(
+        std::make_shared<simcore::IoUringRouterClient>());
+    simcore::SteamTurbineSystem sys(reg, events, pipeClient, nullptr,
+                                    gtnh::common::steamItemId());
+
+    auto ent = reg.create();
+    reg.emplace<simcore::MachineComponent>(ent,
+        simcore::SteamTurbineSystem::kBlockId, 0, 300, 64, 300, 1);
+    simcore::SteamTurbineComponent turbine;
+    turbine.steam_item_id = gtnh::common::steamItemId();
+    turbine.steam_stored = 64;
+    turbine.eu_capacity = 10000;
+    turbine.eu_max_output = 32;
+    reg.emplace<simcore::SteamTurbineComponent>(ent, turbine);
+
+    sys.tick(0.05f);
+    const auto& result = reg.get<simcore::SteamTurbineComponent>(ent);
+    CHECK_EQ(result.steam_stored, 32, "turbine converts at most EU output rate per tick");
+    CHECK_EQ(result.eu_stored, 32, "turbine produces EU from steam");
+    CHECK_EQ(events->last_machine_id, simcore::SteamTurbineSystem::kBlockId,
+             "turbine publishes machine state");
+    PASS();
+}
+
+static void test_BatteryBufferSystem_publishes_electricity_sink() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(
+        std::make_shared<simcore::IoUringRouterClient>());
+    simcore::BatteryBufferSystem sys(reg, pipeClient, events);
+    auto ent = reg.create();
+    reg.emplace<simcore::MachineComponent>(ent, 0xE940, 0, 301, 64, 301, 2);
+    reg.emplace<simcore::Position>(ent, 301, 64, 301);
+    reg.emplace<simcore::InventoryContainer>(ent, 1, 1,
+        std::vector<simcore::InventorySlot>{{90, 1, 0}});
+    reg.emplace<simcore::BatteryBufferComponent>(ent,
+        simcore::BatteryBufferComponent{40000, 0, 0, 32, 8, 1});
+    sys.tick(0.05f);
+    CHECK_GT(events->block_entity_update_count, 0,
+             "battery buffer publishes observable machine state");
+    PASS();
+}
+
 static void test_BoilerSystem_heat_boiler_produces_steam_no_water() {
     setupMachineRegistry();
     entt::registry reg;
@@ -1215,6 +1263,8 @@ void test_ecs_systems() {
     TEST(GeneratorSystem_no_fuel_no_energy);
     TEST(GeneratorSystem_full_storage_skips);
     TEST(BoilerSystem_heat_boiler_produces_steam_no_water);
+    TEST(SteamTurbineSystem_converts_steam_to_eu);
+    TEST(BatteryBufferSystem_publishes_electricity_sink);
     TEST(BoilerSystem_heat_pipe_replenish_request);
     TEST(GeneratorSystem_solid_boiler_produces_steam);
     TEST(AdjacencyTransferSystem_adjacent_transfer);

@@ -29,6 +29,10 @@ Implement the extension in small layers so a failed test identifies the broken s
 
 The first milestone should be formation + metadata + teardown. Persistence is a second milestone because it requires an additional service and direct RPC assertions; adding a client-only “multiblock status” query would hide rather than test the existing ownership boundary (SimulationCore owns controllers, ChunkStore owns only block/meta/`mb_id`).
 
+## Thermal power-chain coverage
+
+The next headless milestone is tracked separately in `openspec/changes/add-headless-thermal-power-chain/`. It exercises multiple heat generators, steam heat boilers, heat/fluid pipe segments, steam turbines, battery buffers, and an LV electric machine whose recipe consumes 32 EU/t. The first probe is `test/integration/energy_chain_test.go`; it requires `pipenetworkd` and uses correlated block acknowledgements. Full green state-transition assertions remain gated on the production turbine, rechargeable-battery, and flow-observability contracts. Gateway-visible state is limited to block-entity/resource-buffer snapshots and the read-only fluid `PipeContentsResp`; exact internal energy topology requires Router telemetry or focused C++ tests.
+
 ## Running the existing clients
 
 Start the normal services first (at minimum Router, ChunkStore, Gateway, and SimulationCore; add MetaDB/EntityStateStore for persistence scenarios), then run:

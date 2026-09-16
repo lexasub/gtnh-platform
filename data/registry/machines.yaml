@@ -268,3 +268,62 @@ machine_classes:
         tier: 0
         slots: { input: 1, output: 1 }
         multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
+
+  # ── Steam turbine ────────────────────────────────────────
+  # Converts steam supplied by a fluid pipe into EU packets. Steam and EU
+  # buffers are kept separate by SteamTurbineSystem.
+  - class: steam_turbine
+    variants:
+      - block_id: "1110:010:44"
+        name: steam_turbine
+        energy_in: STEAM
+        energy_out: ELECTRICITY
+        tier: 0
+        slots: { input: 0, output: 0 }
+        energy:
+          capacity: 10000
+          max_output: 32
+
+  # ── Battery buffers ──────────────────────────────────────
+  - class: battery_buffer
+    variants:
+      - block_id: "1110:101:0"
+        name: battery_buffer_lv
+        energy_in: ELECTRICITY
+        tier: 0
+        slots: { input: 1, output: 0 }
+        energy:
+          capacity: 40000
+          usage: 32
+      - block_id: "1110:101:1"
+        name: battery_buffer_mv
+        energy_in: ELECTRICITY
+        tier: 1
+        slots: { input: 2, output: 0 }
+        energy:
+          capacity: 150000
+          usage: 128
+      - block_id: "1110:101:2"
+        name: battery_buffer_hv
+        energy_in: ELECTRICITY
+        tier: 2
+        slots: { input: 4, output: 0 }
+        energy:
+          capacity: 600000
+          usage: 512
+      - block_id: "1110:101:5"
+        name: battery_buffer_ev
+        energy_in: ELECTRICITY
+        tier: 3
+        slots: { input: 4, output: 0 }
+        energy:
+          capacity: 2400000
+          usage: 2048
+      - block_id: "1110:101:6"
+        name: battery_buffer_iv
+        energy_in: ELECTRICITY
+        tier: 4
+        slots: { input: 4, output: 0 }
+        energy:
+          capacity: 9600000
+          usage: 8192

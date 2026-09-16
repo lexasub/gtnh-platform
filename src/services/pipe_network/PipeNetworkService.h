@@ -72,6 +72,10 @@ private:
   // pos_key → PipeNetworkManager node_id (pipe blocks, from world.blocks.changed
   // or authoritative chunk snapshots).
   std::unordered_map<uint64_t, uint64_t> pipe_nodes_;
+  // pos_key → manager node for cable blocks. Cables participate in the
+  // legacy energy network as zero-buffer graph vertices; CableGraph remains
+  // responsible for voltage/ampacity diagnostics.
+  std::unordered_map<uint64_t, uint64_t> cable_nodes_;
   // pos_key → connection mask (meta) for pipe/cable blocks
   std::unordered_map<uint64_t, uint8_t> pipe_meta_;
   struct ChunkKey {
@@ -141,6 +145,8 @@ private:
   void connectNodeNeighbors(uint64_t sourceNodeId, int32_t x, int32_t y, int32_t z,
                            uint8_t sourceMeta, bool isItem, bool isHeat,
                            bool sourceIsPipe);
+  void connectEnergyNeighbors(uint64_t sourceNodeId, int32_t x, int32_t y,
+                              int32_t z);
 
   static bool isPipeBlock(uint16_t block_id);
   static bool isCableBlock(uint16_t block_id);

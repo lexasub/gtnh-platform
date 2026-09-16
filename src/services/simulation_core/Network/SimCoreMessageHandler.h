@@ -25,6 +25,7 @@ class IoUringChunkClient;
 class QuestManager;
 class MachineSystem;
 class BatteryBufferSystem;
+class SteamTurbineSystem;
 class ContainerSessionRegistry;
 class ChestStateManager;
 class MachineOpenHandler;
@@ -58,6 +59,7 @@ public:
     std::shared_ptr<QuestManager> questManager;
     MachineSystem* machineSystem = nullptr;
     BatteryBufferSystem* batteryBuffer = nullptr;
+    SteamTurbineSystem* steamTurbine = nullptr;
     std::shared_ptr<simulation_core::WorkbenchStateManager> wbStateManager;
     std::shared_ptr<ContainerSessionRegistry> chestSessions;
     std::shared_ptr<ChestStateManager> chestStateManager;

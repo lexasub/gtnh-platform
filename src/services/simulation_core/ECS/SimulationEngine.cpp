@@ -1,5 +1,8 @@
 #include "ECS/SimulationEngine.h"
 #include "ECS/Systems/RotareGeneratorSystem.h"
+#include "ECS/components/BatteryBufferComponent.h"
+#include "ECS/components/SteamTurbineComponent.h"
+#include "ECS/Systems/SteamTurbineSystem.h"
 #include "Common/xyz.h"
 #include <common/ItemId.h>
 #include "multiblock_state_generated.h"
@@ -247,12 +250,33 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
             reg_.emplace_or_replace<HeatIntakeComponent>(entity);
         }
 
+        if (block_id == SteamTurbineSystem::kBlockId) {
+            reg_.emplace_or_replace<SteamTurbineComponent>(entity);
+        }
+
         if (machine_registry_) {
             if (auto* info = machine_registry_->Get(block_id)) {
                 if (info->energy_out.has_value() && info->energy_out.value() == EnergyType::STEAM) {
                     reg_.emplace_or_replace<SteamOutputComponent>(entity);
                 }
+                if (info->machine_class == "battery_buffer") {
+                    BatteryBufferComponent buffer{};
+                    buffer.capacity = static_cast<uint32_t>(std::max(0, info->capacity));
+                    buffer.stored = 0;
+                    buffer.tier = static_cast<uint8_t>(std::max(0, info->tier));
+                    buffer.maxInput = std::max(0, info->maxInput);
+                    buffer.chargeRate = std::max(1, info->maxInput / 4);
+                    buffer.numSlots = static_cast<uint8_t>(std::max(1, info->slots_in));
+                    reg_.emplace_or_replace<BatteryBufferComponent>(entity, buffer);
+                }
             }
+        }
+
+        if (block_id == SteamTurbineSystem::kBlockId) {
+            reg_.emplace_or_replace<SteamTurbineComponent>(entity);
+            // The turbine owns its steam-to-EU loop; MachineSystem must not
+            // treat it as a generic steam recipe machine.
+            reg_.get<MachineComponent>(entity).managed_externally = true;
         }
 
         if (onMachineCreated) {

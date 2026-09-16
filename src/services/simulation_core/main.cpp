@@ -38,6 +38,7 @@
 #include "ECS/Systems/ExplosionSystem.h"
 #include "ECS/Systems/GeneratorSystem.h"
 #include "ECS/Systems/BoilerSystem.h"
+#include "ECS/Systems/SteamTurbineSystem.h"
 #include "ECS/Systems/EBFSystem.h"
 #include "ECS/Systems/LargeBoilerSystem.h"
 #include "ECS/Systems/LCRSystem.h"
@@ -450,9 +451,17 @@ int main(int argc, char* argv[]) {
     simcore::BatteryBufferSystem* batteryBufferRaw = nullptr;
     {
         auto bbs = std::make_unique<simcore::BatteryBufferSystem>(
-            simulationEngine->reg(), pipeEnergyClient);
+            simulationEngine->reg(), pipeEnergyClient, eventPublisher);
         batteryBufferRaw = bbs.get();
         simulationEngine->registerSystem(std::move(bbs));
+    }
+    simcore::SteamTurbineSystem* steamTurbineRaw = nullptr;
+    {
+        auto sts = std::make_unique<simcore::SteamTurbineSystem>(
+            simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient,
+            steam_item_id);
+        steamTurbineRaw = sts.get();
+        simulationEngine->registerSystem(std::move(sts));
     }
     spawnECSSystems(blockRepository, eventPublisher, pipeEnergyClient, fluidClient, simulationEngine, resourcePortClient, steam_item_id, resourceStatePublisher);
 
@@ -525,6 +534,7 @@ int main(int argc, char* argv[]) {
     msgDeps.questManager = questManager;
     msgDeps.machineSystem = machineSystemRaw;
     msgDeps.batteryBuffer = batteryBufferRaw;
+    msgDeps.steamTurbine = steamTurbineRaw;
     msgDeps.wbStateManager = wbStateManager;
     msgDeps.chestSessions = chestSessions;
     msgDeps.chestStateManager = chestStateManager;

@@ -136,6 +136,7 @@ add_library(simcored
         ECS/Systems/CreativeGeneratorSystem.cpp
         ECS/Systems/MachineSystem.cpp
         ECS/Systems/BoilerSystem.cpp
+        ECS/Systems/SteamTurbineSystem.cpp
         ECS/Systems/BatteryBufferSystem.cpp
         ECS/Systems/DrillSystem.cpp
         ECS/Systems/ExplosionSystem.cpp

@@ -1,5 +1,6 @@
 #pragma once
 #include "../../Network/PipeEnergyClient.h"
+#include "../../Network/IEventPublisher.h"
 #include "../components/ItemEnergyStorage.h"
 #include "ECS/components/BatteryBufferComponent.h"
 #include "ECS/components/InventoryContainer.h"
@@ -15,8 +16,10 @@ class BatteryBufferSystem : public ISystem {
 public:
   explicit BatteryBufferSystem(
       entt::registry &registry,
-      std::shared_ptr<PipeEnergyClient> pipeClient = nullptr)
-      : m_registry(registry), pipeClient_(std::move(pipeClient)) {}
+      std::shared_ptr<PipeEnergyClient> pipeClient = nullptr,
+      std::shared_ptr<IEventPublisher> events = nullptr)
+      : m_registry(registry), pipeClient_(std::move(pipeClient)),
+        events_(std::move(events)) {}
   void tick(float dt) override;
 
   bool onConsumeResponse(uint64_t node_id, int32_t consumed, int32_t remaining);
@@ -26,6 +29,7 @@ private:
                   uint8_t slotIdx);
   entt::registry &m_registry;
   std::shared_ptr<PipeEnergyClient> pipeClient_;
+  std::shared_ptr<IEventPublisher> events_;
   std::unordered_map<uint64_t, int32_t> pendingRequests_;
   std::deque<uint64_t> pendingOrder_;
 };

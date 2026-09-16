@@ -12,6 +12,7 @@
 #include "ECS/SimulationEngine.h"
 #include "ECS/Systems/MachineSystem.h"
 #include "ECS/Systems/BatteryBufferSystem.h"
+#include "ECS/Systems/SteamTurbineSystem.h"
 #include "Actions/SetBlockCASHandler.h"
 #include "Actions/PlayerActionDispatcher.h"
 #include "Actions/MiningCalculator.h"
@@ -205,6 +206,7 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
     auto& casHandler = *casHandler_;
     auto& chunkHandler = *chunkHandler_;
     auto* batteryBuffer = d.batteryBuffer;
+    auto* steamTurbine = d.steamTurbine;
     auto* machineSystem = d.machineSystem;
     auto entityStateClient = d.entityStateClient;
     auto routerClient = d.routerClient;
@@ -214,7 +216,7 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
 
     routerClient->OnMessage([&mainQueue, &dispatcher, &casHandler, &chunkHandler, &worldContainers,
                              topicDispatcher, routerClient, entityStateClient, inventoryStore,
-                             batteryBuffer, machineSystem, questManager]
+                             batteryBuffer, steamTurbine, machineSystem, questManager]
                             (const std::string& topic, const std::vector<uint8_t>& data) {
         // Filter player.actions on the io thread, BEFORE mainQueue: the client
         // floods UNLOAD/MOVE/CHUNK_REQUEST at ~15k/s while walking (chunk
@@ -252,8 +254,9 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
 
             } else if (topic == "fluid.consume.response") {
                 auto* resp = flatbuffers::GetRoot<Protocol::FluidConsumeResp>(data.data());
-                if (!resp || !machineSystem) return;
-                machineSystem->onFluidConsumeResponse(resp->consumed());
+                if (!resp) return;
+                if (steamTurbine) steamTurbine->onFluidConsumeResponse(resp->consumed());
+                if (machineSystem) machineSystem->onFluidConsumeResponse(resp->consumed());
 
             } else if (topic == "item.transfer.response") {
                 auto* resp = flatbuffers::GetRoot<Protocol::ItemTransferResp>(data.data());

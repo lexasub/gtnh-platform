@@ -116,12 +116,12 @@ bool MachineRegistry::ParseYamlMachineVariant(const YAML::Node& v, const std::st
         // energy config
         if (v["energy"]) {
             info.capacity = v["energy"]["capacity"].as<int>(0);
-            if (info.energy_in.has_value()) {
-                info.maxInput = v["energy"]["usage"].as<int>(32);
-                info.maxOutput = 0;
-            } else {
-                info.maxInput = v["energy"]["usage"].as<int>(0);
-                info.maxOutput = v["energy"]["max_output"].as<int>(32);
+            info.maxInput = v["energy"]["usage"].as<int>(0);
+            info.maxOutput = v["energy"]["max_output"].as<int>(0);
+            if (info.energy_in.has_value() && info.maxInput == 0) {
+                info.maxInput = 32;
+            } else if (!info.energy_in.has_value() && info.maxOutput == 0) {
+                info.maxOutput = 32;
             }
         } else {
             info.capacity = 0;
