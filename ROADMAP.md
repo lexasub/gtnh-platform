@@ -373,7 +373,7 @@ SpatialIndex понадобится при 100+ мультиблоков в од
 
 Сгруппированный бэклог будущих задач. Кластеры A-N; приоритет: A — быстрые победы, дальше по величине вложений.
 
-## A. Быстрые победы — закрыть открытые долги [S]
+## A. Быстрые победы — закрыть открытые долги [S] (тут спорно - часть из этого пока не хочу добавлять)
 
 - [ ] GatewayMsg C++ константы ↔ FlatBuffers `GatewayPayload` union — починить или удалить union
 - [ ] Выкинуть мёртвые GridUpdate / MachineAction / MachineActionResp
@@ -389,7 +389,19 @@ SpatialIndex понадобится при 100+ мультиблоков в од
 - [ ] Единый startup log формат всех сервисов
 - [ ] `--version` единый стандарт во все сервисы (частично есть)
 
-## B. Сетевой стек v2 [M]
+## A.1. Мультиплеер-фундамент [M] — ПЕРЕД B (openspec `add-multiplayer-foundation`, proposal готов)
+
+- [ ] Gateway: сессии вместо singleton (`client_ctrl_`/`client_bulk_`/`client_player_id_`), пара ctrl+bulk по bulk_token
+- [ ] Identity: dev-handshake (ник + желаемый id), сервер выдаёт канонический id; убрать `player_id = 1` (gateway.cpp:106, GameClient.cpp:269); спуфинг чужого id отбрасывается
+- [ ] Addressed replies: инвентарь/квесты/крафт/машинные ответы — в сессию получателя; request_id-корреляция per-session (коллизии между клиентами исключены)
+- [ ] Per-session chunk interest (`client_interest()` nullptr → интерес на сессию); `chunk.requests` с player_id (сейчас 0)
+- [ ] Remote player visibility: чужие BlockUpdate + позиционные снапшоты по интересу
+- [ ] Per-session join/leave/reconnect; `player.left` на каждый дисконнект (сейчас — глобально)
+- [ ] Multi-client headless-тесты (2+ клиентов, изоляция ответов, дисконнект одного не роняет второго)
+- [ ] Throughput baseline N=2..8 клиентов (входная точка для B)
+- Scope: доверенная LAN/VPN, кооп, 2–8 игроков. Без auth-токенов/шифрования (это B). Не путать с deferred `add-chunk-interest-aggregator` (там интересы сервисов к контенту, не клиентов).
+
+## B. Сетевой стек v2 [M] (после A.1: мультиплеер-фундамент обязателен до рефакторинга сетевого стека — честные замеры на нескольких клиентах)
 
 - [ ] LZ4 сжатие bulk-канала (CompressedChunkData есть — проверить кодек)
 - [ ] Rate limiting / flood protection на гейтвее
@@ -403,7 +415,7 @@ SpatialIndex понадобится при 100+ мультиблоков в од
 - [ ] Батчинг BlockUpdate за тик (не спамить мелкими)
 - [ ] Чанк-стриминг: приоритетная очередь, prefetch по направлению движения
 
-## C. Мир и генерация [M]
+## C. Мир и генерация [M] (только после мультиплеера и реально работающего ~HV)
 
 - [ ] Биомы + температура/влажность (влияют на ген)
 - [ ] Пещеры: 3D-noise, лавовые озёра
@@ -420,16 +432,16 @@ SpatialIndex понадобится при 100+ мультиблоков в од
 
 ## D. Машины и мультиблоки L4+ [M/L]
 
-- [ ] **Maintenance hatch** — GTNH signature: 5 неисправностей, чинится гаечным ключом
-- [ ] **Cleanroom** — стена чистоты, фильтры, влияние на рецепты
+Пока не надо - [ ] **Maintenance hatch** — GTNH signature: 5 неисправностей, чинится гаечным ключом
+Пока не надо - [ ] **Cleanroom** — стена чистоты, фильтры, влияние на рецепты
 - [ ] Hull tiers: LV→UV корпуса из разных материалов
 - [ ] Больше single-block машин: тиры печей/молотилок/экстракторов
 - [ ] Нефтепереработка: Pyrolyse Oven / Cracking Tower / Distillation Tower
-- [ ] **Assembly Line** — длинный мультиблок, GTNH фича
-- [ ] Vacuum Freezer (крио)
-- [ ] Fusion Reactor (L5+, deferred)
-- [ ] Parallel Processing: мульти-рецепты в мультиблоке
-- [ ] Overclocking: ускорители (EU/t ↑ → время ↓), upgrade-слоты
+Пока не надо - [ ] **Assembly Line** — длинный мультиблок, GTNH фича
+Пока не надо - [ ] Vacuum Freezer (крио)
+Пока не надо - [ ] Fusion Reactor (L5+, deferred)
+Пока не надо - [ ] Parallel Processing: мульти-рецепты в мультиблоке
+Пока не надо - [ ] Overclocking: ускорители (EU/t ↑ → время ↓), upgrade-слоты
 - [ ] Автовыход: output bus настройки, флюид-экспорт по каналам
 - [ ] Multiblock preview: ghost-структура до установки
 - [ ] Multiblock health/structure check UI + дебаг-оверлей
@@ -437,23 +449,23 @@ SpatialIndex понадобится при 100+ мультиблоков в од
 - [ ] EU-тиры машин: LV/MV/HV/EV/IV/LuV/ZPM/UV progression
 - [ ] Machine cover system (GTNH covers: конвейеры, раздатчики, редстоун)
 
-## E. Энергетика и трубы [M]
+## E. Энергетика и трубы [M] (перед этим порефачить нужно, подготовиться)
 
 - [ ] Новые генераторы: уголь/газ/дизель/ветер/солнце/ядерный (progression)
 - [ ] Energy cells: накопители с потерями и тирами
 - [ ] Кабели: больше тиров, изоляция, лимиты ампер
 - [ ] Transformer side-механика: шаг под напряжением = взрыв (GTNH!)
-- [ ] Fluid pipes: давление, размеры, скорость
-- [ ] Item pipes: фильтры, round-robin, приоритеты
-- [ ] Steam turbine: роторная система, износ
-- [ ] Pump: жидкости из мира (вода/нефть)
-- [ ] Каскадные взрывы: цепная реакция от перегрева
+пока нет - [ ] Fluid pipes: давление, размеры, скорость
+пока нет - [ ] Item pipes: фильтры, round-robin, приоритеты
+пока нет - [ ] Steam turbine: роторная система, износ
+пока нет - [ ] Pump: жидкости из мира (вода/нефть)
+пока нет - [ ] Каскадные взрывы: цепная реакция от перегрева
 - [ ] Электролиз воды: энергия→H₂→... цепочки
-- [ ] Тепло: изоляция труб, радиаторы, вентиляция (v2)
+пока нет - [ ] Тепло: изоляция труб, радиаторы, вентиляция (v2)
 
 ## F. Логистика и инвентарь [M/L]
 
-- [ ] ME-сеть (AE2-style): хранение+энергия, deferred L3
+- [ ] ME-сеть (AE2-style): хранение+энергия, deferred L3 (порефачить перед этим можно)
 - [ ] Авто-крафт по сети (AE2 crafting), L3+
 - [ ] Сортировщики предметов, интерфейс-трубы
 - [ ] Крупные хранилища: crate, upgraded chest
@@ -482,9 +494,6 @@ SpatialIndex понадобится при 100+ мультиблоков в од
 ## H. Сущности и мультиплеер [L]
 
 - [ ] Player entity в ECS: здоровье, инвентарь, состояние
-- [ ] Пассивные мобы: коровы/свиньи, дроп, разведение
-- [ ] Враждебные: спавн по свету, патфайндинг (A*/navmesh)
-- [ ] Бой: урон, броня, оружие по тирам
 - [ ] NPC-торговцы (village trade)
 - [ ] Чат + ника + команды (частично есть → расширить)
 - [ ] Permissions/OP/whitelist/ban
@@ -492,7 +501,6 @@ SpatialIndex понадобится при 100+ мультиблоков в од
 - [ ] Anti-cheat: fly/speed/noclip детект
 - [ ] Teleport/homes/warps/tpa
 - [ ] Spectate mode + kamera
-- [ ] Сущности: серверный спавн/деспавн по чанкам, pooling
 
 ## I. Клиент: UI/рендер/ощущения [S/M]
 
@@ -500,7 +508,7 @@ SpatialIndex понадобится при 100+ мультиблоков в од
 - [ ] Погода: дождь/снег (визуал + звук)
 - [ ] Звуки: шаги по материалу, окружение, UI (задел для A5)
 - [ ] Музыка меню/игры + volume control
-- [ ] Minimap (radar)
+- [ ] Minimap improove (radar)
 - [ ] Settings: графика (render distance, particles), keybinds, аудио
 - [ ] Tooltips: EU/t, рецепты, источники, прогресс
 - [ ] NEI: Usage/Recipes поиск, bookmarks, режимы
@@ -515,7 +523,7 @@ SpatialIndex понадобится при 100+ мультиблоков в од
 
 ## J. Инфраструктура и качество [M]
 
-- [ ] Packaging: AppImage + Docker compose (роадмап 6)
+- [ ] Packaging
 - [ ] Graceful shutdown: SIGTERM drain, LMDB flush, Router отписка
 - [ ] Health checks: конкурентные probes (beads gp-otl) + /health REST
 - [ ] Метрики: prometheus-формат, dashboard
@@ -640,7 +648,7 @@ Go-сервисы (routerd, metadbd) собираются через `go build` 
 | Drill UI — только тултип | `game_client/UI/` | 🟡 WIP (backlog A) |
 | Server-authoritative grid state | crafting | 🟡 WIP (openspec 28/34) |
 | Inventory sync с MetaDB при коннекте | `MetaDB/` | 🟡 WIP |
-| **Gateway single-client** — player id=1, interest nullptr | `gateway/` | 🔴 TODO (backlog B) |
+| **Gateway single-client** — решается openspec `add-multiplayer-foundation` (A.1, proposal готов) | `gateway/` | 🟡 PROPOSAL (backlog A.1) |
 | **mb_id write path отсутствует** в ChunkStore (meta-layer пишется, путь не полный) | `chunk_store/` | 🔴 TODO |
 | **MessageRouter: нет at-least-once ack+retry, нет no-self-delivery** (SHALL-gaps) | `message_router/` | 🔴 TODO (backlog B) |
 | **Quest registry gap** — 102/158 целей нет в items.csv | `data/registry/` | 🔴 TODO (beads gp-bwo) |
