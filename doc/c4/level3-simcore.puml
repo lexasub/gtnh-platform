@@ -16,9 +16,9 @@ Container_Boundary(sim, "SimulationCore") {
     ' ECS Core
     ' ===================================================================
     Container_Boundary(ecs, "ECS") {
-        Component(ecs_engine, "SimulationEngine", "C++", "Ядро: entt::registry\n14 компонентов, 6 систем")
+        Component(ecs_engine, "SimulationEngine", "C++", "Ядро: entt::registry\n14 компонентов, 15 систем")
         Component(ecs_reg, "entt::registry reg_", "C++ (EnTT)", "Все ECS сущности")
-        Component(ecs_systems, "6 Systems", "C++", "Machine / Generator / CreativeGen\nBoiler / HeatTransfer")
+        Component(ecs_systems, "15 ECS Systems", "C++", "Machine / Generator / CreativeGen\nBoiler / LargeBoiler / EBF / LCR\nCoolant / Explosion / Transformer\nDrill / RotareGenerator / BatteryBuffer\nSteamTurbine / AdjacencyTransfer")
     }
 
     ' ===================================================================
