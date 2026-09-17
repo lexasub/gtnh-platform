@@ -27,12 +27,12 @@ Container_Boundary(gc, "GameClient") {
     ' Windows — player
     ' ===================================================================
     Container_Boundary(win_player, "Окна игрока") {
-        Component(win_inv, "PlayerInventory", "C++", "Инвентарь игрока\n36+9 слотов, drag-and-drop")
+        Component(win_inv, "PlayerInventory", "C++", "Инвентарь игрока\n40 слотов — 30 инвентарь + 10 hotbar\ndrag-and-drop")
         Component(win_craft, "ClientCraftingWindow", "C++", "Верстак клиента\n3×3 crafting grid")
         Component(win_creative, "CreativeMenu", "C++", "Креативное меню\nпоиск предметов")
         Component(win_recipe_inspect, "RecipeInspectWindow", "C++", "Просмотр рецепта\nNEI-like информация")
-        Component(win_craft_result, "CraftResultSlot", "C++", "Слот результата крафта")
         Component(win_console, "ConsoleWindow", "C++", "Консоль команд\n/gamemode, /startGameScenario")
+        Component(win_health, "Service health overlay", "C++", "Debug-оверлей здоровья сервисов\ntoggle_service_health (ActionHandler)\nданные из ServiceHealthStore")
         Component(win_questbook, "QuestBookWindow", "C++", "Книга заданий\nэры, секции, квесты")
         Component(win_scenario, "GameScenario", "C++", "Невидимое окно\nприменяет StartScenarioResp")
     }
@@ -52,8 +52,8 @@ Container_Boundary(gc, "GameClient") {
         Component(comp_slot_grid, "SlotGrid", "C++", "Универсальная сетка слотов\nс drag-and-drop")
         Component(comp_item_index, "ItemIndex", "C++", "Индекс предметов\nпоиск по имени/ID")
         Component(comp_paginated, "PaginatedList", "C++ (template)", "Список с пагинацией\nдля NEI и креатива")
-        Component(comp_toast, "ToastNotification", "C++", "Toast-уведомления\nдля событий")
-        Component(comp_item_color, "ItemColor", "C++", "Цвета предметов\nrarity-based")
+        Component(comp_toast, "ToastMessage", "C++ (struct)", "Toast-уведомления\nдля событий (ToastNotification.h)")
+        Component(comp_item_color, "ItemColor()", "C++ (inline fn)", "Цвета предметов\nrarity-based (ItemColor.h)")
         Rel(comp_craft_grid, comp_slot_grid, "использует", "")
     }
 
@@ -61,7 +61,7 @@ Container_Boundary(gc, "GameClient") {
     ' Subsystem references
     ' ===================================================================
     Component(uicore_ref, "UI Core", "UIManager, Input, Actions")
-    Component(craft_ref, "Crafting DBs", "ClientItemRegistry\nClientRecipeDB\nClientMachineRecipeDB")
+    Component(craft_ref, "Crafting DBs", "ClientItemRegistry\nServerRecipeDB")
 }
 
 ' UI Core → все окна

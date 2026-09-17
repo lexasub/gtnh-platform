@@ -24,8 +24,8 @@ Container_Boundary(gw, "Gateway") {
         Component(ctrl_srv, "ctrl_server_ (TcpServer)", "C++ (Asio+io_uring)\n:7777", "Control TCP сервер\nPlayerAction / InventoryAction\nCraftRequest / SetMachineSlot")
         Component(bulk_srv, "bulk_server_ (TcpServer)", "C++ (Asio+io_uring)\n:7778", "Bulk TCP сервер\nChunkData / EntitySnapshot\nCompressedChunkData")
 
-        Component(client_ctrl, "client_ctrl_ (IoUringConnection)", "C++", "Активный control коннект\nот игрового клиента\n1 клиент = 1 коннект")
-        Component(client_bulk, "client_bulk_ (IoUringConnection)", "C++", "Активный bulk коннект\nот игрового клиента\n1 клиент = 1 коннект")
+        Component(client_ctrl, "client_ctrl_ (IoUringConnection)", "C++", "Активный control коннект\nот игрового клиента\n1 клиент = 1 коннект\nPLANNED A.1: ClientSession\n(ctrl+bulk пара, per-session fanout)")
+        Component(client_bulk, "client_bulk_ (IoUringConnection)", "C++", "Активный bulk коннект\nот игрового клиента\n1 клиент = 1 коннект\nPLANNED A.1: bulk_token pairing\n(AWAIT_BULK→ACTIVE→CLOSED)")
     }
 
     ' ===================================================================
@@ -39,7 +39,7 @@ Container_Boundary(gw, "Gateway") {
     ' Message types / Protocol constants
     ' ===================================================================
     Container_Boundary(proto, "Gateway Protocol") {
-        Component(msg_types, "GatewayMsg namespace", "C++ constexpr", "1=PlayerAction, 2=ChunkSnapshot, 3=EntitySnapshot\n4=BlockUpdate, 5=BlockAck, 6=InventoryUpdate\n7=InventoryAction, 8=BlockEntityUpdate\n9=CraftRequest, 10=CraftResponse, 11=SetBlockAction\n12=CompressedChunkData, 13=ToolAction, 14=ToolActionResp\n15=SetMachineSlot, 16=SetMachineSlotResp\n17=RecipeCompleted, 18=ChestOpenReq, 19=ChestOpenResp")
+        Component(msg_types, "GatewayMsg namespace", "C++ constexpr", "Wire truth = <common/GatewayMsg.h> (51 тип, 1-based)\n1=PlayerAction 2=ChunkSnapshot 3=EntitySnapshot 4=BlockUpdate 5=BlockAck\n6=InventoryUpdate 7=InventoryAction 8=BlockEntityUpdate 9=CraftRequest\n10=CraftResponse 11=SetBlockAction 12=CompressedChunkData 13=ToolAction\n14=ToolActionResp 15=SetMachineSlot 16=SetMachineSlotResp\n17=RecipeCompleted 18=MachineOpenReq 19=ChestOpenReq\n20=QuestProgressUpdate 21=QuestUnlockNotification\n22=QuestCompletedNotification 23=MultiblockEvent 24=QuestCompleteRequest\n25=QuestEraTransition 26=QuestExchangeRequest 27=QuestExchangeResponse\n28=QuestExchangeCooldownGet 29=QuestExchangeCooldown 30=GameModeChange\n31=StartScenarioReq 32=StartScenarioResp 33=QuestBookOpen\n34=RecipeCheckReq 35=RecipeCheckResp 36=RecipeCatalogReq\n37=RecipeCatalogResp 38=RecipeItemReq 39=RecipeItemResp\n40=RecipeMachineReq 41=RecipeMachineResp 42=BlockActionDirective\n43=GridUpdate 44=WorkbenchOpenReq 45=ChestCloseReq 46=MachineCloseReq\n47=ResourceBufferState 48=PipeContentsReq 49=PipeContentsResp\n50=ServiceHealthReq 51=ServiceHealthResp")
     }
 
     ' ===================================================================

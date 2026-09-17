@@ -13,10 +13,9 @@ title **WorldGenerator · SpatialIndex · Validation · StorageInterfaces**\nМ�
 ' ===========================================================================
 ' 1. WorldGenerator
 ' ===========================================================================
-Container_Boundary(wg, "WorldGenerator (C++ — FastNoiseLite)") {
-    Component(wg_gen, "WorldGenerator", "C++", "Генератор мира: flat world\nпока заглушка\n(stone/grass/air)")
+Container_Boundary(wg, "WorldGenerator (C++ — FastNoiseLite, библиотека)") {
+    Component(wg_gen, "WorldGenerator", "C++ (lib)", "Генерация чанков:\nрельеф SurfaceHeights + биомы\nOreGenerator (GTNH-style veins,\n3D Simplex noise, ores.json)\nTreeGenerator")
     Component(wg_queue, "GenerationQueue", "C++", "Очередь генерации чанков\nасинхронные запросы\nот ChunkStore")
-    Component(wg_main, "main.cpp", "C++", "Точка входа")
 
     Rel(wg_queue, wg_gen, "генерирует чанки\nпо запросу", "")
 }
@@ -25,7 +24,7 @@ Container_Boundary(wg, "WorldGenerator (C++ — FastNoiseLite)") {
 ' 2. SpatialIndex (PLANNED)
 ' ===========================================================================
 Container_Boundary(si, "SpatialIndex (PLANNED — C++ Boost.Geometry)") {
-    Component(si_main, "main.cpp", "C++", "Точка входа (заглушка\nвозвращает 0)")
+    Component(si_main, "main.cpp", "C++", "Точка входа (2-строчный stub\nint main() { return 0; })")
     Component(si_stub, "SpatialIndex stub", "C++", "Планируется:\nR-tree (Boost.Geometry)\nOctree для 3D поиска\nMultiblock queries\nAABB bounding-box search")
 }
 

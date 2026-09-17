@@ -96,9 +96,11 @@ end note
 == Boiler -> PipeNetwork: подача пара ==
 
 Tick -> Boiler: tick(dt)
-Boiler -> Boiler: HEAT + water -> STEAM produced
-Boiler -> PN: Publish fluid.node.update
+Boiler -> Boiler: HEAT -> STEAM conversion (fail-closed on steam_id)
+Boiler -> PN: Publish fluid.node.update (legacy)
 note right: PipeNetwork обновляет\nfluid node state
+Boiler -> PN: Publish typed resource ports\n(HU sink + FLUID steam source)
+note right: openspec refactor-fluid-port-accounting 2.4:\nотдельные порты на (owner, kind, port, epoch)\nпубликуются параллельно с legacy node\nдо end-to-end переключения
 
 == PipeNetwork -> Machine: распределение пара ==
 

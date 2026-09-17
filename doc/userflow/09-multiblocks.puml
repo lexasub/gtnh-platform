@@ -16,7 +16,6 @@ participant "ChunkStore" as CS
 participant "RecipeManager" as RM
 participant "PipeNetwork" as PN
 participant "EntityStateStore" as ESS
-participant "SpatialIndex" as SI
 
 == Сборка EBF ==
 
@@ -47,9 +46,9 @@ Sim -> CS: SetBlock CAS
 
 Sim -> Sim: onBlockChanged(pos, block_id)
 
-Sim -> SI: FindPattern(pos)
+Sim -> Sim: CheckMultiblockPattern(pos)
 note right #9B59B6
-  SpatialIndex проверяет:
+  SimulationCore проверяет:
   - Все блоки вокруг pos
   - Сравнивает с EBF pattern
   - Если совпало: MultiblockController
@@ -229,7 +228,7 @@ note right #9B59B6
   - SimulationCore ECS: MultiblockController entity
   - Components: MachineComponent + EnergyStorage + InventoryContainer + SideConfig
   - persisted через EntityStateStore
-  - Обнаружение через onBlockChanged + SpatialIndex
+  - Обнаружение через onBlockChanged + pattern check
   - L2 deferred в BFS анализе
 end note
 

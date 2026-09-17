@@ -19,9 +19,9 @@ doc/c4/
 ├── level3-meta-db.puml                 # L3 — MetaDB (Go — SQLite, CRUD, event handlers)
 ├── level3-pipe-network.puml            # L3 — PipeNetwork (BFS, flow distribution)
 ├── level3-recipe-manager.puml          # L3 — RecipeManager (standalone service)
-├── level3-tiny-services.puml           # L3 — WorldGenerator + SpatialIndex + Validation
+├── level3-tiny-services.puml           # L3 — WorldGenerator (lib) + SpatialIndex (stub) + Validation
 │
-├── level4-sim-ecs-core.puml            # L4 — SimCore: Engine + 6 systems + Actions
+├── level4-sim-ecs-core.puml            # L4 — SimCore: Engine + 15 systems + Actions
 ├── level4-sim-ecs-components.puml      # L4 — SimCore: 14 ECS data-компонентов
 ├── level4-sim-crafting.puml            # L4 — SimCore: Crafting + RecipeManager + Inventory
 ├── level4-sim-network.puml             # L4 — SimCore: Network clients + Storage repos
@@ -100,3 +100,18 @@ java -jar plantuml.jar doc/c4/level2-container.puml -tpng
 | Сплошная зелёная | RPC | Request-Response |
 | Пунктирная оранжевая | Protocol | FlatBuffers обмен |
 | Пунктирная серая | Planned | Планируемая функциональность |
+
+## Актуальность (2026-09)
+
+Диаграммы синхронизированы с кодом по состоянию на 2026-09:
+
+- **SimulationCore**: 15 ECS-систем (сверено с `simulation_core/main.cpp` registerSystem)
+- **Gateway protocol**: 51 тип GatewayMsg — wire truth `<common/GatewayMsg.h>` (диаграмма
+  `level3-gateway.puml` программно сверяется со скриптом-чекером); `GatewayPayload`
+  union в `gateway.fbs` устарел
+- **MetaDB**: явная подписка на топики, JSON API :5005 + FlatBuffers RPC :5006 (MetaDBFrame)
+- **WorldGenerator**: библиотека (нет main.cpp) — OreGenerator/TreeGenerator/SurfaceHeights
+- **Порты deployment**: :4000 router, :5001 chunk_store, :5005/:5006 metadb,
+  :5200 entity_state, :5555 recipe_manager, :7777/:7778 gateway
+- **Planned (A.1)**: мультиплеер-фундамент (2–8 игроков) отмечен на
+  `level3-gateway.puml` и `level4-deployment.puml` — см. `openspec/changes/add-multiplayer-foundation/`

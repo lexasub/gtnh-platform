@@ -16,9 +16,11 @@ title **Level 4 — Deployment & Network Topology**\nПроцессы, порт�
 ' :7777 — Gateway ctrl port (PlayerAction, Inventory, Craft)
 ' :7778 — Gateway bulk port (ChunkData, EntitySnapshot)
 ' :4000 — MessageRouter port (pub/sub bus)
+' :5001 — ChunkStore (TCP RPC)
 ' :5005 — MetaDB JSON API
-' :5006 — MetaDB FlatBuffers RPC
+' :5006 — MetaDB FlatBuffers RPC (MetaDBFrame)
 ' :5200 — EntityStateStore (TCP RPC)
+' :5555 — RecipeManager (TCP RPC, router-registered)
 
 ' ===========================================================================
 ' Node: Server machine
@@ -43,6 +45,7 @@ System_Boundary(server, "Сервер (localhost)") {
     Container(pipenet_d, "piped", "C++", "PipeNetwork\n(запускается после simcored)")
     Container(recipeman_d, "reciped", "C++ :5555 (router)", "RecipeManager\n(запускается после routerd)")
     PLAN_CONTAINER(spatial_d, "spatiald", "C++", "SpatialIndex\n(PLANNED)")
+    Container(client2_d, "client ×N", "C++ (PLANNED A.1)", "2–8 игроков\nмультиплеер-фундамент\n(openspec add-multiplayer-foundation)\nсейчас: 1 клиент → gatewayd")
 
     ' ---- Startup order relationships (dependencies) ----
     Rel(chunk_d, router_d, "1) router должен быть запущен\nперед chunk", $tags="tag_planned")
@@ -60,6 +63,7 @@ System_Boundary(server, "Сервер (localhost)") {
 
     ' ---- Ports ----
     Rel(client_d, gateway_d, ":7777 ctrl / :7778 bulk\nTCP FlatBuffers", $tags="tag_tcp")
+    Rel(client2_d, gateway_d, "PLANNED A.1: per-session\nctrl+bulk fanout (2–8 игроков)", $tags="tag_planned")
     Rel(gateway_d, router_d, ":4000\nTCP pub/sub", $tags="tag_tcp")
     Rel(chunk_d, router_d, ":4000\nTCP pub/sub", $tags="tag_tcp")
     Rel(simcore_d, router_d, ":4000\nTCP pub/sub", $tags="tag_tcp")

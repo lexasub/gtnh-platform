@@ -101,18 +101,19 @@ note right #5899DA
   Boiler (50): hybrid producer
   energy_in: HEAT  (потребляет тепло)
   energy_out: STEAM (производит пар)
-  inventory: water bucket -> steam bucket
+  heat → steam конверсия по HeatConstants::CONVERSION_RATE
+  (паровые recipes с water_bucket — в RecipeManager)
 end note
 
 loop For each boiler
-    Boiler -> Boiler: Check inventory for water
+    Boiler -> Boiler: Check HeatIntakeComponent + SteamOutput
     Boiler -> Boiler: Consume HEAT from EnergyStorage
-    alt Water + HEAT available
-        Boiler -> Boiler: Convert water -> steam bucket
-        Boiler -> Boiler: Produce STEAM to EnergyStorage
-        Boiler -> ECS: Update EnergyStorage
-    else No water or no HEAT
-        Boiler -> Boiler: Idle this tick
+    alt HEAT available + steam_id resolved
+        Boiler -> Boiler: Convert HEAT -> STEAM
+        Boiler -> Boiler: Publish FLUID node (steam source)
+        Boiler -> ECS: Update SteamOutputComponent
+    else No HEAT or no steam_id
+        Boiler -> Boiler: Idle this tick (fail-closed)
     end
 end
 

@@ -33,9 +33,9 @@ Container_Boundary(mr, "MessageRouter") {
     Container_Boundary(client_struct, "Client (per connection)") {
         Component(client, "client (struct)", "Go", "Состояние подключения\nсвои sendChs на каждый priority\ncloseOnce, dropped counter")
         Component(send_high, "sendChs[PrioHigh]", "chan *[]byte\n(buffer: 4096)", "Высокий приоритет\nplayer.actions / player.actions.ack\nникогда не дропается (blocking send)")
-        Component(send_normal, "sendChs[PriNormal]", "chan *[]byte\n(buffer: 4096)", "Нормальный приоритет\nworld.* / player.inventory.*\ndrop oldest при фладе")
+        Component(send_normal, "sendChs[PrioNormal]", "chan *[]byte\n(buffer: 4096)", "Нормальный приоритет\nworld.* / player.inventory.* /\nmeta_db.* / player.joined\ndrop oldest при фладе")
         Component(send_low, "sendChs[PrioLow]", "chan *[]byte\n(buffer: 4096)", "Низкий приоритет\nentities.* / simulation.*\ndrop oldest при фладе")
-        Component(writer, "writer() goroutine", "Go goroutine", "Strict-priority cascade writer\n1. non-blocking High\n2. non-blocking High+Normal\n3. blocking ALL\nHigh всегда обслуживается первым")
+        Component(writer, "writer() goroutine", "Go goroutine", "Priority writer (nested selects):\n1. non-blocking High (try)\n2. non-blocking High+Normal (try)\n3. blocking High/Normal/Low\nBest-effort priority, не строгий CAS")
         Component(last_seen, "lastSeen atomic.Int64", "Go atomic", "Время последней активности\nдля timeout")
         Component(dropped, "dropped atomic.Uint64", "Go atomic", "Счётчик дропнутых сообщений\nдля мониторинга")
     }
@@ -46,16 +46,16 @@ Container_Boundary(mr, "MessageRouter") {
     Container_Boundary(topics, "Topic System") {
         Component(topic_classify, "classifyTopic()", "Go", "Классификация топика\nпо приоритету доставки\nHigh / Normal / Low")
         Component(topic_match, "topicMatches()", "Go", "MQTT-style matching\n+ = один сегмент\n# = все остальные сегменты\nwithout wildcard = exact")
-        Component(topic_prio_map, "Priority mapping", "Go constants", "PrioHigh = 0\nPriNormal = 1\nPrioLow = 2\nPrioCount = 3")
+        Component(topic_prio_map, "Priority mapping", "Go constants", "PrioHigh = 0\nPrioNormal = 1\nPrioLow = 2\nPrioCount = 3")
     }
 
     ' ===================================================================
     ' Frame I/O
     ' ===================================================================
     Container_Boundary(frames, "Frame Protocol") {
-        Component(frame_read, "readFrame()", "Go", "Чтение фрейма\n[4B length BE][1B type][payload]\npooled буфер 64KB")
+        Component(frame_read, "readFrame()", "Go", "Чтение фрейма\n[4B length BE][1B type][payload]\ncaller-supplied буфер 64KB (не pool)")
         Component(frame_alloc, "allocPublishFrame()", "Go", "Создание publish-фрейма\nиз sync.Pool\n[ topic[2B len] + topic + data ]")
-        Component(frame_make, "makeFrame()", "Go", "Создание фрейма\nдля subscribe/unsubscribe/heartbeat")
+        Component(frame_make, "makeFrame()", "Go", "Создание control-фреймов\n(subscribe/unsubscribe/heartbeat)")
         Component(frame_pool, "framePool sync.Pool", "Go sync.Pool", "Pool буферов для фреймов\n64KB каждый, переиспользование")
         Component(read_string, "readString()", "Go", "Чтение строки из фрейма\n[2B length][string]")
     }
@@ -92,16 +92,16 @@ Container_Boundary(mr, "MessageRouter") {
     Rel(client, last_seen, "обновляет", "")
     Rel(client, dropped, "инкрементит", "")
 
-    Rel(writer, send_high, "читает по приоритету\ncascade: High → Normal → Low", "")
-    Rel(writer, send_normal, "читает если High пуст", "")
-    Rel(writer, send_low, "читает если High+Normal пусты", "")
+    Rel(writer, send_high, "пытается сначала (non-blocking)", "")
+    Rel(writer, send_normal, "если High пуст (non-blocking)", "")
+    Rel(writer, send_low, "иначе blocking select из трёх", "")
 
     Rel(publish, topic_classify, "определяет приоритет", "")
     Rel(publish, topic_match, "для каждого паттерна", "")
     Rel(publish, client, "fans-out всем подписчикам", "")
     Rel(publish, frame_alloc, "аллоцирует фрейм", "")
 
-    Rel(frame_read, frame_pool, "использует pool для\nрезультирующих данных", "")
+    Rel(frame_read, frame_pool, "не использует pool —\ncaller-supplied buf", "")
     Rel(frame_alloc, frame_pool, "берёт буфер из pool", "")
 
     Rel(handle_conn, frame_read, "читает входящие фреймы", "")

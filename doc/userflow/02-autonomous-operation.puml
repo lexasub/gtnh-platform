@@ -82,7 +82,6 @@ title **Flow A2: Работа буров (автономная добыча)**
 
 actor "SimulationCore\n(20 Hz Tick)" as Tick
 participant "DrillSystem" as Drill
-participant "SpatialIndex" as SI
 participant "ChunkStore" as CS
 participant "PipeNetwork" as PN
 participant "EntityStateStore" as ESS
@@ -102,13 +101,12 @@ loop For each active drill
 
         == BFS поиск руды в радиусе ==
 
-        Drill -> SI: FindOreBelow(drill_pos, radius)
-        SI --> Drill: Ore block positions found / none
+        Drill -> Drill: SpiralBFS(drill_pos, radius)
+        note right: Spiral BFS поиск руды\n(DrillSystem собственный обход)
+        Drill -> CS: GetBlock(кандидаты BFS)
+        CS --> Drill: Block data (ore type, hardness)
 
         alt Руда найдена
-            Drill -> CS: GetBlock(ore_pos)
-            CS --> Drill: Block data (ore type, hardness)
-
             Drill -> Drill: Advance mining progress
             note right: progress += drill_speed * multiplier\n(зависит от tier бура)
 
@@ -116,7 +114,6 @@ loop For each active drill
                 Drill -> CS: SetBlock CAS (ore_pos, AIR)
                 alt CAS успешен
                     Drill -> Drill: Add ore to output buffer
-                    Drill -> SI: UpdateSpatialIndex(ore_pos, AIR)
                     Drill -> PN: ConsumeEnergy(drill_id, mining_cost)
                     Drill -> ESS: Update drill state
                 else CAS failed

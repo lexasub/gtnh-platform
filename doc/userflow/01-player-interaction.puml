@@ -17,7 +17,6 @@ participant "ActionDispatcher" as Disp
 participant "SetBlockCASHandler" as CAS
 participant "ChunkStore" as CS
 participant "ECS Engine\n(SimulationCore)" as Sim
-participant "SpatialIndex" as SI
 
 == Размещение блока (CAS-based) ==
 
@@ -61,7 +60,6 @@ alt CAS OK (expected совпал)
     CS -> CAS: callback(status=OK)
     CAS -> MR: Publish world.blocks.changed
     MR -> Sim: onBlockChanged
-    Sim -> SI: UpdateSpatialIndex(pos, final_id)
 
     alt LEFT_MOUSE_CLICK (ломаем)
         CAS -> CAS: giveItem(player, expected_block_id, 1)
@@ -75,7 +73,7 @@ else CAS CONFLICT (expected НЕ совпал)
     note right #E74C3C
       Кто-то изменил блок между
       моментом клика и CAS
-    end
+    end note
     CS -> CAS: callback(status=CONFLICT, actual_block_id)
     CAS -> GW: BlockAck(CONFLICT, actual_id, actual_meta)
     GW -> Client: Revert block
@@ -101,7 +99,7 @@ alt CAS OK
     CAS -> CAS: giveItem(player, expected_id, 1)
     note right: Сломанный блок в инвентарь
     CAS -> MR: Publish world.blocks.changed
-    Sim -> SI: UpdateSpatialIndex(pos, AIR)
+    MR -> Sim: onBlockChanged
     Sim -> Sim: Check multiblock dissociation
 else CAS CONFLICT
     CS -> CAS: status=CONFLICT

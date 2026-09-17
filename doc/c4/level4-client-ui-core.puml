@@ -30,8 +30,7 @@ Container_Boundary(gc, "GameClient") {
     ' ===================================================================
     Container_Boundary(craft, "Крафтинг (Crafting)") {
         Component(cr_item_reg, "ClientItemRegistry", "C++", "Реестр предметов клиента\nID → имя, текстура")
-        Component(cr_machine_db, "ClientMachineRecipeDB", "C++", "БД рецептов машин\nна клиенте (кэш)")
-        Component(cr_recipe_db, "ClientRecipeDB", "C++", "БД рецептов крафта\nна клиенте")
+        Component(cr_server_db, "ServerRecipeDB", "C++", "Серверные рецепты/машины\nзапросы через RecipeManager RPC\n(recipe.check/catalog/item/machine)")
     }
 
     ' ===================================================================
@@ -62,8 +61,7 @@ Rel(net_ref, ui_mgr, "InventoryUpdateCallback → HandleNetwork\nBlockEntityUpda
 
 Rel(ui_mgr, windows_ref, "владеет всеми окнами\nи панелями", "")
 Rel(windows_ref, cr_item_reg, "использует реестр\nпредметов", "")
-Rel(windows_ref, cr_recipe_db, "использует БД\nрецептов крафта", "")
-Rel(windows_ref, cr_machine_db, "использует БД\nрецептов машин", "")
+Rel(windows_ref, cr_server_db, "использует серверный кэш\nрецептов крафта и машин", "")
 
 SHOW_LEGEND()
 @enduml

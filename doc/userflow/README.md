@@ -37,3 +37,15 @@ plantuml doc/userflow/*.puml -tpng
 ## Связанные C4 диаграммы
 
 `doc/c4/level4-flows.puml` — системные event sequence диаграммы (ChunkLoading, Multiblock, Crafting, Inventory)
+
+## Актуальность (2026-09)
+
+Диаграммы синхронизированы с кодом:
+
+- **SpatialIndex убран** из flows 01/02/09 — сервис-заглушка не построен;
+  поиск руды = собственный SpiralBFS DrillSystem, pattern-check мультиблоков = SimulationCore
+- **Boiler (03)**: HEAT→STEAM конверсия fail-closed по `steam_id` (без water/steam bucket
+  инвентаря в BoilerSystem; bucket-рецепты живут в RecipeManager `data/recipes/boiler.yaml`)
+- **Typed resource ports (06)**: BoilerSystem публикует HU sink + FLUID steam source
+  параллельно с legacy node (openspec `refactor-fluid-port-accounting` 2.4)
+- Удаление блока (01): `onBlockChanged` через MessageRouter, CAS в ChunkStore

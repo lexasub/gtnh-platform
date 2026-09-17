@@ -34,9 +34,7 @@ Container_Boundary(gc, "GameClient") {
     ' ===================================================================
     ' ServerLogic
     ' ===================================================================
-    Container_Boundary(slogic, "ServerLogic") {
-        Component(sl_mech, "IMechanism", "C++ (interface)", "Интерфейс механизма\nдля взаимодействия с сервером")
-    }
+    Component(sl_mech, "ServerRecipeDB", "C++", "Серверные данные на клиенте\nрецепты/машины через RPC (recipe.* топики)\nзаменил удалённые ClientRecipeDB/ClientMachineRecipeDB")
 
     ' ===================================================================
     ' Common Types

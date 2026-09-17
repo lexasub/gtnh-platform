@@ -11,15 +11,15 @@ LAYOUT_WITH_LEGEND()
 title **MetaDB**\nGo — SQLite, сохранение игроков и инвентаря
 
 Container_Boundary(metadb, "MetaDB (Go — SQLite)") {
-    Component(meta_main, "main.go", "Go", "Точка входа")
+    Component(meta_main, "main.go", "Go", "Точка входа\nJSON TCP API (:5005)")
     Component(meta_db, "MetaDB (struct)", "Go", "Ядро: SQLite connection\n+ RouterClient reference\ninventory CRUD + player pos")
-    Component(meta_router, "RouterClient (struct)", "Go", "TCP клиент MessageRouter\nRegister как 'metadb' сервис\nподписка на meta_db.* и player.*")
-    Component(meta_fbtcp, "flatbuffer_tcp.go", "Go", "FlatBuffers TCP handler\nдля JSON API (legacy)")
+    Component(meta_router, "RouterClient (struct)", "Go", "TCP клиент MessageRouter\nRegister как 'metadb' сервис\nявная подписка: meta_db.inventory.get/set/snapshot,\nmeta_db.quest.get/set, quest.completed,\nquest.exchange.request/cooldown.get,\nplayer.joined, player.left")
+    Component(meta_fbtcp, "flatbuffer_tcp.go", "Go", "FlatBuffers TCP RPC\n(:5006) — MetaDBFrame")
 
     ' SQLite schema
     Component(sql_players, "players table", "SQLite", "id, x, y, z\nпозиция игрока\nINSERT OR REPLACE")
     Component(sql_inventory, "inventory table", "SQLite", "player_id, slot, block_id, count\nPRIMARY KEY (player_id, slot)\nFOREIGN KEY → players")
-    Component(sql_entity, "entity_state table", "SQLite", "dim, x, y, z, blob\nPRIMARY KEY (dim, x, y, z)\nдублирование с EntityStateStore\nдля долгосрочной персистентности")
+    Component(sql_entity, "entity_state table", "SQLite", "dim, x, y, z, blob\nPRIMARY KEY (dim, x, y, z)\n⚠ схема определена, но не инициализируется\n(initEntityStateSchema не вызывается)")
 
     ' CRUD operations
     Component(crud_create_inv, "CreateInventory()", "Go", "Создание/замена\nинвентаря игрока\ntransaction: INSERT + DELETE")
@@ -35,9 +35,8 @@ Container_Boundary(metadb, "MetaDB (Go — SQLite)") {
     Component(crud_del_entity, "DeleteEntityState()", "Go", "DELETE entity state")
 
     ' Event handlers
-    Component(ev_joined, "handlePlayerJoined()", "Go", "player.joined →\nGetInventory → PublishUpdate")
-    Component(ev_left, "handlePlayerLeft()", "Go", "player.left →\nSavePlayerPosition")
-    Component(ev_inv, "handlePlayerInventoryAction()", "Go", "player.inventory.actions →\nMOVE/SPLIT/DROP/CRAFT\n→ publish update")
+    Component(ev_joined, "handlePlayerJoined()", "Go", "player.joined →\nGetInventory → publish\nplayer.inventory.load")
+    Component(ev_left, "handlePlayerLeft()", "Go", "player.left →\nSavePlayerPosition → publish\nplayer.position.load")
 
     ' Relationships
     Rel(meta_db, sql_players, "читает/пишет", "")
@@ -56,7 +55,7 @@ Container_Boundary(metadb, "MetaDB (Go — SQLite)") {
     Rel(meta_router, meta_db, "делегирует запросы", "")
     Rel(ev_joined, meta_db, "вызывает GetInventory", "")
     Rel(ev_left, meta_db, "вызывает SavePlayerPosition", "")
-    Rel(ev_inv, meta_db, "вызывает CRUD", "")
+    Rel(meta_fbtcp, meta_db, "FlatBuffers RPC → CRUD", "")
 }
 
 SHOW_LEGEND()
