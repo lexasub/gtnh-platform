@@ -479,6 +479,43 @@ static void test_recipe_manager_extractor_variants() {
 
 // add-recipe-fluid-io: per-operation fluid inputs/outputs parse into the model
 // and are validated against the canonical fluid id domain (1111:11:*).
+static void test_recipe_manager_blast_furnace_domains() {
+    RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
+    RecipeManager::RecipeManager mgr;
+    CHECK(mgr.loadRecipesFromYamlDirectory(DATA_DIR "/recipes"),
+          "blast furnace recipes load");
+    CHECK(mgr.loadMachinesFromYaml(DATA_DIR "/registry/machines.yaml"),
+          "blast furnace machine classes load");
+
+    const auto* ebf = mgr.getRecipeById("gtnh:ebf_iron_smelting");
+    const auto* hbf = mgr.getRecipeById("gtnh:hbf_iron_smelting");
+    CHECK(ebf != nullptr, "EBF iron recipe exists");
+    CHECK(hbf != nullptr, "HBF iron recipe exists");
+    if (ebf) {
+        CHECK_EQ(ebf->energy_type, static_cast<uint8_t>(0),
+                 "EBF recipe is EU-powered");
+        CHECK_EQ(ebf->inputs[0].item_id, ItemId::pack("0:1110:001:26"),
+                 "EBF consumes iron dust");
+        CHECK_EQ(ebf->outputs[0].item_id, ItemId::pack("0:110:1"),
+                 "EBF produces iron ingots");
+        CHECK_EQ(ebf->outputs[0].count, uint8_t(2), "EBF produces two ingots");
+        CHECK_EQ(ebf->resource_requirements.size(), size_t(0),
+                 "EBF uses legacy EU debit without HU reservation");
+    }
+    if (hbf) {
+        CHECK_EQ(hbf->energy_type, static_cast<uint8_t>(1),
+                 "HBF recipe is HU-powered");
+        CHECK_EQ(hbf->inputs[0].item_id, ItemId::pack("0:1110:001:26"),
+                 "HBF consumes iron dust");
+        CHECK_EQ(hbf->outputs[0].item_id, ItemId::pack("0:110:1"),
+                 "HBF produces iron ingots");
+        CHECK_EQ(hbf->outputs[0].count, uint8_t(2), "HBF produces two ingots");
+        CHECK_EQ(hbf->resource_requirements.size(), size_t(0),
+                 "HBF uses legacy HU debit without typed reservation");
+    }
+    PASS();
+}
+
 static void test_recipe_manager_fluid_io() {
     RecipeManager::ItemRegistry::instance().loadFromCSV(DATA_DIR "/registry/items.csv");
 
@@ -558,6 +595,7 @@ static void test_recipe_manager_fluid_io() {
 
 void test_recipe_manager() {
     TEST(recipe_manager_empty);
+    TEST(recipe_manager_blast_furnace_domains);
     TEST(recipe_manager_load_crafting_table);
     TEST(recipe_manager_find_stick);
     TEST(recipe_manager_no_match);

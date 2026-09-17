@@ -12,6 +12,8 @@ struct HatchSlot {
   uint16_t slot_start = 0;  // start index in InventoryContainer
   uint16_t slot_end = 0;    // exclusive end index
   uint8_t side_config = 5;  // default ANY
+  uint8_t tier = 0;
+  bool present = false;
 
   // Slot count by hatch type (hatch types with no inventory use 0)
   static constexpr uint16_t kSlotsPerHatch(HatchType t) {

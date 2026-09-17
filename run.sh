@@ -12,6 +12,7 @@ START_CLIENT=false
 RESOLUTION="2000x1200"
 LOKI_HOST="192.168.2.109"
 LOKI_BRIDGE_PORT=1514
+LOG_LEVEL="${GTNH_LOG_LEVEL:-info}"
 
 cd cmake-build-debug; ninja -j5; cd ..
 cp -r data/ /mnt/nfs/src/cpp/gtnh-platform/
@@ -106,7 +107,7 @@ mkdir -p /tmp/gtnh
 # ── kill leftover GTNH processes ────────────────────────────
 
 info "Cleaning up any leftover processes …"
-for proc in routerd chunkd gatewayd simcored_exec gameclientd entitystated pipenetworkd spatialindexd metadbd validationd; do
+for proc in routerd chunkd gatewayd simcored_exec gameclientd entitystated pipe_networkd spatialindexd metadbd validationd; do
     pids=$(pgrep -x "$proc" 2>/dev/null || true)
     if [ -n "$pids" ]; then
         warn "Killing leftover $proc (PID $pids)"
@@ -159,7 +160,7 @@ LAUNCH() {
     # Keep the service independent from the optional Loki log forwarder.  The
     # direct background process is the daemon itself, so its PID is safe to
     # use for liveness checks and shutdown.
-    GTNH_LOG_LEVEL=trace "$bin" "$@" >>"${log}" 2>&1 &
+    GTNH_LOG_LEVEL="${LOG_LEVEL}" "$bin" "$@" >>"${log}" 2>&1 &
     local pid=$!
     echo "$pid" >> "$PID_FILE"
 

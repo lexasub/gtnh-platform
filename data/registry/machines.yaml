@@ -269,6 +269,28 @@ machine_classes:
         slots: { input: 1, output: 1 }
         multiplier: { duration: 1.0, output: 1.0, eu: 1.0 }
 
+  # ── Blast furnaces ──────────────────────────────────────
+  - class: ebf
+    variants:
+      - block_id: "1110:010:47"
+        name: electric_blast_furnace
+        energy_in: ELECTRICITY
+        tier: 1
+        slots: { input: 0, output: 0 }
+        energy:
+          capacity: 10000
+          usage: 2
+  - class: hbf
+    variants:
+      - block_id: "1110:010:48"
+        name: hot_blast_furnace
+        energy_in: HEAT
+        tier: 1
+        slots: { input: 0, output: 0 }
+        energy:
+          capacity: 10000
+          usage: 2
+
   # ── Steam turbine ────────────────────────────────────────
   # Converts steam supplied by a fluid pipe into EU packets. Steam and EU
   # buffers are kept separate by SteamTurbineSystem.

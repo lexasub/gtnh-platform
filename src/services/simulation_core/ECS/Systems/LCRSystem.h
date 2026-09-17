@@ -2,7 +2,9 @@
 #include "ISystem.h"
 #include "../PatternLibrary.h"
 #include "../RecipeManager/RecipeManager.h"
+#include "../components/MultiblockController.h"
 #include <entt/entt.hpp>
+#include <cstdint>
 #include <memory>
 #include <unordered_map>
 
@@ -11,9 +13,6 @@ namespace simcore {
 class IEventPublisher;
 class PipeEnergyClient;
 class CraftReservationClient;
-
-struct MultiblockController;
-struct MachineComponent;
 
 class LCRSystem : public ISystem {
 public:
@@ -26,6 +25,7 @@ public:
               std::shared_ptr<CraftReservationClient> reservations = nullptr);
 
     void tick(float dt) override;
+    bool onConsumeResponse(uint64_t node_id, int32_t consumed, int32_t remaining);
 
     // Commit a fully-accepted pending craft (4.3.2) — same contract as
     // MachineSystem::commitPendingCraft.
@@ -39,6 +39,7 @@ private:
     std::shared_ptr<IEventPublisher> events_;
     std::shared_ptr<PipeEnergyClient> pipeClient_;
     std::shared_ptr<CraftReservationClient> reservations_;
+    std::unordered_map<uint64_t, int32_t> pendingConsumes_;
     uint64_t totalTicks_ = 0;
 
     void tickLCR(uint64_t ctrl_id, MultiblockController& ctrl);

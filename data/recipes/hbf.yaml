@@ -1,33 +1,31 @@
-# GTNH Platform — Electric Blast Furnace recipes
-# EBF consumes EU through its physical energy hatch. Heat/HU is not required.
-class: ebf
+# GTNH Platform — Hot Blast Furnace recipes
+# HBF consumes HU/heat from its coil heating domain.
+class: hbf
 recipes:
 
-  - name: gtnh:ebf_iron_smelting
+  - name: gtnh:hbf_iron_smelting
     inputs:
       - { item: iron_dust, count: 1 }
     outputs:
       - { item: iron_ingot, count: 2 }
     duration: 400
     eu: 2.0
-    energy_in: ELECTRICITY
+    energy_in: HEAT
     min_tier: 0
     max_tier: 32767
-    unlock_era: 2   # hidden from NEI until EXPERT era (UX filter demo)
 
-  - name: gtnh:ebf_gold_smelting
+  - name: gtnh:hbf_gold_smelting
     inputs:
       - { item: gold_dust, count: 1 }
     outputs:
       - { item: gold_ingot, count: 2 }
     duration: 400
     eu: 2.0
-    energy_in: ELECTRICITY
+    energy_in: HEAT
     min_tier: 0
     max_tier: 32767
-    unlock_era: 2   # hidden from NEI until EXPERT era (UX filter demo)
 
-  - name: gtnh:ebf_steel
+  - name: gtnh:hbf_steel
     inputs:
       - { item: iron_ingot, count: 1 }
       - { item: coal, count: 1 }
@@ -35,6 +33,6 @@ recipes:
       - { item: steel_ingot, count: 1 }
     duration: 400
     eu: 2.0
-    energy_in: ELECTRICITY
+    energy_in: HEAT
     min_tier: 0
     max_tier: 32767

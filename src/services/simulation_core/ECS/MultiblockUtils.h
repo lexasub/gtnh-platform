@@ -35,7 +35,7 @@ inline std::vector<HatchUpdateData> buildHatchUpdateData(
         hd.world_y = static_cast<int32_t>(hs.world_y);
         hd.world_z = static_cast<int32_t>(hs.world_z);
         hd.hatch_type = static_cast<uint8_t>(hs.type);
-        hd.tier = 1;
+        hd.tier = hs.tier;
         const int start = hs.slot_start;
         const int end = hs.slot_end;
         if (end > start) {

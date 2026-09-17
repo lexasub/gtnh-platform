@@ -176,12 +176,13 @@ int main(int argc, char* argv[]) {
         spdlog::warn("Failed to load machine classes from {}", machines_yaml);
     }
 
-    // ── Multiblock controllers (runtime registration) ─────────────────────
-    // TODO(multiblocks): these blocks are not yet in machines.yaml/items.csv
-    // (the registry is being regenerated). Register them at runtime so the
-    // multiblock formation path and recipe lookup work end-to-end.
+    // ── Multiblock controllers (runtime compatibility registration) ───────
+    // Canonical controller rows are loaded from machines.yaml; this keeps the
+    // legacy controller and the recipe-manager class mapping available while
+    // old persisted worlds migrate to the canonical IDs.
     {
-        constexpr uint16_t EBF_CONTROLLER = 1003;
+        constexpr uint16_t EBF_CONTROLLER = simcore::EBF_CONTROLLER_BLOCK_ID;
+        constexpr uint16_t HBF_CONTROLLER = simcore::HBF_CONTROLLER_BLOCK_ID;
         constexpr uint16_t BOILER_CONTROLLER = 1005;
         constexpr uint16_t LCR_CONTROLLER = 1006;
 
@@ -206,19 +207,28 @@ int main(int argc, char* argv[]) {
                 machineRegistry->Register(info);
             };
 
-            // EBF — HEAT consumer; Large Boiler — STEAM producer (fuel via
-            // controller container, so give it 4 fuel slots); LCR — ELECTRICITY.
+            // EBF — ELECTRICITY consumer; HBF — HEAT consumer; Large Boiler —
+            // STEAM producer (fuel via controller container, so give it 4 fuel
+            // slots); LCR — ELECTRICITY.
             registerController(EBF_CONTROLLER, "electric_blast_furnace", "ebf",
+                               EnergyType::ELECTRICITY, std::nullopt);
+            registerController(HBF_CONTROLLER, "hot_blast_furnace", "hbf",
                                EnergyType::HEAT, std::nullopt);
             registerController(BOILER_CONTROLLER, "large_boiler", "large_boiler",
                                std::nullopt, EnergyType::STEAM,
                                /*slots_in=*/4);
+            // LCR hatch inventory is the controller's eight-slot item
+            // container (four ITEM_IN + four ITEM_OUT slots).
             registerController(LCR_CONTROLLER, "large_chemical_reactor", "chemical_reactor",
-                               EnergyType::ELECTRICITY, std::nullopt);
+                               EnergyType::ELECTRICITY, std::nullopt,
+                               /*slots_in=*/4);
+
         }
 
         if (recipeManager) {
             recipeManager->registerMachineClass(EBF_CONTROLLER, "ebf", 1,
+                                                static_cast<uint8_t>(EnergyType::ELECTRICITY));
+            recipeManager->registerMachineClass(HBF_CONTROLLER, "hbf", 1,
                                                 static_cast<uint8_t>(EnergyType::HEAT));
             recipeManager->registerMachineClass(LCR_CONTROLLER, "chemical_reactor", 0,
                                                 static_cast<uint8_t>(EnergyType::ELECTRICITY));
@@ -472,18 +482,28 @@ int main(int argc, char* argv[]) {
     }
     spawnECSSystems(blockRepository, eventPublisher, pipeEnergyClient, fluidClient, simulationEngine, resourcePortClient, steam_item_id, resourceStatePublisher);
 
-    simulationEngine->registerSystem(std::make_unique<simcore::EBFSystem>(
-        simulationEngine->reg(), simulationEngine->getControllers(),
-        simulationEngine->getPatternRegistry(),
-        recipeManager, eventPublisher, pipeEnergyClient, craftReservations));
+    simcore::EBFSystem* ebfSystemRaw = nullptr;
+    {
+        auto ebf = std::make_unique<simcore::EBFSystem>(
+            simulationEngine->reg(), simulationEngine->getControllers(),
+            simulationEngine->getPatternRegistry(),
+            recipeManager, eventPublisher, pipeEnergyClient, craftReservations);
+        ebfSystemRaw = ebf.get();
+        simulationEngine->registerSystem(std::move(ebf));
+    }
     simulationEngine->registerSystem(std::make_unique<simcore::LargeBoilerSystem>(
         simulationEngine->reg(), simulationEngine->getControllers(),
         simulationEngine->getPatternRegistry(),
         eventPublisher, pipeEnergyClient, itemClient));
-    simulationEngine->registerSystem(std::make_unique<simcore::LCRSystem>(
-        simulationEngine->reg(), simulationEngine->getControllers(),
-        simulationEngine->getPatternRegistry(),
-        recipeManager, eventPublisher, pipeEnergyClient, craftReservations));
+    simcore::LCRSystem* lcrSystemRaw = nullptr;
+    {
+        auto lcr = std::make_unique<simcore::LCRSystem>(
+            simulationEngine->reg(), simulationEngine->getControllers(),
+            simulationEngine->getPatternRegistry(),
+            recipeManager, eventPublisher, pipeEnergyClient, craftReservations);
+        lcrSystemRaw = lcr.get();
+        simulationEngine->registerSystem(std::move(lcr));
+    }
 
     // ── Generic machine interaction handlers ──
     simulationEngine->registerMachineInteractionHandler(
@@ -542,6 +562,8 @@ int main(int argc, char* argv[]) {
     msgDeps.machineSystem = machineSystemRaw;
     msgDeps.batteryBuffer = batteryBufferRaw;
     msgDeps.steamTurbine = steamTurbineRaw;
+    msgDeps.lcrSystem = lcrSystemRaw;
+    msgDeps.ebfSystem = ebfSystemRaw;
     msgDeps.wbStateManager = wbStateManager;
     msgDeps.chestSessions = chestSessions;
     msgDeps.chestStateManager = chestStateManager;

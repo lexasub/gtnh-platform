@@ -956,7 +956,7 @@ void PipeNetworkService::handleConsumeRequest(const std::vector<uint8_t>& data) 
     auto pit = protocol_to_mgr_.find(req->node_id());
     if (pit == protocol_to_mgr_.end()) {
         flatbuffers::FlatBufferBuilder fbb;
-        auto resp = Protocol::CreateEnergyConsumeResp(fbb, 0, 0);
+        auto resp = Protocol::CreateEnergyConsumeResp(fbb, 0, 0, req->node_id());
         fbb.Finish(resp);
         router_.Publish("energy.consume.response", {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
         return;
@@ -1001,7 +1001,7 @@ void PipeNetworkService::handleConsumeRequest(const std::vector<uint8_t>& data) 
     if (sit != br.node_states.end()) remaining = sit->second.energy;
 
     flatbuffers::FlatBufferBuilder fbb;
-    auto resp = Protocol::CreateEnergyConsumeResp(fbb, consumed, remaining);
+    auto resp = Protocol::CreateEnergyConsumeResp(fbb, consumed, remaining, req->node_id());
     fbb.Finish(resp);
     router_.Publish("energy.consume.response", {fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
 }

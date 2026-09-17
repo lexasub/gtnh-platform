@@ -16,6 +16,7 @@
 #include <recipe_manager_lib/RecipeTypes.h>
 #include <spdlog/spdlog.h>
 #include <algorithm>
+#include <limits>
 
 namespace simcore {
 
@@ -40,18 +41,23 @@ void EBFSystem::tick(float) {
         auto it = controllers_.find(ctrl_id);
         if (it == controllers_.end()) continue;
         if (it->second.id == 0) continue;
-        if (it->second.pattern_id != 1) continue; // EBF only
+        if (it->second.pattern_id != 1 && it->second.pattern_id != 4) continue;
         tickEBF(ctrl_id, it->second);
     }
 }
 
 int EBFSystem::getCoilHeat(uint16_t block_id) const {
-    switch (block_id) {
-        case KANHAL_COIL_BLOCK_ID:        return KANHAL_MAX_HEAT;        // 1800K
-        case NICHROME_COIL_BLOCK_ID:      return NICHROME_MAX_HEAT;      // 2700K
-        case TUNGSTENSTEEL_COIL_BLOCK_ID: return TUNGSTENSTEEL_MAX_HEAT; // 4500K
-        default: return 0;
+    if (block_id == KANHAL_COIL_BLOCK_ID ||
+        block_id == LEGACY_KANHAL_COIL_BLOCK_ID) {
+        return KANHAL_MAX_HEAT;
     }
+    if (block_id == NICHROME_COIL_BLOCK_ID || block_id == 1007) {
+        return NICHROME_MAX_HEAT;
+    }
+    if (block_id == TUNGSTENSTEEL_COIL_BLOCK_ID || block_id == 1008) {
+        return TUNGSTENSTEEL_MAX_HEAT;
+    }
+    return 0;
 }
 
 int EBFSystem::detectHeatTier(const MultiblockController& ctrl) const {
@@ -65,7 +71,7 @@ int EBFSystem::detectHeatTier(const MultiblockController& ctrl) const {
     int32_t corner_y = static_cast<int32_t>(ctrl.y) - pattern->controller_dy;
     int32_t corner_z = static_cast<int32_t>(ctrl.z) - pattern->controller_dz;
 
-    int maxHeat = 0;
+    int minHeat = std::numeric_limits<int>::max();
     for (int dy = COIL_LAYER_1; dy <= COIL_LAYER_2; ++dy) {
         uint32_t wx = static_cast<uint32_t>(corner_x + COIL_DX);
         uint32_t wy = static_cast<uint32_t>(corner_y + dy);
@@ -80,9 +86,24 @@ int EBFSystem::detectHeatTier(const MultiblockController& ctrl) const {
                 break;
             }
         }
-        maxHeat = std::max(maxHeat, getCoilHeat(block_id));
+        const int layerHeat = getCoilHeat(block_id);
+        if (layerHeat <= 0) return 0;
+        minHeat = std::min(minHeat, layerHeat);
     }
-    return maxHeat > 0 ? maxHeat : KANHAL_MAX_HEAT;
+    return minHeat == std::numeric_limits<int>::max() ? 0 : minHeat;
+}
+
+bool EBFSystem::onConsumeResponse(uint64_t node_id, int32_t consumed, int32_t) {
+    auto it = pendingConsumes_.find(node_id);
+    if (it == pendingConsumes_.end()) return false;
+    pendingConsumes_.erase(it);
+    if (consumed <= 0) return true;
+
+    auto entity = static_cast<entt::entity>(node_id);
+    auto* energy = reg_.try_get<EnergyStorage>(entity);
+    if (!energy) return true;
+    energy->current = std::min(energy->capacity, energy->current + consumed);
+    return true;
 }
 
 void EBFSystem::tickEBF(uint64_t ctrl_id, MultiblockController& ctrl) {
@@ -126,9 +147,38 @@ void EBFSystem::tickEBF(uint64_t ctrl_id, MultiblockController& ctrl) {
     const int input_end_capped = std::min(input_end, static_cast<int>(container.slots.size()));
     const int output_end_capped = std::min(output_end, static_cast<int>(container.slots.size()));
 
-    const int coilMaxHeat = detectHeatTier(ctrl);
-    // Recipes only run once the coil is at least half-hot.
-    const int requiredHeat = coilMaxHeat / 2;
+    const bool electric = ctrl.pattern_id == 1;
+    const HatchSlot* energy_hatch = nullptr;
+    if (electric) {
+        for (const auto& hatch : ctrl.hatches) {
+            if (hatch.type == HatchType::ENERGY && hatch.present) {
+                energy_hatch = &hatch;
+                break;
+            }
+        }
+        // An EBF requires a physical ENERGY hatch; a structural role alone
+        // must not make an EU endpoint available.
+        if (!energy_hatch) return;
+    }
+    const int32_t endpoint_x = energy_hatch
+        ? static_cast<int32_t>(energy_hatch->world_x)
+        : static_cast<int32_t>(machine.x);
+    const int32_t endpoint_y = energy_hatch
+        ? static_cast<int32_t>(energy_hatch->world_y)
+        : static_cast<int32_t>(machine.y);
+    const int32_t endpoint_z = energy_hatch
+        ? static_cast<int32_t>(energy_hatch->world_z)
+        : static_cast<int32_t>(machine.z);
+    const int coilMaxHeat = electric ? 0 : detectHeatTier(ctrl);
+    // HBF is HU-gated by its coils; EBF has no heat requirement.
+    const int requiredHeat = electric ? 0 : coilMaxHeat / 2;
+
+    if (pipeClient_) {
+        pipeClient_->publishNodeUpdate(
+            static_cast<uint64_t>(entity), endpoint_x, endpoint_y, endpoint_z,
+            energy.current, energy.capacity, energy.maxInput, energy.maxOutput,
+            energy.tier, static_cast<int32_t>(energy.type), false, true);
+    }
 
     if (!progress.recipe_id.empty()) {
         auto* recipe = recipes_->getRecipeById(progress.recipe_id);
@@ -139,9 +189,12 @@ void EBFSystem::tickEBF(uint64_t ctrl_id, MultiblockController& ctrl) {
         }
 
         if (heat.heat_stored < requiredHeat) return; // not hot enough
+        if (electric && energy.type != EnergyType::ELECTRICITY) return;
+        if (!electric && energy.type != EnergyType::HEAT) return;
 
-        const bool orchestrated = reservations_ && recipe->hasResourceRequirements();
-        const int32_t perTickCost = orchestrated
+        const bool orchestrated = reservations_ && recipe->hasResourceRequirements() &&
+                                  !electric;
+        const int32_t perTickCost = recipe->hasResourceRequirements()
             ? static_cast<int32_t>(recipe->resourceAmountPerTick())
             : static_cast<int32_t>(recipe->energy_cost);
 
@@ -153,18 +206,22 @@ void EBFSystem::tickEBF(uint64_t ctrl_id, MultiblockController& ctrl) {
                     reservations_->beginPerTickCharge(entity, *recipe);
                 }
             } else if (pipeClient_) {
-                pipeClient_->sendConsumeRequest(
-                    static_cast<uint64_t>(entity),
-                    static_cast<int32_t>(machine.x),
-                    static_cast<int32_t>(machine.y),
-                    static_cast<int32_t>(machine.z),
-                    static_cast<int32_t>(energy.type),
-                    static_cast<int32_t>(recipe->energy_cost));
+                const uint64_t node_id = static_cast<uint64_t>(entity);
+                if (pendingConsumes_.find(node_id) == pendingConsumes_.end()) {
+                    pipeClient_->sendConsumeRequest(
+                        node_id, endpoint_x, endpoint_y, endpoint_z,
+                        static_cast<int32_t>(energy.type),
+                        perTickCost);
+                    pendingConsumes_[node_id] = perTickCost;
+                }
             }
             return;
         }
 
         energy.current -= perTickCost;
+        if (!electric) {
+            heat.heat_stored = energy.current;
+        }
         progress.remaining_ticks--;
 
         if (pipeClient_) {

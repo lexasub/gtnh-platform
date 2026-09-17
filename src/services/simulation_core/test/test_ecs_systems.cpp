@@ -21,6 +21,8 @@
 #include "ECS/components/HeatIntakeComponent.h"
 #include "ECS/components/SteamOutputComponent.h"
 #include "ECS/components/Position.h"
+#include "ECS/components/BatteryBufferComponent.h"
+#include "ECS/Reactors/EnergyFlowHandler.h"
 #include "ECS/Systems/GeneratorSystem.h"
 #include "ECS/Systems/AdjacencyTransferSystem.h"
 #include "ECS/Systems/MachineSystem.h"
@@ -38,6 +40,7 @@
 #include "Actions/SetBlockCASHandler.h"
 #include "Storage/IBlockRepository.h"
 #include "core_generated.h"
+#include "pipe_network_generated.h"
 #include <flatbuffers/flatbuffers.h>
 #include <common/ItemId.h>
 
@@ -923,6 +926,64 @@ static void test_CreativeGeneratorSystem_fills_energy() {
     PASS();
 }
 
+static void test_MultiblockFormation_hbf() {
+    setupMachineRegistry();
+    auto* mreg = MachineRegistry::instance();
+    MachineInfo hbf{};
+    hbf.id = simcore::HBF_CONTROLLER_BLOCK_ID;
+    hbf.name = "hot_blast_furnace";
+    hbf.machine_class = "hbf";
+    hbf.energy_in = EnergyType::HEAT;
+    hbf.tier = 1;
+    hbf.capacity = 10000;
+    hbf.maxInput = 32;
+    hbf.maxOutput = 32;
+    mreg->Register(hbf);
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    engine->setMachineRegistry(MachineRegistry::instance());
+    auto& reg = engine->reg();
+    constexpr uint16_t casing = simcore::BLAST_CASING_BLOCK_ID;
+    constexpr uint16_t coil = simcore::KANHAL_COIL_BLOCK_ID;
+    constexpr uint16_t controller = simcore::HBF_CONTROLLER_BLOCK_ID;
+    auto place = [&](int x, int y, int z, uint16_t id) {
+        engine->onBlockChanged(static_cast<uint32_t>(x), static_cast<uint32_t>(y),
+                               static_cast<uint32_t>(z), id, 0, 0);
+    };
+    for (int x = -1; x <= 1; ++x)
+        for (int z = -1; z <= 1; ++z) place(x, 0, z, casing);
+    place(-1, 1, -1, casing); place(1, 1, -1, casing);
+    place(-1, 1, 1, casing); place(1, 1, 1, casing);
+    place(0, 1, 0, coil);
+    place(-1, 2, -1, casing); place(1, 2, -1, casing);
+    place(-1, 2, 1, casing); place(1, 2, 1, casing);
+    place(0, 2, 0, coil);
+    for (int x = -1; x <= 1; ++x)
+        for (int z = -1; z <= 1; ++z)
+            if (!(x == 0 && z == 0)) place(x, 3, z, casing);
+    place(0, 3, 0, controller);
+    CHECK_EQ(static_cast<int>(engine->getControllers().size()), 1,
+             "HBF controller formed");
+    if (!engine->getControllers().empty()) {
+        CHECK_EQ(engine->getControllers().begin()->second.pattern_id, 4u,
+                 "HBF pattern id");
+        entt::entity entity = entt::null;
+        auto view = reg.view<const simcore::Position, simcore::MachineComponent>();
+        for (auto e : view) {
+            const auto& pos = view.get<const simcore::Position>(e);
+            if (pos.x == 0 && pos.y == 3 && pos.z == 0) {
+                entity = e;
+                break;
+            }
+        }
+        CHECK(entity != entt::null, "HBF entity exists");
+        if (entity != entt::null) {
+            CHECK_EQ(static_cast<int>(reg.get<simcore::EnergyStorage>(entity).type),
+                     static_cast<int>(EnergyType::HEAT), "HBF uses heat");
+        }
+    }
+    PASS();
+}
+
 static void test_MultiblockFormation_hatchIO() {
     setupMachineRegistry();
     auto* mreg = MachineRegistry::instance();
@@ -1162,6 +1223,52 @@ static void test_BatteryBufferSystem_publishes_electricity_sink() {
     PASS();
 }
 
+static void test_EnergyFlowHandler_debits_battery_buffer() {
+    entt::registry reg;
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(
+        std::make_shared<simcore::IoUringRouterClient>());
+    simcore::EnergyFlowHandler handler(reg, pipeClient);
+
+    auto ent = reg.create();
+    reg.emplace<simcore::BatteryBufferComponent>(ent,
+        simcore::BatteryBufferComponent{40000, 1000, 0, 32, 8, 1});
+
+    flatbuffers::FlatBufferBuilder fbb;
+    Protocol::Vec3i pos(300, 64, 300);
+    auto flow = Protocol::CreateEnergyFlowEvent(
+        fbb, 0, static_cast<uint64_t>(ent), 0,
+        Protocol::EnergyType_ELECTRICITY, 32, &pos, 1);
+    fbb.Finish(flow);
+    handler.handle({fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+
+    const auto& buf = reg.get<simcore::BatteryBufferComponent>(ent);
+    CHECK_EQ(buf.stored, 968, "flow event debits buffer by transferred EU");
+    PASS();
+}
+
+static void test_EnergyFlowHandler_empty_battery_never_negative() {
+    entt::registry reg;
+    auto pipeClient = std::make_shared<simcore::PipeEnergyClient>(
+        std::make_shared<simcore::IoUringRouterClient>());
+    simcore::EnergyFlowHandler handler(reg, pipeClient);
+
+    auto ent = reg.create();
+    reg.emplace<simcore::BatteryBufferComponent>(ent,
+        simcore::BatteryBufferComponent{40000, 10, 0, 32, 8, 1});
+
+    flatbuffers::FlatBufferBuilder fbb;
+    Protocol::Vec3i pos(300, 64, 300);
+    auto flow = Protocol::CreateEnergyFlowEvent(
+        fbb, 0, static_cast<uint64_t>(ent), 0,
+        Protocol::EnergyType_ELECTRICITY, 32, &pos, 1);
+    fbb.Finish(flow);
+    handler.handle({fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
+
+    const auto& buf = reg.get<simcore::BatteryBufferComponent>(ent);
+    CHECK_EQ(buf.stored, 0, "clamped at zero, no negative stored EU");
+    PASS();
+}
+
 static void test_BoilerSystem_heat_boiler_produces_steam_no_water() {
     setupMachineRegistry();
     entt::registry reg;
@@ -1277,6 +1384,9 @@ void test_ecs_systems() {
     TEST(BatteryBufferSystem_charges_tool);
     TEST(BatteryBufferSystem_empty_slot_noop);
     TEST(BatteryBufferSystem_full_tool_skips);
+    TEST(EnergyFlowHandler_debits_battery_buffer);
+    TEST(EnergyFlowHandler_empty_battery_never_negative);
+    TEST(MultiblockFormation_hbf);
     TEST(MultiblockFormation_hatchIO);
     TEST(DrillSystem_drains_tool_energy);
     TEST(DrillSystem_insufficient_tool_energy_aborts);

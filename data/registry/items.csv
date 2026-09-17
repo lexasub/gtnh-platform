@@ -400,6 +400,8 @@ int,name,stack,meta
 1110:010:44,steam_turbine,1,0
 1110:010:45,large_chemical_reactor,1,0
 1110:010:46,advanced_database,1,0
+1110:010:47,electric_blast_furnace,1,0
+1110:010:48,hot_blast_furnace,1,0
 # machines/boilers-generation — allocation prefix 1110:011
 1110:011:0,steam_solid_boiler,,0
 1110:011:1,steam_heat_boiler,,0

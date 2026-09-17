@@ -341,6 +341,8 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
                         hs.world_x = static_cast<uint32_t>(hatches[i].world_x);
                         hs.world_y = static_cast<uint32_t>(hatches[i].world_y);
                         hs.world_z = static_cast<uint32_t>(hatches[i].world_z);
+                        hs.present = hatches[i].present;
+                        hs.tier = hatches[i].tier;
                         uint16_t slot_count = HatchSlot::kSlotsPerHatch(hs.type);
                         if (slot_count > 0) {
                             hs.slot_start = offset;
@@ -379,6 +381,17 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
         mc.x = x; mc.y = y; mc.z = z;
 
         bool should_external = (mb_id != 0);
+        if (!should_external && pattern_registry_.isControllerBlock(block_id)) {
+            // A world-block echo may omit mb_id after formation. Preserve the
+            // controller's external owner state so MachineSystem cannot race
+            // the dedicated multiblock system on the next tick.
+            for (const auto& [_, controller] : controllers_) {
+                if (controller.x == x && controller.y == y && controller.z == z) {
+                    should_external = true;
+                    break;
+                }
+            }
+        }
         if (mc.managed_externally != should_external) {
             mc.managed_externally = should_external;
             if (should_external && onMachineCreated) {

@@ -26,14 +26,12 @@ public:
               std::shared_ptr<CraftReservationClient> reservations = nullptr);
 
     void tick(float dt) override;
+    bool onConsumeResponse(uint64_t node_id, int32_t consumed, int32_t remaining);
 
     // Commit a fully-accepted pending craft (4.3.2) — same contract as
     // MachineSystem::commitPendingCraft.
     void commitPendingCraft(entt::entity entity);
 
-    static constexpr uint16_t KANHAL_COIL_BLOCK_ID = 1002;
-    static constexpr uint16_t NICHROME_COIL_BLOCK_ID = 1007;
-    static constexpr uint16_t TUNGSTENSTEEL_COIL_BLOCK_ID = 1008;
     static constexpr int KANHAL_MAX_HEAT = 1800;
     static constexpr int NICHROME_MAX_HEAT = 2700;
     static constexpr int TUNGSTENSTEEL_MAX_HEAT = 4500;
@@ -46,6 +44,7 @@ private:
     std::shared_ptr<IEventPublisher> events_;
     std::shared_ptr<PipeEnergyClient> pipeClient_;
     std::shared_ptr<CraftReservationClient> reservations_;
+    std::unordered_map<uint64_t, int32_t> pendingConsumes_;
     uint64_t totalTicks_ = 0;
 
     static constexpr int COIL_LAYER_1 = 1;

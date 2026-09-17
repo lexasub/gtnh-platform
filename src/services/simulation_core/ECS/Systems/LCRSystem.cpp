@@ -46,6 +46,22 @@ void LCRSystem::tick(float) {
 
 void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
     (void)ctrl_id;
+    const HatchSlot* energy_hatch = nullptr;
+    for (const auto& hatch : ctrl.hatches) {
+        if (hatch.type == HatchType::ENERGY && hatch.present) {
+            energy_hatch = &hatch;
+            break;
+        }
+    }
+    const int32_t endpoint_x = energy_hatch
+        ? static_cast<int32_t>(energy_hatch->world_x)
+        : static_cast<int32_t>(ctrl.x);
+    const int32_t endpoint_y = energy_hatch
+        ? static_cast<int32_t>(energy_hatch->world_y)
+        : static_cast<int32_t>(ctrl.y);
+    const int32_t endpoint_z = energy_hatch
+        ? static_cast<int32_t>(energy_hatch->world_z)
+        : static_cast<int32_t>(ctrl.z);
     auto view = reg_.view<const Position, MachineComponent>();
     entt::entity entity = entt::null;
     for (auto e : view) {
@@ -59,6 +75,13 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
 
     auto& machine = reg_.get<MachineComponent>(entity);
     auto& energy = reg_.get<EnergyStorage>(entity);
+
+    if (pipeClient_) {
+        pipeClient_->publishNodeUpdate(
+            static_cast<uint64_t>(entity), endpoint_x, endpoint_y, endpoint_z,
+            energy.current, energy.capacity, energy.maxInput, energy.maxOutput,
+            energy.tier, static_cast<int32_t>(energy.type), false, true);
+    }
     auto& container = reg_.get<InventoryContainer>(entity);
     auto& progress = reg_.get<RecipeProgress>(entity);
 
@@ -91,8 +114,14 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
             return;
         }
 
-        const bool orchestrated = reservations_ && recipe->hasResourceRequirements();
-        const int32_t perTickCost = orchestrated
+        const bool has_non_eu_requirement = std::any_of(
+            recipe->resource_requirements.begin(), recipe->resource_requirements.end(),
+            [](const auto& requirement) {
+                return requirement.kind != gtnh::common::ResourceKind::EU;
+            });
+        const bool orchestrated = reservations_ && recipe->hasResourceRequirements() &&
+                                  has_non_eu_requirement;
+        const int32_t perTickCost = recipe->hasResourceRequirements()
             ? static_cast<int32_t>(recipe->resourceAmountPerTick())
             : static_cast<int32_t>(recipe->energy_cost);
 
@@ -106,11 +135,10 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
             } else if (pipeClient_) {
                 pipeClient_->sendConsumeRequest(
                     static_cast<uint64_t>(entity),
-                    static_cast<int32_t>(machine.x),
-                    static_cast<int32_t>(machine.y),
-                    static_cast<int32_t>(machine.z),
+                    endpoint_x, endpoint_y, endpoint_z,
                     static_cast<int32_t>(energy.type),
-                    static_cast<int32_t>(recipe->energy_cost));
+                    perTickCost);
+                pendingConsumes_[static_cast<uint64_t>(entity)] = perTickCost;
             }
             return;
         }
@@ -121,9 +149,7 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
         if (pipeClient_) {
             pipeClient_->publishNodeUpdate(
                 static_cast<uint64_t>(entity),
-                static_cast<int32_t>(machine.x),
-                static_cast<int32_t>(machine.y),
-                static_cast<int32_t>(machine.z),
+                endpoint_x, endpoint_y, endpoint_z,
                 energy.current,
                 energy.capacity,
                 energy.maxInput,
@@ -170,7 +196,13 @@ void LCRSystem::tickLCR(uint64_t ctrl_id, MultiblockController& ctrl) {
 
         auto* recipe = recipes_->findRecipeByInputs(machine.machine_id, inputItems);
         if (recipe) {
-            if (reservations_ && recipe->hasResourceRequirements()) {
+            const bool has_non_eu_requirement = std::any_of(
+                recipe->resource_requirements.begin(), recipe->resource_requirements.end(),
+                [](const auto& requirement) {
+                    return requirement.kind != gtnh::common::ResourceKind::EU;
+                });
+            if (reservations_ && recipe->hasResourceRequirements() &&
+                has_non_eu_requirement) {
                 // 4.2.2/4.3.2: reserve before touching inputs or progress.
                 tickOrchestratedStart(entity, *recipe,
                                       input_start, input_end_capped);
@@ -269,6 +301,19 @@ void LCRSystem::tickOrchestratedStart(entt::entity entity,
         progress.is_processing = true;
         progress.clearPendingCraft();
     }
+}
+
+bool LCRSystem::onConsumeResponse(uint64_t node_id, int32_t consumed, int32_t) {
+    auto it = pendingConsumes_.find(node_id);
+    if (it == pendingConsumes_.end()) return false;
+    pendingConsumes_.erase(it);
+    if (consumed <= 0) return true;
+
+    auto entity = static_cast<entt::entity>(node_id);
+    auto* energy = reg_.try_get<EnergyStorage>(entity);
+    if (!energy) return true;
+    energy->current = std::min(energy->capacity, energy->current + consumed);
+    return true;
 }
 
 void LCRSystem::commitPendingCraft(entt::entity entity) {

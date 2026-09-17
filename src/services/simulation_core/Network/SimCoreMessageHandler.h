@@ -26,6 +26,8 @@ class QuestManager;
 class MachineSystem;
 class BatteryBufferSystem;
 class SteamTurbineSystem;
+class LCRSystem;
+class EBFSystem;
 class ContainerSessionRegistry;
 class ChestStateManager;
 class MachineOpenHandler;
@@ -60,6 +62,8 @@ public:
     MachineSystem* machineSystem = nullptr;
     BatteryBufferSystem* batteryBuffer = nullptr;
     SteamTurbineSystem* steamTurbine = nullptr;
+    LCRSystem* lcrSystem = nullptr;
+    EBFSystem* ebfSystem = nullptr;
     std::shared_ptr<simulation_core::WorkbenchStateManager> wbStateManager;
     std::shared_ptr<ContainerSessionRegistry> chestSessions;
     std::shared_ptr<ChestStateManager> chestStateManager;

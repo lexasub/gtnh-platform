@@ -8,19 +8,37 @@ static uint32_t xyz(uint32_t x, uint32_t y, uint32_t z) {
     return (x & 0x3FF) | ((y & 0x3FF) << 10) | ((z & 0x3FF) << 20);
 }
 
+static bool equivalentBlock(uint16_t expected, uint16_t actual) {
+    if (expected == BLAST_CASING_BLOCK_ID &&
+        actual == LEGACY_BLAST_CASING_BLOCK_ID) {
+        return true;
+    }
+    if (expected == KANHAL_COIL_BLOCK_ID &&
+        actual == LEGACY_KANHAL_COIL_BLOCK_ID) {
+        return true;
+    }
+    if (expected == EBF_CONTROLLER_BLOCK_ID &&
+        actual == LEGACY_EBF_CONTROLLER_BLOCK_ID) {
+        return true;
+    }
+    if (expected == HBF_CONTROLLER_BLOCK_ID &&
+        actual == LEGACY_HBF_CONTROLLER_BLOCK_ID) {
+        return true;
+    }
+    return expected == actual;
+}
 
-
-static MultiblockPattern makeEBFPattern() {
+static MultiblockPattern makeBlastPattern(const char* name, uint32_t id, uint16_t controller, uint16_t coil) {
     MultiblockPattern p;
-    p.id = 1;
-    p.name = "ebf";
-    p.controller_block_id = 1003;
+    p.id = id;
+    p.name = name;
+    p.controller_block_id = controller;
     p.size_x = 3; p.size_y = 4; p.size_z = 3;
 
-    constexpr uint16_t CASING = 1001;
-    constexpr uint16_t COIL   = 1002;
-    constexpr uint16_t CTRL   = 1003;
-    constexpr uint16_t ANY    = ANY_BLOCK;
+    const uint16_t CASING = BLAST_CASING_BLOCK_ID;
+    const uint16_t COIL   = coil;
+    const uint16_t CTRL   = controller;
+    const uint16_t ANY    = ANY_BLOCK;
 
     p.layers.push_back({{{CASING, CASING, CASING},
                           {CASING, CASING, CASING},
@@ -52,7 +70,12 @@ static MultiblockPattern makeLargeBoilerPattern() {
     MultiblockPattern p;
     p.id = 2;
     p.name = "large_boiler";
-    p.controller_block_id = 1005;
+    p.controller_block_id = 1005; // legacy large-boiler controller, unchanged
+
+    // HBF reuses this geometry through pattern id 4; its dedicated system
+    // distinguishes the heat-powered controller at runtime.
+
+
     p.size_x = 3; p.size_y = 4; p.size_z = 3;
 
     constexpr uint16_t CASING    = 1001;
@@ -119,17 +142,29 @@ static MultiblockPattern makeLCRPattern() {
     return p;
 }
 
+static MultiblockPattern makeEBFPattern() {
+    return makeBlastPattern("ebf", 1, EBF_CONTROLLER_BLOCK_ID,
+                            KANHAL_COIL_BLOCK_ID);
+}
+
+static MultiblockPattern makeHBFPattern() {
+    return makeBlastPattern("hbf", 4, HBF_CONTROLLER_BLOCK_ID,
+                            KANHAL_COIL_BLOCK_ID);
+}
+
 PatternRegistry::PatternRegistry() {
     addPattern(makeEBFPattern());
     addPattern(makeLargeBoilerPattern());
     addPattern(makeLCRPattern());
+    addPattern(makeHBFPattern());
 }
 
 bool PatternRegistry::isControllerBlock(uint16_t block_id) const {
     for (const auto& [id, pattern] : patterns_) {
         if (pattern.controller_block_id == block_id) return true;
     }
-    return false;
+    return block_id == LEGACY_EBF_CONTROLLER_BLOCK_ID ||
+           block_id == LEGACY_HBF_CONTROLLER_BLOCK_ID;
 }
 
 void PatternRegistry::addPattern(const MultiblockPattern& pattern) {
@@ -161,11 +196,12 @@ bool PatternRegistry::matchLayer(const PatternLayer& layer, uint32_t corner_x, u
             uint32_t wz = corner_z + static_cast<uint32_t>(row);
 
             uint16_t actual = lookup(wx, wy, wz);
-            if (actual != expected) return false;
+            if (!equivalentBlock(expected, actual)) return false;
         }
     }
     return true;
 }
+
 
 std::vector<uint32_t> PatternRegistry::collectBlocks(const MultiblockPattern& pattern,
                                                        uint32_t corner_x, uint32_t corner_y,
@@ -264,8 +300,11 @@ std::vector<PatternRegistry::HatchResult> PatternRegistry::findHatches(
 
         if (detected != HatchType::NONE) {
             r.type = detected;
+            r.present = true;
+            r.tier = (detected == HatchType::ENERGY) ? 0 : 0;
         } else if (hd.type == HatchType::ENERGY || hd.type == HatchType::MUFFLER) {
-            // ENERGY and MUFFLER are structural — assume present even if block ID not recognized
+            // Structural roles remain visible for legacy patterns, but only a
+            // physical canonical ENERGY hatch is marked present for transport.
             r.type = hd.type;
         } else {
             // ITEM/FLUID hatches must be physically built — no block, no hatch.

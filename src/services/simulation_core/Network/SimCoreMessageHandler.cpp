@@ -13,6 +13,8 @@
 #include "ECS/Systems/MachineSystem.h"
 #include "ECS/Systems/BatteryBufferSystem.h"
 #include "ECS/Systems/SteamTurbineSystem.h"
+#include "ECS/Systems/LCRSystem.h"
+#include "ECS/Systems/EBFSystem.h"
 #include "Actions/SetBlockCASHandler.h"
 #include "Actions/PlayerActionDispatcher.h"
 #include "Actions/MiningCalculator.h"
@@ -207,6 +209,8 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
     auto& chunkHandler = *chunkHandler_;
     auto* batteryBuffer = d.batteryBuffer;
     auto* steamTurbine = d.steamTurbine;
+    auto* lcrSystem = d.lcrSystem;
+    auto* ebfSystem = d.ebfSystem;
     auto* machineSystem = d.machineSystem;
     auto entityStateClient = d.entityStateClient;
     auto routerClient = d.routerClient;
@@ -216,7 +220,7 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
 
     routerClient->OnMessage([&mainQueue, &dispatcher, &casHandler, &chunkHandler, &worldContainers,
                              topicDispatcher, routerClient, entityStateClient, inventoryStore,
-                             batteryBuffer, steamTurbine, machineSystem, questManager]
+                             batteryBuffer, steamTurbine, lcrSystem, ebfSystem, machineSystem, questManager]
                             (const std::string& topic, const std::vector<uint8_t>& data) {
         // Filter player.actions on the io thread, BEFORE mainQueue: the client
         // floods UNLOAD/MOVE/CHUNK_REQUEST at ~15k/s while walking (chunk
@@ -248,11 +252,20 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                 if (!resp) return;
                 auto consumed = resp->consumed();
                 auto remaining = resp->remaining();
-                if (!batteryBuffer || !batteryBuffer->onConsumeResponse(0, consumed, remaining)) {
-                    machineSystem->onConsumeResponse(consumed, remaining);
+                const auto node_id = resp->node_id();
+                if (batteryBuffer && batteryBuffer->onConsumeResponse(node_id, consumed, remaining)) {
+                    return;
                 }
+                if (lcrSystem && lcrSystem->onConsumeResponse(node_id, consumed, remaining)) {
+                    return;
+                }
+                if (ebfSystem && ebfSystem->onConsumeResponse(node_id, consumed, remaining)) {
+                    return;
+                }
+                if (machineSystem) machineSystem->onConsumeResponse(node_id, consumed, remaining);
+            }
 
-            } else if (topic == "fluid.consume.response") {
+            if (topic == "fluid.consume.response") {
                 auto* resp = flatbuffers::GetRoot<Protocol::FluidConsumeResp>(data.data());
                 if (!resp) return;
                 if (steamTurbine) steamTurbine->onFluidConsumeResponse(resp->consumed());
@@ -270,9 +283,7 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
                     flatbuffers::Verifier v(data.data(), data.size());
                     if (v.VerifyBuffer<Protocol::QuestProgressUpdate>(nullptr)) {
                         auto resp = flatbuffers::GetRoot<Protocol::QuestProgressUpdate>(data.data());
-                        if (resp) {
-                            playerId = resp->player_id();
-                        }
+                        if (resp) playerId = resp->player_id();
                     }
                     questManager->loadProgress(playerId, data);
                 }
