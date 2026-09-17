@@ -16,3 +16,4 @@ tile_id,filename,tile_x,tile_y,rotate
 15,often.png,3,3,0
 16,dirt.png,0,1,1
 17,dirt.png,1,1,0
+18,dirt.png,0,0,0

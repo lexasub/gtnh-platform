@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 from __future__ import annotations
 
 import argparse
@@ -578,7 +577,7 @@ def main():
     STATE.atlas_tex = upload_texture(atlas_img)
     STATE.block_faces = block_faces
     STATE.slot_map = slot_map
-    STATE.block_ids = sorted(block_faces.keys())
+    STATE.block_ids = sorted(block_faces.keys(), key=lambda block_id: tuple(map(int, str(block_id).split(":"))))
     if not STATE.block_ids:
         STATE.block_ids = sorted(tiles.keys())
 
