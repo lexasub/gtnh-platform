@@ -15,6 +15,13 @@ add_library(renderlib STATIC
 # PUBLIC = game_client root, so consumers include as: #include "RenderLib/Common/RenderAPI.h"
 target_include_directories(renderlib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. ${lodepng_INCLUDE_DIRS})
 
+# TextureAtlas is compiled as part of RenderLib, so the runtime data root must
+# be defined on this target (gameclientd's definition is not inherited).
+target_compile_definitions(renderlib PRIVATE
+    DATA_DIR="${CMAKE_SOURCE_DIR}/data"
+)
+
+
 # Dependencies exposed via public headers
 target_link_libraries(renderlib PUBLIC
     bgfx bx bimg

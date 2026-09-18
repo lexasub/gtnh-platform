@@ -3,6 +3,8 @@
 #include "PipeMeshBuilder.h"
 #include <cstdint>
 
+using CableMeshMaterial = PipeMeshMaterial;
+
 class CableMeshBuilder {
 public:
   CableMeshBuilder() = default;
@@ -11,5 +13,7 @@ public:
       std::function<uint16_t(int32_t, int32_t, int32_t)> getBlock,
       std::function<uint8_t(int32_t, int32_t, int32_t)> getMeta = nullptr);
   ChunkMeshBuilder::MeshData buildCableMesh(int32_t x, int32_t y, int32_t z,
-                                            uint8_t tier, FaceMask connections);
+                                            uint8_t tier, FaceMask connections,
+                                            const CableMeshMaterial* material = nullptr,
+                                            FaceMask terminalFaces = 0x3F);
 };

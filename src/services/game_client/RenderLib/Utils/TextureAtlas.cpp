@@ -1,6 +1,6 @@
 #include "TextureAtlas.h"
-#include "../../common/OpenHashMap.h"
-#include <common/ItemId.h>
+#include "../../../../common/OpenHashMap.h"
+#include "../../../../common/ItemId.h"
 #include <bgfx/bgfx.h>
 #include <vector>
 #include <cstring>
@@ -12,14 +12,18 @@
 
 namespace renderlib {
 
-static OpenHashMap<uint16_t, BlockFaces, 128, 0xFFFF> s_blockFaces;
-static OpenHashMap<uint16_t, uint16_t, 128, 0xFFFF> s_itemIcons; // item_id → tile_id (for item icon resolution, populated from item_icons.csv)
+// The registries contain more than 128 block/item rows. Keep enough capacity
+// for the generated CSVs; OpenHashMap deliberately has no resize path.
+static OpenHashMap<uint16_t, BlockFaces, 512, 0xFFFF> s_blockFaces;
+static OpenHashMap<uint16_t, uint16_t, 512, 0xFFFF> s_itemIcons; // item_id → tile_id (for item icon resolution, populated from item_icons.csv)
+static OpenHashMap<uint16_t, TransportMaterial, 64, 0xFFFF> s_transportMaterials;
 
 static bgfx::TextureHandle s_texture = BGFX_INVALID_HANDLE;
 static int s_tileSize = 16;
 static int s_atlasW = 256;
 static int s_atlasH = 256;
 static bool s_initialized = false;
+static uint64_t s_generation = 0;
 static uint8_t s_nextAtlasSlot = 0; // tracks next free atlas slot across LoadTextureRegistry + LoadMergeRegistry
 
 // tile_id → atlas grid position (populated from textures.csv, fallback to id%16, id/16)
@@ -38,6 +42,62 @@ static std::vector<std::string> SplitCSV(const std::string& line) {
     }
     fields.push_back(line.substr(start));
     return fields;
+}
+
+static UVRect TileUV(uint16_t tileId) {
+    const float tx = static_cast<float>(s_tileAtlasX[tileId]);
+    const float ty = static_cast<float>(s_tileAtlasY[tileId]);
+    const float tileSize = static_cast<float>(s_tileSize);
+    const float atlasW = static_cast<float>(s_atlasW);
+    const float atlasH = static_cast<float>(s_atlasH);
+    const float halfU = 0.5f / atlasW;
+    const float halfV = 0.5f / atlasH;
+    return {
+        (tx * tileSize) / atlasW + halfU,
+        (ty * tileSize) / atlasH + halfV,
+        ((tx + 1.0f) * tileSize) / atlasW - halfU,
+        ((ty + 1.0f) * tileSize) / atlasH - halfV
+    };
+}
+
+static bool LoadTransportMaterialRegistry(const char* dataDir) {
+    const std::string filename = std::string(dataDir) + "/textures/transport_faces.csv";
+    std::FILE* file = std::fopen(filename.c_str(), "r");
+    if (!file) {
+        spdlog::info("No transport face registry found (optional): {}", filename);
+        return false;
+    }
+
+    char line[1024];
+    bool hasHeader = false;
+    while (std::fgets(line, sizeof(line), file)) {
+        std::string lineStr(line);
+        if (!hasHeader) {
+            hasHeader = true;
+            continue;
+        }
+        auto fields = SplitCSV(lineStr);
+        if (fields.size() < 8) {
+            spdlog::warn("Malformed transport face registry row: {}", lineStr);
+            continue;
+        }
+        try {
+            uint16_t blockId = ItemId::pack(fields[0]);
+            TransportMaterial material{};
+            for (int face = 0; face < 6; ++face) {
+                uint16_t tileId = static_cast<uint16_t>(std::stoi(fields[face + 1]));
+                material.uv[face] = TileUV(tileId);
+            }
+            material.transparent = std::stoi(fields[7]) == 1;
+            if (!s_transportMaterials.insert(blockId, material)) {
+                spdlog::error("TextureAtlas transport registry is full; block {} ignored", fields[0]);
+            }
+        } catch (const std::exception& e) {
+            spdlog::warn("Error parsing transport face registry row '{}': {}", lineStr, e.what());
+        }
+    }
+    std::fclose(file);
+    return true;
 }
 
 static bool LoadTextureRegistry(const char* dataDir) {
@@ -130,7 +190,9 @@ static bool LoadBlockFaceRegistry(const char* dataDir) {
                 faces.tileY[f] = s_tileAtlasY[tileId];
             }
             
-            s_blockFaces.insert(blockId, faces);
+            if (!s_blockFaces.insert(blockId, faces)) {
+                spdlog::error("TextureAtlas block-face registry is full; block {} will use fallback UV", blockIdStr);
+            }
         } catch (const std::exception& e) {
             spdlog::warn("Error parsing block face registry row '{}': {}", lineStr, e.what());
             continue;
@@ -181,8 +243,10 @@ static bool LoadItemIconRegistry(const char* dataDir) {
     return true;
 }
 
+static std::string s_dataDir = "data";
+
 static bool LoadPNGRaw(const std::string& filename, std::vector<uint8_t>& out, unsigned int& w, unsigned int& h) {
-    std::string fullPath = std::string("data/textures/") + filename;
+    std::string fullPath = s_dataDir + "/textures/" + filename;
     unsigned int error = lodepng::decode(out, w, h, fullPath);
     if (error) {
         spdlog::error("Failed to load PNG '{}': {}", filename, lodepng_error_text(error));
@@ -192,6 +256,8 @@ static bool LoadPNGRaw(const std::string& filename, std::vector<uint8_t>& out, u
 }
 
 static bool LoadMergeRegistry(const char* dataDir, std::vector<uint8_t>& atlasPixels) {
+    // Merge rows must be processed before face registries are resolved; their
+    // composite IDs receive atlas slots during this pass.
     const std::string filename = std::string(dataDir) + "/textures/textures_merge.csv";
     std::FILE* file = std::fopen(filename.c_str(), "r");
     if (!file) {
@@ -272,12 +338,19 @@ static bool LoadMergeRegistry(const char* dataDir, std::vector<uint8_t>& atlasPi
                     uint8_t ob = overlayPng[ox * 4 + 2];
                     uint8_t oa = overlayPng[ox * 4 + 3];
 
-                    // Alpha compositing: src over
-                    float a = oa / 255.0f;
-                    uint8_t cr = static_cast<uint8_t>(or2 * a + br * (1.0f - a));
-                    uint8_t cg = static_cast<uint8_t>(og * a + bg * (1.0f - a));
-                    uint8_t cb = static_cast<uint8_t>(ob * a + bb * (1.0f - a));
-                    uint8_t ca = static_cast<uint8_t>(oa + ba * (1.0f - a));
+                    // Alpha compositing: source-over in straight-alpha RGBA.
+                    // Blend premultiplied contributions, then un-premultiply so
+                    // the atlas shader can apply the resulting alpha exactly once.
+                    float srcA = oa / 255.0f;
+                    float dstA = ba / 255.0f;
+                    float outA = srcA + dstA * (1.0f - srcA);
+                    float outR = or2 * srcA + br * dstA * (1.0f - srcA);
+                    float outG = og * srcA + bg * dstA * (1.0f - srcA);
+                    float outB = ob * srcA + bb * dstA * (1.0f - srcA);
+                    uint8_t cr = outA > 0.0f ? static_cast<uint8_t>(outR / outA) : 0;
+                    uint8_t cg = outA > 0.0f ? static_cast<uint8_t>(outG / outA) : 0;
+                    uint8_t cb = outA > 0.0f ? static_cast<uint8_t>(outB / outA) : 0;
+                    uint8_t ca = static_cast<uint8_t>(outA * 255.0f);
 
                     int dx = (atlasTy * tSz + py) * s_atlasW + (atlasTx * tSz + px);
                     atlasPixels[dx * 4 + 0] = cr;
@@ -300,7 +373,7 @@ static bool LoadMergeRegistry(const char* dataDir, std::vector<uint8_t>& atlasPi
 
 static bool LoadSourcePNG(const std::string& filename, std::vector<uint8_t>& atlasPixels,
                          int atlasW, [[maybe_unused]] int atlasH, const std::vector<uint16_t>& tileIds) {
-    std::string fullPath = std::string("data/textures/") + filename;
+    std::string fullPath = s_dataDir + "/textures/" + filename;
     
     std::vector<unsigned char> pngData;
     unsigned int width, height;
@@ -368,13 +441,17 @@ void TextureAtlas::Init(int tileSize) {
         s_rotate[id] = 0;
     }
     
-    const char* dataDir = "data";
+#ifdef DATA_DIR
+    s_dataDir = DATA_DIR;
+#else
+    s_dataDir = "data";
+#endif
+    const char* dataDir = s_dataDir.c_str();
     s_nextAtlasSlot = 0;
     LoadTextureRegistry(dataDir);
     
-    LoadBlockFaceRegistry(dataDir);
-    LoadItemIconRegistry(dataDir);
-    
+    // Face entries store resolved atlas slots, so load them only after source
+    // tiles and merge composites have been assigned their final slots.
     std::vector<uint8_t> atlasPixels(s_atlasW * s_atlasH * 4, 0);
     
     std::vector<std::pair<std::string, std::vector<uint16_t>>> fileToTileIds;
@@ -409,12 +486,25 @@ void TextureAtlas::Init(int tileSize) {
         }
     }
     
+    bool sourceLoadFailed = false;
     for (const auto& filePair : fileToTileIds) {
-        LoadSourcePNG(filePair.first, atlasPixels, s_atlasW, s_atlasH, filePair.second);
+        sourceLoadFailed = !LoadSourcePNG(filePair.first, atlasPixels, s_atlasW, s_atlasH, filePair.second) || sourceLoadFailed;
     }
-    
+    if (sourceLoadFailed) {
+        spdlog::error("TextureAtlas: one or more source packs failed to load from {}", s_dataDir);
+    }
+
     LoadMergeRegistry(dataDir, atlasPixels);
-    
+
+    // Resolve block faces after source and composite tiles have final atlas
+    // slots. Loading earlier turns every registry tile into the default slot.
+    LoadBlockFaceRegistry(dataDir);
+    LoadItemIconRegistry(dataDir);
+    LoadTransportMaterialRegistry(dataDir);
+
+    // Transport materials resolve tile IDs to atlas UVs after all source and
+    // composite slots have been assigned.
+
     // Mark atlas slots already filled by loaded source tiles + merge tiles
     bool slotUsed[256] = {};
     for (const auto& filePair : fileToTileIds) {
@@ -454,6 +544,7 @@ void TextureAtlas::Init(int tileSize) {
                                       false, 1, bgfx::TextureFormat::RGBA8, BGFX_TEXTURE_NONE, mem);
     
     s_initialized = true;
+    ++s_generation;
 }
 
 bool TextureAtlas::IsTransparent(uint16_t blockId) {
@@ -463,9 +554,12 @@ bool TextureAtlas::IsTransparent(uint16_t blockId) {
 }
 
 UVRect TextureAtlas::GetUV(uint16_t blockId, int face) {
-    if (!s_initialized || face < 0 || face >= 6) return {0, 0, 1, 1};
+    // Never return the whole atlas for an unmapped block: sampling across the
+    // atlas can hit transparent pixels and makes a placed block look invisible.
+    // Tile 16 is the canonical opaque generic fallback used by block_faces.csv.
+    if (!s_initialized || face < 0 || face >= 6) return TileUV(16);
     auto* entry = s_blockFaces.find(blockId);
-    if (!entry) return {0, 0, 1, 1};
+    if (!entry) return TileUV(16);
     float tx = entry->tileX[face];
     float ty = entry->tileY[face];
     float halfU = 0.5f / s_atlasW;
@@ -478,11 +572,27 @@ UVRect TextureAtlas::GetUV(uint16_t blockId, int face) {
     };
 }
 
+const TransportMaterial* TextureAtlas::GetTransportMaterial(uint16_t blockId) {
+    if (!s_initialized) return nullptr;
+    return s_transportMaterials.find(blockId);
+}
+
+UVRect TextureAtlas::GetTileUV(uint16_t tileId) {
+    if (!s_initialized || tileId >= 256) return {0, 0, 1, 1};
+    return TileUV(tileId);
+}
+
+uint64_t TextureAtlas::GetGeneration() {
+    return s_generation;
+}
+
 void TextureAtlas::Shutdown() {
     s_initialized = false;
     if (bgfx::isValid(s_texture)) bgfx::destroy(s_texture);
     s_texture = BGFX_INVALID_HANDLE;
     s_blockFaces.clear();
+    s_itemIcons.clear();
+    s_transportMaterials.clear();
 }
 
 bgfx::TextureHandle TextureAtlas::GetTextureHandle() {

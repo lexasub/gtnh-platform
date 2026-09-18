@@ -36,8 +36,14 @@ namespace {
         bool transparent;
     };
     thread_local std::unordered_map<uint16_t, BlockRenderInfo> s_blockInfo;
+    thread_local uint64_t s_blockInfoGeneration = 0;
 
     inline const BlockRenderInfo& GetBlockRenderInfo(uint16_t block) {
+        const uint64_t generation = renderlib::TextureAtlas::GetGeneration();
+        if (s_blockInfoGeneration != generation) {
+            s_blockInfo.clear();
+            s_blockInfoGeneration = generation;
+        }
         auto it = s_blockInfo.find(block);
         if (it != s_blockInfo.end())
             return it->second;
@@ -110,7 +116,21 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
                     auto mask = pipeBuilder.detectConnections(x, y, z, pipeType,
                         [&](int32_t bx, int32_t by, int32_t bz) { return cache.GetBlock(bx, by, bz); },
                         [&](int32_t bx, int32_t by, int32_t bz) { return cache.GetMeta(bx, by, bz); });
-                    auto pipeMesh = pipeBuilder.buildPipeMesh(x, y, z, pipeType, mask);
+                    FaceMask pipeTerminalFaces = mask;
+                    for (int face = 0; face < 6; ++face) {
+                        if (!(mask & (FaceMask(1u) << face))) continue;
+                        const int nx = x + deltas[face][0];
+                        const int ny = y + deltas[face][1];
+                        const int nz = z + deltas[face][2];
+                        // Only same-type neighbors share a continuous tube and
+                        // therefore suppress each other's terminal cap.
+                        if (cache.GetBlock(nx, ny, nz) == block) {
+                            pipeTerminalFaces &= ~(FaceMask(1u) << face);
+                        }
+                    }
+                    auto pipeMesh = pipeBuilder.buildPipeMesh(x, y, z, pipeType, mask,
+                        renderlib::TextureAtlas::GetTransportMaterial(block),
+                        pipeTerminalFaces);
                     size_t vertBase = data.vertices.size();
                     data.vertices.insert(data.vertices.end(), pipeMesh.vertices.begin(), pipeMesh.vertices.end());
                     for (auto& idx : pipeMesh.indices)
@@ -124,7 +144,8 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
                     auto mask = cableBuilder.detectConnections(x, y, z, tier,
                         [&](int32_t bx, int32_t by, int32_t bz) { return cache.GetBlock(bx, by, bz); },
                         [&](int32_t bx, int32_t by, int32_t bz) { return cache.GetMeta(bx, by, bz); });
-                    auto cableMesh = cableBuilder.buildCableMesh(x, y, z, tier, mask);
+                    auto cableMesh = cableBuilder.buildCableMesh(x, y, z, tier, mask,
+                        renderlib::TextureAtlas::GetTransportMaterial(block));
                     size_t vertBase = data.vertices.size();
                     data.vertices.insert(data.vertices.end(), cableMesh.vertices.begin(), cableMesh.vertices.end());
                     for (auto& idx : cableMesh.indices)
@@ -135,7 +156,13 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
                 const auto& info = GetBlockRenderInfo(block);
 
                 for (int f = 0; f < 6; ++f) {
-                    if (cache.GetBlock(x + deltas[f][0], y + deltas[f][1], z + deltas[f][2]) != 0)
+                    const uint16_t neighbor = cache.GetBlock(
+                        x + deltas[f][0], y + deltas[f][1], z + deltas[f][2]);
+                    // Procedural pipes/cables occupy only part of their block.
+                    // Keep the neighboring cube face so the gaps around the
+                    // pipe do not reveal the world behind it as if the pipe
+                    // were a full opaque cube.
+                    if (neighbor != 0 && !isPipeBlock(neighbor) && !isCableBlock(neighbor))
                         continue;
 
                     const auto &face = faces[f];
@@ -178,12 +205,13 @@ ChunkMeshBuilder::MeshData ChunkMeshBuilder::Build(const ChunkNeighborCache &cac
 
                     auto &curIdx = info.transparent ? transparentIdx : idx;
 
-                    data.indices.push_back(curIdx + 0);
-                    data.indices.push_back(curIdx + 1);
-                    data.indices.push_back(curIdx + 2);
-                    data.indices.push_back(curIdx + 0);
-                    data.indices.push_back(curIdx + 2);
-                    data.indices.push_back(curIdx + 3);
+                    auto &curIndices = info.transparent ? data.transparentIndices : data.indices;
+                    curIndices.push_back(curIdx + 0);
+                    curIndices.push_back(curIdx + 1);
+                    curIndices.push_back(curIdx + 2);
+                    curIndices.push_back(curIdx + 0);
+                    curIndices.push_back(curIdx + 2);
+                    curIndices.push_back(curIdx + 3);
                     curIdx += 4;
                 }
             }

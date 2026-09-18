@@ -1,8 +1,12 @@
 #pragma once
 #include "ChunkMeshBuilder.h"
 #include "PipeMeta.h"
+#include "../RenderLib/Utils/TextureAtlas.h"
 #include "common/ItemId.h"
+#include <array>
 #include <cstddef>
+
+using PipeMeshMaterial = renderlib::TransportMaterial;
 #include <cstdint>
 #include <functional>
 
@@ -74,5 +78,7 @@ public:
       std::function<uint16_t(int32_t, int32_t, int32_t)> getBlock,
       std::function<uint8_t(int32_t, int32_t, int32_t)> getMeta = nullptr);
   ChunkMeshBuilder::MeshData buildPipeMesh(int32_t x, int32_t y, int32_t z,
-                                           PipeType type, FaceMask connections);
+                                           PipeType type, FaceMask connections,
+                                           const renderlib::TransportMaterial* material = nullptr,
+                                           FaceMask terminalFaces = 0x3F);
 };

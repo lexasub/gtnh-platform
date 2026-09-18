@@ -12,6 +12,11 @@ struct UVRect {
   float u0, v0, u1, v1;
 };
 
+struct TransportMaterial {
+  UVRect uv[6];
+  bool transparent;
+};
+
 class TextureAtlas {
 public:
   static void Init(int tileSize = 16);
@@ -19,7 +24,10 @@ public:
   static bgfx::TextureHandle GetTextureHandle();
   static bool IsTransparent(uint16_t blockId);
   static const BlockFaces* GetBlockFaces(uint16_t blockId);
+  static const TransportMaterial* GetTransportMaterial(uint16_t blockId);
+  static UVRect GetTileUV(uint16_t tileId);
   static UVRect GetItemUV(uint16_t itemId);
+  static uint64_t GetGeneration();
 
   static constexpr int kDefaultTilesX = 16;
   static constexpr int kDefaultTilesY = 16;
