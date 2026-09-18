@@ -1,0 +1,11 @@
+{
+  "tile_size": 16,
+  "packs": [
+    "terrain",
+    "materials",
+    "machines",
+    "ores",
+    "transport"
+  ],
+  "source_policy": "RGBA; exact terrain cells and fit_icon for large art"
+}
