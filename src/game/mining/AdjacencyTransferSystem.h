@@ -1,0 +1,24 @@
+#pragma once
+
+#include "apps/simcore/Network/IEventPublisher.h"
+#include <engine/sim/components/EnergyStorage.h>
+#include <engine/sim/ISystem.h>
+#include <entt/entt.hpp>
+#include <memory>
+
+namespace simcore {
+
+class AdjacencyTransferSystem : public ISystem {
+public:
+  AdjacencyTransferSystem(entt::registry &reg, MachineRegistry &machineRegistry,
+                          std::shared_ptr<IEventPublisher> events);
+
+  void tick(float dt) override;
+
+private:
+  entt::registry &reg_;
+  MachineRegistry &machineRegistry_;
+  std::shared_ptr<IEventPublisher> events_;
+};
+
+} // namespace simcore

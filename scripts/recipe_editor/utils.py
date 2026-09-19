@@ -12,10 +12,10 @@ _LOADED = False
 
 
 def _discover_project_root() -> str:
-    """Walk up from this file until we find data/registry/items.csv."""
+    """Walk up from this file until we find src/content/data/registry/items.csv."""
     here = os.path.dirname(os.path.abspath(__file__))
     for _ in range(10):
-        candidate = os.path.join(here, "data", "registry", "items.csv")
+        candidate = os.path.join(here, "src", "content", "data", "registry", "items.csv")
         if os.path.isfile(candidate):
             return here
         parent = os.path.dirname(here)
@@ -26,8 +26,8 @@ def _discover_project_root() -> str:
 
 
 PROJECT_ROOT = _discover_project_root()
-DATA_REGISTRY = os.path.join(PROJECT_ROOT, "data", "registry")
-DATA_RECIPES = os.path.join(PROJECT_ROOT, "data", "recipes")
+DATA_REGISTRY = os.path.join(PROJECT_ROOT, "src", "content", "data", "registry")
+DATA_RECIPES = os.path.join(PROJECT_ROOT, "src", "content", "data", "recipes")
 
 
 def load_item_names(path: Optional[str] = None) -> None:

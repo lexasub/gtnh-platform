@@ -3,7 +3,7 @@
 **A from-scratch voxel game engine and simulation platform inspired by GregTech: New Horizons.**
 
 Not a mod — a standalone distributed implementation (ECS simulation, binary protocol,
-13 service directories). Part platform for experimenting with GTNH-scale mechanics,
+9 daemons + engine/game/content libraries). Part platform for experimenting with GTNH-scale mechanics,
 part playable game with world, machines, pipes, crafting, electric tools, and quests.
 
 Built with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + TCP).
@@ -148,13 +148,13 @@ Or with CMake presets: `cmake --preset conan-release` (see CMakePresets.json).
 Or manually (order matters, from repo root):
 
 ```bash
-./cmake-build-debug/src/services/message_router/routerd            # 1. Internal pub/sub (Go, :4000)
-./cmake-build-debug/src/services/chunk_store/chunkd                # 2. World persistence (C++, :5001)
-./cmake-build-debug/src/services/entity_state_store/entitystated   # 3. Entity state (C++, :5200)
-./cmake-build-debug/src/services/gateway/gatewayd                  # 4. TCP gateway (C++, :7777 ctrl + :7778 bulk)
-./cmake-build-debug/src/services/simulation_core/simcored_exec     # 5. Simulation (C++, 20Hz tick)
-./src/services/meta_db/metadbd                                     # 6. Player DB (Go, :5005 + :5006)
-./cmake-build-debug/src/services/pipe_network/pipenetworkd         # 7. Energy/fluid transport (C++)
+./cmake-build-debug/src/apps/message_router/routerd              # 1. Internal pub/sub (Go, :4000)
+./cmake-build-debug/src/apps/chunk_store/chunkd                    # 2. World persistence (C++, :5001)
+./cmake-build-debug/src/apps/entity_state_store/entitystated       # 3. Entity state (C++, :5200)
+./cmake-build-debug/src/apps/gateway/gatewayd                      # 4. TCP gateway (C++, :7777 ctrl + :7778 bulk)
+./cmake-build-debug/src/apps/simcore/simcored_exec                 # 5. Simulation (C++, 20Hz tick)
+./src/apps/meta_db/metadbd                                         # 6. Player DB (Go, :5005 + :5006)
+./cmake-build-debug/src/apps/pipe_network/pipenetworkd             # 7. Energy/fluid transport (C++)
 ./cmake-build-debug/bin/gameclientd                                # 8. Game client (C++, bgfx)
 ```
 
@@ -168,30 +168,40 @@ cd cmake-build-debug && ctest --output-on-failure -j$(nproc)
 ```
 src/
 ├── src/
-│   ├── services/
-│   │   ├── message_router/    # Go pub/sub broker, service discovery
-│   │   ├── gateway/           # TCP gateway, io_uring, interest mgmt
-│   │   ├── chunk_store/       # LMDB-backed block storage, io_uring
-│   │   ├── world_generator/   # Terrain + ore/tree gen (library, no binary)
-│   │   ├── simulation_core/   # ECS, multiblocks L2/L3, quests, 20 Hz tick
-│   │   ├── pipe_network/      # Energy/fluid/item flow graphs
-│   │   ├── spatial_index/     # STUB — not built (R-tree/Octree planned)
-│   │   ├── entity_state_store/ # Entity state persistence, TCP RPC
-│   │   ├── meta_db/           # Player saves, quests, inventories (Go)
-│   │   ├── recipe_manager/    # Standalone recipe RPC service (:5555)
-│   │   ├── storage_interfaces/ # Header-only storage interfaces
-│   │   ├── validation/        # Item/block validation (not in default build)
-│   │   └── game_client/       # bgfx render, ImGui, input, physics
-│   └── protocol/              # FlatBuffers schemas (12 .fbs)
-├── src/libs/                  # libgtnh-net, quest_lib, recipe_manager_lib, ...
-├── cmake-build-debug/         # CMake build directory (Conan toolchain)
-├── data/                      # YAML recipes, item registry
-└── docs/                      # Service documentation
+│   ├── apps/                    # 10 runnable daemons + 2 stubs (assembly points)
+│   │   ├── message_router/      # Go pub/sub broker, service discovery
+│   │   ├── gateway/             # TCP gateway, io_uring, interest mgmt
+│   │   ├── chunk_store/         # LMDB-backed block storage, io_uring
+│   │   ├── world_generator/     # Terrain + ore/tree gen (library, no binary)
+│   │   ├── simcore/             # ECS assembly, multiblocks L2/L3, 20 Hz tick
+│   │   ├── pipe_network/        # Energy/fluid/item flow graphs
+│   │   ├── spatial_index/       # STUB — not built (R-tree/Octree planned)
+│   │   ├── entity_state_store/  # Entity state persistence, TCP RPC
+│   │   ├── meta_db/             # Player saves, quests, inventories (Go)
+│   │   ├── recipe_manager/      # Standalone recipe RPC service (:5555)
+│   │   ├── validation/          # Item/block validation (not in default build)
+│   │   └── game_client/         # bgfx render, ImGui, input, physics
+│   ├── engine/                  # engine layer (no GTNH knowledge)
+│   │   ├── registry/            # ItemId, strict Registry loader, OpenHashMap
+│   │   ├── sim/                 # ISystem, SimulationEngine, PatternLibrary
+│   │   ├── net/                 # gtnh-net: io_uring, frame codec
+│   │   ├── storage/             # Header-only storage interfaces
+│   │   └── utils/               # metrics
+│   ├── game/                    # game rules (depend on engine only)
+│   │   ├── machines/            # Boiler/EBF/LCR/Generator/… systems
+│   │   ├── mining/              # Drill, BatteryBuffer, CreativeGenerator
+│   │   ├── quests/              # QuestData/Graph/Manager
+│   │   └── recipes/             # RecipeManager, ConditionEvaluator
+│   ├── content/                 # GTNH content pack (data/ + registration)
+│   ├── common/                  # wire-protocol headers (GatewayMsg, ResourcePort)
+│   └── protocol/                # FlatBuffers schemas (14 .fbs)
+├── cmake-build-debug/           # CMake build directory (Conan toolchain)
+└── docs/                        # Service documentation
 ```
 
 ## Status
 
-- ✅ **Core MVP**: 13 service directories, FlatBuffers protocol, MessageRouter pub/sub
+- ✅ **Core MVP**: 8 C++/Go daemons + layered libraries (engine/game/content/apps), FlatBuffers protocol, MessageRouter pub/sub
 - ✅ **Crafting Pipeline**: Workbench crafting end-to-end (CraftRequest→RecipeManager→CraftResponse), YAML recipes (14 files incl. macerator.yaml), 3×3 positional matching, ConditionEvaluator with MachineState from ECS
 - ✅ **PipeNetwork**: CableGraph + PipeNetworkManager — energy/fluid/item BFS, per-tick energy demand, loss calc, HeatLoss, item buffering, tiered cables, transformers
 - ✅ **Electric Tools**: DrillSystem (spiral BFS, progress, energy), BatteryBufferSystem, WrenchHandler, SideConfig

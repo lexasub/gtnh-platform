@@ -1,0 +1,134 @@
+#include "Camera.h"
+#include <game/ui/client/core/InputBinder.h>
+#include <GLFW/glfw3.h>
+#include "../Common/InputState.h"
+#include <game/client/World/World.h>
+
+void Camera::Init() {
+    // Start looking at -Z (identity orientation gives forward = (0,0,-1))
+    orient = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+    pos = glm::vec3(256.0f, 80.0f, 224.0f);
+    fov = 70.0f;
+    controller_.pos = pos;
+}
+
+void Camera::SetBinder(const InputBinder* binder) {
+    binder_ = binder;
+    resolveActionKeys();
+}
+
+void Camera::resolveActionKeys() {
+    keyFwd_      = binder_->GetHeldKey("FWD");
+    keyBkwd_     = binder_->GetHeldKey("BKWD");
+    keyFwdAlt_   = binder_->GetHeldKey("FWD_ALT");
+    keyBkwdAlt_  = binder_->GetHeldKey("BKWD_ALT");
+    keyLeft_     = binder_->GetHeldKey("LEFT");
+    keyRight_    = binder_->GetHeldKey("RIGHT");
+    keyLeftAlt_  = binder_->GetHeldKey("LEFT_ALT");
+    keyRightAlt_ = binder_->GetHeldKey("RIGHT_ALT");
+    keyAscend_   = binder_->GetHeldKey("ASCEND");
+    keyDescend_  = binder_->GetHeldKey("DESCEND");
+}
+
+void Camera::Update(float dt, const InputState& input) {
+    // Mouse look
+    float yawDelta = -static_cast<float>(input.mouseDX) * MOUSE_SENS;
+    float pitchDelta = -static_cast<float>(input.mouseDY) * MOUSE_SENS;
+
+    glm::quat yawRot = glm::angleAxis(glm::radians(yawDelta), glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::quat pitchRot = glm::angleAxis(glm::radians(pitchDelta), glm::vec3(1.0f, 0.0f, 0.0f));
+    orient = yawRot * orient * pitchRot;
+    orient = glm::normalize(orient);
+
+    // Zoom
+    fov = glm::clamp(
+        fov - static_cast<float>(input.scrollY) * ZOOM_SENS,
+        10.0f,
+        120.0f
+    );
+
+    // Movement intent from held bindings (configurable via bindings.json)
+    float forward_primary = static_cast<float>(input.keys[keyFwd_]) - static_cast<float>(input.keys[keyBkwd_]);
+    float forward_secondary = static_cast<float>(input.keys[keyFwdAlt_]) - static_cast<float>(input.keys[keyBkwdAlt_]);
+
+    float right_primary = static_cast<float>(input.keys[keyRight_]) - static_cast<float>(input.keys[keyLeft_]);
+    float right_secondary = static_cast<float>(input.keys[keyRightAlt_]) - static_cast<float>(input.keys[keyLeftAlt_]);
+
+    // If primary is nonzero, use it; otherwise fall back to secondary
+    float forward = forward_primary + (1.0f - glm::abs(forward_primary)) * forward_secondary;
+    float right = right_primary + (1.0f - glm::abs(right_primary)) * right_secondary;
+
+    PlayerMove move;
+    move.forward = forward;
+    move.right = right;
+    move.vertical = static_cast<float>(input.keys[keyAscend_]) -
+                    static_cast<float>(input.keys[keyDescend_]);
+    move.jump = input.keys[keyAscend_] != 0;
+    move.sneak = input.keys[keyDescend_] != 0;
+
+    // Per-mode body physics: free-fly when flightEnabled_, otherwise gravity +
+    // AABB collision (SURVIVAL/ADVENTURE). Movement state lives in the
+    // controller; the camera renders from its eye position.
+    controller_.Update(dt, move, flightEnabled_, GetForward(), GetRight());
+    pos = controller_.pos;
+}
+
+glm::mat4 Camera::GetViewMatrix() const {
+    glm::mat4 rot = glm::mat4(orient);
+    return glm::inverse(rot) * glm::translate(glm::mat4(1.0f), -pos);
+}
+
+glm::mat4 Camera::GetProjectionMatrix(float aspect) const {
+    return glm::perspectiveRH(glm::radians(fov), aspect, NEAR_PLANE, FAR_PLANE);
+}
+
+glm::vec3 Camera::GetForward() const {
+    return glm::normalize(orient * glm::vec3(0.0f, 0.0f, -1.0f));
+}
+
+glm::vec3 Camera::GetRight() const {
+    return glm::normalize(orient * glm::vec3(1.0f, 0.0f, 0.0f));
+}
+
+glm::vec3 Camera::GetUp() const {
+    return glm::normalize(orient * glm::vec3(0.0f, 1.0f, 0.0f));
+}
+
+Frustum Camera::GetFrustum(float aspect) const {
+
+    glm::mat4 view = GetViewMatrix();
+    glm::mat4 proj = GetProjectionMatrix(aspect);
+    glm::mat4 viewProj = proj * view;
+
+    const float eps = 1e-6f;
+    Frustum frustum;
+
+    // Left   (col3 + col0)  = (m03+m00, m13+m10, m23+m20)
+    frustum.planes[0].normal = glm::vec3(viewProj[0][3] + viewProj[0][0], viewProj[1][3] + viewProj[1][0], viewProj[2][3] + viewProj[2][0]);
+    frustum.planes[0].distance = viewProj[3][3] + viewProj[3][0];
+    // Right  (col3 - col0)
+    frustum.planes[1].normal = glm::vec3(viewProj[0][3] - viewProj[0][0], viewProj[1][3] - viewProj[1][0], viewProj[2][3] - viewProj[2][0]);
+    frustum.planes[1].distance = viewProj[3][3] - viewProj[3][0];
+    // Bottom (col3 + col1)
+    frustum.planes[2].normal = glm::vec3(viewProj[0][3] + viewProj[0][1], viewProj[1][3] + viewProj[1][1], viewProj[2][3] + viewProj[2][1]);
+    frustum.planes[2].distance = viewProj[3][3] + viewProj[3][1];
+    // Top    (col3 - col1)
+    frustum.planes[3].normal = glm::vec3(viewProj[0][3] - viewProj[0][1], viewProj[1][3] - viewProj[1][1], viewProj[2][3] - viewProj[2][1]);
+    frustum.planes[3].distance = viewProj[3][3] - viewProj[3][1];
+    // Near   (col3 + col2)
+    frustum.planes[4].normal = glm::vec3(viewProj[0][3] + viewProj[0][2], viewProj[1][3] + viewProj[1][2], viewProj[2][3] + viewProj[2][2]);
+    frustum.planes[4].distance = viewProj[3][3] + viewProj[3][2];
+    // Far    (col3 - col2)
+    frustum.planes[5].normal = glm::vec3(viewProj[0][3] - viewProj[0][2], viewProj[1][3] - viewProj[1][2], viewProj[2][3] - viewProj[2][2]);
+    frustum.planes[5].distance = viewProj[3][3] - viewProj[3][2];
+
+    for (auto& plane : frustum.planes) {
+        float len = glm::length(plane.normal);
+        if (len > eps) {
+            plane.normal /= len;
+            plane.distance /= len;
+        }
+    }
+
+    return frustum;
+}

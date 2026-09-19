@@ -20,6 +20,10 @@
 !define COLOR_DB        #2C3E50      ' Dark — data stores
 !define COLOR_STORAGE   #1ABC9C      ' Teal light — storage layer
 !define COLOR_NETWORK   #3498DB      ' Blue — network layer
+!define COLOR_ENGINE    #27AE60      ' Green — engine layer src/engine/
+!define COLOR_GAME      #E67E22      ' Orange — game layer src/game/
+!define COLOR_CONTENT   #9B59B6      ' Purple — content layer src/content/
+!define COLOR_APPS      #3498DB      ' Blue — apps layer src/apps/
 
 ' ---------------------------------------------------------------------------
 ' Tag styling

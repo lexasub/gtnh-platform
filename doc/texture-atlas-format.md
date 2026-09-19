@@ -1,5 +1,40 @@
 # Texture Atlas Format
 
+### Additive scanner (canonical manual ownership)
+
+`tools/generate_texture_mappings.py` is the **only** supported way to add new
+textures from raw artwork — and it is strictly **additive**:
+
+- Everything already present in `textures.csv`, `item_icons.csv`,
+  `block_faces.csv`, `textures_merge.csv` and the `packs/*.png` files is
+  **canonical manual data**. The scanner reads it as immutable input and never
+  rewrites, reorders or repacks existing rows or pixels.
+- Running `python3 tools/generate_texture_mappings.py` is a **dry run**: it
+  reports what it *would* add. Only `--apply` writes, and writes are
+  append-only: new rows are appended (original bytes preserved as a prefix),
+  new cells go to fresh `packs/additive_<category>.png` files (existing packs
+  are never reopened; re-applying to an existing additive pack fails closed).
+- New tile IDs are allocated deterministically above the current maximum
+  (`textures.csv` tiles and `textures_merge.csv` composites) and must stay
+  within 0..255.
+- Filename → registry matching requires exactly **one** item/block name match
+  (`data/registry/items.csv`). Ambiguous, missing or multi-cell assets are
+  reported and skipped — the scanner never guesses gameplay mappings.
+- Optional explicit metadata lives in `data/textures/texture_scan.json`:
+  ```json
+  {
+    "assets": [
+      {"file": "terrain/cobblestone.png", "grid": true,
+       "cells": {"0": {"item_id": "9:0:0:2", "transparent": 0,
+                        "merge_base": 40, "merge_overlay": null}}}
+    ]
+  }
+  ```
+  `item_id` / `block_id` force a mapping; `grid` enables 16×16 sheet slicing;
+  `merge_base` (+ optional `merge_overlay`) creates a declarative
+  `textures_merge.csv` entry — filenames alone never create merges. Existing
+  rows always win over anything the scanner proposes.
+
 ## `data/textures/textures.csv` — Tile Registry
 
 Maps tile IDs to source PNG files and positions.

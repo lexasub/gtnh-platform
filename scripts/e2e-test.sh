@@ -8,16 +8,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BUILD_DIR="$(pwd)/build"
-META_DIR="$(pwd)/src/services/meta_db"
-ROUTER_DIR="$(pwd)/src/services/message_router"
+META_DIR="$(pwd)/src/apps/meta_db"
+ROUTER_DIR="$(pwd)/src/apps/message_router"
 SCRIPT_DIR="$(pwd)/scripts"
 
 if [ "${1:-}" = "--build" ]; then
   echo "=== Building MessageRouter ==="
-  #cd "$ROUTER_DIR" && go build -o "$BUILD_DIR/src/services/message_router/message_router" .
+cd "$ROUTER_DIR" && go build -o "$BUILD_DIR/src/apps/message_router/routerd" .
 
   echo "=== Building MetaDB ==="
-  cd "$META_DIR" && go build -o "$BUILD_DIR/src/services/meta_db/metadbd" .
+  cd "$META_DIR" && go build -o "$BUILD_DIR/src/apps/meta_db/metadbd" .
 
   echo "=== Regenerating cmake ==="
   mkdir -p "$BUILD_DIR"
@@ -34,13 +34,13 @@ cleanup() {
 trap cleanup EXIT
 
 echo "=== Starting MessageRouter on :4000 ==="
-"$BUILD_DIR/src/services/message_router/message_router" &
+"$BUILD_DIR/src/apps/message_router/routerd" &
 ROUTER_PID=$!
 sleep 1
 
 echo "=== Starting MetaDB (JSON :5005, FB :5006) ==="
 cd "$META_DIR"
-"$BUILD_DIR/src/services/meta_db/metadbd" &
+"$BUILD_DIR/src/apps/meta_db/metadbd" &
 METADB_PID=$!
 sleep 1
 

@@ -59,9 +59,11 @@ find_package(lmdb REQUIRED)
 
 find_package(FastNoise2 REQUIRED)
 
-# Shared libraries
+# Layer libraries
 add_subdirectory(src/common)
-add_subdirectory(src/libs)
+add_subdirectory(src/engine)
+add_subdirectory(src/game)
+add_subdirectory(src/content)
 
 # Service subdirectories
 #add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/-.cmake)
@@ -72,16 +74,16 @@ find_package(imgui CONFIG REQUIRED)
 #add_subdirectory(third_party/bgfx.cmake)
 
 #add_subdirectory(third_party/FastNoise2)
-add_subdirectory(src/services/gateway)
-add_subdirectory(src/services/chunk_store)
-add_subdirectory(src/services/world_generator)
-add_subdirectory(src/services/simulation_core)
-add_subdirectory(src/services/pipe_network)
-#add_subdirectory(src/services/spatial_index)
-add_subdirectory(src/services/meta_db)
-add_subdirectory(src/services/game_client)
-add_subdirectory(src/services/entity_state_store)
-add_subdirectory(src/services/recipe_manager)
+add_subdirectory(src/apps/gateway)
+add_subdirectory(src/apps/chunk_store)
+add_subdirectory(src/apps/world_generator)
+add_subdirectory(src/apps/simcore)
+add_subdirectory(src/apps/pipe_network)
+#add_subdirectory(src/apps/spatial_index)
+add_subdirectory(src/apps/meta_db)
+add_subdirectory(src/apps/game_client)
+add_subdirectory(src/apps/entity_state_store)
+add_subdirectory(src/apps/recipe_manager)
 
 #add_subdirectory(src/services/message_router)
 

@@ -1,0 +1,61 @@
+# FlatBuffers schema → C++ headers — shared protocol from src/protocol/
+set(FBS_DIR ${CMAKE_SOURCE_DIR}/src/protocol)
+set(FBS_GEN_DIR ${CMAKE_CURRENT_BINARY_DIR}/gateway_fbs)
+file(MAKE_DIRECTORY ${FBS_GEN_DIR})
+
+set(CMAKE_CXX_STANDARD 26)
+add_custom_command(
+    OUTPUT
+        ${FBS_GEN_DIR}/core_generated.h
+        ${FBS_GEN_DIR}/gateway_generated.h
+        ${FBS_GEN_DIR}/quest_generated.h
+        ${FBS_GEN_DIR}/recipe_generated.h
+        ${FBS_GEN_DIR}/client_state_generated.h
+        ${FBS_GEN_DIR}/pipe_network_generated.h
+        ${FBS_GEN_DIR}/service_health_generated.h
+    COMMAND flatbuffers::flatc
+        --gen-mutable
+        -I ${FBS_DIR}
+        -o ${FBS_GEN_DIR}
+        -c ${FBS_DIR}/core.fbs ${FBS_DIR}/gateway.fbs ${FBS_DIR}/quest.fbs ${FBS_DIR}/recipe.fbs ${FBS_DIR}/client_state.fbs ${FBS_DIR}/pipe_network.fbs ${FBS_DIR}/service_health.fbs
+    DEPENDS flatbuffers::flatc
+            ${FBS_DIR}/core.fbs
+            ${FBS_DIR}/gateway.fbs
+            ${FBS_DIR}/quest.fbs
+            ${FBS_DIR}/recipe.fbs
+            ${FBS_DIR}/client_state.fbs
+            ${FBS_DIR}/pipe_network.fbs
+            ${FBS_DIR}/service_health.fbs
+    COMMENT "Generating FlatBuffers headers for gateway"
+)
+
+add_custom_target(gateway_fbs
+    DEPENDS
+        ${FBS_GEN_DIR}/core_generated.h
+        ${FBS_GEN_DIR}/gateway_generated.h
+        ${FBS_GEN_DIR}/quest_generated.h
+        ${FBS_GEN_DIR}/recipe_generated.h
+        ${FBS_GEN_DIR}/client_state_generated.h
+        ${FBS_GEN_DIR}/pipe_network_generated.h
+        ${FBS_GEN_DIR}/service_health_generated.h
+)
+
+add_executable(gatewayd
+    main.cpp
+    gateway.cpp
+)
+
+add_dependencies(gatewayd gateway_fbs)
+include_directories(BEFORE SYSTEM ${flatbuffers_INCLUDE_DIRS} ${FBS_GEN_DIR})
+include_directories(${CMAKE_SOURCE_DIR}/src)
+
+target_link_libraries(gatewayd PRIVATE
+    gtnh_wire
+    gtnh-net
+    gtnh_engine_registry
+    gtnh_engine_storage
+    spdlog::spdlog
+    uring
+    pthread
+    flatbuffers::flatbuffers
+)

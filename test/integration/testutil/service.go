@@ -29,18 +29,18 @@ var BuildRoot = func() string {
 
 // DataRoot is the project data directory.
 var DataRoot = func() string {
+	repoRoot := filepath.Clean(filepath.Join(BuildRoot, ".."))
 	candidates := []string{
-		"../../data",
-		"../../../data",
+		filepath.Join(repoRoot, "src/content/data"),
+		filepath.Join(repoRoot, "data"),
 	}
 	for _, c := range candidates {
-		p := filepath.Join(c)
-		if _, err := os.Stat(p); err == nil {
-			abs, _ := filepath.Abs(p)
+		if _, err := os.Stat(c); err == nil {
+			abs, _ := filepath.Abs(c)
 			return abs
 		}
 	}
-	return "data"
+	return filepath.Join(repoRoot, "src/content/data")
 }()
 
 // ServiceConfig holds configuration for a single service process.

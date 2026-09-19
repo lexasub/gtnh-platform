@@ -1,0 +1,10 @@
+# Game layer — gameplay rules: depend on engine only, never vice versa
+add_subdirectory(recipes)
+add_subdirectory(machines)
+add_subdirectory(quests)
+add_subdirectory(mining)
+add_subdirectory(crafting)
+add_subdirectory(world)
+add_subdirectory(actions)
+add_subdirectory(storage)
+add_subdirectory(scenario)

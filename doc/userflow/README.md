@@ -15,8 +15,9 @@
 | `07-ore-processing-chain.puml` | Ore processing chain (руда→пластина), Voltage tiers & transformers | 2 |
 | `08-wrench-tools-config.puml` | Wrench конфигурация сторон, Electric tools, Machine side setup | 3 |
 | `09-multiblocks.puml` | EBF, Large Steam Boiler, Large Chemical Reactor | 3 |
+| `10-layers-mods.puml` | Слои engine/game/content/apps, регистрация контента, границы моддинга | 3 |
 
-**Всего: 28 диаграмм в 9 файлах**
+**Всего: 31 диаграмм в 10 файлах**
 
 ## Генерация PNG
 
@@ -49,3 +50,5 @@ plantuml doc/userflow/*.puml -tpng
 - **Typed resource ports (06)**: BoilerSystem публикует HU sink + FLUID steam source
   параллельно с legacy node (openspec `refactor-fluid-port-accounting` 2.4)
 - Удаление блока (01): `onBlockChanged` через MessageRouter, CAS в ChunkStore
+- **Слои и моды (10)**: engine/game/content/apps разделение, регистрация id через content.cpp, данные в src/content/data/
+- **Modding scope**: Lua/Python runtime и sidecar-моды ПЕРМАНЕНТНО исключены; runtime выбор .so vs VM отложен (openspec `engine-layer-separation`)

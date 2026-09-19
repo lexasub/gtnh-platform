@@ -37,7 +37,7 @@ Container_Boundary(val, "Validation Library (C++ static lib)") {
     Component(val_inv_full, "ValidateInventory()", "C++ (static)", "Валидация целого инвентаря\nsize match + все слоты")
     Component(val_inv_type, "ValidateInventoryType()", "C++ (static)", "Валидация типа инвентаря\nтип 0-3, slot_count\nPlayer=45, Workbench=10")
     Component(val_entity, "ValidateEntityState()", "C++ (static)", "Валидация EntityState\nstate buffer → Inventory\nFlatBuffers verifier")
-    Component(val_main, "main.cpp + src/", "C++", "Точка входа для тестов\nреализация валидации")
+    Component(val_main, "main.cpp + src/apps/validation", "C++", "Точка входа для тестов\nреализация валидации")
 }
 
 ' ===========================================================================

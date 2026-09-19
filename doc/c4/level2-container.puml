@@ -21,40 +21,40 @@ Person(player, "Игрок", "GameClient")
 System_Boundary(gtnh_srv, "GTNH Platform (Сервер)") {
 
     ' ---- Message Router (Go) ----
-    Container(router, "MessageRouter", "Go :4000", "Центральный pub/sub брокер\nMQTT-style топики, 3 уровня приоритетов\nheartbeat, service discovery")
+    Container(router, "MessageRouter", "Go :4000", "Центральный pub/sub брокер\nMQTT-style топики, 3 уровня приоритетов\nheartbeat, service discovery\nsrc/apps/message_router")
 
     ' ---- Gateway (C++) ----
-    Container(gateway, "Gateway", "C++ (Asio+io_uring)\n:7777 / :7778", "TCP шлюз для клиента\nctrl + bulk порты\ninterest management, relay")
+    Container(gateway, "Gateway", "C++ (Asio+io_uring)\n:7777 / :7778", "TCP шлюз для клиента\nctrl + bulk порты\ninterest management, relay\nsrc/apps/gateway")
 
     ' ---- Core world services (C++) ----
-    Container(chunkstore, "ChunkStore", "C++ (LMDB)", "Хранилище блоков\n32³ чанки, FlatBuffers RPC\nSetBlock / GetBlock / Load / Save")
+    Container(chunkstore, "ChunkStore", "C++ (LMDB)", "Хранилище блоков\n32³ чанки, FlatBuffers RPC\nSetBlock / GetBlock / Load / Save\nsrc/apps/chunk_store")
     ContainerDb(lmdb, "LMDB", "mmap БД", "Чанки: blocks[] + meta[] + mb_id[]\n192 KB на чанк")
 
-    Container(worldgen, "WorldGenerator", "C++ (FastNoiseLite)", "Генерация чанков\nпроцедурный террейн\nбиомы")
+    Container(worldgen, "WorldGenerator", "C++ (FastNoiseLite)", "Генерация чанков\nпроцедурный террейн\nбиомы\nsrc/apps/world_generator")
 
     ContainerDb(entity_store_db, "LMDB (EntityState)", "mmap БД", "Состояния машин\nинвентари сущностей\n(горячий путь)")
 
     ' ---- Simulation (C++) ----
-    Container(simcore, "SimulationCore", "C++ (EnTT ECS)\n:4000 (router)", "ECS 20Hz tick\nмультиблоки, мобы, крафт\nмашины, энергия")
+    Container(simcore, "SimulationCore", "C++ (EnTT ECS)\n:4000 (router)", "ECS 20Hz tick\nмультиблоки, мобы, крафт\nмашины, энергия\nsrc/apps/simcore")
 
-    Container(spatial, "SpatialIndex", "C++ (Boost.Geometry R-tree)", "Пространственный индекс\nпоиск мультиблоков\nO(log n) AABB queries", $tags="planned")
+    Container(spatial, "SpatialIndex", "C++ (Boost.Geometry R-tree)", "Пространственный индекс\nпоиск мультиблоков\nO(log n) AABB queries\nsrc/apps/spatial_index", $tags="planned")
 
-    Container(pipenet, "PipeNetwork", "C++", "Графы энергии/жидкостей\nBFS, flow distribution\npipe tick")
+    Container(pipenet, "PipeNetwork", "C++", "Графы энергии/жидкостей\nBFS, flow distribution\npipe tick\nsrc/apps/pipe_network")
 
     ' ---- State & persistence (C++) ----
-    Container(ess, "EntityStateStore", "C++ (LMDB)\n:5200", "State persistence для сущностей\nTCP RPC, LMDB-backed")
+    Container(ess, "EntityStateStore", "C++ (LMDB)\n:5200", "State persistence для сущностей\nTCP RPC, LMDB-backed\nsrc/apps/entity_state_store")
     ContainerDb(ess_db, "LMDB (ESS)", "mmap БД", "Состояния tile-entity\nбыстрый read path")
 
     ' ---- Recipe Manager (C++) ----
-    Container(recipeman, "RecipeManager", "C++\n:5555 (router)", "Проверка рецептов\nкрафт по сетке\nпрогресс машин")
+    Container(recipeman, "RecipeManager", "C++\n:5555 (router)", "Проверка рецептов\nкрафт по сетке\nпрогресс машин\nsrc/apps/recipe_manager")
 
     ' ---- Go sidecar services ----
-    Container(metadb, "MetaDB", "Go (SQLite)\n:5005 / :5006", "Игроки, инвентари\nпозиции, entity_state\nJSON API (:5005) + FlatBuffers RPC (:5006)")
+    Container(metadb, "MetaDB", "Go (SQLite)\n:5005 / :5006", "Игроки, инвентари\nпозиции, entity_state\nJSON API (:5005) + FlatBuffers RPC (:5006)\nsrc/apps/meta_db")
     ContainerDb(sqlite, "SQLite (MetaDB)", "Файл БД", "players, inventory\nentity_state таблицы")
 
     ' ---- Library / non-service containers ----
-    Container(validation, "Validation Library", "C++ (static lib)", "InventoryValidator\nвалидация ItemStack/Inventory/EntityState\nстатическая библиотека")
-    Container(storage_ifaces, "Storage Interfaces", "C++ (header-only)", "IEntityStateStorage\nIPlayerInventoryStorage\nабстрактные интерфейсы")
+    Container(validation, "Validation Library", "C++ (static lib)", "InventoryValidator\nвалидация ItemStack/Inventory/EntityState\nстатическая библиотека\nsrc/apps/validation")
+    Container(storage_ifaces, "Storage Interfaces", "C++ (header-only)", "IEntityStateStorage\nIPlayerInventoryStorage\nабстрактные интерфейсы\nsrc/engine/storage")
 }
 
 ' ---- Client (outside server boundary) ----

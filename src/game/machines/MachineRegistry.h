@@ -1,0 +1,68 @@
+#pragma once
+#include <engine/sim/components/EnergyType.h>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <yaml-cpp/yaml.h>
+
+// Canonical enum lives in engine layer (simcore::EnergyType); the unqualified
+// name is kept for the existing game/app call sites.
+using simcore::EnergyType;
+
+struct MachineInfo {
+  uint16_t id;
+  std::string name;
+  std::string machine_class;
+  std::optional<EnergyType> energy_in;
+  std::optional<EnergyType> energy_out;
+  int tier;
+  int slots_in;
+  int slots_out;
+  int capacity;
+  int maxInput;
+  int maxOutput;
+  // Left-click on this machine performs a machine interaction instead of
+  // breaking the block (e.g. rotare_generator: click to spin).
+  bool interact_on_left = false;
+};
+
+class MachineRegistry {
+public:
+  static std::unique_ptr<MachineRegistry> Load(const char *consumers_path,
+                                               const char *producers_path);
+
+  /// Load machine definitions from machines.yaml (replaces CSV).
+  /// Call this instead of Load() to use the new YAML registry.
+  static std::unique_ptr<MachineRegistry> LoadFromYaml(const char *yaml_path);
+
+  // Global singleton access (set by whoever loads the registry)
+  static MachineRegistry *instance() { return instance_; }
+  static void setInstance(MachineRegistry *reg) { instance_ = reg; }
+
+  /// Register a machine definition at runtime (used for multiblock
+  /// controllers/structural blocks whose ids are not yet in machines.yaml).
+  void Register(const MachineInfo &info);
+
+  const MachineInfo *Get(uint16_t block_id) const;
+  bool IsMachine(uint16_t block_id) const;
+  // Derived heat-network topology. A machine is a heat node iff its
+  // energy_in/energy_out declares HEAT — covers pure heat machines and
+  // converters like steam_heat_boiler (consumes HEAT, emits STEAM).
+  bool IsHeatSource(uint16_t block_id) const;
+  bool IsHeatSink(uint16_t block_id) const;
+  const std::unordered_map<uint16_t, MachineInfo> &All() const;
+  static const char *EnergyLabel(EnergyType et);
+  static const char *EnergyTypeToString(EnergyType et);
+
+private:
+  MachineRegistry() = default;
+  bool LoadConsumers(const char *path);
+  bool LoadProducers(const char *path);
+  bool ParseYamlMachineVariant(const YAML::Node &variant,
+                               const std::string &className);
+  std::unordered_map<uint16_t, MachineInfo> machines_;
+
+  static MachineRegistry *instance_;
+};

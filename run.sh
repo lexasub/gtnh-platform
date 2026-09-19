@@ -15,15 +15,15 @@ LOKI_BRIDGE_PORT=1514
 LOG_LEVEL="${GTNH_LOG_LEVEL:-info}"
 
 cd cmake-build-debug; ninja -j5; cd ..
-cp -r data/ /mnt/nfs/src/cpp/gtnh-platform/
+cp -r src/content/data/ /mnt/nfs/src/cpp/gtnh-platform/src/content/data/
 cp "${BUILD_DIR}"/bin/gameclientd /mnt/nfs/
-pushd "${SCRIPT_DIR}/src/services/message_router/" > /dev/null
-go build -o "${BUILD_DIR}/src/services/message_router/routerd" main.go router.go
+pushd "${SCRIPT_DIR}/src/apps/message_router/" > /dev/null
+go build -o "${BUILD_DIR}/src/apps/message_router/routerd" main.go router.go
 popd > /dev/null
 printf "  → MessageRouter rebuilt\n"
 
-cp -r ${SCRIPT_DIR}/src/services/game_client /mnt/nfs/src/cpp/gtnh-platform/src/services
-pushd ${SCRIPT_DIR}/src/services/meta_db/ > /dev/null
+cp -r ${SCRIPT_DIR}/src/apps/game_client /mnt/nfs/src/cpp/gtnh-platform/src/apps
+pushd ${SCRIPT_DIR}/src/apps/meta_db/ > /dev/null
 go build -o metadbd *.go
 popd > /dev/null
 echo "  → MetaDB rebuilt"
@@ -43,17 +43,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-BIN() { echo "${BUILD_DIR}/src/services/$1/$2"; }
+BIN() { echo "${BUILD_DIR}/src/apps/$1/$2"; }
 
 ROUTERD="$(BIN message_router routerd)"
-ROUTER_SRC="${SCRIPT_DIR}/src/services/message_router"
+ROUTER_SRC="${SCRIPT_DIR}/src/apps/message_router"
 CHUNKD="$(BIN chunk_store chunkd)"
 GATEWAYD="$(BIN gateway gatewayd)"
-SIMCORED="$(BIN simulation_core simcored_exec)"
+SIMCORED="$(BIN simcore simcored_exec)"
 CLIENT="${BUILD_DIR}/bin/gameclientd"
 PIPENETWORKD="$(BIN pipe_network pipe_networkd)"
 SPATIALINDEXD="$(BIN spatial_index spatialindexd)"
-METADBD="${SCRIPT_DIR}/src/services/meta_db/metadbd"
+METADBD="${SCRIPT_DIR}/src/apps/meta_db/metadbd"
 ENTITYSTATED="$(BIN entity_state_store entitystated)"
 RECIPED="$(BIN recipe_manager reciped)"
 VALIDATIOND="$(BIN validation validationd)"
@@ -188,7 +188,7 @@ LAUNCH "chunkd"         "${CHUNKD}"         "${DB_DIR}"  5001  "127.0.0.1"  4000
 LAUNCH "gatewayd"       "${GATEWAYD}"       --router-port 4000  --port 7777
 LAUNCH "reciped"        "${RECIPED}"        --router-port 4000
 LAUNCH "entitystated"   "${ENTITYSTATED}"
-LAUNCH "simcored"       "${SIMCORED}"       "127.0.0.1"  4000  "127.0.0.1"  5001 /home/su/src/local/gtnh-platform/data/recipes
+LAUNCH "simcored"       "${SIMCORED}"       "127.0.0.1"  4000  "127.0.0.1"  5001 ${SCRIPT_DIR}/src/content/data/recipes
 LAUNCH "metadbd"        "${METADBD}"
 LAUNCH "pipenetworkd"  "${PIPENETWORKD}"
 
@@ -206,7 +206,7 @@ if $START_CLIENT; then
         LAUNCH "gameclientd" "${CLIENT}" --resolution 2000x1200
     fi
 fi
-#rsync -a src/ /mnt/nfs/src/cpp/gtnh-platform/src --exclude 'CMakeLists.txt'
+rsync -a src/ /mnt/nfs/src/cpp/gtnh-platform/src --exclude 'CMakeLists.txt'
 printf "\n${GREEN}All services running. Press Ctrl+C to stop.${NC}\n"
 #cd test/loadtest
 #./loadtest -ctrl 127.0.0.1:7777 -rate 50 -duration 10

@@ -1,0 +1,132 @@
+@startuml
+' =============================================================================
+' GTNH Platform — User Flow: Layers & Mods
+' Слои: engine / game / content / apps, границы моддинга
+' =============================================================================
+
+title **Flow L0: Слои исходников и границы моддинга**
+
+package "src/engine" #438D80 {
+  [Registry] as Registry
+  [Sim Infra] as SimInfra
+  [Net] as Net
+  [Storage Interfaces] as Storage
+}
+
+package "src/game" #E67E22 {
+  [Machines] as Machines
+  [Recipes] as Recipes
+  [Quests] as Quests
+  [Mining] as Mining
+}
+
+package "src/content" #9B59B6 {
+  [data/] as Data
+  [content.cpp] as ContentReg
+}
+
+package "src/apps" #5899DA {
+  [simcore] as SimcoreApp
+  [gateway] as GatewayApp
+  [game_client] as ClientApp
+}
+
+actor "Модпак GTNH" as Modpack
+
+Modpack --> Data : данные (items.csv, recipes, patterns, fuels, fluids)
+Data --> ContentReg : загрузка
+ContentReg --> Machines : register machine ids / balance
+ContentReg --> Recipes : register recipes / conditions
+ContentReg --> Registry : items.csv validation
+
+Registry --> SimInfra : strict canonical loader
+SimInfra --> Machines : tick, pattern matcher
+Net --> SimcoreApp : io_uring frames
+Storage --> SimcoreApp : interfaces
+
+Machines --> SimcoreApp
+Recipes --> SimcoreApp
+Quests --> SimcoreApp
+Mining --> SimcoreApp
+
+SimcoreApp --> GatewayApp : MessageRouter pub/sub
+GatewayApp --> ClientApp : TCP 7777/7778
+
+note right of ContentReg
+  Content layer — только данные + тонкая регистрация
+  Никаких GTNH-констант в engine/game коде
+end note
+
+note right of Modpack
+  Modding scope boundaries:
+  - C++ data packs L0 разрешены
+  - Lua/Python runtime и sidecar-моды
+    ПЕРМАНЕНТНО исключены
+  - Runtime choice (.so vs VM) отложен
+end note
+
+note bottom of Registry
+  engine не знает game/content
+  game → engine only
+end note
+
+@enduml
+
+' ===========================================================================
+' 1. Регистрация контента при старте приложения
+' ===========================================================================
+@startuml layers-registration
+title **Flow L1: Регистрация контента при старте приложения**
+
+actor "Apps::main" as Main
+participant "src/content/content.cpp" as Content
+participant "src/game/MachineRegistry" as GameMachines
+participant "src/game/RecipeManager" as GameRecipes
+participant "src/engine/Registry" as EngineReg
+
+Main -> Content : load data/ items.csv, recipes, patterns
+Content -> EngineReg : validate items.csv (strict)
+EngineReg --> Content : canonical ids
+Content -> GameMachines : register machine ids (e.g. Boiler=1110:011:1)
+GameMachines --> Content : ack
+Content -> GameRecipes : register recipes with ids
+GameRecipes --> Content : ack
+
+note right #E74C3C
+  Никаких хардкод id в game/engine
+  Ids передаются при регистрации
+end note
+
+@enduml
+
+' ===========================================================================
+' 2. Запрет мод-рантайма
+' ===========================================================================
+@startuml mods-scope
+title **Flow L2: Границы моддинга**
+
+actor "Разработчик мода" as Dev
+participant "src/content/data" as DataPack
+participant "src/content/content.cpp" as ThinReg
+participant "Lua/Python VM" as VM
+participant "Sidecar .so" as Sidecar
+
+Dev -> DataPack : добавить JSON/YAML рецепты, предметы
+Dev -> ThinReg : добавить регистрацию id (опционально)
+DataPack --> ThinReg
+ThinReg --> DataPack
+
+note right of VM
+  НЕ поддерживается
+  Lua/Python runtime permanently excluded
+end note
+
+note right of Sidecar
+  НЕ поддерживается
+  Sidecar mod binaries excluded
+end note
+
+Dev -[dashed]-> VM : X
+Dev -[dashed]-> Sidecar : X
+
+@enduml

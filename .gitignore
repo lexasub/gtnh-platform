@@ -95,11 +95,11 @@ agent/
 *.bundle
 
 # ── Go binaries (built locally) ─────────────────────────
-src/services/message_router/routerd
-src/services/message_router/message_router
-src/services/message_router/dummy
-src/services/meta_db/metadb
-src/services/meta_db/metadbd
+src/apps/message_router/routerd
+src/apps/message_router/message_router
+src/apps/message_router/dummy
+src/apps/meta_db/metadb
+src/apps/meta_db/metadbd
 
 # ── Node.js ──────────────────────────────────────────────
 node_modules/
@@ -121,8 +121,8 @@ skills-lock.json
 # ── Temporary / scratch files ────────────────────────────
 tests/
 # game_client tests are checked-in sources, not repository scratch files.
-!src/services/game_client/tests/
-!src/services/game_client/tests/*.cpp
+!src/apps/game_client/tests/
+!src/apps/game_client/tests/*.cpp
 Testing/
 test_recipe.json
 try_fix.patch

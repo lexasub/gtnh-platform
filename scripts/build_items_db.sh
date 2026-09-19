@@ -4,16 +4,16 @@
 # Usage:
 #   ./build_items_db.sh [--db-path PATH] [--csv-path PATH]
 #
-# Default output: data/registry/items.db
-# Default input:  data/registry/items.csv
+# Default output: src/content/data/registry/items.db
+# Default input:  src/content/data/registry/items.csv
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-DB_PATH="${PROJECT_ROOT}/data/registry/items.db"
-CSV_PATH="${PROJECT_ROOT}/data/registry/items.csv"
+DB_PATH="${PROJECT_ROOT}/src/content/data/registry/items.db"
+CSV_PATH="${PROJECT_ROOT}/src/content/data/registry/items.csv"
 
 usage() {
     cat <<EOF
@@ -22,8 +22,8 @@ Usage: $(basename "$0") [--db-path PATH] [--csv-path PATH]
 Convert items.csv to SQLite items.db.
 
 Arguments:
-  --db-path PATH   Path to output SQLite database (default: data/registry/items.db)
-  --csv-path PATH  Path to input CSV file (default: data/registry/items.csv)
+  --db-path PATH   Path to output SQLite database (default: src/content/data/registry/items.db)
+  --csv-path PATH  Path to input CSV file (default: src/content/data/registry/items.csv)
 
 Example:
   $(basename "$0")

@@ -72,14 +72,16 @@ main() {
   run_git mv src/services/simulation_core/ECS/Systems/AdjacencyTransferSystem.h   src/game/mining/
 
   # content: data files
-  run_git mv data/bindings.json src/content/data/
-  run_git mv data/quests        src/content/data/quests
-  run_git mv data/recipes       src/content/data/recipes
-  run_git mv data/registry      src/content/data/registry
-  run_git mv data/textures      src/content/data/textures
+  # content: data files (already moved to src/content/data in previous refactor)
+  # run_git mv data/bindings.json src/content/data/
+  # run_git mv data/quests        src/content/data/quests
+  # run_git mv data/recipes       src/content/data/recipes
+  # run_git mv data/registry      src/content/data/registry
+  # run_git mv data/textures      src/content/data/textures
 
   # apps: simcore daemon keeps its directory name, moved under apps/
-  run_git mv src/services/simulation_core src/apps/simcore
+  # apps: simcore daemon already moved to apps/
+  # run_git mv src/services/simulation_core src/apps/simcore
 
   echo "First pass done. Now: fix includes, CMake, then build."
 }

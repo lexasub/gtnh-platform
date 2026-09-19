@@ -1,0 +1,49 @@
+#pragma once
+
+#include <game/client/Common/Types.h>
+#include <game/client/Crafting/ServerRecipeDB.h>
+#include "ISidePanel.h"
+#include "components/ItemIndex.h"
+#include <imgui.h>
+
+class UIManager;
+class MachineWindow;
+
+class NeiPanel : public ISidePanel {
+public:
+  explicit NeiPanel(UIManager *uiMgr);
+
+  std::string_view Name() const override { return "Recipes"; }
+  void Render(InventoryState *playerInv) override;
+  bool OnKeyEvent(int key, int action, int mods) override;
+
+  bool IsVisible() const override { return visible_; }
+  void SetVisible(bool visible) override {
+    if (visible && !visible_)
+      justOpened_ = true;
+    visible_ = visible;
+  }
+
+protected:
+  BlockPos activeMachinePos_;
+
+private:
+  bool visible_ = false;
+  bool justOpened_ = false;
+  UIManager *uiMgr_ = nullptr;
+  int selectedRecipe_ = -1;
+  char searchBuf_[128] = {};
+  ItemIndex itemIndex_;
+
+  // Server-fetched recipes for the currently open machine (NEI panel).
+  uint16_t machineRequested_ = 0;
+  bool machineLoaded_ = false;
+  std::vector<ServerRecipeDB::RecipeInfo> machineRecipes_;
+
+  void RenderMachineRecipes(MachineWindow *mw);
+  void RenderAllRecipes();
+
+  // Permission matrix: item spawning allowed only when the player mode has
+  // infiniteItems (CREATIVE/SPECTATOR). Gates all NEI spawn clicks.
+  bool CanSpawn() const;
+};

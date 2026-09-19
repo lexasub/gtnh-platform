@@ -101,9 +101,9 @@ java -jar plantuml.jar doc/c4/level2-container.puml -tpng
 | Пунктирная оранжевая | Protocol | FlatBuffers обмен |
 | Пунктирная серая | Planned | Планируемая функциональность |
 
-## Актуальность (2026-09)
+## Актуальность (2026-09-19)
 
-Диаграммы синхронизированы с кодом по состоянию на 2026-09:
+- **Layer separation**: src/engine/, src/game/, src/content/, src/apps/ (refactor-engine-layer-separation)
 
 - **SimulationCore**: 15 ECS-систем (сверено с `simulation_core/main.cpp` registerSystem)
 - **Gateway protocol**: 51 тип GatewayMsg — wire truth `<common/GatewayMsg.h>` (диаграмма

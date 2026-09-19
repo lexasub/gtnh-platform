@@ -19,92 +19,98 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 # GTNH Platform Knowledge Base
 
-**Generated**: 2026-08-07
+**Generated**: 2026-09-19
 
 ## OVERVIEW
 
-Distributed Minecraft-style platform with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + TCP) connects 13 service directories (10 real services + spatial_index stub + storage_interfaces + validation) via MessageRouter.
+Distributed Minecraft-style platform with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + TCP) connects services via MessageRouter (Go pub/sub broker).
 Linux-only project. No Windows/macOS support.
 
 ## STRUCTURE
 
 ```
 src/
-├── src/
-│   ├── services/
-│   │   ├── message_router/    # Go pub/sub broker, service discovery
-│   │   ├── gateway/           # TCP gateway, io_uring, interest mgmt
-│   │   ├── chunk_store/       # LMDB-backed block storage, io_uring
-│   │   ├── world_generator/   # Terrain + ore/tree gen (library, no binary)
-│   │   ├── simulation_core/   # ECS, multiblocks L2/L3, quests, 20 Hz tick
-│   │   ├── pipe_network/      # Energy/fluid/item flow graphs
-│   │   ├── spatial_index/     # STUB — not built (R-tree/Octree planned)
-│   │   ├── entity_state_store/ # Entity state persistence, TCP RPC
-│   │   ├── meta_db/           # Player saves, quests, inventories (Go)
-│   │   ├── recipe_manager/    # Standalone recipe RPC service (:5555)
-│   │   ├── storage_interfaces/ # Header-only storage interfaces
-│   │   ├── validation/        # Item/block validation (not in default build)
-│   │   └── game_client/       # bgfx render, ImGui, input, physics
-│   └── protocol/              # FlatBuffers schemas (12 .fbs)
-├── src/libs/                  # libgtnh-net, quest_lib, recipe_manager_lib, ...
-├── cmake-build-debug/         # CMake build directory (Conan toolchain)
-├── data/                      # YAML recipes, item registry
-└── docs/                      # Service documentation
+├── src/apps/                  # 9 runnable daemons (assembly points)
+│   ├── gateway/               # TCP gateway, io_uring, interest mgmt
+│   ├── chunk_store/           # LMDB-backed block storage, io_uring
+│   ├── entity_state_store/    # Entity state persistence, TCP RPC :5200
+│   ├── game_client/           # bgfx render, ImGui, input, physics
+│   ├── meta_db/               # Player saves, quests, inventories (Go)
+│   ├── pipe_network/          # Energy/fluid/item flow graphs
+│   ├── recipe_manager/        # Standalone recipe RPC service
+│   ├── simcore/               # ECS, multiblocks L2/L3, quests, 20 Hz tick
+│   └── world_generator/       # Terrain + ore/tree gen (library, no binary)
+├── src/engine/                # Shared engine layer
+│   ├── net/                   # gtnh-net: io_uring connections, router client, frame codec
+│   ├── registry/              # Registry, ItemId, coords, OpenHashMap
+│   ├── sim/                   # ISystem, SimulationEngine, PatternLibrary, ECS components
+│   ├── storage/               # Header-only storage interfaces (IEntityStateStorage, …)
+│   └── utils/                 # metrics
+├── src/game/                  # Gameplay logic extracted from simcore
+│   ├── machines/              # Boiler/EBF/LCR/Generator/Explosion/Coolant systems
+│   ├── mining/                # Drill, BatteryBuffer, CreativeGenerator
+│   ├── quests/                # QuestData/QuestGraph/QuestManager
+│   └── recipes/               # RecipeManager, ConditionEvaluator, ItemRegistry
+├── src/common/                # GatewayMsg wire constants, ResourcePort, SlotContainer
+├── src/content/               # Content registry + data/ (recipes, items, quests, textures)
+└── src/protocol/              # FlatBuffers schemas (14 .fbs, namespace Protocol)
 ```
 
 ## SERVICES
 
 | Service | Subdir | Language |
 |---------|--------|----------|
-| MessageRouter | `src/services/message_router/` | Go |
-| Gateway | `src/services/gateway/` | C++ |
-| ChunkStore | `src/services/chunk_store/` | C++ |
-| WorldGenerator | `src/services/world_generator/` | C++ (library) |
-| SimulationCore | `src/services/simulation_core/` | C++ |
-| PipeNetwork | `src/services/pipe_network/` | C++ |
-| SpatialIndex | `src/services/spatial_index/` | C++ (STUB, not built) |
-| EntityStateStore | `src/services/entity_state_store/` | C++ |
-| MetaDB | `src/services/meta_db/` | Go |
-| RecipeManager | `src/services/recipe_manager/` | C++ (RPC service, :5555) |
-| StorageInterfaces | `src/services/storage_interfaces/` | C++ (headers only) |
-| Validation | `src/services/validation/` | C++ (not in default build) |
-| GameClient | `src/services/game_client/` | C++ |
+| MessageRouter | `src/apps/message_router/` | Go |
+| Gateway | `src/apps/gateway/` | C++ |
+| ChunkStore | `src/apps/chunk_store/` | C++ |
+| WorldGenerator | `src/apps/world_generator/` | C++ (library) |
+| SimCore | `src/apps/simcore/` | C++ |
+| PipeNetwork | `src/apps/pipe_network/` | C++ |
+| SpatialIndex | `src/apps/spatial_index/` | C++ (STUB, not built) |
+| EntityStateStore | `src/apps/entity_state_store/` | C++ |
+| MetaDB | `src/apps/meta_db/` | Go |
+| RecipeManager | `src/apps/recipe_manager/` | C++ (RPC service) |
+| Validation | `src/apps/validation/` | C++ (not in default build) |
+| GameClient | `src/apps/game_client/` | C++ |
 
-Key libs: RecipeManagerLib `src/libs/recipe_manager_lib/`, libgtnh-net `src/libs/libgtnh-net/` (io_uring networking), quest_lib `src/libs/quest_lib/`, machine_registry `src/libs/machine_registry/`.
+Key engine/game code: net `src/engine/net/`, storage interfaces `src/engine/storage/`, machines `src/game/machines/` (incl. MachineRegistry), recipes `src/game/recipes/`, quests `src/game/quests/`.
 
 ## WHERE TO LOOK
 
 | Task                      | Location                      | Notes                              |
 |---------------------------|-------------------------------|------------------------------------|
-| Binary protocol schema    | `src/protocol/`                       | 12 FlatBuffers `.fbs` files; wire protocol = C++ `GatewayMsg` constants (41, 1-based) — `GatewayPayload` union in gateway.fbs is stale |
-| Internal message routing  | `src/services/message_router/`       | Go channels, pub/sub topics        |
-| Client connections        | `src/services/gateway/`              | TCP accept, interest management    |
-| Block data storage        | `src/services/chunk_store/`          | LMDB, chunk serialization          |
-| Terrain generation        | `src/services/world_generator/`      | Noise functions, biomes            |
-| ECS, multiblocks, mobs    | `src/services/simulation_core/`      | EnTT, pattern matching             |
-| Headless Gateway tests    | `test/integration/`, `tools/gateway_cli/`, `docs/gateway-headless-client.md` | TCP/FlatBuffers client without GUI; multiblock E2E plan |
-| Energy/liquid networks    | `src/services/pipe_network/`         | Graph algorithms, flow solving     |
-| Spatial queries           | `src/services/spatial_index/`        | STUB — not implemented, not built   |
-| Entity state persistence  | `src/services/entity_state_store/`   | LMDB-backed, TCP RPC port 5200     |
-| Player saves              | `src/services/meta_db/`              | SQLite, transactional saves        |
-| Quest system              | `src/services/meta_db/` + `src/services/game_client/` | quest_lib data model, quest.fbs protocol, QuestBookWindow |
-| Quest system              | `src/services/meta_db/` + `src/services/game_client/` | quest_lib data model, quest.fbs protocol, QuestBookWindow |
-| Crafting recipes          | `data/recipes/`                      | YAML files per machine type (14 files) |
-| Item registry             | `data/registry/`                     | items.csv, items.db, machines.yaml, ores.json |
-| Recipe system             | `src/libs/recipe_manager_lib/` + `src/services/recipe_manager/` | YAML recipes, ConditionEvaluator (MachineState from ECS) |
-| Rendering, input, audio   | `src/services/game_client/`          | bgfx, GLFW, ImGui                  |
+| Binary protocol schema    | `src/protocol/`                       | 14 FlatBuffers `.fbs` files; wire protocol = C++ `GatewayMsg` constants (1–51, 1-based) — `GatewayPayload` union in gateway.fbs is stale |
+| Internal message routing  | `src/apps/message_router/`           | Go channels, pub/sub topics        |
+| Client connections        | `src/apps/gateway/`                  | TCP accept, interest management    |
+| Block data storage        | `src/apps/chunk_store/`              | LMDB, chunk serialization          |
+| Terrain generation        | `src/apps/world_generator/`          | Noise functions, biomes            |
+| ECS, multiblocks, mobs    | `src/apps/simcore/`                  | EnTT, pattern matching             |
+| Machine behavior (EBF, boiler, …) | `src/game/machines/`         | Extracted gameplay systems         |
+| Networking library        | `src/engine/net/`                    | io_uring connections, frame codec, router client |
+| Headless Gateway tests    | `test/integration/`, `tools/gateway_cli/`, `docs/gateway-headless-client.md` | TCP/FlatBuffers client without GUI |
+| Energy/liquid networks    | `src/apps/pipe_network/`             | Graph algorithms, flow solving     |
+| Spatial queries           | `src/apps/spatial_index/`            | STUB — not implemented, not built  |
+| Entity state persistence  | `src/apps/entity_state_store/`       | LMDB-backed, TCP RPC port 5200     |
+| Player saves              | `src/apps/meta_db/`                  | SQLite, transactional saves        |
+| Quest system              | `src/game/quests/` + `src/apps/meta_db/` | QuestGraph/QuestManager, quest.fbs protocol, QuestBookWindow |
+| Crafting recipes          | `src/content/data/recipes/`          | YAML files per machine type (15 files) |
+| Item registry             | `src/content/data/registry/`         | items.csv, items.db, machines.yaml, ores.json, cables/pipes/fluids CSVs |
+| Recipe logic              | `src/game/recipes/` + `src/apps/recipe_manager/` | YAML recipes, ConditionEvaluator |
+| Texture atlas system      | `doc/texture-atlas-format.md`, `src/content/data/textures/`, `tools/generate_texture_mappings.py` | Additive scanner, dry-run default, `--apply` append-only |
+| Rendering, input, audio   | `src/apps/game_client/`              | bgfx, GLFW, ImGui                  |
+| Architecture topology     | `doc/c4/`                            | Authoritative C4 diagrams          |
 
 ## CONVENTIONS
 
 - **FlatBuffers**: Single schema across all services (`namespace Protocol`)
-- **Event-driven**: `BlockChanged` published by ChunkStore → caught by SimulationCore
+- **Event-driven**: `BlockChanged` published by ChunkStore → caught by SimCore
 - **Language boundaries**: Hot path = C++ only. Sidecars = Go/Python via `IExternalLogic`
 - **Zero-copy**: Chunk data flows FlatBuffer → LMDB mmap → TCP send buffer
 
 ## ANTI-PATTERNS
 
 - ❌ Breaking multiblock across chunk boundaries without `SetBlockMeta`
-- ❌ Using Go for ChunkStore/SimulationCore (GC pauses unacceptable)
+- ❌ Using Go for ChunkStore/SimCore (GC pauses unacceptable)
 - ❌ Parsing JSON in Gateway (must be zero-copy binary only)
 - ❌ Storing multiblock controllers in ChunkStore (Simulation owns them)
 
@@ -122,19 +128,20 @@ ninja -j5
 # Or for release build:
 cd cmake-build-release
 ninja -j5
-
-# Run (order matters, from repo root)
-./cmake-build-release/routerd            # 1. Internal pub/sub (Go, :4000)
-./cmake-build-release/chunkd             # 2. World persistence (C++, :5001)
-./cmake-build-release/entitystated       # 3. Entity state (C++, :5200)
-./cmake-build-release/gatewayd           # 4. TCP gateway (C++, :7777 ctrl + :7778 bulk)
-./cmake-build-debug/src/services/simulation_core/simcored_exec  # 5. Simulation (C++, 20Hz tick)
-./src/services/meta_db/metadbd           # 6. Player DB (Go, :5005 + :5006)
-./cmake-build-debug/src/services/pipe_network/pipenetworkd  # 7. Energy/fluid transport (C++)
-./cmake-build-debug/bin/gameclientd      # 8. Game client (C++, bgfx)
 ```
 
-**Alternative**: `./run.sh` — builds ninja in cmake-build-debug, rebuilds Go services, starts everything in order (with `--all` also pipenetworkd/spatialindexd/validationd; `--no-client` to skip the client).
+Note: root `README.md` and `run.sh` still reference the old `src/services/*` layout and are stale; trust the source tree and this file. `run.sh` flags: `--build-dir`, `--db-dir`, `--resolution`, `--all`, `--no-client`.
+
+**Run** (order matters; binary names as built):
+
+1. `routerd` — MessageRouter (Go, :4000)
+2. `chunkd` — ChunkStore (C++, :5001)
+3. `entitystated` — EntityStateStore (C++, :5200)
+4. `gatewayd` — TCP gateway (C++, :7777 ctrl + :7778 bulk)
+5. `simcored` — SimCore (C++, 20 Hz tick)
+6. `metadbd` — MetaDB (Go, :5005)
+7. `pipenetworkd` — PipeNetwork (C++)
+8. `gameclientd` — Game client (C++, bgfx)
 
 **If build fails**: Check `conan install` was run. See README.md for Conan setup.
 
@@ -144,12 +151,14 @@ Always compile and verify changes incrementally after each small logical chunk, 
 ```bash
 cd cmake-build-debug && ctest --output-on-failure -j$(nproc)
 ```
+Integration tests (Go): `test/integration/`. Load tests: `test/loadtest/`.
 
 ## NOTES
 
 - Chunk format: 32 KB + 32 KB + 128 KB = 192 KB per chunk
 - Multiblock ID stored in meta-layer (O(1) lookup without scanning world)
 - MessageRouter uses Go channels — 100k concurrent pub/sub topics are cheap
+- Real content data root = `src/content/data/` (root `data/` and `src/data/` are legacy/tooling only)
 
 ## LIBRARY DECISIONS
 
@@ -159,11 +168,10 @@ cd cmake-build-debug && ctest --output-on-failure -j$(nproc)
 | **Asio** | TCP server, async IO, io_uring backend | Zero-copy recv→FlatBuffer, coroutine-friendly (C++20), standard, production-grade |
 | **FlatBuffers C++** | Binary protocol | Single schema, `GetRoot<Message>()` zero-copy parsing, no allocations |
 | **EnTT** | ECS (Entity Component System) | Fastest C++ ECS, sparse sets, O(1) iteration, cache-miss friendly |
-| **LMDB / LMDB++** | Chunk persistence | Read-optimized, mmap, zero-copy reads, ACID, embedded (no separate process) |
-| **FastNoiseLite** | Terrain generation | Header-only, SIMD-friendly, 3D Perlin/Simplex/cellular, fractal Brownian noise |
+| **LMDB** | Chunk persistence | Read-optimized, mmap, zero-copy reads, ACID, embedded (no separate process) |
+| **fastnoise2** | Terrain generation | SIMD-friendly 3D noise, fractal Brownian |
 | **GLM** | Math (vec3, matrices, noise coords) | Header-only, consistent syntax across services |
-| **spdlog** | Logging | Header-only, async mode, production-grade formatting |
-| **Boost.Geometry (R-tree)** | Spatial index | `bgi::rtree<AABB>` for multiblock/entitiy queries, O(log n) bounding-box search |
+| **spdlog/fmt** | Logging | Header-only, async mode, production-grade formatting |
 | **bgfx** | Cross-API render | Unified shaders, GL/Vulkan/D3D/Metal, one codebase |
 | **GLFW** | Windowing + input | Simple, stable, no context management conflicts |
 | **miniaudio** | Audio (footsteps, blocks, UI) | Header-only, lightweight |
@@ -179,39 +187,36 @@ cd cmake-build-debug && ctest --output-on-failure -j$(nproc)
 ### What's NOT used (and why)
 - **gRPC** — overhead for internal pub/sub; Go channels + FlatBuffers = lighter
 - **ZeroMQ** — C dependency, breaks Go purity; stdlib + channels = native
-- **SQLite vs LMDB** — SQLite = write-optimized, WAL log; LMDB = read-optimized, mmap, no separate WAL
 - **RocksDB** — write-optimized, unnecessary overhead for chunk reads
-- **Lua/Python mod runtime** — deferred. Mods via C++ `.so/.dll` loaded with `dlopen`. Scripting later.
-- **AssetServer** — deferred. Assets embedded in Client or proxied via Gateway TCP. QUIC/HTTP/3 when scale demands it.
 - **JSON parsing in Gateway** — forbidden. Must be zero-copy binary only.
 
 ## SERVICE BOUNDARIES (critical)
 
-### ChunkStore vs SimulationCore
+### ChunkStore vs SimCore
 **ChunkStore** = dumb storage. Only knows `block_id + meta + mb_id`. Never understands "electrolyser" or "pipe".
 
-**SimulationCore** = owns Multiblock Controllers. Holds `entt::registry` with `MultiblockController{mb_id, anchor, blocks[...]}`.
+**SimCore** = owns Multiblock Controllers. Holds `entt::registry` with `MultiblockController{mb_id, anchor, blocks[...]}`.
 
 When multiblock forms:
 ```
-Client → Gateway → SimulationCore
-                          ↓ (RPC: GetBlock in pattern radius)
-                      ChunkStore
-                          ↓ (match found)
-                  Create MultiblockController in ECS
-                          ↓ (RPC: SetBlockMeta for ALL pattern blocks)
-                      ChunkStore (writes mb_id into chunk meta-layer)
+Client → Gateway → SimCore
+                        ↓ (RPC: GetBlock in pattern radius)
+                    ChunkStore
+                        ↓ (match found)
+                Create MultiblockController in ECS
+                        ↓ (RPC: SetBlockMeta for ALL pattern blocks)
+                    ChunkStore (writes mb_id into chunk meta-layer)
 ```
 
 On chunk unload:
 1. ChunkStore marks chunk `pending_unload`
-2. Asks SimulationCore: "here is list of mb_id in this chunk, can I unload?"
+2. Asks SimCore: "here is list of mb_id in this chunk, can I unload?"
 3. Simulation checks anchor:
    - **anchor INSIDE chunk** → serializes MB to MetaDB, returns `release`
    - **anchor OUTSIDE chunk** → returns `hold` (MB active, keep chunk in memory)
 4. ChunkStore unloads **only on `release`**
 
-### PipeNetwork separate from SimulationCore
+### PipeNetwork separate from SimCore
 Simulation reports: "network #3: 5 pipes, 2 inputs, 3 outputs".
 PipeNetwork solves graph per tick, returns `flow_map`.
 If network unchanged 5 seconds → skip tick (cache).
@@ -220,21 +225,21 @@ Can run 2 instances (one per dimension) without interference.
 ### EntityStateStore vs MetaDB
 **EntityStateStore** (C++): Persistent state for world-bound entities (tile entities, machine state). LMDB-backed. Topics: entity.state.get/set, TCP RPC port 5200.
 
-**MetaDB** (Go): Player-bound data (inventories, position, stats). SQLite. Connected to MessageRouter via router_client.go.
+**MetaDB** (Go): Player-bound data (inventories, position, stats). SQLite. Connected to MessageRouter via router client.
 
 ## TODO
 
 - [ ] Pause menu / settings window in game client (missing)
-- [ ] Sound: miniaudio linked in CMake, no audio code yet
+- [ ] Sound: miniaudio in conanfile, no audio code yet
 - [ ] SpatialIndex: implement R-tree/Octree (currently 2-line stub, not built)
 - [ ] Dedicated Drill UI window (only tooltip so far)
 - [ ] Resolve GatewayMsg C++ constants vs FlatBuffers `GatewayPayload` union divergence
 - [ ] Server-authoritative grid state via TileEntityStore RPC
+- [ ] Refresh stale root README.md and run.sh for the src/apps + engine layout
 
 ---
 
-**Generated**: 2026-08-10 | **Branch**: main
-
+**Generated**: 2026-09-19 | **Branch**: main
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:46cd31e7 -->
 ## Beads Issue Tracker
 
@@ -311,7 +316,7 @@ Rules that apply to ALL AI agents (Claude Code, OpenCode, Hermes, Cursor, ...) w
 - **Project skills** live in `.claude/skills/` — every agent should load `gtnh-platform` (SKILL.md) first: it's the operating manual (truth hierarchy, task lifecycle, parallel-agent discipline, verification, session close). Claude Code and OpenCode pick these up automatically; Hermes via `skills.external_dirs`.
 - **ICM persistent memory — MANDATORY**: `icm recall "<query>"` before starting work; `icm store -t <topic> -c "..." -i <importance>` when: error resolved, architecture decision made, user preference discovered, significant task completed, or ~20 tool calls without a store. Do NOT store trivia already documented in this file.
 - **Code navigation**: codegraph MCP daemon is running (`.codegraph/`, SQLite+WASM, zero infra) — use `codegraph_explore "<query>"` for symbol/relationship questions before raw grep. Knowledge graph: `graphify query "<question>"` (see graphify section).
-- **Parallel agents**: OpenCode agents in `.claude/worktrees/` may commit to `main` during your session. Always check fresh `git status` / `git log --oneline -5` / `git reflog -5` before answering anything about repo state. Run `git pull --rebase` before touching shared zones: `src/protocol/`, `data/registry/`, `data/recipes/`, `CMakeLists.txt`, `conanfile.txt`.
+- **Parallel agents**: OpenCode agents in `.claude/worktrees/` may commit to `main` during your session. Always check fresh `git status` / `git log --oneline -5` / `git reflog -5` before answering anything about repo state. Run `git pull --rebase` before touching shared zones: `src/protocol/`, `src/content/data/registry/`, `src/content/data/recipes/`, `CMakeLists.txt`, `conanfile.txt`.
 - **Task tracking**: use `bd` (beads) for ALL task tracking — never markdown TODO lists (see Beads section above).
 
 Preserve the existing order of ACCEPTED status checks in event handlers unless explicitly directed to reorder them.

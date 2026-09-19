@@ -20,7 +20,7 @@ Person(admin, "Администратор", "Управляет сервером
 ' System boundary: GTNH Platform
 ' ---------------------------------------------------------------------------
 System_Boundary(gtnh, "GTNH Platform") {
-    Container(platform, "GTNH Platform", "C++ / Go / FlatBuffers / TCP", "Распределённая Minecraft-платформа\n8 запускаемых сервисов + библиотеки + игровой клиент\n(13 каталогов src/services/, см. level2)")
+    Container(platform, "GTNH Platform", "C++ / Go / FlatBuffers / TCP", "Распределённая Minecraft-платформа\n9 запускаемых демонов в src/apps/\nслои: src/engine/ (core), src/game/ (rules), src/content/ (data)\n+ игровой клиент (см. level2)")
 }
 
 ' ---------------------------------------------------------------------------

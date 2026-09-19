@@ -1,5 +1,5 @@
 #pragma once
-#include <common/ItemId.h>
+#include <engine/registry/ItemId.h>
 #include <cstdint>
 
 // Tool item IDs — computed at compile time from prefix notation.
