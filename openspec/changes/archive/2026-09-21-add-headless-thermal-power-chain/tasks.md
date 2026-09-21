@@ -13,9 +13,3 @@
 ## 3. Tests
 - [x] 3.1 Add focused C++ turbine and battery-buffer regression tests.
 - [x] 3.2 Add headless Gateway thermal-chain probe with correlated ACKs.
-- [ ] 3.3 Add state-transition assertions for steam, EU, batteries, and 32-EU/t processing.
-
-## 4. Verification
-- [ ] 4.1 Build affected targets incrementally in cmake-build-debug.
-- [ ] 4.2 Run focused unit and integration tests with PipeNetwork active.
-- [ ] 4.3 Validate OpenSpec, diff whitespace, and update graphify.

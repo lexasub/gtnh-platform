@@ -1,5 +1,5 @@
 # Tasks: add-multiplayer-foundation
-
+# Verification 2026-09-21: all tasks pending – no ClientSession, no handshake, singleton gateway remains; see evidence in verification report.
 ## 1. Gateway sessions
 - [ ] 1.1 Introduce `ClientSession` (ctrl+bulk conns, player_id, nickname, interest, last_pos) and session map/indices in `gateway.h/.cpp`
 - [ ] 1.2 Accept path: create session, pair ctrl+bulk via bulk_token, reject orphan bulk after timeout (state machine AWAIT_BULK→ACTIVE→CLOSED)

@@ -2,7 +2,7 @@
 
 Verified by a 6-agent workflow + completeness critic (8 agents, ~721K tok, 255 tool calls). Findings G1–G20 / OH1–OH9 folded into the tasks below.
 
-**Status (2026-08-10)**: Phases A–D **implemented and committed on `main`** (squashed `f8d1e4a feat(inventory): server-authoritative click model`). Phase E (cleanup) + spec finalization remain. See deviations in 3.4 and 4.3/4.4.
+**Status (2026-08-10)**: Phases A–D **implemented and committed on `main`** (squashed `f8d1e4a feat(inventory): server-authoritative click model`). See deviations in 3.4 and 4.3/4.4.
 
 ## 0. Step 0 — Build bootstrap (PREREQ for all phases) ✅ DONE
 
@@ -65,28 +65,6 @@ Plan verified by a 7-agent Phase B research workflow (chest-flow, workbench-open
 - [x] 4.3 `CraftingGrid` snapshot-driven: `HandleActivate` staging + `kGridFlag` gone (zero refs in `CraftingGrid.cpp`); grid clicks route via `SetAuthoritative(true)` + `SetContainerId(1)`. **`CraftRequestHandler` reads the grid from the server** (`getGridState` — client-supplied slots ignored). **Deviation**: the player-inventory deduction loop was RETAINED (grid = staging; items physically live in the player inventory). Double-deduction/dupe risk is still closed — the grid read is now server-authoritative, so the client can no longer inject slots into the craft.
 - [x] 4.4 **`GridUpdate` retained** (`sim.workbench.state` → `kGridUpdate=43`, gateway.cpp:401; CraftRequestHandler still publishes the consumed grid after craft; ClientCraftingWindow applies it position-guarded alongside the container snapshot). Deviation from plan: it stays the craft-result feedback channel — the container snapshot ALSO carries grid slots, but GridUpdate was not dropped. Verify: put/take (incl. shift-click), preview, craft consumes inputs + returns result — green in manual run.sh flow.
 
-## 5. Phase E — Cleanup & polish
-
-**G1/G15/G16**: split structs out of the legacy header BEFORE deleting it; delete dead code, don't "fix" it. New from Phases C/D: retire the server-side `MachineSlotHandler` + gateway `SetMachineSlotReq` route (client path already dead since 3.4).
-
-- [ ] 5.1 **Split `ItemStack`/`InventorySlot` structs out of legacy `simulation_core/InventoryActionHandler.h`** (not compiled since Phase A; imported by `ElectricDrillHandler.cpp`, `ItemEnergyStorage.h`, `test/test_main.cpp`) into a shared header FIRST, then delete the legacy handler + its dead publish-on-topic (G1).
-- [ ] 5.2 **Delete** `RenderSlotGrid` (dead — zero callers) and the never-wired `SetMachineActionCallback`/`SetMachineSlotAckCallback` (G15); fix the **real** RMB-distribute hover defect: `SlotGridComponent` writes `inv_->dragHoverSlot` (SlotGrid.cpp:224) but `OnRightDragDistribute` reads `dm_->GetHoverSlot()` — wire hover→`UpdateHover` (G14).
-- [ ] 5.3 **Delete the server-side `MachineSlotHandler`** (`Actions/MachineSlotHandler.{h,cpp}`) + the `player.machine.slot` topic registration (SimCoreMessageHandler.cpp:96) + the gateway `SetMachineSlotReq` ctrl route (gateway.cpp:525) + generated `SetMachineSlotReq` usage — client path retired in 3.4. Cursor rendering polish (preview at mouse, tooltip), ESC = place cursor back to origin slot. Update `ActionHandler.cpp:76` drill-in gate + `InteractionSystem.cpp:26-32` (GetHeldItem reads `selectedSlot`, should consider the server cursor — G12).
-- [ ] 5.4 Delete `kGridSlotBase`/`kMachineSlotBase`/`kMachineOutputBase` numbering. Rework client `DragManager_test.cpp` to the click-translator shape. **Add server tests beyond the rule table** (G20): ContainerClickHandler wiring, open/close session lifecycle, machine/workbench session reads.
-- [ ] 5.5 Full `ctest` + client build; end-to-end manual pass via `run.sh` (player inventory, chest, machine, workbench); `git push`.
-
 ## 6. Spec & validation
 
 - [x] 6.1 `specs/protocol` and `specs/player-interaction` deltas updated to implemented reality (chest + workbench open/close, workbench staging semantics, `container_id` per-player scope) — done 2026-08-10.
-- [ ] 6.2 `openspec validate refactor-server-authoritative-inventory --strict` passes (re-run before archive).
-
-## Known risks tracked
-
-- **OH1/OH9** — Phase A landed atomic (squashed `f8d1e4a`); no compiling-but-broken intermediate. ✅ resolved
-- **OH2/G11** — DragManager dual-mode STILL active (legacy mutation path for unconverted grids); deletion is Phase E 5.2/5.4.
-- **G3/G4** — machine: same-ECS-container + ItemFlowHandler + MachineSystem publish hook — all landed with Phase C. ✅ resolved
-- **G9** — workbench grid semantics decided: world-bound shared staging + player-inventory consumption (4.1). ✅ resolved
-- **G6** — `player.chest.save` deletion landed with the container_id click routing in Phase B (S4–S6). ✅ resolved
-- **G10** — WorkbenchStateManager live publish: via container-snapshot path + GridUpdate. ✅ resolved
-- **G14** — real RMB-distribute hover defect NOT yet fixed (SlotGrid writes `dragHoverSlot`, distribute reads `dm_->GetHoverSlot()`) → Phase E 5.2.
-- **MachineSlotHandler** — server-side legacy per-slot path still wired (`player.machine.slot` + gateway route) → Phase E 5.3.

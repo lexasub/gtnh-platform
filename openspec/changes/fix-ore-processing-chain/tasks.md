@@ -5,28 +5,28 @@
 - [ ] 0.4 Compute reserved ID ranges for new crushed/plate items, ensure no collisions
 
 ## Phase 1: Item Registry (`data/registry/items.csv` — single source of truth)
-- [ ] 1.1 Add crushed ore items with unique hierarchical IDs: crushed_iron, crushed_gold, crushed_copper, crushed_tin, crushed_lead, crushed_silver, crushed_zinc
-- [ ] 1.2 Add metal plate items: iron_plate, gold_plate, copper_plate, tin_plate, lead_plate, silver_plate, zinc_plate
+- [x] 1.1 Add crushed ore items with unique hierarchical IDs: crushed_iron, crushed_gold, crushed_copper, crushed_tin, crushed_lead, crushed_silver, crushed_zinc
+- [x] 1.2 Add metal plate items: iron_plate, gold_plate, copper_plate, tin_plate, lead_plate, silver_plate, zinc_plate
 - [ ] 1.3 Verify all new entries have non-colliding `ItemId::pack()` values by running the pack function
-- [ ] 1.4 Verify existing entries (iron_ore, gold_ore, ingots, bronze_plate) have correct IDs and string names that recipes will use
+- [x] 1.4 Verify existing entries (iron_ore, gold_ore, ingots, bronze_plate) have correct IDs and string names that recipes will use
 
 ## Phase 2: Macerator Recipes (`data/recipes/macerator.yaml`) — string names only
-- [ ] 2.1 Replace ALL numeric `item:` values with string names (e.g., `item: iron_ore`, `item: crushed_iron`)
+- [x] 2.1 Replace ALL numeric `item:` values with string names (e.g., `item: iron_ore`, `item: crushed_iron`)
 - [ ] 2.2 Each ore type outputs its own crushed variant — not a shared dust ID
-- [ ] 2.3 Add missing ore type recipes: lead, silver, zinc
+- [x] 2.3 Add missing ore type recipes: lead, silver, zinc
 - [ ] 2.4 Ensure HEAT/STEAM/ROTATION energy variants exist for core ore types
 - [ ] 2.5 Verify `findRecipeByInputs()` matches correctly with string-resolved IDs
 
 ## Phase 3: Furnace Recipes (`data/recipes/furnace.yaml`) — string names only
 - [ ] 3.1 Replace ALL numeric `item:` with string names
 - [ ] 3.2 Add crushed_X→X_ingot recipes for all 7 metal types using string names
-- [ ] 3.3 Add missing ore→ingot recipes for copper, tin, lead, silver, zinc using string names
+- [x] 3.3 Add missing ore→ingot recipes for copper, tin, lead, silver, zinc using string names
 
 ## Phase 4: Compressor Recipes (`data/recipes/compressor.yaml`) — string names only
-- [ ] 4.1 Replace ALL numeric `item:` with string names
-- [ ] 4.2 Fix `compress_iron` output from `iron_ingot` to `iron_plate`
+- [x] 4.1 Replace ALL numeric `item:` with string names
+- [x] 4.2 Fix `compress_iron` output from `iron_ingot` to `iron_plate`
 - [ ] 4.3 Add X_ingot→X_plate recipes for all 7 metal types using string names
-- [ ] 4.4 Verify compress_bronze (bronze_ingot→bronze_plate) still correct
+- [x] 4.4 Verify compress_bronze (bronze_ingot→bronze_plate) still correct
 
 ## Phase 5: Integration Verification
 - [ ] 5.1 Audit: grep all recipe YAML files for `item: \d+` patterns — zero hits expected (no numeric IDs)

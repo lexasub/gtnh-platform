@@ -1,6 +1,11 @@
 # Tasks: Chunk Interest Aggregator
 
 ## Status: DEFERRED — не начинать реализацию до одобрения и до фикса бага рёбер
+**References to existing code:**
+* world.blocks.changed handling → src/apps/pipe_network/PipeNetworkService.cpp:358, handleBlockChanged()
+* world.chunk.loaded.compressed handling → src/apps/pipe_network/PipeNetworkService.cpp:360, handleChunkLoaded()
+* Chunk unload notifications → src/apps/simcore/... (chunk unload topic) — see simcore chunk manager
+* Pipe network node map → src/apps/pipe_network/PipeNetworkService.h:72 pipe_nodes_
 
 ## 1. Протокол
 - [ ] 1.1 Добавить в `protocol/*.fbs` сообщения: `ChunkInterestRegister`,

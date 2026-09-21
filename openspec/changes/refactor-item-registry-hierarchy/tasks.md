@@ -16,7 +16,7 @@
 ## 3. CLI and GUI
 
 - [ ] 3.1 Add CLI subcommands for `validate`, `stats`, `allocate`, and `merge --dry-run`.
-- [ ] 3.2 Make `tools/validate_items.py` use the shared package imports and strict model validation.
+- [x] 3.2 Make `tools/validate_items.py` use the shared package imports and strict model validation.
 - [ ] 3.3 Update the GUI to display logical path separately from allocation prefix and address capacity.
 - [ ] 3.4 Add deterministic free-range/headroom views and warnings for fragmented or nearly exhausted groups.
 - [ ] 3.5 Preserve selection and dirty state across redraws and ensure all mutating GUI operations are tracked.

@@ -14,10 +14,3 @@
 - [x] 4.1 Add protocol/router/client contract tests.
 - [x] 4.2 Run incremental build and tests; update graphify.
 
-## 3. Client debug overlay
-- [ ] 3.1 Add render-thread service-health state and F3 action.
-- [ ] 3.2 Extend the existing Debug ImGui overlay with refresh and service rows.
-
-## 4. Verification
-- [ ] 4.1 Add protocol/router/client contract tests.
-- [ ] 4.2 Run incremental build and tests; update graphify.
