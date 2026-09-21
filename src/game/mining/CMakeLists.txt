@@ -22,4 +22,5 @@ target_link_libraries(gtnh_game_mining PUBLIC
     gtnh_game_recipes
     gtnh-net
     spdlog::spdlog
+    EnTT::EnTT
 )

@@ -1,4 +1,5 @@
 #include "RecipeManager.h"
+#include <yaml-cpp/yaml.h>
 #include "ItemRegistry.h"
 #include "ConditionEvaluator.h"
 #include <engine/registry/ItemId.h>

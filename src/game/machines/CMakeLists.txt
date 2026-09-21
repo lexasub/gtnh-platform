@@ -40,4 +40,5 @@ target_link_libraries(gtnh_game_machines PUBLIC
     gtnh-net
     spdlog::spdlog
     yaml-cpp::yaml-cpp
+    EnTT::EnTT
 )

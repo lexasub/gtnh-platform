@@ -192,18 +192,7 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/src
     )
     target_link_libraries(simcored_test PRIVATE
-        gtnh_engine_sim
-        gtnh-net
-        simcored
-        gtnh_game_machines
-        gtnh_game_mining
-        gtnh_game_recipes
-        gtnh_game_quests
-        gtnh_game_crafting
-        gtnh_game_world
-        gtnh_game_actions
-        gtnh_game_storage
-        gtnh_game_scenario
+        "$<LINK_GROUP:RESCAN,gtnh_engine_sim,simcored,gtnh_game_machines,gtnh_game_mining,gtnh_game_recipes,gtnh_game_quests,gtnh_game_crafting,gtnh_game_world,gtnh_game_actions,gtnh_game_storage,gtnh_game_scenario,gtnh-net>"
         asio::asio
         flatbuffers::flatbuffers
         EnTT::EnTT

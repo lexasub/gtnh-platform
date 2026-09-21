@@ -5,7 +5,6 @@
 #include <common/ResourcePort.h>
 #include <array>
 #include <cstdint>
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <vector>
@@ -37,7 +36,7 @@ struct OutputItem {
   uint8_t count;
   uint16_t metadata;
   std::optional<std::string> display_name;
-  std::optional<nlohmann::json> nbt;
+  std::optional<std::string> nbt;
   std::optional<std::string> color;
   std::optional<std::vector<std::string>> lore;
   std::optional<std::string> unlocalized_name;
