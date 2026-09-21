@@ -5,11 +5,13 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <yaml-cpp/yaml.h>
 
 // Canonical enum lives in engine layer (simcore::EnergyType); the unqualified
 // name is kept for the existing game/app call sites.
 using simcore::EnergyType;
+namespace YAML {
+  class Node;
+}
 
 struct MachineInfo {
   uint16_t id;
