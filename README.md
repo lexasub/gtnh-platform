@@ -8,7 +8,7 @@ part playable game with world, machines, pipes, crafting, electric tools, and qu
 
 Built with C++ performance core + Go sidecars. Binary protocol (FlatBuffers + TCP).
 
-![ScreenShot](screenshots/main.jpg)
+![ScreenShot](screenshots/screenshot0.png)
 
 ## Contributing
 
