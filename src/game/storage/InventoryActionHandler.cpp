@@ -5,7 +5,7 @@
 #include "ChestStateManager.h"
 #include <game/crafting/WorkbenchStateManager.h>
 #include <game/quests/QuestManager.h>
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 #include <apps/simcore/Network/clients/IoUringRouterClient.h>
 #include "core_generated.h"
 #include <spdlog/spdlog.h>

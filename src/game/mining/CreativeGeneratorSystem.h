@@ -4,7 +4,7 @@
 #include <engine/sim/components/EnergyStorage.h>
 #include <engine/sim/components/MachineComponent.h>
 #include <engine/sim/ISystem.h>
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 #include "apps/simcore/Network/PipeEnergyClient.h"
 #include <engine/registry/ItemId.h>
 #include <entt/entt.hpp>

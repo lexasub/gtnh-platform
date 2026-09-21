@@ -1,12 +1,10 @@
 #pragma once
-
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/components/EnergyType.h>
 #include <cstdint>
-
 namespace simcore {
 
 // Stores steam produced by boilers (heat boiler converts neighbour HEAT->STEAM,
-// solid boiler via GeneratorSystem burning fuel). Capacity-based, like HeatIntakeComponent.
+// solid boiler via GeneratorSystem burning fuel). Capacity-based, like HeatStorageComponent.
 struct SteamOutputComponent {
     EnergyType input_type = EnergyType::STEAM;
     double steam_stored = 0.0;

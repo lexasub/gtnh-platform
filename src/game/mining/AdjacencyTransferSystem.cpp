@@ -1,6 +1,6 @@
 #include "AdjacencyTransferSystem.h"
 #include <engine/sim/components/Block.h>
-#include <game/machines/HeatIntakeComponent.h>
+#include <engine/sim/components/HeatIntakeComponent.h>
 #include <game/machines/HeatSlowComponent.h>
 #include <engine/sim/components/MachineComponent.h>
 #include <engine/sim/components/MultiblockController.h>

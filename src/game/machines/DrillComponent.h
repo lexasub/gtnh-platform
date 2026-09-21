@@ -1,5 +1,5 @@
 #pragma once
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 #include <cstdint>
 #include <utility>
 #include <vector>

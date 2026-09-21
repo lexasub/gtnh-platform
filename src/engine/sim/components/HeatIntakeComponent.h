@@ -1,6 +1,5 @@
 #pragma once
-#include <game/machines/MachineRegistry.h>
-#include <cstdint>
+#include <engine/sim/components/EnergyType.h>
 
 namespace simcore {
 struct HeatIntakeComponent {

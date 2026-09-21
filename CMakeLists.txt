@@ -44,6 +44,8 @@ if(CMAKE_TOOLCHAIN_FILE)
     include(${CMAKE_TOOLCHAIN_FILE})
 endif()
 
+set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Conan-managed dependencies
 find_package(asio REQUIRED)
 find_package(flatbuffers REQUIRED)

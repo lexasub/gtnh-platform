@@ -3,7 +3,7 @@
 #include "core/ActionHandler.h"
 #include <game/client/Common/Inventory.h>
 #include <game/client/Crafting/ClientItemRegistry.h>
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 #include <imgui.h>
 #include <algorithm>
 

@@ -4,9 +4,9 @@
 #include "content/content.h"
 #include <common/ResourcePortClient.h>
 #include <spdlog/spdlog.h>
-#include <game/machines/HeatIntakeComponent.h>
+#include <engine/sim/components/HeatIntakeComponent.h>
 #include <engine/sim/components/EnergyStorage.h>
-#include <game/machines/SteamOutputComponent.h>
+#include <engine/sim/components/SteamOutputComponent.h>
 
 namespace simcore {
 

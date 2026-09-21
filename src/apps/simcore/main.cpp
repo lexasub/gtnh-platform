@@ -52,7 +52,7 @@
 #include <game/crafting/WorkbenchStateManager.h>
 #include <game/storage/ContainerSession.h>
 #include <game/storage/ChestStateManager.h>
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 #include "Common/MainThreadQueue.h"
 #include "core_generated.h"
 #include "meta_db_generated.h"
@@ -506,11 +506,6 @@ int main(int argc, char* argv[]) {
     }
 
     // ── Generic machine interaction handlers ──
-    simulationEngine->registerMachineInteractionHandler(
-        simcore::RotareGeneratorSystem::kRotareGeneratorBlockId,
-        [engine = simulationEngine.get()](int32_t x, int32_t y, int32_t z, uint64_t) -> bool {
-            return engine->tryActivateRotareGenerator(x, y, z);
-        });
 
     auto wrenchHandler = std::make_shared<simcore::WrenchHandler>(
         simulationEngine->reg(), eventPublisher, entityStateClient,

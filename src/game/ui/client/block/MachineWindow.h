@@ -7,7 +7,7 @@
 #include <game/client/Common/Inventory.h>
 #include "../core/DragManager.h"
 #include "../BlockAttachedWindow.h"
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 
 class NetClient;
 class InputBinder;

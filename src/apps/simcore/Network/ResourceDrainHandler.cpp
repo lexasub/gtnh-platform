@@ -1,7 +1,7 @@
 #include "Network/ResourceDrainHandler.h"
 
 #include <engine/sim/components/FluidStorage.h>
-#include <game/machines/SteamOutputComponent.h>
+#include <engine/sim/components/SteamOutputComponent.h>
 
 #include <algorithm>
 #include <cmath>

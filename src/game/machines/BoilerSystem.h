@@ -3,7 +3,7 @@
 #include "Network/IEventPublisher.h"
 #include "Network/PipeEnergyClient.h"
 #include <engine/sim/components/EnergyStorage.h>
-#include <game/machines/HeatIntakeComponent.h>
+#include <engine/sim/components/HeatIntakeComponent.h>
 #include <engine/sim/components/InventoryContainer.h>
 #include <engine/sim/components/MachineComponent.h>
 #include <engine/sim/components/RecipeProgress.h>

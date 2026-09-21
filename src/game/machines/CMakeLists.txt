@@ -6,7 +6,6 @@ find_package(spdlog REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 add_library(gtnh_game_machines STATIC
-    MachineRegistry.cpp
     MachineSystem.cpp
     BoilerSystem.cpp
     GeneratorSystem.cpp

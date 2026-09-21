@@ -7,7 +7,7 @@
 
 #include "UIManager.h"
 #include "BlockAttachedWindow.h"
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 
 class IUIWindow;
 class IUIWindow;

@@ -9,8 +9,8 @@
 #include "MachineRegistry.h"
 #include <game/machines/OverheatComponent.h>
 #include <game/machines/HeatSlowComponent.h>
-#include <game/machines/HeatIntakeComponent.h>
-#include <game/machines/SteamOutputComponent.h>
+#include <engine/sim/components/HeatIntakeComponent.h>
+#include <engine/sim/components/SteamOutputComponent.h>
 #include <engine/sim/components/FluidStorage.h>
 #include <game/storage/ContainerSession.h>
 #include <game/storage/ChestStateManager.h>

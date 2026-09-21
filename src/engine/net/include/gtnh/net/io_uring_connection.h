@@ -89,7 +89,8 @@ public:
       on_message;
 
   // Fired after close completes (fd closed, write queue drained).
-  std::move_only_function<void()> on_closed;
+  std::move_only_function<void()>
+      on_closed;
 
   // Optional periodic heartbeat: the poll loop fires on_heartbeat every
   // heartbeat_interval_ while the connection is running. Interval of 0
@@ -97,7 +98,10 @@ public:
   // chunk.requests) stay alive on the router without a manual heartbeat()
   // call site in every service.
   std::chrono::milliseconds heartbeat_interval_{0};
-  std::move_only_function<void()> on_heartbeat;
+  std::move_only_function<void()>
+      on_heartbeat;
+
+
 
 private:
   bool prep_read_header();

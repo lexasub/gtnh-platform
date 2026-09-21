@@ -2,7 +2,7 @@
 #include "apps/simcore/Network/PipeEnergyClient.h"
 #include "apps/simcore/Network/IEventPublisher.h"
 #include <game/machines/ItemEnergyStorage.h>
-#include <game/machines/BatteryBufferComponent.h>
+#include <engine/sim/components/BatteryBufferComponent.h>
 #include <engine/sim/components/InventoryContainer.h>
 #include <engine/sim/ISystem.h>
 #include <deque>

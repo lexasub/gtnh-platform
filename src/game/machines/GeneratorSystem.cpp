@@ -2,8 +2,8 @@
 #include "Network/FluidClient.h"
 #include "content/content.h"
 #include "MachineRegistry.h"
-#include <game/machines/HeatIntakeComponent.h>
-#include <game/machines/SteamOutputComponent.h>
+#include <engine/sim/components/HeatIntakeComponent.h>
+#include <engine/sim/components/SteamOutputComponent.h>
 #include <cstring>
 #include <spdlog/spdlog.h>
 

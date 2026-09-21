@@ -1,8 +1,11 @@
 cmake_minimum_required(VERSION 3.20)
 
+find_package(yaml-cpp REQUIRED)
+
 add_library(gtnh_engine_sim STATIC
     SimulationEngine.cpp
     PatternLibrary.cpp
+    MachineRegistry.cpp
 )
 
 # Public headers use <engine/sim/...> and <engine/registry/ItemId.h> path
@@ -19,7 +22,6 @@ target_include_directories(gtnh_engine_sim PRIVATE
     ${CMAKE_SOURCE_DIR}/src/apps/simcore
     ${CMAKE_BINARY_DIR}/src/apps/simcore/simcored_fbs
 )
-
 target_link_libraries(gtnh_engine_sim PUBLIC
     gtnh_engine_registry
     spdlog::spdlog
@@ -28,4 +30,7 @@ target_link_libraries(gtnh_engine_sim PUBLIC
 target_link_libraries(gtnh_engine_sim PRIVATE
     flatbuffers::flatbuffers
     EnTT::EnTT
+    yaml-cpp::yaml-cpp
 )
+
+

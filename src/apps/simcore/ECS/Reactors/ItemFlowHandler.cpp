@@ -6,7 +6,7 @@
 #include <game/storage/ChestStateManager.h>
 #include "pipe_network_generated.h"
 #include "machine_state_generated.h"
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 #include <spdlog/spdlog.h>
 #include <cstring>
 

@@ -22,7 +22,7 @@
 #include <game/machines/BoilerPorts.h>
 #include <game/machines/BoilerSystem.h>
 #include <game/machines/HeatConstants.h>
-#include <game/machines/SteamOutputComponent.h>
+#include <engine/sim/components/SteamOutputComponent.h>
 
 extern int g_tests, g_passed, g_failed;
 void test_check(bool cond, const char* file, int line, const char* expr, const char* msg);

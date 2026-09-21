@@ -1,5 +1,5 @@
 #include "MachineSlotHandler.h"
-#include "../../game/quests/QuestManager.h"
+#include <game/quests/QuestManager.h>
 #include <engine/sim/SimulationEngine.h>
 #include <engine/sim/components/Position.h>
 #include <engine/sim/components/MachineComponent.h>
@@ -10,7 +10,7 @@
 #include <apps/simcore/Network/IEventPublisher.h>
 #include <apps/simcore/Network/clients/IoUringRouterClient.h>
 #include "machine_state_generated.h"
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 #include <spdlog/spdlog.h>
 #include <cstring>
 namespace simcore {

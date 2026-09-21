@@ -2,7 +2,7 @@
 
 #include <engine/sim/ISystem.h>
 #include "HeatConstants.h"
-#include <game/machines/HeatIntakeComponent.h>
+#include <engine/sim/components/HeatIntakeComponent.h>
 #include <game/machines/OverheatComponent.h>
 #include <engine/sim/components/InventoryContainer.h>
 #include <engine/sim/components/Position.h>

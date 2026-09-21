@@ -3,7 +3,7 @@
 #include <engine/sim/components/EnergyStorage.h>
 #include <engine/sim/components/InventoryContainer.h>
 #include <engine/sim/components/RecipeProgress.h>
-#include <game/machines/HeatIntakeComponent.h>
+#include <engine/sim/components/HeatIntakeComponent.h>
 #include <engine/sim/components/Position.h>
 #include <engine/sim/components/Block.h>
 #include <engine/sim/components/MultiblockController.h>

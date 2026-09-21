@@ -1,5 +1,5 @@
 #pragma once
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 #include "PatternLibrary.h"
 #include <engine/sim/ISystem.h>
 #include "components/Block.h"
@@ -89,7 +89,6 @@ public:
   void onMachineInteracted(int32_t x, int32_t y, int32_t z,
                            uint16_t machine_id, uint64_t player_id);
   void registerMachineInteractionHandler(uint16_t machine_id, MachineInteractionHandler handler);
-  bool tryActivateRotareGenerator(int32_t x, int32_t y, int32_t z);
   const MachineRegistry *getMachineRegistry() const { return machine_registry_; }
   PatternRegistry& getPatternRegistry() { return pattern_registry_; }
   const PatternRegistry& getPatternRegistry() const { return pattern_registry_; }

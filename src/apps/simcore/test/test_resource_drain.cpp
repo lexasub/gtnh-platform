@@ -5,7 +5,7 @@
 
 #include "Network/ResourceDrainHandler.h"
 #include <engine/sim/components/FluidStorage.h>
-#include <game/machines/SteamOutputComponent.h>
+#include <engine/sim/components/SteamOutputComponent.h>
 
 #include <engine/registry/Registry.h>
 #include <common/ResourcePortClient.h>

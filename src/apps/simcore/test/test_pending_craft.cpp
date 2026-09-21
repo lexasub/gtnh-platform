@@ -17,7 +17,7 @@
 #include <engine/sim/components/FluidStorage.h>
 #include "RecipeManager/RecipeManager.h"
 #include <game/recipes/ItemRegistry.h>
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 
 #include <engine/registry/ItemId.h>
 #include <engine/registry/Registry.h>

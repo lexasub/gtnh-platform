@@ -15,7 +15,7 @@
 #include <game/ui/client/block/MachineWindow.h>
 #include "Common/BlockType.h"
 #include "core_generated.h"
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 #include <engine/registry/ItemId.h>
 #include "data/registry/ToolIds.h"
 #include "World/WrenchingSide.h"

@@ -18,10 +18,10 @@
 #include <engine/sim/components/RecipeProgress.h>
 #include <engine/sim/components/InventoryContainer.h>
 #include <engine/sim/components/EnergyStorage.h>
-#include <game/machines/HeatIntakeComponent.h>
-#include <game/machines/SteamOutputComponent.h>
+#include <engine/sim/components/HeatIntakeComponent.h>
+#include <engine/sim/components/SteamOutputComponent.h>
 #include <engine/sim/components/Position.h>
-#include <game/machines/BatteryBufferComponent.h>
+#include <engine/sim/components/BatteryBufferComponent.h>
 #include "ECS/Reactors/EnergyFlowHandler.h"
 #include <game/machines/GeneratorSystem.h>
 #include <game/mining/AdjacencyTransferSystem.h>
@@ -35,7 +35,7 @@
 #include "Network/IEventPublisher.h"
 #include "Network/PipeEnergyClient.h"
 #include "Network/FluidClient.h"
-#include <game/machines/MachineRegistry.h>
+#include <engine/sim/MachineRegistry.h>
 #include "RecipeManager/RecipeManager.h"
 #include <game/actions/SetBlockCASHandler.h>
 #include <game/storage/IBlockRepository.h>

@@ -1,15 +1,13 @@
 #include <engine/sim/SimulationEngine.h>
-#include "game/machines/RotareGeneratorSystem.h"
-#include <game/machines/BatteryBufferComponent.h>
-#include <game/machines/SteamTurbineComponent.h>
-#include <game/machines/HeatIntakeComponent.h>
-#include <game/machines/SteamOutputComponent.h>
-#include "game/machines/SteamTurbineSystem.h"
+#include <engine/sim/components/BatteryBufferComponent.h>
+#include <engine/sim/components/HeatIntakeComponent.h>
+#include <engine/sim/components/SteamOutputComponent.h>
 #include "Common/xyz.h"
 #include <engine/registry/ItemId.h>
 #include "multiblock_state_generated.h"
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
+#include <ranges>
 #include <algorithm>
 
 constexpr bool isInfraBlock(uint16_t id) {
@@ -56,7 +54,7 @@ void SimulationEngine::removeBlockFromController(uint32_t mb_id, uint32_t x, uin
     if (it != controllers_.end()) {
         uint32_t packed = mbPack(x, y, z);
         auto& blocks = it->second.blocks;
-        blocks.erase(std::ranges::remove(blocks, packed).begin(), blocks.end());
+        blocks.erase(std::remove(blocks.begin(), blocks.end(), packed), blocks.end());
         spdlog::debug("[ECS] Block ({},{},{}) removed from controller #{}", x, y, z, mb_id);
     }
 }
@@ -265,10 +263,6 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
             reg_.emplace_or_replace<HeatIntakeComponent>(entity);
         }
 
-        if (block_id == SteamTurbineSystem::kBlockId) {
-            reg_.emplace_or_replace<SteamTurbineComponent>(entity);
-        }
-
         if (machine_registry_) {
             if (auto* info = machine_registry_->Get(block_id)) {
                 if (info->energy_out.has_value() && info->energy_out.value() == EnergyType::STEAM) {
@@ -287,12 +281,6 @@ void SimulationEngine::onBlockChanged(uint32_t x, uint32_t y, uint32_t z,
             }
         }
 
-        if (block_id == SteamTurbineSystem::kBlockId) {
-            reg_.emplace_or_replace<SteamTurbineComponent>(entity);
-            // The turbine owns its steam-to-EU loop; MachineSystem must not
-            // treat it as a generic steam recipe machine.
-            reg_.get<MachineComponent>(entity).managed_externally = true;
-        }
 
         if (onMachineCreated) {
             onMachineCreated(static_cast<int32_t>(x),
@@ -439,11 +427,10 @@ uint64_t SimulationEngine::matchElectrolyser(uint32_t anchor_x, uint32_t anchor_
     std::vector<uint32_t> blocks;
     blocks.reserve(ELECTROLYSER_PATTERN.size());
     for (const auto& [dx, dy, dz] : ELECTROLYSER_PATTERN) {
-        blocks.push_back(xyz(
-            static_cast<uint32_t>(static_cast<int32_t>(anchor_x) + dx),
-            static_cast<uint32_t>(static_cast<int32_t>(anchor_y) + dy),
-            static_cast<uint32_t>(static_cast<int32_t>(anchor_z) + dz)
-        ));
+        uint32_t px = static_cast<uint32_t>(static_cast<int32_t>(anchor_x) + dx);
+        uint32_t py = static_cast<uint32_t>(static_cast<int32_t>(anchor_y) + dy);
+        uint32_t pz = static_cast<uint32_t>(static_cast<int32_t>(anchor_z) + dz);
+        blocks.push_back(mbPack(px, py, pz));
     }
 
     registerController(controller_id, anchor_x, anchor_y, anchor_z, 0, blocks);
@@ -572,27 +559,6 @@ void SimulationEngine::onMachineInteracted(int32_t x, int32_t y, int32_t z,
     }
 }
 
-bool SimulationEngine::tryActivateRotareGenerator(int32_t x, int32_t y, int32_t z) {
-    auto ent = findEntityAt(static_cast<uint32_t>(x), static_cast<uint32_t>(y), static_cast<uint32_t>(z));
-    if (ent == entt::null) return false;
-
-    auto* machine = reg_.try_get<MachineComponent>(ent);
-    if (!machine) return false;
-    if (machine->machine_id != RotareGeneratorSystem::kRotareGeneratorBlockId) return false;
-
-    auto* energy = reg_.try_get<EnergyStorage>(ent);
-    if (!energy) return false;
-
-    auto& state = reg_.emplace_or_replace<RotareState>(ent);
-    if (state.spinning) return false;
-
-    state.spinning = true;
-    state.remainingTicks = RotareGeneratorSystem::kSpinDurationTicks;
-    state.energyPerTick = RotareGeneratorSystem::kEnergyPerTick;
-
-    spdlog::info("Rotare generator activated at ({},{},{})", x, y, z);
-    return true;
-}
 
 std::vector<uint8_t> SimulationEngine::serializeMultiblock(uint64_t controller_id) const
 {

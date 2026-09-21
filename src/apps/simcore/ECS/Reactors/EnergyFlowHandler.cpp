@@ -1,6 +1,6 @@
 #include "EnergyFlowHandler.h"
 #include <engine/sim/components/EnergyStorage.h>
-#include <game/machines/BatteryBufferComponent.h>
+#include <engine/sim/components/BatteryBufferComponent.h>
 #include <engine/sim/components/MachineComponent.h>
 #include "core_generated.h"
 #include "pipe_network_generated.h"
