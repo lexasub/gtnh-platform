@@ -195,6 +195,57 @@ func (c *GatewayClient) ExpectMsgType(expected uint8, timeout time.Duration) ([]
 	return nil, fmt.Errorf("timeout waiting for msg_type %d", expected)
 }
 
+// WaitForInventoryItem waits for an InventoryUpdate snapshot belonging to
+// playerID whose slots hold itemID with a total count of at least minCount.
+// Gateway forwards queued player.inventory.update pushes without correlation,
+// so unmatched snapshots (empty payload, other player, other item, smaller
+// total) are skipped until the deadline.
+//
+// The count is summed across every matching slot because the server splits
+// stacks across slots.
+func (c *GatewayClient) WaitForInventoryItem(playerID uint64, itemID uint16, minCount byte, timeout time.Duration) ([]byte, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, fmt.Errorf("timeout waiting for inventory player=%d item=%d total_count>=%d", playerID, itemID, minCount)
+		}
+		if remaining < 10*time.Millisecond {
+			remaining = 10 * time.Millisecond
+		}
+		msgType, data, err := c.ReadCtrl(remaining)
+		if err != nil {
+			// A read that expires exactly at the deadline is the timeout path,
+			// not a transport failure; report the predicate that never matched.
+			if time.Now().Before(deadline) {
+				return nil, fmt.Errorf("wait for inventory player=%d item=%d total_count>=%d: %w", playerID, itemID, minCount, err)
+			}
+			return nil, fmt.Errorf("timeout waiting for inventory player=%d item=%d total_count>=%d", playerID, itemID, minCount)
+		}
+		// A zero-length FlatBuffer has no root table; GetRootAs* would panic.
+		if msgType != MsgInventoryUpdate || len(data) == 0 {
+			continue
+		}
+		update := Protocol.GetRootAsInventoryUpdate(data, 0)
+		if update.PlayerId() != playerID {
+			continue
+		}
+		total := 0
+		var slot Protocol.InventorySlot
+		for i := 0; i < update.SlotsLength(); i++ {
+			if !update.Slots(&slot, i) {
+				continue
+			}
+			if slot.ItemId() == itemID {
+				total += int(slot.Count())
+			}
+		}
+		if total >= int(minCount) {
+			return data, nil
+		}
+	}
+}
+
 // WaitForBlockAck waits for the ACK matching both request ID and status.
 // Gateway pushes may be interleaved with ACKs, so unrelated complete frames
 // are consumed and ignored. The ACCEPTED status is the placement protocol's

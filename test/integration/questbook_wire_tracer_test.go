@@ -40,7 +40,10 @@ func TestQuestBookOpen_InventoryCompletion(t *testing.T) {
 		playerID, Protocol.PlayerActionTypeITEM_ACTION, 0, 0, 0, 22530, 8)); err != nil {
 		t.Fatalf("send creative oak grant: %v", err)
 	}
-	data, err := c.ExpectMsgType(testutil.MsgInventoryUpdate, 5*time.Second)
+	// Gateway forwards queued player.inventory.update pushes without
+	// correlation, so wait for the snapshot that actually proves this grant
+	// (player 1 holding at least 8 oak logs) instead of the first frame.
+	data, err := c.WaitForInventoryItem(playerID, 22530, 8, 5*time.Second)
 	if err != nil {
 		t.Fatalf("wait for authoritative oak inventory update: %v", err)
 	}
