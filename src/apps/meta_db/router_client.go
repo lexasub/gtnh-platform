@@ -270,11 +270,10 @@ func readRouterFrame(conn net.Conn, buf []byte) (msgType, []byte, error) {
 	var payload []byte
 	totalLen := int(payloadLen) - 1
 	if totalLen > 0 {
-		if totalLen <= cap(buf)-5 {
-			payload = buf[5 : 5+totalLen]
-		} else {
-			payload = make([]byte, totalLen)
-		}
+		// Return an independently owned slice even when buf is reusable. The
+		// caller queues this payload for asynchronous handling, so aliasing buf
+		// would let the next frame overwrite bytes before they are processed.
+		payload = make([]byte, totalLen)
 		if _, err := io.ReadFull(conn, payload); err != nil {
 			return 0, nil, err
 		}
