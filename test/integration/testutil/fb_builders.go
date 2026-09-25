@@ -144,6 +144,27 @@ func BuildPlayerAction(playerID uint64, actionType Protocol.PlayerActionType, x,
 	return b.FinishedBytes()
 }
 
+// BuildGameModeChange builds the client→server GameModeChange FlatBuffer.
+func BuildGameModeChange(playerID uint64, mode Protocol.GameMode) []byte {
+	b := flatbuffers.NewBuilder(32)
+	Protocol.GameModeChangeStart(b)
+	Protocol.GameModeChangeAddPlayerId(b, playerID)
+	Protocol.GameModeChangeAddNewMode(b, mode)
+	change := Protocol.GameModeChangeEnd(b)
+	b.Finish(change)
+	return b.FinishedBytes()
+}
+
+// BuildQuestBookOpen builds the client→server QuestBookOpen FlatBuffer.
+func BuildQuestBookOpen(playerID uint64) []byte {
+	b := flatbuffers.NewBuilder(32)
+	Protocol.QuestBookOpenStart(b)
+	Protocol.QuestBookOpenAddPlayerId(b, playerID)
+	req := Protocol.QuestBookOpenEnd(b)
+	b.Finish(req)
+	return b.FinishedBytes()
+}
+
 // BuildInventoryAction builds an InventoryAction FlatBuffer.
 // The current schema represents the source slot as Slot; targetSlot and meta
 // remain parameters for compatibility with older callers.

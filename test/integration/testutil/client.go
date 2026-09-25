@@ -36,9 +36,13 @@ const (
 	MsgCompressedChunk     = 12
 	MsgSetMachineSlot      = 15
 	MsgSetMachineSlotResp  = 16
-	MsgMachineOpenReq      = 18
-	MsgMultiblockEvent     = 23
-	MsgResourceBufferState = 47
+	MsgMachineOpenReq             = 18
+	MsgQuestProgressUpdate        = 20
+	MsgQuestCompletedNotification = 22
+	MsgMultiblockEvent            = 23
+	MsgGameModeChange             = 30
+	MsgQuestBookOpen              = 33
+	MsgResourceBufferState        = 47
 	MsgPipeContentsReq     = 48
 	MsgPipeContentsResp    = 49
 )
@@ -125,6 +129,44 @@ func (c *GatewayClient) ReadCtrl(timeout time.Duration) (uint8, []byte, error) {
 	}
 
 	return msgType, fbData, nil
+}
+
+// ExpectQuestCompletion waits for both completion and progress notifications
+// and returns their raw payloads. Unrelated push frames are consumed because
+// the connection is dedicated to this tracer.
+func (c *GatewayClient) ExpectQuestCompletion(playerID uint64, questID uint32, timeout time.Duration) (completed, progress []byte, err error) {
+	deadline := time.Now().Add(timeout)
+	for completed == nil || progress == nil {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return completed, progress, fmt.Errorf("timeout waiting for quest completion player=%d quest=%d (completed=%t progress=%t)", playerID, questID, completed != nil, progress != nil)
+		}
+		msgType, data, readErr := c.ReadCtrl(remaining)
+		if readErr != nil {
+			return completed, progress, fmt.Errorf(
+				"trace quest completion player=%d quest=%d completed=%t progress=%t: %w",
+				playerID, questID, completed != nil, progress != nil, readErr)
+		}
+		switch msgType {
+		case MsgQuestCompletedNotification:
+			notification := Protocol.GetRootAsQuestCompletedNotification(data, 0)
+			if notification.PlayerId() == playerID && notification.QuestId() == questID {
+				completed = data
+			}
+		case MsgQuestProgressUpdate:
+			update := Protocol.GetRootAsQuestProgressUpdate(data, 0)
+			if update.PlayerId() != playerID {
+				continue
+			}
+			for i := 0; i < update.QuestsLength(); i++ {
+				entry := Protocol.QuestEntry{}
+				if update.Quests(&entry, i) && entry.QuestId() == questID && entry.Status() == Protocol.QuestStatusCOMPLETED && entry.Progress() == 100 {
+					progress = data
+				}
+			}
+		}
+	}
+	return completed, progress, nil
 }
 
 // ExpectMsgType reads and verifies the message type is the expected one.

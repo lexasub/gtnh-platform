@@ -64,7 +64,7 @@ func findBinary(name string) (string, error) {
 		"routerd":           "message_router",
 		"gatewayd":          "gateway",
 		"chunkd":            "chunk_store",
-		"simcored":          "simulation_core",
+		"simcored":          "simcore",
 		"entitystated":      "entity_state_store",
 		"metadbd":           "meta_db",
 		"pipenetworkd":      "pipe_network",
@@ -79,6 +79,10 @@ func findBinary(name string) (string, error) {
 	}
 	repoRoot := filepath.Clean(filepath.Join(BuildRoot, ".."))
 	candidates := []string{
+		filepath.Join(BuildRoot, "src", "apps", dir, name),
+		filepath.Join(BuildRoot, "src", "apps", dir, name+"_exec"),
+		filepath.Join(repoRoot, "src", "apps", dir, name),
+		// Legacy bin/ and src/services layout (kept for backward compatibility).
 		filepath.Join(BuildRoot, "bin", name),
 		filepath.Join(BuildRoot, name),
 		filepath.Join(BuildRoot, "src", "services", dir, name),

@@ -23,7 +23,7 @@ func TestMain(m *testing.M) {
 
 func startServices(sm *testutil.ServiceManager) func() {
 	gw = testutil.DefaultGateway()
-	projectRoot := filepath.Clean(filepath.Join(testutil.DataRoot, ".."))
+	projectRoot := filepath.Clean(filepath.Join(testutil.BuildRoot, ".."))
 	registryRoot := filepath.Join(testutil.DataRoot, "registry")
 	machinesYAML := filepath.Join(registryRoot, "machines.yaml")
 	chunkdbDir, err := os.MkdirTemp("", "gtnh-test-chunkdb-")
@@ -31,10 +31,21 @@ func startServices(sm *testutil.ServiceManager) func() {
 		fmt.Printf("SKIP: cannot create isolated ChunkStore database: %v\n", err)
 		return sm.Shutdown
 	}
+	entityDir, err := os.MkdirTemp("", "gtnh-test-entitystate-")
+	if err != nil {
+		fmt.Printf("SKIP: cannot create isolated EntityState database: %v\n", err)
+		return sm.Shutdown
+	}
+	dbPath := filepath.Join(entityDir, "db")
+	if err := os.MkdirAll(dbPath, 0755); err != nil {
+		fmt.Printf("SKIP: cannot create EntityState db dir: %v\n", err)
+		return sm.Shutdown
+	}
 	var metadbDir string
 	cleanup := func() {
 		sm.Shutdown()
 		os.RemoveAll(chunkdbDir)
+		os.RemoveAll(entityDir)
 		if metadbDir != "" {
 			os.RemoveAll(metadbDir)
 		}
@@ -95,6 +106,7 @@ func startServices(sm *testutil.ServiceManager) func() {
 	if err := sm.StartService(testutil.ServiceConfig{
 		Name:   "entitystated",
 		Binary: "entitystated",
+		Args:   []string{dbPath},
 		ReadyCheck: func() bool {
 			conn, err := net.DialTimeout("tcp", "127.0.0.1:5200", 100*time.Millisecond)
 			if err != nil {
