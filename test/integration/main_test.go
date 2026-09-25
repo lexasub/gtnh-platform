@@ -23,6 +23,7 @@ func TestMain(m *testing.M) {
 
 func startServices(sm *testutil.ServiceManager) func() {
 	gw = testutil.DefaultGateway()
+	var router *testutil.ManagedService
 	projectRoot := filepath.Clean(filepath.Join(testutil.BuildRoot, ".."))
 	registryRoot := filepath.Join(testutil.DataRoot, "registry")
 	machinesYAML := filepath.Join(registryRoot, "machines.yaml")
@@ -56,11 +57,11 @@ func startServices(sm *testutil.ServiceManager) func() {
 		return func() {}
 	}
 
-	if err := sm.StartService(testutil.ServiceConfig{
+	router, err = sm.StartService(testutil.ServiceConfig{
 		Name:   "routerd",
 		Binary: "routerd",
 		Args:   []string{"--port", "4000"},
-		ReadyCheck: func() bool {
+		ReadyCheck: func(*testutil.ManagedService) bool {
 			conn, err := net.DialTimeout("tcp", "127.0.0.1:4000", 100*time.Millisecond)
 			if err != nil {
 				return false
@@ -68,34 +69,32 @@ func startServices(sm *testutil.ServiceManager) func() {
 			conn.Close()
 			return true
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		fmt.Printf("SKIP: routerd not available: %v\n", err)
 		cleanup()
 		return func() {}
 	}
 
-	if err := sm.StartService(testutil.ServiceConfig{
-		Name:       "pipe_networkd",
-		Binary:     "pipe_networkd",
-		Args:       []string{"--router-host", "127.0.0.1", "--router-port", "4000"},
-		ReadyCheck: func() bool { return true },
+	if _, err := sm.StartService(testutil.ServiceConfig{
+		Name:   "pipe_networkd",
+		Binary: "pipe_networkd",
+		Args:   []string{"--router-host", "127.0.0.1", "--router-port", "4000"},
+		ReadyCheck: func(*testutil.ManagedService) bool {
+			return testutil.RouterServiceHasRegistration(router.Output(), "pipe_network")
+		},
 	}); err != nil {
 		fmt.Printf("SKIP: pipenetworkd not available: %v\n", err)
 		cleanup()
 		return func() {}
 	}
 
-	if err := sm.StartService(testutil.ServiceConfig{
+	if _, err := sm.StartService(testutil.ServiceConfig{
 		Name:   "chunkd",
 		Binary: "chunkd",
 		Args:   []string{chunkdbDir, "5001", "127.0.0.1", "4000"},
-		ReadyCheck: func() bool {
-			conn, err := net.DialTimeout("tcp", "127.0.0.1:5001", 100*time.Millisecond)
-			if err != nil {
-				return false
-			}
-			conn.Close()
-			return true
+		ReadyCheck: func(*testutil.ManagedService) bool {
+			return testutil.RouterServiceHasSubscriptions(router.Output(), "chunkstore", "chunk.requests")
 		},
 	}); err != nil {
 		fmt.Printf("SKIP: chunkd not available: %v\n", err)
@@ -103,17 +102,12 @@ func startServices(sm *testutil.ServiceManager) func() {
 		return func() {}
 	}
 
-	if err := sm.StartService(testutil.ServiceConfig{
+	if _, err := sm.StartService(testutil.ServiceConfig{
 		Name:   "entitystated",
 		Binary: "entitystated",
 		Args:   []string{dbPath},
-		ReadyCheck: func() bool {
-			conn, err := net.DialTimeout("tcp", "127.0.0.1:5200", 100*time.Millisecond)
-			if err != nil {
-				return false
-			}
-			conn.Close()
-			return true
+		ReadyCheck: func(*testutil.ManagedService) bool {
+			return testutil.RouterServiceHasRegistration(router.Output(), "entitystated")
 		},
 	}); err != nil {
 		fmt.Printf("SKIP: entitystated not available: %v\n", err)
@@ -121,7 +115,7 @@ func startServices(sm *testutil.ServiceManager) func() {
 		return func() {}
 	}
 
-	if err := sm.StartService(testutil.ServiceConfig{
+	if _, err := sm.StartService(testutil.ServiceConfig{
 		Name:   "simcored",
 		Binary: "simcored",
 		Args: []string{
@@ -130,13 +124,8 @@ func startServices(sm *testutil.ServiceManager) func() {
 			filepath.Join(testutil.DataRoot, "recipes"),
 			machinesYAML,
 		},
-		ReadyCheck: func() bool {
-			conn, err := net.DialTimeout("tcp", "127.0.0.1:4000", 100*time.Millisecond)
-			if err != nil {
-				return false
-			}
-			conn.Close()
-			return true
+		ReadyCheck: func(*testutil.ManagedService) bool {
+			return testutil.RouterServiceHasSubscription(router.Output(), "simcore", "quest.book.open")
 		},
 	}); err != nil {
 		fmt.Printf("SKIP: simcored not available: %v\n", err)
@@ -144,17 +133,13 @@ func startServices(sm *testutil.ServiceManager) func() {
 		return func() {}
 	}
 
-	if err := sm.StartService(testutil.ServiceConfig{
+	if _, err := sm.StartService(testutil.ServiceConfig{
 		Name:   "gatewayd",
 		Binary: "gatewayd",
 		Args:   []string{"--router-port", "4000", "--port", "7777", "--bulk-port", "7778"},
-		ReadyCheck: func() bool {
-			conn, err := net.DialTimeout("tcp", "127.0.0.1:7777", 100*time.Millisecond)
-			if err != nil {
-				return false
-			}
-			conn.Close()
-			return true
+		ReadyCheck: func(*testutil.ManagedService) bool {
+			return testutil.RouterServiceHasSubscriptions(router.Output(), "gateway",
+				"metadb.player.online", "quest.progress.updated", "quest.completed.notification")
 		},
 	}); err != nil {
 		fmt.Printf("SKIP: gatewayd not available: %v\n", err)
@@ -168,17 +153,12 @@ func startServices(sm *testutil.ServiceManager) func() {
 		cleanup()
 		return func() {}
 	}
-	if err := sm.StartService(testutil.ServiceConfig{
+	if _, err := sm.StartService(testutil.ServiceConfig{
 		Name:    "metadbd",
 		Binary:  "metadbd",
 		WorkDir: metadbDir,
-		ReadyCheck: func() bool {
-			conn, err := net.DialTimeout("tcp", "127.0.0.1:5006", 100*time.Millisecond)
-			if err != nil {
-				return false
-			}
-			conn.Close()
-			return true
+		ReadyCheck: func(*testutil.ManagedService) bool {
+			return testutil.RouterServiceHasRegistration(router.Output(), "metadb")
 		},
 	}); err != nil {
 		fmt.Printf("SKIP: metadbd not available: %v\n", err)
@@ -186,6 +166,5 @@ func startServices(sm *testutil.ServiceManager) func() {
 		return func() {}
 	}
 
-	time.Sleep(3 * time.Second)
 	return cleanup
 }
