@@ -1,3 +1,26 @@
+// FIXED (gp-18yv, gp-bbbl) in the same change; this suite now asserts the
+// corrected behaviour:
+//
+//   gp-18yv  the system was DEAD at runtime. RotareState is emplaced in
+//            exactly one place, activate(), and nothing in production ever
+//            called it: main.cpp constructed the system, handed ownership to
+//            registerSystem() and retained nothing, and the engine's
+//            machine-interaction table — which is what a left-click consults
+//            via onMachineInteracted() — was empty for every machine. So a
+//            left-click was routed to MachineInteractHandler (machines.yaml
+//            flags this block interact_on_left: true), acked, animated, and
+//            produced no energy. The seam the tests below drive is
+//            simcore::registerRotareInteraction(engine, system), which
+//            installs the handler that resolves the clicked position to an
+//            entity and calls activate(). Wired in main.cpp next to the
+//            registerSystem() call.
+//   gp-bbbl  publishBlockEntityUpdate stopped at energy.type, so the
+//            energy_capacity argument fell through to its IEventPublisher
+//            default of 0 and the client drew a tier-guessed 10000 EU bar for
+//            a buffer machines.yaml declares as 5000. The call now passes
+//            energy.capacity, like every sibling machine system.
+//
+// ---------------------------------------------------------------------------
 // RotareGeneratorSystem unit tests (issue gp-kxj5).
 //
 // Covers src/game/machines/RotareGeneratorSystem.cpp — the click-to-spin
@@ -8,19 +31,7 @@
 // MachineComponent and EnergyStorage ARE emplaced by SimulationEngine
 // (lines 219 / 259) for "1110:100:1" (rotare_generator), which machines.yaml
 // registers. RotareState is NOT emplaced anywhere in production code: it is
-// only ever created by RotareGeneratorSystem::activate(), and
-// `grep -rn 'activate(' src/` shows the only two hits are the declaration in
-// the header and the definition in the .cpp — nothing calls it. So even though
-// machines.yaml flags this block `interact_on_left: true` and the action
-// dispatcher routes left-clicks to an interact handler, no interact handler
-// ever reaches activate().
-//
-// FINDING: RotareGeneratorSystem is DEAD AT RUNTIME, and unlike
-// SteamTurbineSystem (whose SteamTurbineComponent is at least a dedicated
-// component a caller would attach) there is no code path that can create the
-// RotareState that satisfies the view. The spin the player pays fuel-adjacent
-// world state for never starts. The tests below exercise the real logic so the
-// gate is pinned if the wiring is ever added.
+// only ever created by RotareGeneratorSystem::activate().
 //
 // SYSTEM CONTRACT:
 //   activate(ent): if a RotareState exists and is already spinning, return.
@@ -53,10 +64,16 @@
 //      the decrement (RotareGeneratorSystem.cpp:36,59), so the series is
 //      99/100, 98/100, ... 0/100 — it ends at exactly 0.0 and never at 1.0.
 //      Pinned by test_RotareGeneratorSystem_progress_runs_from_full_to_empty.
-//   D. THE ROTATION CAPACITY IS NEVER PUBLISHED. The publishBlockEntityUpdate
-//      call stops at energy.type (RotareGeneratorSystem.cpp:55-61), so the
-//      `energy_capacity` argument falls through to the IEventPublisher.h:52
-//      default of 0. Every sibling system passes energy.capacity. Pinned by
+//   D. THE ROTATION CAPACITY WAS NEVER PUBLISHED (gp-bbbl, FIXED). The
+//      publishBlockEntityUpdate call stopped at energy.type
+//      (RotareGeneratorSystem.cpp:55-61), so the `energy_capacity` argument
+//      fell through to the IEventPublisher.h:52 default of 0. Every sibling
+//      system passes energy.capacity. MachineWindow.cpp:426-428 only trusts
+//      the wire capacity when it is > 0 and otherwise falls back to a
+//      tier-derived guess, so a tier-0 rotare_generator was drawn with a
+//      10000 EU bar for a buffer machines.yaml declares as 5000. The call
+//      now passes energy.capacity like every sibling; pinned by
+//      test_RotareGeneratorSystem_publishes_the_declared_capacity and
 //      test_RotareGeneratorSystem_publishes_one_update_per_spinning_tick.
 //   E. THE MACHINE-ID GATE SKIPS BEFORE THE STOP LOGIC. A foreign machine_id
 //      hits `continue` at RotareGeneratorSystem.cpp:21, so its RotareState is
@@ -65,15 +82,11 @@
 //      entity spins forever. Pinned by
 //      test_RotareGeneratorSystem_block_id_matches_the_rotation_machine.
 //
-// FILED AS BEADS ISSUES (production bugs, NOT fixed here — no src/ edits):
-//   gp-18yv  nothing calls RotareGeneratorSystem::activate(), so in-game the
-//            rotare_generator can never spin at all. The tests below call
-//            activate() directly, so they pin the logic while the wiring is
-//            still missing.
-//   gp-bbbl  the publishBlockEntityUpdate call omits energy_capacity, so
-//            clients fall back to a tier guess and render a 10000 EU bar for a
-//            buffer machines.yaml declares as 5000. Pinned as-is below; flip
-//            that one assertion to == kCapacity when the issue is fixed.
+// Both of the production bugs this suite filed are now FIXED, and the tests
+// assert the corrected behaviour: the gp-18yv wiring is driven end-to-end
+// through SimulationEngine::onMachineInteracted below (the same call
+// MachineInteractHandler makes on a left-click), and the gp-bbbl capacity
+// rides on every published update.
 #include <cstdio>
 #include <cstdint>
 #include <array>
@@ -83,8 +96,11 @@
 #include <entt/entt.hpp>
 
 #include <engine/registry/ItemId.h>
+#include <engine/sim/SimulationEngine.h>
+#include <engine/sim/components/Block.h>
 #include <engine/sim/components/EnergyStorage.h>
 #include <engine/sim/components/MachineComponent.h>
+#include <engine/sim/components/Position.h>
 #include <game/machines/RotareGeneratorSystem.h>
 
 // Project-wide unit-test harness (src/engine/net/test/test.h) — the repo has no
@@ -172,6 +188,9 @@ struct Fixture {
 
 // machines.yaml rotare_generator: capacity 5000, max_output 64, tier 0.
 static constexpr uint16_t kRotareId = ItemId::pack("1110:100:1");
+// heat_furnace, from machines.yaml ("1110:000:0"). Stands in for a machine of
+// another type in the gp-18yv seam tests.
+static constexpr uint16_t kFurnaceId = ItemId::pack("1110:000:0");
 static constexpr int32_t kCapacity = 5000;
 static constexpr int32_t kMaxOutput = 64;
 static constexpr int32_t kTier = 0;
@@ -571,18 +590,17 @@ static void test_RotareGeneratorSystem_publishes_one_update_per_spinning_tick() 
         CHECK_EQ_INT(u.machine_id, kRotareId, "publishes the rotare_generator machine id");
         CHECK_EQ_INT(u.energy, simcore::RotareGeneratorSystem::kEnergyPerTick,
                      "publishes the post-tick buffer level");
-        // FINDING D: the call site (RotareGeneratorSystem.cpp:55-61) stops at
-        // energy.type and never passes the `energy_capacity` argument, so it
-        // falls through to the IEventPublisher.h:52 default of 0. Every other
-        // machine system passes energy.capacity here (GeneratorSystem.cpp:206,
-        // EBFSystem.cpp:331, LCRSystem.cpp:252, MachineSystem.cpp:109,555).
-        // MachineWindow.cpp:426-428 only trusts the wire value when it is > 0
-        // and otherwise falls back to a tier-derived guess, so a tier-0
-        // rotare_generator is drawn with a 10000 EU bar instead of its
-        // declared 5000. Pinned as-is: beads gp-bbbl.
-        CHECK_EQ_INT(u.energy_capacity, 0u,
-                     "the capacity is NOT published — the call relies on the "
-                     "IEventPublisher default, unlike every sibling system");
+        // FIXED (gp-bbbl): the call site used to stop at energy.type and let
+        // the `energy_capacity` argument fall through to the IEventPublisher.h
+        // default of 0. Every sibling machine system passes energy.capacity
+        // here (GeneratorSystem.cpp:206, EBFSystem.cpp:331, LCRSystem.cpp:252,
+        // MachineSystem.cpp:109,555). MachineWindow.cpp:426-428 only trusts
+        // the wire value when it is > 0 and otherwise falls back to a
+        // tier-derived guess, so a tier-0 rotare_generator used to be drawn
+        // with a 10000 EU bar instead of its declared 5000.
+        CHECK_EQ_INT(u.energy_capacity, static_cast<uint32_t>(kCapacity),
+                     "the declared ROTATION capacity is published, so the "
+                     "client bar is 5000 and not the tier-guessed 10000");
         CHECK_EQ_INT(int(u.energy_type), int(simcore::EnergyType::ROTATION),
                      "publishes the ROTATION energy type, not ELECTRICITY");
     }
@@ -723,6 +741,259 @@ static void test_RotareGeneratorSystem_stopped_generator_idles_silently() {
     CHECK_EQ_INT(energy(f.reg, ent).current, 3200, "and produces nothing further");
 }
 
+static void test_RotareGeneratorSystem_publishes_the_declared_capacity() {
+    // gp-bbbl. MachineWindow.cpp:426-428 only trusts the wire capacity when it
+    // is > 0; otherwise it renders a tier-derived guess (tier * 10000, else
+    // 10000). machines.yaml declares the rotare_generator at tier 0 with
+    // capacity 5000, so publishing 0 drew a 10000 EU bar and the buffer looked
+    // permanently half-full. The value must be the ENTITY's own capacity, not
+    // a hardcoded one, so this test varies it.
+    Fixture f;
+    auto ent = makeRotare(f.reg, 90, 64, 90, 0);
+    // A capacity the test controls, and one that differs from the tier guess
+    // the client would fall back to.
+    energy(f.reg, ent).capacity = 7777;
+    f.sys.activate(ent);
+    f.sys.tick(0.05f);
+    CHECK_EQ_INT(f.events->updates.size(), size_t(1),
+                 "one update is published on the spinning tick");
+    if (f.events->updates.size() == 1) {
+        CHECK_EQ_INT(f.events->updates[0].energy_capacity, uint32_t(7777),
+                     "the entity's own capacity goes on the wire, so the "
+                     "client draws 7777 and not a tier guess");
+    }
+}
+
+static void test_RotareGeneratorSystem_capacity_is_published_on_every_tick() {
+    // The capacity is a static property of the buffer, so a transient miss on
+    // one tick would blank the client bar for that frame. Assert it rides
+    // along with EVERY update of the spin, not just the first.
+    Fixture f;
+    auto ent = makeRotare(f.reg, 91, 64, 91, 0);
+    f.sys.activate(ent);
+    for (int i = 0; i < 10; ++i) f.sys.tick(0.05f);
+    CHECK_EQ_INT(f.events->updates.size(), size_t(10),
+                 "the spin publishes on all 10 ticks");
+    int with_capacity = 0;
+    for (const auto& u : f.events->updates) {
+        if (u.energy_capacity == static_cast<uint32_t>(kCapacity)) ++with_capacity;
+    }
+    CHECK_EQ_INT(with_capacity, 10,
+                 "every published update carries the declared capacity, so the "
+                 "client bar never flickers back to the tier guess");
+}
+
+// ---------------------------------------------------------------------------
+// gp-18yv: the wiring. These tests drive the PRODUCTION left-click path —
+// SimulationEngine::onMachineInteracted, which MachineInteractHandler calls on
+// a left-click (MachineInteractHandler.cpp:141) — instead of calling
+// activate() directly. Before the fix, nothing was ever registered on that
+// seam, so a left-click reached the engine and spun nothing.
+// ---------------------------------------------------------------------------
+
+// A rotare_generator at (x,y,z) as SimulationEngine::onBlockChanged builds it:
+// MachineComponent + EnergyStorage together, which is what the tick view needs.
+static entt::entity addRotareEntity(entt::registry& reg, int32_t x, int32_t y,
+                                    int32_t z) {
+    const auto ent = reg.create();
+    reg.emplace<simcore::Position>(ent, static_cast<uint32_t>(x),
+                                   static_cast<uint32_t>(y),
+                                   static_cast<uint32_t>(z));
+    reg.emplace<simcore::Block>(ent, kRotareId, 0, 0);
+    reg.emplace<simcore::MachineComponent>(
+        ent, kRotareId, 0, static_cast<uint32_t>(x), static_cast<uint32_t>(y),
+        static_cast<uint32_t>(z), 1);
+    reg.emplace<simcore::EnergyStorage>(ent, kCapacity, 0, kMaxOutput, kMaxOutput,
+                                        kTier, simcore::EnergyType::ROTATION);
+    return ent;
+}
+
+static void test_rotare_click_starts_a_spin_through_the_interaction_seam() {
+    // THE gp-18yv REGRESSION. A left-click on a rotare_generator reaches
+    // SimulationEngine::onMachineInteracted (MachineInteractHandler.cpp:141).
+    // That seam must be able to arm a spin the tick loop can see.
+    //
+    // Reproduces production with the wiring main.cpp now performs: the system
+    // is registered on the engine's machine-interaction table and a click
+    // resolves through it. Before that registration the table was empty and
+    // the click logged "No interaction handler for machine_id=59393".
+    entt::registry reg;
+    auto events = std::make_shared<RecordingPublisher>();
+    simcore::RotareGeneratorSystem sys{reg, events, nullptr};
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    simcore::registerRotareInteraction(*engine, sys);
+
+    const auto ent = addRotareEntity(reg, 100, 64, -20);
+    CHECK(!reg.all_of<simcore::RotareState>(ent),
+          "precondition: the machine is idle before the click");
+
+    // Exactly what MachineInteractHandler does on a left-click.
+    engine->onMachineInteracted(100, 64, -20, kRotareId, /*player_id=*/7);
+
+    CHECK(reg.all_of<simcore::RotareState>(ent),
+          "a left-click on a rotare_generator arms a spin (gp-18yv)");
+    if (reg.all_of<simcore::RotareState>(ent)) {
+        const auto& s = state(reg, ent);
+        CHECK(s.spinning, "and the spin is running");
+        CHECK_EQ_INT(s.remainingTicks, simcore::RotareGeneratorSystem::kSpinDurationTicks,
+                     "with a full kSpinDurationTicks of output ahead of it");
+    }
+
+    // The armed spin is not just a flag the tick loop ignores: it produces.
+    sys.tick(0.05f);
+    CHECK_EQ_INT(energy(reg, ent).current,
+                 simcore::RotareGeneratorSystem::kEnergyPerTick,
+                 "the click-armed spin actually produces ROTATION on the next tick");
+    CHECK_EQ_INT(events->updates.size(), size_t(1),
+                 "and publishes the state the client renders");
+}
+
+static void test_rotare_click_only_arms_the_clicked_machine() {
+    entt::registry reg;
+    auto events = std::make_shared<RecordingPublisher>();
+    simcore::RotareGeneratorSystem sys{reg, events, nullptr};
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    simcore::registerRotareInteraction(*engine, sys);
+
+    const auto clicked = addRotareEntity(reg, 1, 2, 3);
+    const auto bystander = addRotareEntity(reg, 4, 5, 6);
+
+    engine->onMachineInteracted(1, 2, 3, kRotareId, 7);
+
+    CHECK(reg.all_of<simcore::RotareState>(clicked), "the clicked machine spins");
+    CHECK(!reg.all_of<simcore::RotareState>(bystander),
+          "a machine one block away is NOT armed by someone else's click");
+}
+
+static void test_rotare_click_on_another_machine_type_arms_nothing() {
+    // The handler is registered for the rotare_generator id, so a click on a
+    // furnace must not find a spin to start.
+    entt::registry reg;
+    auto events = std::make_shared<RecordingPublisher>();
+    simcore::RotareGeneratorSystem sys{reg, events, nullptr};
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    simcore::registerRotareInteraction(*engine, sys);
+
+    const auto furnace = reg.create();
+    reg.emplace<simcore::Position>(furnace, 9, 9, 9);
+    reg.emplace<simcore::MachineComponent>(furnace, kFurnaceId, 0, 9, 9, 9, 2);
+    reg.emplace<simcore::EnergyStorage>(furnace, 10000, 0, 32, 32, 0,
+                                        simcore::EnergyType::HEAT);
+
+    engine->onMachineInteracted(9, 9, 9, kFurnaceId, 7);
+
+    CHECK(!reg.all_of<simcore::RotareState>(furnace),
+          "clicking a non-rotare machine never arms a spin");
+}
+
+static void test_rotare_click_with_no_entity_is_a_safe_noop() {
+    // A rotare_generator whose ECS entity does not exist yet (it predates this
+    // simcore instance) must not crash the interaction seam.
+    entt::registry reg;
+    auto events = std::make_shared<RecordingPublisher>();
+    simcore::RotareGeneratorSystem sys{reg, events, nullptr};
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    simcore::registerRotareInteraction(*engine, sys);
+
+    engine->onMachineInteracted(500, 70, 500, kRotareId, 7);
+
+    CHECK_EQ_INT(events->updates.size(), size_t(0), "nothing is published");
+    CHECK_EQ_INT(reg.view<simcore::RotareState>().size(), size_t(0),
+                 "and no spin is armed anywhere");
+}
+
+static void test_rotare_click_skips_an_entity_that_cannot_spin() {
+    // A machine entity with no EnergyStorage is outside the tick view, so
+    // arming it would promise output the loop can never deliver. The click
+    // must leave it alone.
+    entt::registry reg;
+    auto events = std::make_shared<RecordingPublisher>();
+    simcore::RotareGeneratorSystem sys{reg, events, nullptr};
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    simcore::registerRotareInteraction(*engine, sys);
+
+    const auto bare = reg.create();
+    reg.emplace<simcore::Position>(bare, 7, 7, 7);
+    reg.emplace<simcore::MachineComponent>(bare, kRotareId, 0, 7, 7, 7, 3);
+    // EnergyStorage deliberately absent.
+
+    engine->onMachineInteracted(7, 7, 7, kRotareId, 7);
+
+    CHECK(!reg.all_of<simcore::RotareState>(bare),
+          "a rotare_generator the tick view cannot see is not armed");
+    sys.tick(0.05f);
+    CHECK_EQ_INT(events->updates.size(), size_t(0), "and nothing is published");
+}
+
+static void test_rotare_click_is_idempotent_while_spinning() {
+    // Spamming the click button must not hand the player a fresh full spin
+    // every time — activate() is a no-op mid-spin, and the seam goes through
+    // activate(), so the spam costs nothing.
+    entt::registry reg;
+    auto events = std::make_shared<RecordingPublisher>();
+    simcore::RotareGeneratorSystem sys{reg, events, nullptr};
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    simcore::registerRotareInteraction(*engine, sys);
+
+    const auto ent = addRotareEntity(reg, 2, 2, 2);
+    engine->onMachineInteracted(2, 2, 2, kRotareId, 7);
+    for (int i = 0; i < 10; ++i) engine->onMachineInteracted(2, 2, 2, kRotareId, 7);
+    for (int i = 0; i < 5; ++i) sys.tick(0.05f);
+
+    if (!reg.all_of<simcore::RotareState>(ent)) {
+      // The seam never armed a spin, so there are no ticks to have spent.
+      // Reported as a failure rather than a reg.get() abort.
+      test_check(false, __FILE__, __LINE__, "the click armed a spin",
+                 "no spin was armed, so click spam cannot be judged");
+      return;
+    }
+    CHECK_EQ_INT(state(reg, ent).remainingTicks,
+                 simcore::RotareGeneratorSystem::kSpinDurationTicks - 5,
+                 "ten clicks on top of one another buy no extra ticks");
+}
+
+static void test_rotare_registration_is_scoped_to_the_rotare_id() {
+    // The interaction table is keyed by machine_id, so registering the rotare
+    // interaction must neither install a catch-all nor clobber another id's
+    // existing handler. Both are registration-order hazards.
+    entt::registry reg;
+    auto events = std::make_shared<RecordingPublisher>();
+    simcore::RotareGeneratorSystem sys{reg, events, nullptr};
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+
+    int furnace_hits = 0;
+    engine->registerMachineInteractionHandler(kFurnaceId,
+                                              [&furnace_hits](int32_t, int32_t, int32_t,
+                                                             uint64_t) {
+                                                ++furnace_hits;
+                                                return true;
+                                              });
+    simcore::registerRotareInteraction(*engine, sys);
+
+    const auto rotare = addRotareEntity(reg, 3, 3, 3);
+    const auto furnace = reg.create();
+    reg.emplace<simcore::Position>(furnace, 4, 4, 4);
+    reg.emplace<simcore::MachineComponent>(furnace, kFurnaceId, 0, 4, 4, 4, 9);
+    reg.emplace<simcore::EnergyStorage>(furnace, 10000, 0, 32, 32, 0,
+                                        simcore::EnergyType::HEAT);
+
+    // The rotare click reaches the rotare handler and arms exactly one spin.
+    engine->onMachineInteracted(3, 3, 3, kRotareId, 7);
+    CHECK(reg.all_of<simcore::RotareState>(rotare),
+          "the rotare click still arms its own machine");
+    CHECK(!reg.all_of<simcore::RotareState>(furnace),
+          "and does not arm a machine of another type that shares the registry");
+
+    // The furnace's own handler is untouched by the rotare registration: it
+    // still runs, and the rotare wiring stays out of it.
+    engine->onMachineInteracted(4, 4, 4, kFurnaceId, 7);
+    CHECK_EQ_INT(furnace_hits, 1,
+                 "registering the rotare interaction leaves another id's "
+                 "existing handler in place");
+    CHECK(!reg.all_of<simcore::RotareState>(furnace),
+          "and the furnace click arms no spin");
+}
+
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while (0)
 
 int main(int argc, char** argv) {
@@ -759,6 +1030,8 @@ int main(int argc, char** argv) {
 
     TEST(RotareGeneratorSystem_progress_runs_from_full_to_empty);
     TEST(RotareGeneratorSystem_publishes_one_update_per_spinning_tick);
+    TEST(RotareGeneratorSystem_publishes_the_declared_capacity);
+    TEST(RotareGeneratorSystem_capacity_is_published_on_every_tick);
 
     TEST(RotareGeneratorSystem_block_id_matches_the_rotation_machine);
     TEST(RotareGeneratorSystem_missing_rotare_state_is_outside_the_view);
@@ -767,6 +1040,15 @@ int main(int argc, char** argv) {
     TEST(RotareGeneratorSystem_multiple_generators_spin_independently);
     TEST(RotareGeneratorSystem_dt_is_ignored);
     TEST(RotareGeneratorSystem_stopped_generator_idles_silently);
+
+    // gp-18yv — the production left-click seam (onMachineInteracted).
+    TEST(rotare_click_starts_a_spin_through_the_interaction_seam);
+    TEST(rotare_click_only_arms_the_clicked_machine);
+    TEST(rotare_click_on_another_machine_type_arms_nothing);
+    TEST(rotare_click_with_no_entity_is_a_safe_noop);
+    TEST(rotare_click_skips_an_entity_that_cannot_spin);
+    TEST(rotare_click_is_idempotent_while_spinning);
+    TEST(rotare_registration_is_scoped_to_the_rotare_id);
 
     printf("\n=== Results: %d tests, %d passed, %d failed ===\n",
            g_tests, g_passed, g_failed);

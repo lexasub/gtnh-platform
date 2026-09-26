@@ -65,11 +65,16 @@
 //      test test_craft_debits_the_matching_metadata_variant; the slot match
 //      now requires item_id AND metadata, and an emptied slot clears both,
 //      mirroring RecipeManager::consumeInputs (RecipeManager.cpp:213).
-//   4. RecipeCompletedHandler applies a result to whichever of several
-//      co-located MachineComponents the entt view yields first, and that one
+//   4. RecipeCompletedHandler applied a result to whichever of several
+//      co-located MachineComponents the entt view yielded first, and that one
 //      is the later-created entity, not necessarily the right one. The
 //      replacement is destructive (inv.slots.clear()). Filed as gp-5wms.
-//      NOT fixed here.
+//      FIXED here: the handler now resolves the ONE entity that owns the
+//      result — by the machine_id the event carries, and among same-id
+//      duplicates by which one the block layer still holds — before it
+//      clears anything. Covered by
+//      test_recipe_completed_targets_the_machine_id_from_the_wire and its
+//      four siblings below.
 //
 // Uses the PROJECT's own harness (src/engine/net/test/test.h convention,
 // mirrored by src/game/machines/test/test_explosion_system.cpp and
@@ -93,6 +98,7 @@
 
 #include <engine/registry/ItemId.h>
 #include <engine/sim/SimulationEngine.h>
+#include <engine/sim/components/Block.h>
 #include <engine/sim/components/InventoryContainer.h>
 #include <engine/sim/components/MachineComponent.h>
 #include <apps/simcore/Common/MainThreadQueue.h>
@@ -180,6 +186,10 @@ using RecipeManager::ItemStack;
 // The real crafting_table block id from machines.yaml ("0:10:11:1"), which is
 // the machine id CraftRequestHandler hard-codes.
 static constexpr uint16_t kCraftingTable = ItemId::pack("0:10:11:1");
+// Two more real machine ids, used by the gp-5wms duplicate-machine tests so a
+// co-located pair can be told apart by TYPE the way the wire tells them apart.
+static constexpr uint16_t kFurnaceId = ItemId::pack("1110:000:0");    // heat_furnace
+static constexpr uint16_t kMacerator = ItemId::pack("1110:001:5");    // rotare_macerator
 static constexpr uint64_t kPlayer = 42;
 
 // Real ids from src/content/data/registry/items.csv, packed exactly the way
@@ -1094,38 +1104,144 @@ static void test_recipe_completed_ignores_entities_without_an_inventory() {
 }
 
 static void test_recipe_completed_breaks_after_the_first_position_match() {
-  // Two machines at the SAME position (possible after a machine is rebuilt
-  // without despawning the old entity). RecipeCompletedHandler::handle breaks
-  // out of the loop on the first position match, so only ONE of them is
-  // rewritten and the other is left stale.
+  // FIXED (gp-5wms). Two machines at the SAME position with the SAME type —
+  // what a rebuild without an entity despawn leaves behind. The handler now
+  // prefers the entity the BLOCK layer still holds (a live entity carries a
+  // Block whose id matches its machine id; a stale leftover does not), and
+  // falls back to view order only when nothing is distinguishable. So exactly
+  // ONE of them is rewritten and the other is left stale — the totals are
+  // unchanged (1 + 3) — but the one chosen is now the LIVE entity, not
+  // whichever duplicate entt happens to yield first.
   auto engine = std::make_shared<simcore::SimulationEngine>();
-  const auto first = addMachine(engine->reg(), 3, 3, 3, kCraftingTable);
-  const auto second = addMachine(engine->reg(), 3, 3, 3, kCraftingTable);
+  auto& reg = engine->reg();
+  const auto first = addMachine(reg, 3, 3, 3, kCraftingTable);
+  const auto second = addMachine(reg, 3, 3, 3, kCraftingTable);
+  // Only `first` still owns the block at (3,3,3).
+  reg.emplace<simcore::Block>(first, kCraftingTable, 0, 0);
+
   simcore::RecipeCompletedHandler handler(engine);
 
   const std::vector<Protocol::ItemStack> results = {Protocol::ItemStack(900, 9, 0)};
   handler.handle(buildRecipeCompleted(3, 3, 3, kCraftingTable, "r", results));
 
-  const auto a = slotsOf(engine->reg(), first);
-  const auto b = slotsOf(engine->reg(), second);
+  const auto a = slotsOf(reg, first);
+  const auto b = slotsOf(reg, second);
   // The untouched duplicate KEEPS its 3 seeded slots, so the total is
   // 1 (rewritten) + 3 (stale) == 4, not 1 + 1.
   CHECK_EQ(a.size() + b.size(), size_t(4),
            "exactly one of the two co-located machines is rewritten; the other "
            "keeps its full 3-slot inventory, so the totals are 1 + 3");
-  CHECK(a.size() == size_t(1) || b.size() == size_t(1),
-        "the break stops after the first match, leaving the duplicate stale");
-  CHECK(a.size() == size_t(3) || b.size() == size_t(3),
-        "the entity that lost the race is untouched, not emptied");
-  // POSITION MATCH, NOT ENTITY IDENTITY: which duplicate wins is decided by
-  // the order entt's view yields entities, which is reverse-creation order —
-  // NOT by the order the caller created them. Observed here: `second` (created
-  // last) is the one rewritten. Pinned, not blessed; see the filed issue.
-  CHECK_EQ(b.size(), size_t(1),
-           "the later-created entity is the one the view yields first, so the "
-           "result lands on it regardless of which duplicate is 'real'");
-  CHECK_EQ(a.size(), size_t(3),
-           "the earlier-created duplicate keeps all 3 of its seeded slots");
+  CHECK_EQ(a.size(), size_t(1),
+           "the entity the block layer still owns is the one rewritten");
+  CHECK_EQ(b.size(), size_t(3),
+           "the stale duplicate keeps all 3 of its seeded slots");
+  CHECK_EQ(int(a[0].item_id), 900, "and the result really landed on it");
+}
+
+// ============================================================================
+// gp-5wms: the result must land on the machine the WIRE says, not the first
+//         co-located entity the entt view happens to yield.
+//
+// RecipeCompleted carries a machine_id (recipe.fbs:139) and reciped echoes
+// back the machine_id it matched the recipe by
+// (RecipeManagerService.cpp:127,160). The handler used to read pos() and
+// nothing else, then `break` on the first entity whose POSITION matched, so
+// with two MachineComponents co-located the winner was decided by entt view
+// iteration order (reverse creation), not by identity. The replacement is
+// destructive (inv.slots.clear()), so the wrong duplicate could be wiped.
+// ============================================================================
+
+static void test_recipe_completed_targets_the_machine_id_from_the_wire() {
+    // Two DIFFERENT machines at one position (a stale entity left by a
+    // rebuild). The event says the result belongs to the macerator, so the
+    // macerator's inventory is the one that must be replaced — regardless of
+    // which duplicate entt yields first.
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    const auto macerator = addMachine(engine->reg(), 3, 3, 3, kMacerator);
+    const auto furnace = addMachine(engine->reg(), 3, 3, 3, kFurnaceId);
+
+    simcore::RecipeCompletedHandler handler(engine);
+    const std::vector<Protocol::ItemStack> results = {Protocol::ItemStack(900, 9, 0)};
+    handler.handle(buildRecipeCompleted(3, 3, 3, kMacerator, "r", results));
+
+    CHECK_EQ(slotsOf(engine->reg(), macerator).size(), size_t(1),
+             "the machine whose id the event names is the one rewritten");
+    CHECK_EQ(slotsOf(engine->reg(), furnace).size(), size_t(3),
+             "the co-located machine of a DIFFERENT type keeps its contents");
+}
+
+static void test_recipe_completed_does_not_leak_into_a_different_machine_type() {
+    // Same shape, but the co-located duplicate is the one entt yields FIRST
+    // (created last). Regression guard: the handler must not be reachable by
+    // view order at all.
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    const auto furnace = addMachine(engine->reg(), 4, 4, 4, kFurnaceId);
+    const auto macerator = addMachine(engine->reg(), 4, 4, 4, kMacerator);
+
+    simcore::RecipeCompletedHandler handler(engine);
+    const std::vector<Protocol::ItemStack> results = {Protocol::ItemStack(901, 4, 0)};
+    handler.handle(buildRecipeCompleted(4, 4, 4, kMacerator, "r", results));
+
+    CHECK_EQ(slotsOf(engine->reg(), macerator).size(), size_t(1),
+             "the macerator named by the event is rewritten");
+    CHECK_EQ(slotsOf(engine->reg(), furnace).size(), size_t(3),
+             "and the furnace is untouched even though it shares the position");
+}
+
+static void test_recipe_completed_ignores_a_stale_duplicate_of_the_same_type() {
+    // Harder case: both duplicates carry the SAME machine_id, so the id alone
+    // cannot disambiguate. The real entity is the one the block layer still
+    // holds: an entity with a Block component whose id matches is live; one
+    // without a Block (or with a different block) is a stale leftover. The
+    // result must land on the live one and the stale one must be left alone.
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    auto& reg = engine->reg();
+
+    const auto stale = addMachine(reg, 5, 5, 5, kMacerator);
+    // No Block component: this entity does not own the block any more.
+    const auto live = addMachine(reg, 5, 5, 5, kMacerator);
+    reg.emplace<simcore::Block>(live, kMacerator, 0, 0);
+
+    simcore::RecipeCompletedHandler handler(engine);
+    const std::vector<Protocol::ItemStack> results = {Protocol::ItemStack(902, 6, 0)};
+    handler.handle(buildRecipeCompleted(5, 5, 5, kMacerator, "r", results));
+
+    CHECK_EQ(slotsOf(reg, live).size(), size_t(1),
+             "the entity that still owns the block receives the result");
+    CHECK_EQ(slotsOf(reg, stale).size(), size_t(3),
+             "the stale duplicate keeps its contents instead of being wiped");
+    CHECK_EQ(int(slotsOf(reg, live)[0].item_id), 902,
+             "and the right items land on it");
+}
+
+static void test_recipe_completed_skips_an_id_mismatch_at_the_same_position() {
+    // A machine_id on the wire that matches NOTHING at the position is a
+    // mismatch, not a licence to wipe an arbitrary machine. The event is
+    // dropped and the registry is untouched.
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    const auto only = addMachine(engine->reg(), 6, 6, 6, kFurnaceId);
+
+    simcore::RecipeCompletedHandler handler(engine);
+    const std::vector<Protocol::ItemStack> results = {Protocol::ItemStack(903, 2, 0)};
+    handler.handle(buildRecipeCompleted(6, 6, 6, kMacerator, "r", results));
+
+    CHECK_EQ(slotsOf(engine->reg(), only).size(), size_t(3),
+             "an event naming a machine that is not there changes nothing");
+}
+
+static void test_recipe_completed_zero_machine_id_falls_back_to_position() {
+    // machine_id is optional on the wire (default 0). A 0 carries no identity,
+    // so the handler must fall back to the position rather than rejecting the
+    // event outright — the pre-existing single-machine behaviour.
+    auto engine = std::make_shared<simcore::SimulationEngine>();
+    const auto ent = addMachine(engine->reg(), 8, 8, 8, kFurnaceId);
+
+    simcore::RecipeCompletedHandler handler(engine);
+    const std::vector<Protocol::ItemStack> results = {Protocol::ItemStack(904, 3, 0)};
+    handler.handle(buildRecipeCompleted(8, 8, 8, /*machine_id=*/0, "r", results));
+
+    CHECK_EQ(slotsOf(engine->reg(), ent).size(), size_t(1),
+             "a nameless event still applies by position, as before");
 }
 
 static void test_malformed_recipe_completed_is_rejected() {
@@ -1216,6 +1332,11 @@ int main(int argc, char** argv) {
   TEST(recipe_completed_only_touches_the_machine_at_that_position);
   TEST(recipe_completed_ignores_entities_without_an_inventory);
   TEST(recipe_completed_breaks_after_the_first_position_match);
+  TEST(recipe_completed_targets_the_machine_id_from_the_wire);
+  TEST(recipe_completed_does_not_leak_into_a_different_machine_type);
+  TEST(recipe_completed_ignores_a_stale_duplicate_of_the_same_type);
+  TEST(recipe_completed_skips_an_id_mismatch_at_the_same_position);
+  TEST(recipe_completed_zero_machine_id_falls_back_to_position);
   TEST(malformed_recipe_completed_is_rejected);
   TEST(recipe_completed_with_no_matching_position_is_a_noop);
   TEST(recipe_completed_on_an_empty_registry_is_a_noop);

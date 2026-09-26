@@ -106,7 +106,20 @@ void spawnECSSystems(std::shared_ptr<simcore::ChunkStoreRepository> blockReposit
     simulationEngine->registerSystem(std::make_unique<simcore::BoilerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient, resourcePortClient, steam_item_id, statePublisher));
     simulationEngine->registerSystem(std::make_unique<simcore::TransformerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
     simulationEngine->registerSystem(std::make_unique<simcore::DrillSystem>(simulationEngine->reg(), blockRepository, eventPublisher, pipeEnergyClient));
-    simulationEngine->registerSystem(std::make_unique<simcore::RotareGeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
+    // gp-18yv: the rotare generator is DEAD without this. machines.yaml flags
+    // it interact_on_left, MachineInteractHandler turns a left-click into
+    // onMachineInteracted(), and the interaction table that call consults was
+    // empty for every machine — so the click acked and animated and produced
+    // no energy. RotareState is emplaced only in activate(), so an unwired
+    // system spins nothing no matter what tick() does.
+    //
+    // registerSystem() takes ownership via std::move into systems_, and the
+    // pointee's address is stable for the engine's lifetime, so the local
+    // reference stays valid for the interaction lambda the engine now holds.
+    auto rotare = std::make_unique<simcore::RotareGeneratorSystem>(
+        simulationEngine->reg(), eventPublisher, pipeEnergyClient);
+    simcore::registerRotareInteraction(*simulationEngine, *rotare);
+    simulationEngine->registerSystem(std::move(rotare));
 }
 
 } // anonymous namespace
@@ -438,17 +451,11 @@ int main(int argc, char* argv[]) {
     simulationEngine->onMultiblockSave =
         [entityStateClient](uint64_t controller_id, const std::vector<uint8_t>& state) {
             if (state.empty()) return;
-            // gp-wyvv: verified before GetRoot. The old `auto fb = GetRoot<...>`
-            // could not have been null-checked usefully - GetRoot manufactures a
-            // Table* from any bytes at all - so fb->anchor_x() was the first
-            // dereference of attacker-controlled offsets. A null here means the
-            // multiblock state we were asked to persist is not a valid
-            // FlatBuffer, so there is nothing to save.
             const auto* fb = gtnh::wire::VerifyAndGetRoot<Protocol::MultiblockState>(
                 state.data(), state.size());
             if (!fb) {
-                spdlog::warn("multiblock #{}: state is not a valid FlatBuffer, not saving",
-                             controller_id);
+                spdlog::warn("[simcore] invalid MultiblockState for #{} ({} bytes)",
+                             controller_id, state.size());
                 return;
             }
             entityStateClient->SaveEntityState(0, fb->anchor_x(), fb->anchor_y(),

@@ -1,4 +1,5 @@
 #include "RotareGeneratorSystem.h"
+#include <engine/sim/components/Position.h>
 #include <spdlog/spdlog.h>
 
 namespace simcore {
@@ -58,7 +59,15 @@ void RotareGeneratorSystem::tick(float /*dt*/) {
             {},
             static_cast<float>(state.remainingTicks) / kSpinDurationTicks,
             static_cast<uint32_t>(energy.current),
-            energy.type);
+            energy.type,
+            // The ROTATION buffer capacity, like every sibling machine system
+            // (GeneratorSystem.cpp:206, EBFSystem.cpp:331, LCRSystem.cpp:252,
+            // MachineSystem.cpp:109,555). Omitting it falls through to the
+            // IEventPublisher default of 0, and MachineWindow.cpp:426-428 only
+            // trusts a wire capacity when it is > 0 — a tier-0 rotare_generator
+            // would then be drawn against a tier-derived 10000 EU bar instead of
+            // its declared 5000.
+            static_cast<uint32_t>(energy.capacity));
 
         if (state.remainingTicks <= 0) {
             state.spinning = false;
@@ -72,6 +81,41 @@ void RotareGeneratorSystem::activate(entt::entity ent) {
     if (state && state->spinning) return;
 
     reg_.emplace_or_replace<RotareState>(ent, RotareState{true, kSpinDurationTicks, kEnergyPerTick});
+}
+
+void registerRotareInteraction(SimulationEngine& engine, RotareGeneratorSystem& system) {
+    engine.registerMachineInteractionHandler(
+        RotareGeneratorSystem::kRotareGeneratorBlockId,
+        [&system](int32_t x, int32_t y, int32_t z, uint64_t /*player_id*/) {
+            // Resolve the clicked block on the SYSTEM's registry, not the
+            // engine's: the system ticks that registry, so it is the one that
+            // decides which RotareState it can see. They are the same registry
+            // in production (main.cpp hands both simulationEngine->reg()).
+            auto& reg = system.registry();
+            entt::entity target = entt::null;
+            for (auto entity : reg.view<const simcore::Position>()) {
+                const auto& pos = reg.get<const simcore::Position>(entity);
+                if (static_cast<int32_t>(pos.x) == x &&
+                    static_cast<int32_t>(pos.y) == y &&
+                    static_cast<int32_t>(pos.z) == z) {
+                    target = entity;
+                    break;
+                }
+            }
+            // No entity, or one the tick loop cannot see: the click is still
+            // acked and animated by MachineInteractHandler, but there is
+            // nothing here to spin until the block-change event creates it.
+            if (target == entt::null) return false;
+            if (!reg.all_of<MachineComponent, EnergyStorage>(target)) return false;
+
+            const auto& machine = reg.get<MachineComponent>(target);
+            if (machine.machine_id != RotareGeneratorSystem::kRotareGeneratorBlockId) {
+                return false;
+            }
+
+            system.activate(target);
+            return true;
+        });
 }
 
 } // namespace simcore
