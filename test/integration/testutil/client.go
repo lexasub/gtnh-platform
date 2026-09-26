@@ -433,16 +433,6 @@ func (r *RouterClient) Conn() net.Conn {
 	return r.conn
 }
 
-// WriteFrame sends a raw FlatBuffer to a service that uses the
-// [4 bytes BE length][FlatBuffer] wire format (ChunkStore, EntityStateStore).
-func WriteFrame(conn net.Conn, fbData []byte) error {
-	frame := make([]byte, 4+len(fbData))
-	binary.BigEndian.PutUint32(frame[0:4], uint32(len(fbData)))
-	copy(frame[4:], fbData)
-	_, err := conn.Write(frame)
-	return err
-}
-
 // ReadFrameRaw reads a [4 bytes BE length][payload] frame from a connection.
 func ReadFrameRaw(conn net.Conn, timeout time.Duration) ([]byte, error) {
 	if timeout > 0 {
