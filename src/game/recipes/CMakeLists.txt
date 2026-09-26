@@ -56,3 +56,21 @@ target_link_libraries(gtnh_game_recipes PUBLIC
     yaml-cpp::yaml-cpp
     SQLite::SQLite3
 )
+
+# ConditionEvaluator unit tests — the per-clause gate that decides whether a
+# recipe may run against a MachineState. Self-contained: the evaluator is pure
+# in-memory logic over RecipeConditions, so the test links gtnh_game_recipes
+# and needs no services, no data files and no wall clock.
+if(BUILD_TESTING)
+    add_executable(condition_evaluator_test
+        test/test_condition_evaluator.cpp
+    )
+    target_include_directories(condition_evaluator_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(condition_evaluator_test PRIVATE
+        gtnh_game_recipes
+    )
+    add_test(NAME condition_evaluator_test COMMAND condition_evaluator_test)
+endif()
