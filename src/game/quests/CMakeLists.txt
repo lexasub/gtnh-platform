@@ -122,6 +122,30 @@ if(BUILD_TESTING)
     add_test(NAME quest_graph_test COMMAND quest_graph_test)
 
     # ------------------------------------------------------------------------
+    # quest_construct_test — the parts of QuestData construction and
+    # QuestGraph cycle handling that quest_graph_test does not reach
+    # (gp-9l8f). Companion, not a replacement: quest_graph_test owns the
+    # existing cycle / self-dependency / dangling-prerequisite semantics, and
+    # this target adds the 9-column CSV mapping, reload semantics, duplicate
+    # ids, the era+section query surface, and three further cycle SHAPES.
+    # Synthetic temp fixtures only; the shipped quest data is never read.
+    # ------------------------------------------------------------------------
+    add_executable(quest_construct_test
+        test/test_questdata_construct.cpp
+    )
+    target_include_directories(quest_construct_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/engine/net
+    )
+    target_link_libraries(quest_construct_test PRIVATE
+        gtnh_game_quests
+        gtnh_engine_registry
+        spdlog::spdlog
+        nlohmann_json::nlohmann_json
+    )
+    add_test(NAME quest_construct_test COMMAND quest_construct_test)
+
+    # ------------------------------------------------------------------------
     # quest_manager_test — QuestManager completion, progress publication, reward
     # issuance and prerequisite/unlock gating (gp-phl3 + gp-qnrk). Synthetic
     # quest fixtures; DATA_DIR supplies the real items.csv, because the

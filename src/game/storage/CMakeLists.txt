@@ -161,3 +161,70 @@ if(BUILD_TESTING)
     add_dependencies(inventory_action_handler_test simcored_fbs)
     add_test(NAME inventory_action_handler_test COMMAND inventory_action_handler_test)
 endif()
+
+# player_inventory_store_test — unit tests for PlayerInventoryStore, the
+# in-memory player inventory cache and the giveItem() allocator every producer
+# funnels through (issue gp-obtt). Same project CHECK/TEST harness; no
+# GoogleTest (see the note above).
+#
+# Self-contained and deterministic: there is no router client at all, so
+# nothing in the store can publish. The cases read committed state only.
+if(BUILD_TESTING)
+    add_executable(player_inventory_store_test
+        test/test_player_inventory_store.cpp
+    )
+    target_include_directories(player_inventory_store_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(player_inventory_store_test PRIVATE
+        gtnh_game_storage
+        gtnh_wire
+        gtnh-net
+        spdlog::spdlog
+        flatbuffers::flatbuffers
+    )
+    add_dependencies(player_inventory_store_test simcored_fbs)
+    add_test(NAME player_inventory_store_test COMMAND player_inventory_store_test)
+endif()
+
+# player_join_bootstrap_test — unit tests for the player-join inventory
+# bootstrap: InventoryLoadHandler ("player.inventory.load") and
+# PlayerJoinedHandler ("player.joined") (issue gp-qxbu). Same project
+# CHECK/TEST harness; no GoogleTest (see the note above).
+#
+# The router client is CONSTRUCTED BUT NEVER CONNECTED, so Publish() and
+# PublishRaw() short-circuit inside RouterClient and the cases assert only
+# committed store state. IoUringRouterClient and EntityStateStoreClient are
+# compiled from source rather than linked against the simcored static lib,
+# which would drag in main.cpp.o and a second main(). PlayerJoinedHandler
+# reaches into QuestManager, so this target links gtnh_game_quests too.
+if(BUILD_TESTING)
+    find_package(yaml-cpp REQUIRED)
+
+    add_executable(player_join_bootstrap_test
+        test/test_player_join_bootstrap.cpp
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore/Network/clients/EntityStateStoreClient.cpp
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore/Network/clients/IoUringRouterClient.cpp
+    )
+    target_include_directories(player_join_bootstrap_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+    )
+    target_link_libraries(player_join_bootstrap_test PRIVATE
+        gtnh_game_storage
+        gtnh_game_quests
+        gtnh_engine_sim
+        gtnh_engine_registry
+        gtnh-net
+        EnTT::EnTT
+        spdlog::spdlog
+        flatbuffers::flatbuffers
+        nlohmann_json::nlohmann_json
+        asio::asio
+        yaml-cpp::yaml-cpp
+        uring
+        pthread
+    )
+    add_dependencies(player_join_bootstrap_test simcored_fbs)
+    add_test(NAME player_join_bootstrap_test COMMAND player_join_bootstrap_test)
+endif()
