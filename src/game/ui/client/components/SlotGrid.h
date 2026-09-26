@@ -31,15 +31,6 @@ struct SlotStyle {
 bool RenderSlot(const ItemStack &stack, bool selected, ImDrawList *dl,
                 const SlotStyle &style = {});
 
-// Render a rect-grid of slots from a vector.
-// startIndex + count define which elements of the vector to render.
-// Returns the GLOBAL index of the clicked slot, or -1.
-int RenderSlotGrid(std::vector<ItemStack> &slots, int startIndex,
-                   int count, int cols, int selectedSlot = -1,
-                   const SlotStyle &style = {},
-                   std::function<void(int, int, bool)> *clickCb = nullptr,
-                   DragManager *dragMgr = nullptr);
-
 // Render a horizontal hotbar at bottom-center of the screen.
 // Returns hovered slot index, or -1.
 int RenderHotbar(const std::vector<ItemStack> &slots, int selectedSlot,

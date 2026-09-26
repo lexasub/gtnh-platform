@@ -75,43 +75,6 @@ bool RenderSlot(const ItemStack& stack, bool selected,
     return activated;
 }
 
-// ── RenderSlotGrid ──────────────────────────────────────────────────────────
-int RenderSlotGrid(std::vector<ItemStack>& slots,
-                   int startIndex, int count, int cols,
-                   int selectedSlot, const SlotStyle& style,
-                   std::function<void(int, int, bool)>* clickCb,
-                   DragManager* dragMgr) {
-    spdlog::info("RenderSlotGrid entered start={} count={} dragMgr={}", startIndex, count, dragMgr != nullptr);
-    int clickedSlot = -1;
-    int end = std::min(startIndex + count, static_cast<int>(slots.size()));
-
-    for (int i = startIndex; i < end; ++i) {
-        int col = (i - startIndex) % cols;
-        if (col > 0) ImGui::SameLine();
-
-        int globalIdx = i;
-        bool selected = (globalIdx == selectedSlot);
-        ImGui::PushID(globalIdx);
-        if (RenderSlot(slots[i], selected, ImGui::GetWindowDrawList(), style)) {
-            clickedSlot = globalIdx;
-            if (clickCb) {
-                int button = ImGui::IsMouseClicked(ImGuiMouseButton_Right) ? 1 : 0;
-                bool shift = ImGui::GetIO().KeyShift;
-                (*clickCb)(globalIdx, button, shift);
-            }
-             if (dragMgr) {
-                 int button = ImGui::IsMouseClicked(ImGuiMouseButton_Right) ? 1 : 0;
-                 bool shift = ImGui::GetIO().KeyShift;
-                 bool ctrl = ImGui::GetIO().KeyCtrl;
-                 dragMgr->OnSlotActivated(globalIdx, slots, button, shift, ctrl);
-             }
-        }
-        ImGui::PopID();
-    }
-
-    return clickedSlot;
-}
-
 // ── RenderHotbar ────────────────────────────────────────────────────────────
 int RenderHotbar(const std::vector<ItemStack>& slots, int selectedSlot,
                  const SlotStyle& style, DragManager* dragMgr) {
