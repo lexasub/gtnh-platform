@@ -982,12 +982,16 @@ static void test_NoBinderMeansNoWrenchQuery() {
   CHECK(!fixture.world.IsBlockActionPending(BlockPos{8, 70, 4}));
 }
 
-static void test_WrenchGatedModesAndThePermissionMatrix() {
-  // The permission matrix the interaction gate will be unified with
-  // (add-interaction-mode-gating 1.1) today disagrees with nothing here:
-  // InteractionSystem.Update takes no game-mode argument, so a SPECTATOR or
-  // ADVENTURE player still breaks blocks as far as this code path is
-  // concerned. Pinned so the future gate has something to change on purpose.
+// The permission matrix, asserted through the SYSTEM rather than through the
+// caller. GameClient::Update already refuses to call Update() unless
+// CanInteractWithWorld, so nothing in the shipped client reaches the break
+// path in SPECTATOR; this pins that the refusal does not depend on the caller
+// having remembered to gate it (beads gp-n86q). Previously this test asserted
+// the OPPOSITE — that the break still went out — and passed, pinning the
+// defect green.
+static void test_SpectatorLeftClickIsRefusedInsideInteractionSystem() {
+  // The matrix itself first, so a failure below is unambiguously the gate and
+  // not a changed permission table.
   CHECK(!GameModePerm::CanBreak(GameMode::SPECTATOR));
   CHECK(!GameModePerm::CanBreak(GameMode::ADVENTURE));
   CHECK(GameModePerm::CanBreak(GameMode::SURVIVAL));
@@ -997,6 +1001,7 @@ static void test_WrenchGatedModesAndThePermissionMatrix() {
   InteractionSystem sys(&fixture.world);
   const Camera cam = makeCamera(kEye);
   NetClient net;
+  const BlockPos target{8, 70, 4};
 
   InventoryState inv = makeInventory({ITEM_WRENCH}, 0);
   inv.gameMode = GameMode::SPECTATOR;  // CanBreak == false
@@ -1006,7 +1011,93 @@ static void test_WrenchGatedModesAndThePermissionMatrix() {
   press.mouseLeftPressed = true;
   sys.Update(cam, press, fixture.world, net);
 
-  // OBSERVED: no game-mode check in the gate, so the break still goes out.
+  // The refusal is scoped to the mutation, not to the ray-cast: a spectator
+  // still sees the highlight (the HUD renders it), it just never debounces a
+  // break into the world.
+  CHECK(sys.HasHighlight());
+  CHECK_EQ(static_cast<int>(sys.GetHighlightedBlock().x), 8);
+  // THE ASSERTION: no world mutation leaves a mode that may not mutate one.
+  CHECK(!fixture.world.IsBlockActionPending(target));
+
+  // Positive control, same fixture and same input, one permission flip away.
+  // Without this the test would also pass if the gate denied EVERY mode.
+  fixture.world.ClearBlockActionPending(target);
+  inv.gameMode = GameMode::SURVIVAL;
+  sys.Update(cam, press, fixture.world, net);
+  CHECK(fixture.world.IsBlockActionPending(target));
+}
+
+static void test_AdventureLeftClickIsRefusedInsideInteractionSystem() {
+  Fixture fixture([](MutableChunk &mc) { setBlock(mc, 8, 70, 4, kSolid); });
+  InteractionSystem sys(&fixture.world);
+  const Camera cam = makeCamera(kEye);
+  NetClient net;
+  const BlockPos target{8, 70, 4};
+
+  InventoryState inv = makeInventory({ITEM_WRENCH}, 0);
+  inv.gameMode = GameMode::ADVENTURE;  // CanBreak == false
+  sys.SetInventory(&inv);
+
+  InputState press;
+  press.mouseLeftPressed = true;
+  sys.Update(cam, press, fixture.world, net);
+  CHECK(!fixture.world.IsBlockActionPending(target));
+
+  // Positive control: CREATIVE is the adjacent permitted mode.
+  inv.gameMode = GameMode::CREATIVE;
+  sys.Update(cam, press, fixture.world, net);
+  CHECK(fixture.world.IsBlockActionPending(target));
+}
+
+// GameMode arrives off the wire as a bare, unchecked uint8, so the gate has to
+// fail CLOSED on a value the enum does not name. A deny-list ("not ADVENTURE
+// and not SPECTATOR") admits every such value; the allow-list the matrix is
+// written as does not. This is the gp-ul16 lesson applied at the layer that
+// actually emits the mutation.
+static void test_UndefinedGameModeFailsClosedInsideInteractionSystem() {
+  for (uint8_t raw : {uint8_t{4}, uint8_t{9}, uint8_t{200}, uint8_t{255}}) {
+    CHECK(!IsDefinedGameMode(static_cast<GameMode>(raw)));
+    CHECK(!GameModePerm::CanBreak(static_cast<GameMode>(raw)));
+    CHECK(!GameModePerm::CanInteractWithWorld(static_cast<GameMode>(raw)));
+
+    Fixture fixture([](MutableChunk &mc) { setBlock(mc, 8, 70, 4, kSolid); });
+    InteractionSystem sys(&fixture.world);
+    const Camera cam = makeCamera(kEye);
+    NetClient net;
+
+    InventoryState inv = makeInventory({ITEM_WRENCH}, 0);
+    inv.gameMode = static_cast<GameMode>(raw);
+    sys.SetInventory(&inv);
+
+    InputState press;
+    press.mouseLeftPressed = true;
+    sys.Update(cam, press, fixture.world, net);
+    CHECK(!fixture.world.IsBlockActionPending(BlockPos{8, 70, 4}));
+  }
+}
+
+// The gate reads the mode off the inventory, which is its single owner. A
+// system constructed with NO inventory has no mode to enforce, and the gate
+// resolves to InventoryState's own default. Pinned so that choice is a
+// decision rather than an accident of a null check — and so the
+// inventory-less tests elsewhere in this file, which exercise the debounce
+// rather than the permission, keep their meaning.
+static void test_NoInventoryResolvesToTheDefaultMode() {
+  InventoryState defaults;
+  CHECK_EQ(static_cast<int>(defaults.gameMode),
+           static_cast<int>(GameMode::CREATIVE));
+  CHECK(GameModePerm::CanInteractWithWorld(defaults.gameMode));
+
+  // And the consequence on the real system: with no inventory attached, the
+  // resolved mode permits, so a left-click still debounces exactly as before.
+  Fixture fixture([](MutableChunk &mc) { setBlock(mc, 8, 70, 4, kSolid); });
+  InteractionSystem sys(&fixture.world);
+  CHECK_EQ(static_cast<int>(sys.GetHeldItem()), 0);
+  const Camera cam = makeCamera(kEye);
+  NetClient net;
+  InputState press;
+  press.mouseLeftPressed = true;
+  sys.Update(cam, press, fixture.world, net);
   CHECK(fixture.world.IsBlockActionPending(BlockPos{8, 70, 4}));
 }
 
@@ -1582,7 +1673,10 @@ int main() {
   TEST(WrenchGateWithWrenchHeldLeavesTheDebounceAlone);
   TEST(WrenchGateIsSkippedForANonWrenchItem);
   TEST(NoBinderMeansNoWrenchQuery);
-  TEST(WrenchGatedModesAndThePermissionMatrix);
+  TEST(SpectatorLeftClickIsRefusedInsideInteractionSystem);
+  TEST(AdventureLeftClickIsRefusedInsideInteractionSystem);
+  TEST(UndefinedGameModeFailsClosedInsideInteractionSystem);
+  TEST(NoInventoryResolvesToTheDefaultMode);
 
   TEST(ControllerStartsAtTheSpawnPoint);
   TEST(FlightMovesAlongTheLookVector);

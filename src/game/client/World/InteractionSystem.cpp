@@ -114,8 +114,25 @@ void InteractionSystem::Update(const Camera& camera, const InputState& input,
 
     uint64_t player_id = inventory_ ? inventory_->player_id : 0;
 
+    // ── Defence in depth: the permission matrix is enforced HERE, not only at
+    // the caller (beads gp-n86q). GameClient::Update already wraps this call in
+    // GameModePerm::CanInteractWithWorld, so the shipped client already refused
+    // to get here in SPECTATOR or ADVENTURE — but a system that emits world
+    // mutations should not depend on its caller having remembered to gate it,
+    // and it now has a second caller to be wrong about (any future headless
+    // input path). The outer gate STAYS: it is what keeps the ray-cast itself
+    // from running for a mode with no business doing it, and this one is the
+    // backstop for the mutation.
+    //
+    // The mode is read off the inventory, which is its single owner. With no
+    // inventory attached there is no mode to enforce and InventoryState's own
+    // default (CREATIVE, which may interact) is the resolution — the same value
+    // a freshly-constructed InventoryState carries, so "no inventory" and "an
+    // inventory nobody has set yet" cannot disagree.
+    const GameMode mode = inventory_ ? inventory_->gameMode : GameMode::CREATIVE;
+
     // Left-click: break block
-    if (input.mouseLeftPressed && hasHighlight_) {
+    if (input.mouseLeftPressed && hasHighlight_ && GameModePerm::CanBreak(mode)) {
         // Debounce: skip if action already in-flight for this position
         if (!world.IsBlockActionPending(highlightedBlock_)) {
             auto currentBlockType = world.GetBlockAt(highlightedBlock_);
@@ -130,8 +147,16 @@ void InteractionSystem::Update(const Camera& camera, const InputState& input,
         }
     }
 
-    // Wrench cycle on highlighted block (key from held binding "wrench_cycle")
-    if (binder_ && binder_->IsHeld("wrench_cycle", input) && hasHighlight_) {
+    // Wrench cycle on highlighted block (key from held binding "wrench_cycle").
+    // A wrench cycle rewrites a pipe/cable connection, so it is a world
+    // mutation even though it is neither a break nor a place and the matrix
+    // names no "canTool" column. CanInteractWithWorld is the honest predicate
+    // for it: it is exactly the set of modes the matrix treats as allowed to
+    // modify the world, and it fails closed on an undefined mode the same way
+    // CanBreak does. Gate it before the binder lookup so a forbidden mode does
+    // not even reach the query.
+    if (binder_ && GameModePerm::CanInteractWithWorld(mode) &&
+        binder_->IsHeld("wrench_cycle", input) && hasHighlight_) {
         uint16_t heldItem = GetHeldItem();
         // Only send if player holds a wrench
         if (heldItem != ITEM_WRENCH) {

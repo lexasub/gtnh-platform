@@ -11,7 +11,9 @@ class World;
 class NetClient;
 
 // Handles player world interaction: ray-casting, block highlighting,
-// block break on left-click, block place on right-click.
+// block break on left-click, and the wrench-cycle tool action on G.
+// (Block PLACEMENT is NOT here — it is a right-click intent GameClient sends
+// straight to the server, which decides between open-UI, place and reject.)
 // Stateless per-frame — call Update() once per game tick.
 class InteractionSystem {
 public:
@@ -21,8 +23,16 @@ public:
   void SetInventory(InventoryState *inventory) { inventory_ = inventory; }
   void SetBinder(const InputBinder *binder) { binder_ = binder; }
 
-  // Ray-cast from camera, highlight target, dispatch break/place actions.
+  // Ray-cast from camera, highlight target, dispatch break/tool actions.
   // Must be called every frame AFTER camera is updated.
+  //
+  // The dispatch is gated on the game mode carried by the inventory
+  // (GameModePerm::CanBreak for the break, CanInteractWithWorld for the
+  // wrench): a mode the matrix denies emits no action, and an undefined mode
+  // fails closed. The ray-cast and the highlight run regardless — they are
+  // read-only and the HUD renders them — so the gate covers the MUTATION, not
+  // the ray. This is deliberate duplication of the caller's own gate in
+  // GameClient::Update, which stays.
   void Update(const Camera &camera, const InputState &input, World &world,
               NetClient &netClient);
 
