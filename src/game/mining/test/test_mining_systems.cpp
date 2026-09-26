@@ -61,14 +61,18 @@
 // ============================================================================
 // FILED AS gp-xotc (P1).
 //
-// 1. The search counter latches. `pendingSearches_[ent] = sent;`
-//    (DrillSystem.cpp:239) is an ASSIGNMENT, written AFTER the getBlock
-//    callbacks have already decremented the map back to empty. So the counter
-//    is left at 2 (kMaxPerTick) and every later tick hits
-//    `if (pending >= 2) return;` — the drill issues exactly TWO block requests
-//    for its entire life. Pinned by
-//    …search_counter_is_reassigned_not_accumulated. (Measured: 2 gets, then 0
-//    forever, and searchIndex/searchLayer never move again.)
+// 1. FIXED (was gp-xotc / gp-fcvf finding 1). The search counter latched:
+//    `pendingSearches_[ent] = sent;` was an ASSIGNMENT written AFTER the
+//    getBlock callbacks had already decremented the map back to empty, so the
+//    counter sat at 2 (kMaxPerTick) and every later tick hit
+//    `if (pending >= 2) return;` — a drill issued exactly TWO block requests
+//    for its entire life. phaseSearch now increments the counter BEFORE
+//    issuing each request, which is also the only ordering correct for the
+//    production ASYNCHRONOUS repository (replies arrive on the io_uring poll
+//    thread, after phaseSearch has returned). The map is mutex-guarded
+//    because of that cross-thread access. Pinned by
+//    …search_counter_accumulates_and_releases and
+//    …search_counter_never_exceeds_the_per_tick_cap.
 //
 // 2. The spiral never returns the origin, so the `dx == 0 && dy == 0 && dz == 0`
 //    guard at DrillSystem.cpp:221 is DEAD CODE. getSpiralOffset advances x/z
@@ -93,12 +97,12 @@
 //         its capacity. Pinned by
 //         BatteryBufferSystem_full_buffer_requests_from_the_pipe_network.
 //
-// gp-u9ua (P1) BatteryBufferSystem::onConsumeResponse treats node_id 0 as a
-//         sentinel, but entt ids the FIRST entity 0, so that node's responses
-//         are dropped (single-entity registry) or credited to the wrong buffer
-//         (multi-entity). Pinned by
-//         BatteryBufferSystem_the_first_entity_is_node_zero and
-//         …consume_response_ignores_a_stale_request_order.
+// gp-u9ua (P1) FIXED HERE. BatteryBufferSystem::onConsumeResponse used to treat
+//         node_id 0 as a sentinel, but entt ids the FIRST entity 0, so a
+//         response addressed to that node was dropped or credited to the wrong
+//         buffer. The fix, and why "0 means none" was the wrong shape for it,
+//         are written out at BatteryBufferSystem_a_response_for_node_zero_
+//         credits_node_zero below.
 //
 // gp-w0b7 (P1) PlayerInventoryStore::giveItem's target_slot branch has no
 //         kMaxStack clamp, and PlayerActionDispatcher feeds it the
@@ -353,12 +357,34 @@ public:
     void getBlock(int32_t x, int32_t y, int32_t z,
                   GetBlockCallback callback) override {
         gets.push_back(GetCall{x, y, z});
+        if (deferred) {
+            pending_.push_back(callback);
+            return;
+        }
         auto it = cells_.find(key(x, y, z));
         if (it == cells_.end()) {
             callback(BlockData{0, 0, 0});
         } else {
             callback(it->second);
         }
+    }
+
+    // ── Asynchronous (production-shaped) mode ─────────────────────────────
+    // The real ChunkStoreRepository hands the callback to the io_uring client,
+    // so the reply arrives on the poll thread AFTER getBlock() has returned.
+    // `deferred` switches this double to that ordering: getBlock records the
+    // request and parks the callback until flushPending() runs it. This is the
+    // ordering the gp-xotc fix has to be correct for — a "decrement on reply,
+    // assign after" counter is wrong in BOTH orderings, and only this mode can
+    // show it.
+    void defer() { deferred = true; }
+    size_t pendingCount() const { return pending_.size(); }
+    // Deliver every parked reply, in issue order. Returns how many ran.
+    size_t flushPending() {
+        std::vector<GetBlockCallback> due;
+        due.swap(pending_);
+        for (auto& cb : due) cb(BlockData{0, 0, 0});
+        return due.size();
     }
 
     void clearRecording() {
@@ -370,6 +396,8 @@ public:
 
 private:
     std::unordered_map<uint64_t, BlockData> cells_;
+    bool deferred = false;
+    std::vector<GetBlockCallback> pending_;
 };
 
 // ---------------------------------------------------------------------------
@@ -1066,11 +1094,13 @@ static void test_DrillSystem_search_starts_from_idle_and_probes_two_cells() {
     CHECK_EQ_I(f.drill(ent).searchLayer, 0, "and the layer only changes at the wrap");
 }
 
-static void test_DrillSystem_search_counter_is_reassigned_not_accumulated() {
-    // FINDING (gp-fcvf). `pendingSearches_[ent] = sent;` is an ASSIGNMENT and
-    // runs after the synchronous callbacks have already erased the entry, so the
-    // counter is left at 2 forever and the drill stops searching after one tick
-    // of requests. Observed, not fixed.
+static void test_DrillSystem_search_counter_accumulates_and_releases() {
+    // gp-xotc, FIXED. `pendingSearches_[ent] = sent;` used to be an ASSIGNMENT
+    // running after the synchronous callbacks had already erased the entry, so
+    // the counter latched at kMaxPerTick and a drill issued exactly two block
+    // requests for its whole life. The counter is now incremented BEFORE each
+    // request is issued and released by the matching reply, so the search
+    // sustains kMaxPerTick requests per tick indefinitely.
     DrillFixture f;
     auto ent = f.addDrill(0, 64, 0, 0);
     giveDrillTool(f.reg, ent, kDrillUlv, 1000);
@@ -1081,11 +1111,78 @@ static void test_DrillSystem_search_counter_is_reassigned_not_accumulated() {
 
     for (int tick = 0; tick < 5; ++tick) f.sys->tick(kDt);
 
+    // Five more ticks at the same rate: 5 * kMaxPerTick on top of tick 1.
+    CHECK_EQ_I(f.repo->gets.size(), 12,
+               "every later tick issues kMaxPerTick more requests — the counter "
+               "is released by each reply instead of latching");
+    CHECK_EQ_I(f.drill(ent).searchIndex, index_after_tick1 + 10,
+               "and the search index advances with every issued request");
+    CHECK_EQ_I(f.drill(ent).searchLayer, 0,
+               "the drill is still in layer 0 — 12 requests is well short of the "
+               "440-cell wrap");
+}
+
+static void test_DrillSystem_search_counter_never_exceeds_the_per_tick_cap() {
+    // The rate cap must still hold: the counter is what enforces
+    // kMaxPerTick, so a drill must not be able to issue more than 2 requests
+    // in a single tick even though it is now correctly released.
+    DrillFixture f;
+    auto ent = f.addDrill(0, 64, 0, 0);
+    giveDrillTool(f.reg, ent, kDrillUlv, 1000);
+
+    for (int tick = 0; tick < 10; ++tick) {
+        const size_t before = f.repo->gets.size();
+        f.sys->tick(kDt);
+        CHECK_EQ_I(static_cast<int64_t>(f.repo->gets.size() - before), 2,
+                   "each tick issues exactly kMaxPerTick = 2 requests");
+    }
+}
+
+static void test_DrillSystem_search_sustains_its_rate_under_an_async_repository() {
+    // gp-xotc, the production ordering. The real ChunkStoreRepository forwards
+    // to IoUringChunkClient::GetBlock, whose reply is delivered from
+    // IoUringConnection's poll thread — i.e. AFTER phaseSearch has returned.
+    // Here the double is switched to that mode, so a tick's two requests are
+    // still outstanding when the next tick runs. The counter must therefore
+    // (a) be charged BEFORE the request goes out, and
+    // (b) be released by the reply, so the drill keeps searching at the same
+    //     rate once the replies land.
+    // A counter that only decremented on reply would let a drill run away
+    // (unbounded requests per tick); the old assigning counter latched.
+    DrillFixture f;
+    auto ent = f.addDrill(0, 64, 0, 0);
+    giveDrillTool(f.reg, ent, kDrillUlv, 1000);
+    f.repo->defer();
+
+    // Tick 1: two requests issued, both still in flight.
+    f.sys->tick(kDt);
+    CHECK_EQ_I(f.repo->gets.size(), 2, "tick 1 issues two requests");
+    CHECK_EQ_I(static_cast<int64_t>(f.repo->pendingCount()), 2,
+               "neither reply has arrived yet — this is the production ordering");
+
+    // Ticks 2 and 3 run while tick 1's replies are still outstanding: the
+    // outstanding count must throttle them, not let them run away.
+    f.sys->tick(kDt);
+    f.sys->tick(kDt);
     CHECK_EQ_I(f.repo->gets.size(), 2,
-               "ticks 2..6 issue NO further requests: pendingSearches_ is stuck at 2");
-    CHECK_EQ_I(f.drill(ent).searchIndex, index_after_tick1,
-               "and the search index never advances again");
-    CHECK_EQ_I(f.drill(ent).searchLayer, 0, "so the drill never leaves layer 0");
+               "no further requests while two replies are still in flight — the "
+               "counter is charged before the request goes out");
+    CHECK_EQ_I(static_cast<int64_t>(f.repo->pendingCount()), 2,
+               "still exactly two outstanding");
+
+    // The replies land, which releases both slots.
+    CHECK_EQ_I(static_cast<int64_t>(f.repo->flushPending()), 2,
+               "both parked replies are delivered");
+    CHECK_EQ_I(static_cast<int64_t>(f.repo->pendingCount()), 0,
+               "and the counter is fully released");
+
+    // The next tick can search again — the drill was not stranded at 2 forever.
+    const size_t before = f.repo->gets.size();
+    f.sys->tick(kDt);
+    CHECK_EQ_I(static_cast<int64_t>(f.repo->gets.size() - before), 2,
+               "once the replies land the drill resumes its full per-tick rate");
+    CHECK(f.drill(ent).searchIndex >= 2,
+          "and the search index has advanced past the first tick's probes");
 }
 
 static void test_DrillSystem_search_index_wraps_to_the_next_layer() {
@@ -1095,10 +1192,8 @@ static void test_DrillSystem_search_index_wraps_to_the_next_layer() {
     auto ent = f.addDrill(0, 64, 0, 0);
     giveDrillTool(f.reg, ent, kDrillUlv, 1000);
 
-    // The counter is stuck after one tick (see
-    // …search_counter_is_reassigned_not_accumulated), so the 440-wrap can only
-    // ever be reached on the FIRST tick. Start the index at 439 and let the two
-    // requests of that tick run: 439 -> 440 wraps to 0, then +1.
+    // The 440-cell wrap is driven directly: start the index at 439 and let the
+    // two requests of that tick run: 439 -> 440 wraps to 0, then +1.
     DrillFixture wrap;
     auto went = wrap.addDrill(0, 64, 0, 0);
     giveDrillTool(wrap.reg, went, kDrillUlv, 1000);
@@ -1157,7 +1252,7 @@ static void test_DrillSystem_spiral_never_produces_the_origin() {
         f.drill(ent).searchIndex = start;
         f.sys->tick(kDt);
         CHECK_EQ_I(f.repo->gets.size(), 2,
-                   "the request counter latches, so each start index is "
+                   "kMaxPerTick = 2 requests per tick, so each start index is "
                    "observed on its own system");
         for (const auto &call : f.repo->gets) {
             CHECK(!(call.x == 0 && call.y == 64 && call.z == 0),
@@ -1188,8 +1283,9 @@ static void test_DrillSystem_second_probe_is_already_a_diagonal() {
 
 static void test_DrillSystem_below_the_drill_is_never_probed_in_layer_zero() {
     // The block DIRECTLY below a drill is the single most valuable target, and
-    // layer 0 cannot reach it. Pinned: a world full of ore under the drill is
-    // never found, because the counter also latches after one tick.
+    // layer 0 cannot reach it: the spiral never returns the origin, so the
+    // drill's own cell is skipped and the +Y probe is a diagonal (gp-4v5i).
+    // This is a property of getSpiralOffset, not of the search rate.
     DrillFixture f;
     auto ent = f.addDrill(0, 64, 0, 0);
     giveDrillTool(f.reg, ent, kDrillUlv, TOOL_ENERGY_DEFS.at(kDrillUlv).capacity);
@@ -1608,41 +1704,40 @@ static void test_BatteryBufferSystem_full_buffer_requests_from_the_pipe_network(
 static void test_BatteryBufferSystem_consume_response_charges_the_matching_node() {
     // onConsumeResponse looks the node up in pendingRequests_, which is only
     // populated by a tick that actually issued a request. A response for an
-    // untracked node is rejected (returns false, no state change).
+    // untracked node is a miss (returns false, no state change).
     BatteryFixture f;
     auto ent = f.addBuffer(10, 64, 10, 40000, 1000, 1, 32, kLvChargeRate, 1);
     f.slots(ent)[0] = InventorySlot{kDrillUlv, 1, 0};
 
-    // FINDING (gp-lcuf). entt hands out entity id 0 to the FIRST entity a
-    // registry creates, so `static_cast<uint64_t>(ent) == 0` here. The
-    // `if (node_id != 0)` guard in onConsumeResponse therefore takes the FIFO
-    // fallback instead of the direct map lookup, and with an empty
-    // pendingOrder_ the response is DROPPED. The first-registered battery
-    // buffer can therefore never be credited by a node-targeted response.
+    // entt hands id 0 to the first entity, so this buffer IS node 0 — a real
+    // node whose responses must reach it. The old `if (node_id != 0)` guard
+    // could not express that and dropped the response outright whenever the
+    // FIFO was empty (gp-u9ua).
     const uint64_t node = static_cast<uint64_t>(ent);
     CHECK_EQ_I(node, 0,
                "precondition: entt ids its first entity 0, so this buffer IS node 0");
     CHECK(!f.sys->onConsumeResponse(node, 100, 0),
-           "the response is rejected: node_id 0 routes to the FIFO fallback, "
-           "which is empty here");
+           "before the tick there is no outstanding request, so a response is "
+           "still a miss — the miss is about the request, not the node id");
     CHECK_EQ_I(f.buf(ent).stored, 1000, "and the buffer is unchanged");
 
-    f.sys->tick(kDt);  // issues the request, so the FIFO queue is now populated
+    f.sys->tick(kDt);  // issues the request
     const int32_t after_tick = f.buf(ent).stored;
     CHECK_EQ_I(after_tick, 1000 - kLvChargeRate, "the tick charged the tool");
     CHECK(f.sys->onConsumeResponse(node, 500, 0),
-           "once the FIFO queue holds the request, the same response is accepted");
+           "gp-u9ua: once the request is registered, the response addressed to "
+           "node 0 is accepted like any other node's");
     CHECK_EQ_I(f.buf(ent).stored, after_tick + 500,
-               "and credits the full amount via the fallback path");
+               "and credits the full amount onto the addressed buffer");
 
     CHECK(!f.sys->onConsumeResponse(node, 500, 0),
            "the request is consumed exactly once");
     CHECK_EQ_I(f.buf(ent).stored, after_tick + 500, "a repeat response changes nothing");
 
-    // The direct map lookup is what every entity AFTER the first uses. Create a
-    // filler FIRST so the buffer under test is not entity 0. The filler needs
-    // no components at all — it exists purely to consume entity id 0, so it
-    // stays outside the view and issues no request of its own.
+    // A second buffer on a NON-zero id takes the same path and settles on its
+    // own id. The filler is created first so the buffer under test cannot be
+    // entity 0; it has no components, so it stays outside the view and issues
+    // no request of its own.
     BatteryFixture g;
     [[maybe_unused]] auto filler = g.reg.create();
     static_cast<void>(filler); // filler: takes entity id 0
@@ -1654,17 +1749,12 @@ static void test_BatteryBufferSystem_consume_response_charges_the_matching_node(
     const uint64_t real = static_cast<uint64_t>(warmup);
     CHECK_NE(real, 0u, "precondition: with a filler first, the buffer is not node 0");
 
-    // The tick above registered the request, so the direct lookup finds it on
-    // the FIRST call and the buffer is credited. This is the path production
-    // uses for every entity after the first, and unlike the node-0 FIFO
-    // fallback it is keyed by node id.
     CHECK(g.sys->onConsumeResponse(real, 300, 0),
-           "a tracked non-zero node IS credited through the direct lookup");
-    CHECK_EQ_I(g.buf(warmup).stored, 300,
-               "and the credit lands on the right buffer");
+           "a tracked non-zero node is credited through the direct lookup");
+    CHECK_EQ_I(g.buf(warmup).stored, 300, "and the credit lands on the right buffer");
 
     CHECK(!g.sys->onConsumeResponse(real, 100, 0),
-           "with the request retired, a further response is rejected");
+           "with the request retired, a further response is a miss");
     CHECK_EQ_I(g.buf(warmup).stored, 300, "and the buffer is unchanged");
 }
 
@@ -1697,41 +1787,110 @@ static void test_BatteryBufferSystem_consume_response_rejects_zero_and_negative(
     CHECK_EQ_I(f.buf(ent).stored, base + 10, "and credits correctly");
 }
 
-static void test_BatteryBufferSystem_consume_response_ignores_a_stale_request_order() {
-    // A response carrying node_id 0 falls through to the FIFO pendingOrder_
-    // queue, crediting the OLDEST outstanding request. Pinned so the fallback
-    // is visible rather than accidental.
+// gp-u9ua FIXED. onConsumeResponse correlates a response with the request that
+// asked for it, and the ONLY correlation key that survives the round trip is
+// the node id. Three cases below, one per way the old code got it wrong:
+//
+//   1. node 0 is a REAL node. entt hands id 0 to the first entity it creates,
+//      and BatteryBufferSystem::tick() sends that entity's own id as the
+//      request's node_id, so node 0 is on the wire like any other. The old
+//      `if (node_id != 0)` guard could therefore never take the direct branch
+//      for it and always fell through to the FIFO heuristic.
+//   2. The FIFO heuristic then credited the WRONG buffer. It picks
+//      pendingOrder_.front(), and the view is walked in reverse creation order,
+//      so the front is the LAST-created entity. A response addressed to node 0
+//      credited node 1.
+//   3. An id that matches NO outstanding request must credit nobody. The old
+//      code fell through to the FIFO anyway and handed it a live buffer.
+//
+// The shape of the fix: there is no "undirected response" to fall back for.
+// PipeNetworkService::handleConsumeRequest always echoes req->node_id() into
+// the response (PipeNetworkService.cpp:959,1004), so every legitimate response
+// names its requester, and an absent node_id on the wire can only mean a
+// request that went unanswered. Routing strictly by node id also makes this
+// system behave like its siblings LCRSystem::onConsumeResponse /
+// EBFSystem::onConsumeResponse, which look the id up and return false on a
+// miss, so the SimCoreMessageHandler chain (battery -> lcr -> ebf -> machine,
+// SimCoreMessageHandler.cpp:256-265) can hand an unclaimed response on instead
+// of having whichever system happens to be asked first guess.
+static void test_BatteryBufferSystem_a_response_for_node_zero_credits_node_zero() {
+    // Two buffers, no tools, so `stored` moves ONLY in response to a consume
+    // response and the arithmetic below has one moving part.
     BatteryFixture f;
-    auto a = f.addBuffer(10, 64, 10, 40000, 0, 1, 32, kLvChargeRate, 1);
-    f.slots(a)[0] = InventorySlot{kDrillUlv, 1, 0};
-    auto b = f.addBuffer(20, 64, 20, 40000, 0, 1, 32, kLvChargeRate, 1);
-    f.slots(b)[0] = InventorySlot{kDrillUlv, 1, 0};
+    auto zero = f.addBuffer(10, 64, 10, 40000, 0, 1, 32, kLvChargeRate, 1);
+    auto other = f.addBuffer(20, 64, 20, 40000, 0, 1, 32, kLvChargeRate, 1);
+    CHECK_EQ_I(static_cast<int64_t>(zero), 0,
+               "precondition: entt ids its first entity 0, so this buffer IS node 0");
+    CHECK_NE(static_cast<int64_t>(other), 0, "precondition: the second buffer is not node 0");
 
-    // EnTT yields this view in REVERSE creation order, so `b` (created second)
-    // is visited FIRST and is pushed onto pendingOrder_ first. A node_id 0
-    // response therefore credits `b`, the OLDEST queue entry, which is the
-    // LAST-created entity. The order is an ECS bookkeeping detail, not a rule.
+    f.sys->tick(kDt);  // both buffers are below capacity, so both request
+    CHECK(f.sys->onConsumeResponse(0, 500, 0),
+           "gp-u9ua: a response addressed to node 0 is a response to a request "
+           "this system made, so it is accepted");
+    CHECK_EQ_I(f.buf(zero).stored, 500,
+               "gp-u9ua: and the EU lands on the buffer the node id names");
+    CHECK_EQ_I(f.buf(other).stored, 0,
+               "gp-u9ua: the FIFO fallback must NOT credit the last-created "
+               "entity instead of the addressed one");
+}
+
+static void test_BatteryBufferSystem_a_response_for_node_zero_settles_its_own_request() {
+    // The second half of the defect: because the mis-credit also settled the
+    // WRONG node's request, node 0's own request was left outstanding forever.
+    // A buffer with a live pending entry never re-requests (tick() skips it), so
+    // node 0 would silently stop drawing EU.
+    BatteryFixture f;
+    auto zero = f.addBuffer(10, 64, 10, 40000, 0, 1, 32, kLvChargeRate, 1);
+    auto other = f.addBuffer(20, 64, 20, 40000, 0, 1, 32, kLvChargeRate, 1);
+    CHECK_EQ_I(static_cast<int64_t>(zero), 0, "precondition: the first buffer is node 0");
+
     f.sys->tick(kDt);
-    CHECK_EQ_I(static_cast<int64_t>(a), 0,
-               "precondition: entt ids the first-created entity 0");
-    CHECK_EQ_I(f.buf(a).stored, 0, "precondition: `a` holds no EU to charge a tool");
-    CHECK_EQ_I(f.buf(b).stored, 0, "precondition: neither buffer holds any EU");
+    CHECK(f.sys->onConsumeResponse(0, 500, 0), "the node-0 response is accepted");
+    // Retire node 1's request too, so the only thing that can re-request is
+    // node 0 — and only if its own request was actually retired.
+    CHECK(f.sys->onConsumeResponse(static_cast<uint64_t>(other), 10, 0),
+           "precondition: node 1's outstanding request settles on its own id");
+    f.sys->tick(kDt);
+    // With the defect, node 0 still holds a pending entry, so this tick issued
+    // no request for it and it is frozen at 500. With the fix the request was
+    // retired, the tick re-requested, and node 0 is starving again and asking
+    // for more. Node 1 was credited exactly once, so the second response above
+    // is what retired it and nothing has credited it since.
+    CHECK_EQ_I(f.buf(zero).stored, 500,
+               "gp-u9ua: node 0 is not credited by the tick itself (no EU arrives "
+               "without a response) — the credit came only from its own response");
+    CHECK_EQ_I(f.buf(other).stored, 10,
+               "gp-u9ua: node 1 was credited by its own response only, never by "
+               "node 0's");
+}
 
-    CHECK(f.sys->onConsumeResponse(0, 200, 0),
-           "a node_id 0 response falls through to the FIFO queue");
-    CHECK_EQ_I(f.buf(b).stored, 200,
-               "and credits the OLDEST queue entry, which is the "
-               "last-created entity (reverse view order)");
-    CHECK_EQ_I(f.buf(a).stored, 0, "leaving the other buffer untouched");
+static void test_BatteryBufferSystem_an_unknown_node_id_credits_nobody() {
+    // A response naming an id with no outstanding request is not this system's
+    // business. It must credit NOBODY and report the miss, so the next system in
+    // the SimCoreMessageHandler chain gets its turn. The old FIFO fallback made
+    // "I do not know who this is for" mean "credit whoever I asked first".
+    BatteryFixture f;
+    auto zero = f.addBuffer(10, 64, 10, 40000, 0, 1, 32, kLvChargeRate, 1);
+    auto other = f.addBuffer(20, 64, 20, 40000, 0, 1, 32, kLvChargeRate, 1);
+    f.sys->tick(kDt);  // both requests outstanding
+
+    constexpr uint64_t kStrangerNode = 999;
+    CHECK(!f.sys->onConsumeResponse(kStrangerNode, 500, 0),
+           "gp-u9ua: an id with no outstanding request is reported as a miss, so "
+           "the handler chain passes it on");
+    CHECK_EQ_I(f.buf(zero).stored, 0, "gp-u9ua: it credits neither live buffer");
+    CHECK_EQ_I(f.buf(other).stored, 0, "gp-u9ua: including the FIFO front");
+
+    // Both requests survive a mis-addressed response, so they can still settle.
+    CHECK(f.sys->onConsumeResponse(0, 100, 0), "node 0 still settles afterwards");
+    CHECK_EQ_I(f.buf(zero).stored, 100, "and is credited its own amount");
 }
 
 static void test_BatteryBufferSystem_the_first_entity_is_node_zero() {
     // entt hands out entity id 0 to the FIRST entity a registry creates
     // (measured: create three -> 0, 1, 2), and entt::null is 0xFFFFFFFF, not 0.
-    // So the very first battery buffer in a fresh registry is node_id 0, and
-    // onConsumeResponse's `if (node_id != 0)` guard sends its response down the
-    // FIFO fallback instead of the direct map lookup. Pinned because the two
-    // paths behave differently and only one of them is keyed by node.
+    // So the very first battery buffer in a fresh registry IS node 0 — a real
+    // node, on the wire, with responses of its own.
     entt::registry probe;
     [[maybe_unused]] auto first = probe.create();
     [[maybe_unused]] auto second = probe.create();
@@ -1745,13 +1904,17 @@ static void test_BatteryBufferSystem_the_first_entity_is_node_zero() {
     CHECK_NE(static_cast<int64_t>(kEnttNull), 0,
              "entt's null handle is NOT 0, so entity 0 is a perfectly valid handle");
 
-    // With exactly one buffer in the registry, its node id IS 0.
+    // With exactly one buffer in the registry, its node id IS 0, and that
+    // buffer must still be creditable — the single-entity case is where the old
+    // code dropped the response outright whenever the FIFO was empty.
     BatteryFixture f;
     auto only = f.addBuffer(10, 64, 10, 40000, 0, 1, 32, kLvChargeRate, 1);
-    f.slots(only)[0] = InventorySlot{kDrillUlv, 1, 0};
     CHECK_EQ_I(static_cast<int64_t>(only), 0,
                "a single-entity registry puts the buffer on node 0");
-    CHECK_EQ_I(f.buf(only).stored, 0, "sanity: the buffer starts empty");
+    f.sys->tick(kDt);
+    CHECK(f.sys->onConsumeResponse(0, 250, 0),
+           "gp-u9ua: a lone node-0 buffer accepts a response addressed to it");
+    CHECK_EQ_I(f.buf(only).stored, 250, "and is credited");
 }
 
 static void test_BatteryBufferSystem_discharge_path_is_owned_by_the_flow_handler() {
@@ -2001,15 +2164,12 @@ static void test_creative_grant_adds_the_requested_count() {
 
 static void test_creative_grant_splits_across_stacks() {
     // 150 of one item. PlayerActionDispatcher passes `pos.x()` as the target
-    // slot, so this goes down the target_slot branch of giveItem, which has
-    // NO kMaxStack clamp:
-    //
-    //   if (target_slot >= 0 && target_slot < kInventorySlots) {
-    //     auto& dst = slots[target_slot];
-    //     if (dst.item_id == 0) { dst = {item_id, (uint8_t)remaining, 0}; remaining = 0; }
-    //
-    // so all 150 land in ONE over-stacked slot. Only the target_slot < 0 path
-    // (the "first free slot" scan) splits at 64 per stack. Pinned as observed.
+    // slot, so this goes down the target_slot branch of giveItem. That branch
+    // used to write the WHOLE remaining count into the target slot with no
+    // kMaxStack clamp, so a wire grant created a single over-stacked slot; the
+    // only untargeted path (target_slot < 0) ever split at 64 (gp-w0b7). Both
+    // paths now clamp identically, and this is the end-to-end proof over the
+    // FlatBuffer wire path rather than a direct store call.
     constexpr uint16_t kItem = 22530;
     constexpr uint8_t kCount = 150;
     constexpr uint64_t kPlayer = 11;
@@ -2030,34 +2190,37 @@ static void test_creative_grant_splits_across_stacks() {
     fbb.Finish(act);
     dispatcher.dispatch({fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()});
 
-    int stacks = 0, total = 0;
+    int stacks = 0, total = 0, worst = 0;
     for (const auto &s : inv->getSlots(kPlayer)) {
         if (s.item_id == kItem) {
             ++stacks;
             total += s.count;
+            worst = s.count > worst ? s.count : worst;
         }
     }
-    CHECK_EQ_I(stacks, 1, "a wire grant with pos.x() == 0 lands in ONE stack");
+    // The targeted path must now behave exactly like the untargeted one below.
+    CHECK_EQ_I(stacks, 3, "a wire grant with pos.x() == 0 splits across three stacks");
     CHECK_EQ_I(total, 150, "and all 150 items are stored, none dropped");
-    CHECK_GT_I(inv->getSlots(kPlayer)[0].count, 64,
-               "FINDING: the target_slot branch of giveItem has no kMaxStack "
-               "clamp, so the wire grant can create an over-stacked slot");
+    CHECK_LE_I(worst, 64, "with no stack over the 64-item cap — a wire grant can no "
+                          "longer create an over-stacked slot (gp-w0b7)");
+    CHECK_EQ_I(inv->getSlots(kPlayer)[0].count, 64,
+               "the targeted slot itself is filled to the cap, not beyond it");
 
-    // The clamp only exists on the target_slot < 0 path, which splits at 64.
+    // The untargeted path is unchanged: it has always split at 64.
     auto inv2 = std::make_shared<simcore::PlayerInventoryStore>();
     inv2->initPlayer(kPlayer);
     CHECK(inv2->giveItem(kPlayer, kItem, 150, -1), "the direct path succeeds too");
-    int stacks2 = 0, total2 = 0, worst = 0;
+    int stacks2 = 0, total2 = 0, worst2 = 0;
     for (const auto &s : inv2->getSlots(kPlayer)) {
         if (s.item_id == kItem) {
             ++stacks2;
             total2 += s.count;
-            worst = s.count > worst ? s.count : worst;
+            worst2 = s.count > worst2 ? s.count : worst2;
         }
     }
     CHECK_EQ_I(stacks2, 3, "target_slot -1 splits 150 across three stacks");
     CHECK_EQ_I(total2, 150, "and stores all of them");
-    CHECK_LE_I(worst, 64, "with no stack over the 64-item cap");
+    CHECK_LE_I(worst2, 64, "with no stack over the 64-item cap");
 }
 
 static void test_creative_grant_into_a_full_inventory_does_not_corrupt_state() {
@@ -2199,7 +2362,9 @@ int main(int argc, char **argv) {
     TEST(DrillSystem_drop_comes_from_the_store_reply);
     TEST(DrillSystem_non_ore_blocks_are_never_mined);
     TEST(DrillSystem_search_starts_from_idle_and_probes_two_cells);
-    TEST(DrillSystem_search_counter_is_reassigned_not_accumulated);
+    TEST(DrillSystem_search_counter_accumulates_and_releases);
+    TEST(DrillSystem_search_counter_never_exceeds_the_per_tick_cap);
+    TEST(DrillSystem_search_sustains_its_rate_under_an_async_repository);
     TEST(DrillSystem_search_index_wraps_to_the_next_layer);
     TEST(DrillSystem_layer_offset_sequence);
     TEST(DrillSystem_spiral_never_produces_the_origin);
@@ -2232,7 +2397,9 @@ int main(int argc, char **argv) {
     TEST(BatteryBufferSystem_consume_response_charges_the_matching_node);
     TEST(BatteryBufferSystem_consume_response_clamps_to_capacity);
     TEST(BatteryBufferSystem_consume_response_rejects_zero_and_negative);
-    TEST(BatteryBufferSystem_consume_response_ignores_a_stale_request_order);
+    TEST(BatteryBufferSystem_a_response_for_node_zero_credits_node_zero);
+    TEST(BatteryBufferSystem_a_response_for_node_zero_settles_its_own_request);
+    TEST(BatteryBufferSystem_an_unknown_node_id_credits_nobody);
     TEST(BatteryBufferSystem_the_first_entity_is_node_zero);
     TEST(BatteryBufferSystem_discharge_path_is_owned_by_the_flow_handler);
 

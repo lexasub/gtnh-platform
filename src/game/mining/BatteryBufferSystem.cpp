@@ -67,7 +67,6 @@ void BatteryBufferSystem::tick(float /*dt*/) {
                         needed
                     );
                     pendingRequests_[entity_id] = needed;
-                    pendingOrder_.push_back(entity_id);
                     spdlog::trace("[BatteryBuffer] entity {} requested {} EU from PipeNetwork",
                                   entity_id, needed);
                 }
@@ -78,31 +77,42 @@ void BatteryBufferSystem::tick(float /*dt*/) {
 
 bool BatteryBufferSystem::onConsumeResponse(uint64_t node_id, int32_t consumed, int32_t) {
     if (consumed <= 0) return false;
-    if (node_id != 0) {
-        auto it = pendingRequests_.find(node_id);
-        if (it != pendingRequests_.end()) {
-            auto* buffer = m_registry.try_get<BatteryBufferComponent>(static_cast<entt::entity>(node_id));
-            if (buffer) {
-                buffer->stored = std::min(buffer->stored + consumed, static_cast<int32_t>(buffer->capacity));
-            }
-            pendingRequests_.erase(it);
-            return true;
-        }
+
+    // Correlate strictly by node id (gp-u9ua).
+    //
+    // This used to read `if (node_id != 0) { ...direct... }` and, on a miss,
+    // fall through to a FIFO fallback that credited pendingOrder_.front().
+    // Both halves were wrong. entt hands id 0 to the first entity a registry
+    // creates, and tick() sends that entity's own id as the request's node_id,
+    // so node 0 is a real node on the wire — the guard could never take the
+    // direct branch for it and every node-0 response was routed by guesswork:
+    // with an empty queue the EU was dropped and the request never retired, and
+    // with two buffers the FIFO front (the last-created entity, because the
+    // view is walked in reverse) was credited instead of the addressed node.
+    //
+    // The FIFO fallback existed for a response that named no node, but no such
+    // response is produced: PipeNetworkService::handleConsumeRequest echoes
+    // req->node_id() into every reply (PipeNetworkService.cpp:959,1004), so a
+    // missing id can only mean a request that was never sent. Credit nothing
+    // and report the miss — that also lets SimCoreMessageHandler hand an
+    // unclaimed response to the next system in the chain
+    // (SimCoreMessageHandler.cpp:256-265) rather than having whichever system
+    // is asked first guess, and it matches the sibling LCRSystem / EBFSystem
+    // handlers, which already return false on an unknown id.
+    auto it = pendingRequests_.find(node_id);
+    if (it == pendingRequests_.end())
+        return false;  // not our request (or already settled)
+
+    if (auto* buffer = m_registry.try_get<BatteryBufferComponent>(
+            static_cast<entt::entity>(node_id))) {
+        buffer->stored = std::min(buffer->stored + consumed,
+                                  static_cast<int32_t>(buffer->capacity));
     }
-    while (!pendingOrder_.empty()) {
-        uint64_t oldest = pendingOrder_.front();
-        pendingOrder_.pop_front();
-        auto it = pendingRequests_.find(oldest);
-        if (it != pendingRequests_.end()) {
-            auto* buffer = m_registry.try_get<BatteryBufferComponent>(static_cast<entt::entity>(oldest));
-            if (buffer) {
-                buffer->stored = std::min(buffer->stored + consumed, static_cast<int32_t>(buffer->capacity));
-            }
-            pendingRequests_.erase(it);
-            return true;
-        }
-    }
-    return false;
+    // Retire the request even if the entity is gone or has lost its component:
+    // the EU is spent, so leaving the entry behind would stall the buffer's
+    // future requests forever.
+    pendingRequests_.erase(it);
+    return true;
 }
 
 void BatteryBufferSystem::chargeSlot(BatteryBufferComponent& buffer,

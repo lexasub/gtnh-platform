@@ -30,8 +30,12 @@ private:
   entt::registry &m_registry;
   std::shared_ptr<PipeEnergyClient> pipeClient_;
   std::shared_ptr<IEventPublisher> events_;
+  // Outstanding consume requests, keyed by the node id that was sent on the
+  // wire. Node id 0 is a REAL node (entt's first entity), so the map — not a
+  // sentinel in the key — is what distinguishes "we asked" from "we did not".
+  // There is no ordering queue: a response is correlated by node id alone
+  // (gp-u9ua).
   std::unordered_map<uint64_t, int32_t> pendingRequests_;
-  std::deque<uint64_t> pendingOrder_;
 };
 
 } // namespace simcore
