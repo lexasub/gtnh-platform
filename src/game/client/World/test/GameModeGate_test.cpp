@@ -8,36 +8,44 @@
 // WHY THIS FILE EXISTS AS A TEST RATHER THAN A REFACTOR
 // ---------------------------------------------------
 // gp-hf2y asks for the inline ADVENTURE/SPECTATOR check in GameClient::Update
-// to be extracted into a reusable, unit-testable predicate. Extracting it
-// means editing src/game/client/GameClient.cpp, which is production code
-// outside this work item's mandate (and GameClient.cpp has no test at all, so
-// a refactor there could not be verified by anything this test does). So the
-// predicate is NOT extracted. Instead this file pins the exact behaviour that
-// the extraction has to preserve, plus the exact behaviour it has to fix.
+// to be extracted into a reusable, unit-testable predicate, and gp-ul16 is
+// the defect that extraction was supposed to fix: that check was a deny-list
+// and therefore admitted every mode the enum does not define.
 //
-// The gate itself is not a free function, so it cannot be called. What IS
-// reachable and deterministic is:
+// BOTH ARE NOW DONE (gp-ul16): the gate calls
+// GameModePerm::CanInteractWithWorld from GameClient.cpp:416-419, and this
+// file gates on the real production predicate rather than a copy of it, so
+// it cannot drift from the code again. `gateAllowsMode` is now a pass-through
+// to that predicate, not a restatement of the old expression.
 //
-//   1. GameModePerm — the permission matrix the gate is supposed to converge
-//      on. This is a header-only namespace of inline functions, fully testable.
-//   2. The gate's decision rule, re-expressed as the same expression shape the
-//      production code uses, and checked against GameModePerm for every mode.
-//      The two rules DISAGREE for every value outside the enum, and the tests
-//      say so rather than papering over it.
+// What IS reachable and deterministic:
+//
+//   1. GameModePerm — the permission matrix the gate is built on. Header-only
+//      namespace of inline functions, fully testable.
+//   2. IsDefinedGameMode / TryGameModeFromWire — the wire-boundary validator
+//      that GameScenario.cpp and ConsoleWindow.cpp now route every
+//      assignment through.
+//   3. The gate's decision rule, which is literally predicate (1), checked
+//      against the rest of the matrix for every one of the 256 byte values.
 //
 // No display, GPU, window, input device, socket or wall-clock waiting is
 // involved. InventoryState is a plain struct; nothing is rendered.
 //
 // NOT covered here, and why:
 //   - GameClient::Update itself needs a window, a GL context and a connected
-//     NetClient, so the gate is not exercised through it. The re-expressed
-//     rule below is what a reader has to diff against GameClient.cpp, and
-//     the test names the line numbers so a stale copy is easy to spot.
+//     NetClient, so the gate is not exercised through it. What IS covered is
+//     the predicate the gate now calls, which is the whole mode half of the
+//     condition; the remaining conjuncts (AnyOpen, rightClickHandled) are UI
+//     concerns no headless test can reach.
+//   - GameScenario::OnNetworkUpdate and the /gamemode console command both
+//     need a live UIManager, so their new TryGameModeFromWire call is
+//     covered by calling the predicate itself, which is the entire decision
+//     those two sites make.
 //   - The permission matrix also has a test at
 //     src/apps/game_client/tests/test_gamemode_permissions.cpp (four modes,
 //     20 checks). This file does not duplicate that; it adds what that file
 //     does not cover: the UNDEFINED mode values, the gate-vs-matrix
-//     divergence, and the fact that the gate is written as a deny-list.
+//     divergence, and the wire-boundary validator.
 
 // ---- project test harness (mirrors src/game/world/test/BlockTransforms_test.cpp) ----
 #include <cstdio>
@@ -76,7 +84,13 @@ constexpr GameMode kAllModes[] = {
 };
 constexpr int kModeCount = 4;
 
-// The interaction gate as written TODAY in GameClient.cpp:416-419:
+// The interaction gate as it stands in GameClient.cpp:416-419 AFTER gp-ul16:
+//
+//     if (!uiMgr_.AnyOpen()
+//         && GameModePerm::CanInteractWithWorld(invState_.gameMode)
+//         && !rightClickHandled) { ... interaction_.Update(...) ... }
+//
+// BEFORE the fix it read:
 //
 //     if (!uiMgr_.AnyOpen()
 //         && invState_.gameMode != GameMode::ADVENTURE
@@ -84,13 +98,18 @@ constexpr int kModeCount = 4;
 //         && !rightClickHandled) { ... interaction_.Update(...) ... }
 //
 // The first and last conjuncts are about UI and the right-click path, not
-// about the mode, so this helper isolates the mode half verbatim:
-//
-//     mode != ADVENTURE && mode != SPECTATOR
-//
-// i.e. a DENY-LIST of the two modes that cannot build. Restated here in the
-// same expression shape so the results are bit-identical to production.
+// about the mode, so this helper isolates the mode half. It is now a thin
+// pass-through to the production predicate rather than a restatement of it,
+// so the test exercises the real thing instead of a copy that could drift.
 bool gateAllowsMode(GameMode mode) {
+  return GameModePerm::CanInteractWithWorld(mode);
+}
+
+// The gate as it was BEFORE gp-ul16, kept so the tests can still name the
+// defect and prove the new one is different from it over the whole byte
+// range. Not called by the pass/fail tests — only by the one test that
+// measures the old shape, which documents what the fix changed.
+bool gateAllowsModeDenyList(GameMode mode) {
   return mode != GameMode::ADVENTURE && mode != GameMode::SPECTATOR;
 }
 
@@ -201,21 +220,10 @@ static void test_GateBlocksExactlyAdventureAndSpectator() {
   CHECK(gateAllowsMode(GameMode::CREATIVE), "CREATIVE can build");
 }
 
-static void test_GateIsADenyListNotAnAllowList() {
-  // THE FINDING. GameClient.cpp:417-418 writes the gate as
-  //   mode != ADVENTURE && mode != SPECTATOR
-  // which admits every mode EXCEPT those two. GameModePerm::CanBreak is an
-  // allow-list:
-  //   mode == CREATIVE || mode == SURVIVAL
-  // For the four defined modes the two are equivalent. For every value the
-  // enum does NOT define they are opposites: the deny-list lets the action
-  // through, the allow-list blocks it.
-  //
-  // gp-hf2y says an undefined mode "must take the documented safe path". The
-  // allow-list is the safe path. The deny-list as written is not, so the
-  // extraction is not a pure refactor: it changes behaviour for the
-  // out-of-range values. That is the point of the issue, and the reason the
-  // rules must be compared rather than assumed equivalent.
+static void test_UndefinedModesCannotInteractWithTheWorld() {
+  // gp-ul16. Asserts the SAFE direction: an undefined mode must not reach
+  // the world-interaction path. Before the fix the gate was a deny-list and
+  // every one of these values passed it.
   static const GameMode kUndefined[] = {
       static_cast<GameMode>(4),
       static_cast<GameMode>(5),
@@ -225,11 +233,29 @@ static void test_GateIsADenyListNotAnAllowList() {
       static_cast<GameMode>(255),
   };
   for (GameMode m : kUndefined) {
-    CHECK(gateAllowsMode(m),
-          "OBSERVED: the deny-list ADMITS an undefined mode");
+    CHECK(!gateAllowsMode(m),
+          "OBSERVED HARM: the gate ADMITS an undefined mode the matrix blocks");
     CHECK(!GameModePerm::CanBreak(m),
-          "but CanBreak BLOCKS it — the two rules disagree");
+          "OBSERVED: CanBreak blocks the same mode — the two rules disagree");
   }
+}
+
+static void test_TheFixChangedExactlyTheUndefinedModes() {
+  // Proves the new gate is not merely "the old one, negated" and that the
+  // fix is surgical: for all four DEFINED modes the old deny-list and the new
+  // allow-list agree, so no player in a real mode changes behaviour. The only
+  // values whose verdict changed are the 252 the enum does not name.
+  int defined_changed = 0;
+  int undefined_changed = 0;
+  for (int raw = 0; raw <= 255; ++raw) {
+    const GameMode m = static_cast<GameMode>(static_cast<uint8_t>(raw));
+    const bool before = gateAllowsModeDenyList(m);
+    const bool after = gateAllowsMode(m);
+    if (before == after) continue;
+    if (IsDefinedGameMode(m)) ++defined_changed; else ++undefined_changed;
+  }
+  CHECK_EQ(defined_changed, 0, "no defined mode changed behaviour");
+  CHECK_EQ(undefined_changed, 252, "exactly the 252 undefined values changed");
 }
 
 static void test_UndefinedModesFavourTheMatrixAcrossTheWholeByteRange() {
@@ -250,9 +276,12 @@ static void test_UndefinedModesFavourTheMatrixAcrossTheWholeByteRange() {
     if (gate && !matrix) ++disagree_deny_only;   // the dangerous direction
     if (!gate && matrix) ++disagree_allow_only;
   }
-  // Modes 0..3: both agree. Modes 4..255: the gate admits, the matrix blocks.
-  CHECK_EQ(disagree_deny_only, 252, "252 of 256 values are admitted by the gate but blocked by the matrix");
-  CHECK_EQ(disagree_allow_only, 0, "the matrix never blocks a mode the gate allows among defined modes");
+  // Modes 0..3: both agree. Modes 4..255: after the fix the gate agrees with
+  // the matrix and blocks, so there is no disagreement in either direction.
+  // Before the fix this was 252 admitted-and-blocked — the deny-list is the
+  // unsafe direction, which is why the count is asserted to be ZERO now.
+  CHECK_EQ(disagree_deny_only, 0, "no value is admitted by the gate but blocked by the matrix");
+  CHECK_EQ(disagree_allow_only, 0, "the matrix never blocks a mode the gate allows");
 }
 
 static void test_CanFlyAndCanBreakDisagreeOnUndefinedModesToo() {
@@ -338,8 +367,8 @@ static void test_TheConsoleRejectsOutOfRangeModesButTheWireDoesNot() {
   // /gamemode argument to 0..3 before assigning, so a player cannot type a
   // bad mode. GameScenario.cpp:39 does NOT validate resp->game_mode(). So the
   // only way an undefined mode reaches the gate is a server response, and the
-  // deny-list is the only thing standing between that and a client that builds
-  // in a mode nobody defined.
+  // gate is the only thing standing between that and a client that builds in
+  // a mode nobody defined.
   //
   // Modelled by construction rather than by calling the console: the check
   // here is that InventoryState itself performs no validation, which is what
@@ -348,37 +377,106 @@ static void test_TheConsoleRejectsOutOfRangeModesButTheWireDoesNot() {
   const uint8_t raw = 9;
   inv.gameMode = static_cast<GameMode>(raw);  // exactly what GameScenario.cpp:39 does
   CHECK_EQ(static_cast<int>(inv.gameMode), 9, "an out-of-range wire value is stored unvalidated");
-  CHECK(gateAllowsMode(inv.gameMode), "and the deny-list lets it build");
-  CHECK(!GameModePerm::CanBreak(inv.gameMode), "while the matrix would forbid it");
+  CHECK(!gateAllowsMode(inv.gameMode), "and the gate refuses to let it build");
+  CHECK(!GameModePerm::CanBreak(inv.gameMode), "while the matrix forbids it too — the two now agree");
 }
 
 // ===========================================================================
-// The extraction this test exists to enable — what it must preserve
+// The wire boundary — IsDefinedGameMode / TryGameModeFromWire
 // ===========================================================================
 //
-//   ADD to src/game/client/Common/Inventory.h (next to GameModePerm):
-//
-//     namespace GameModePerm {
-//     // Whether the client may run the world-interaction path (block break
-//     // and place) at all. Replaces the inline
-//     //   `gameMode != ADVENTURE && gameMode != SPECTATOR`
-//     // in GameClient::Update, which is a deny-list and therefore ADMITS any
-//     // mode the enum does not define. This is an allow-list, so an
-//     // out-of-range game_mode arriving from the server takes the safe path.
-//     inline bool CanInteractWithWorld(GameMode m) {
-//       return m == GameMode::CREATIVE || m == GameMode::SURVIVAL;
-//     }
-//     }
-//
-//   Then GameClient.cpp:416-419 becomes
-//
-//     if (!uiMgr_.AnyOpen()
-//         && GameModePerm::CanInteractWithWorld(invState_.gameMode)
-//         && !rightClickHandled) { ... }
-//
-//   and test_GateAndMatrixAgreeForEveryDefinedMode is the regression guard
-//   that the four real modes behave exactly as they do today.
-// ===========================================================================
+// These are the second half of the gp-ul16 fix. Allow-listing the gate stops
+// an undefined mode from causing harm, but the value would still be sitting
+// in InventoryState in a state the enum does not name, and GameModeName
+// would render it "UNKNOWN" while the rest of the UI quietly treats it as a
+// real mode. So the assignment sites validate too.
+
+static void test_OnlyTheFourDefinedModesAreDefined() {
+  for (int i = 0; i < kModeCount; ++i) {
+    CHECK(IsDefinedGameMode(kAllModes[i]), "each declared mode is defined");
+  }
+  for (int raw = 0; raw <= 255; ++raw) {
+    const GameMode m = static_cast<GameMode>(static_cast<uint8_t>(raw));
+    const bool declared = raw >= 0 && raw < kModeCount;
+    CHECK_EQ(IsDefinedGameMode(m), declared,
+             "IsDefinedGameMode is exactly the membership test over the enum");
+  }
+}
+
+static void test_WireValidatorAcceptsEveryDefinedMode() {
+  // Round-trip: each defined mode survives the boundary unchanged. This is
+  // the no-regression half of the validator — rejecting everything would
+  // "fix" gp-ul16 by making the mode permanently unwritable.
+  for (int i = 0; i < kModeCount; ++i) {
+    GameMode out = GameMode::SPECTATOR;  // poison: must be overwritten
+    const uint8_t raw = static_cast<uint8_t>(kAllModes[i]);
+    CHECK(TryGameModeFromWire(raw, out), "a defined mode is accepted");
+    CHECK_EQ(static_cast<int>(out), static_cast<int>(kAllModes[i]),
+             "and comes back as itself");
+  }
+}
+
+static void test_WireValidatorRejectsEveryUndefinedMode() {
+  // The harm case, at the boundary. 9 is the value the issue quotes; 255 is
+  // the worst case because a clamp-to-3 would silently turn it into
+  // SPECTATOR, which flies, noclips and has infinite items.
+  for (int raw = 4; raw <= 255; ++raw) {
+    GameMode out = GameMode::CREATIVE;  // poison
+    const bool accepted =
+        TryGameModeFromWire(static_cast<uint8_t>(raw), out);
+    CHECK(!accepted, "an undefined wire value is rejected, not clamped");
+    // The contract is "writes `out` only on success", so on failure the
+    // caller's mode must be left alone — this is what lets GameScenario
+    // keep the player's current mode instead of corrupting it.
+    CHECK_EQ(static_cast<int>(out), static_cast<int>(GameMode::CREATIVE),
+             "a rejected value does not write the out parameter");
+  }
+}
+
+static void test_WireValidatorAcceptsZeroBecauseFlatbuffersOmitsDefaults() {
+  // The ambiguous-0 case from the BlockDrops/ItemRegistry house rule has a
+  // FlatBuffers-specific twist that makes "0 means unset" WRONG here.
+  // flatc omits a scalar field whose value equals the declared default, and
+  // the declared default of an enum field is 0, so a legitimate SURVIVAL
+  // (which is what the server sends for scenario 0) arrives with the field
+  // ABSENT and reads back as 0. Treating 0 as "unset" would reject every
+  // survival player. So 0 must be accepted as SURVIVAL.
+  GameMode out = GameMode::SPECTATOR;
+  CHECK(TryGameModeFromWire(0, out), "0 is a valid SURVIVAL, not an absent field");
+  CHECK_EQ(static_cast<int>(out), static_cast<int>(GameMode::SURVIVAL));
+}
+
+static void test_TheValidatorCannotBeFooledIntoClampingToSpectator() {
+  // The specific wrong fix this guards against. "Anything above 3 becomes
+  // 3" is a one-line change that passes every test above except this one,
+  // and it converts a malformed value into the most privileged mode.
+  GameMode out = GameMode::SURVIVAL;
+  const bool accepted = TryGameModeFromWire(255, out);
+  CHECK(!accepted, "255 is rejected outright");
+  CHECK(out != GameMode::SPECTATOR, "and never becomes SPECTATOR by clamping");
+  CHECK(!GameModePerm::CanFly(out), "the caller keeps a mode with no flight");
+  CHECK(!GameModePerm::InfiniteItems(out), "and no infinite items");
+}
+
+static void test_AnUndefinedModeCannotEnterInventoryStateThroughTheBoundary() {
+  // End-to-end shape of what GameScenario.cpp now does: validate, and only
+  // assign on success. Compare with the test above, which assigns directly
+  // and is the pre-fix behaviour.
+  InventoryState inv;
+  inv.gameMode = GameMode::ADVENTURE;
+  GameMode mode{};
+  if (TryGameModeFromWire(9, mode)) {
+    inv.gameMode = mode;  // unreachable for 9
+  }
+  CHECK_EQ(static_cast<int>(inv.gameMode), static_cast<int>(GameMode::ADVENTURE),
+           "a rejected response leaves the player's mode untouched");
+  CHECK(!gateAllowsMode(inv.gameMode), "and ADVENTURE still cannot interact");
+
+  // And the accepting path really does apply.
+  if (TryGameModeFromWire(0, mode)) inv.gameMode = mode;
+  CHECK_EQ(static_cast<int>(inv.gameMode), static_cast<int>(GameMode::SURVIVAL));
+  CHECK(gateAllowsMode(inv.gameMode), "a valid SURVIVAL from the wire can build");
+}
 
 int main() {
   TEST(TheMatrixMatchesTheDocumentedTable);
@@ -388,7 +486,8 @@ int main() {
 
   TEST(GateAndMatrixAgreeForEveryDefinedMode);
   TEST(GateBlocksExactlyAdventureAndSpectator);
-  TEST(GateIsADenyListNotAnAllowList);
+  TEST(UndefinedModesCannotInteractWithTheWorld);
+  TEST(TheFixChangedExactlyTheUndefinedModes);
   TEST(UndefinedModesFavourTheMatrixAcrossTheWholeByteRange);
   TEST(CanFlyAndCanBreakDisagreeOnUndefinedModesToo);
   TEST(AnUndefinedModeIsNamedUnknown);
@@ -398,6 +497,13 @@ int main() {
   TEST(InventoryStateDefaultsToCreative);
   TEST(InventoryStateCarriesEveryModeUnchanged);
   TEST(TheConsoleRejectsOutOfRangeModesButTheWireDoesNot);
+
+  TEST(OnlyTheFourDefinedModesAreDefined);
+  TEST(WireValidatorAcceptsEveryDefinedMode);
+  TEST(WireValidatorRejectsEveryUndefinedMode);
+  TEST(WireValidatorAcceptsZeroBecauseFlatbuffersOmitsDefaults);
+  TEST(TheValidatorCannotBeFooledIntoClampingToSpectator);
+  TEST(AnUndefinedModeCannotEnterInventoryStateThroughTheBoundary);
 
   printf("\n%d tests, %d passed, %d failed\n", g_tests, g_passed, g_failed);
   return g_failed > 0 ? 1 : 0;

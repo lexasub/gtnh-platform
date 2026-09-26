@@ -55,7 +55,17 @@ ConsoleWindow::ConsoleWindow(UIManager *mgr) : uiMgr_(mgr) {
           }
         }
         if (inv) {
-          inv->gameMode = static_cast<GameMode>(mode);
+          // The loop above already bounds `mode` to 0..3, so this cannot
+          // fail today; the guard exists so a future edit to that loop
+          // cannot reintroduce an undefined mode through this site. The
+          // denominator and the guard both go through the one boundary
+          // predicate, so the two can never disagree (gp-ul16).
+          GameMode parsed{};
+          if (!TryGameModeFromWire(static_cast<uint8_t>(mode), parsed)) {
+            cw->addOutput("Invalid gamemode: " + std::to_string(mode));
+            return;
+          }
+          inv->gameMode = parsed;
           cw->addOutput(std::string("Game mode set to ") + GameModeName(inv->gameMode));
           spdlog::info("[Console] Gamemode switched to {} ({})",
                        static_cast<int>(mode), GameModeName(inv->gameMode));

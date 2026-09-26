@@ -413,9 +413,16 @@ void GameClient::Update(float dt) {
     // ── World interaction (block break/place, only if UI not capturing) ──
     // Skip when the GameClient already sent a right-click for an interactive
     // block above — otherwise both code-paths fire duplicate SendBlockActions.
+    //
+    // The mode half is GameModePerm::CanInteractWithWorld, an allow-list, and
+    // not the old `!= ADVENTURE && != SPECTATOR` deny-list it replaced. The
+    // two agreed for all four defined modes, but the deny-list also admitted
+    // every mode the enum does NOT define, and GameMode is an unchecked
+    // uint8 off the wire (gp-ul16) — so a server sending game_mode = 9 put
+    // the client in a state where the gate allowed world interaction that
+    // the permission matrix forbids. Allow-listing fails closed.
     if (!uiMgr_.AnyOpen()
-        && invState_.gameMode != GameMode::ADVENTURE
-        && invState_.gameMode != GameMode::SPECTATOR
+        && GameModePerm::CanInteractWithWorld(invState_.gameMode)
         && !rightClickHandled) {
         interaction_.SetInventory(&invState_);
         interaction_.Update(camera_, inputMgr_.State(), world_, *netClient_);

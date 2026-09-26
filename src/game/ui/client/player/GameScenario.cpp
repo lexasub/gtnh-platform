@@ -36,9 +36,27 @@ void GameScenario::OnNetworkUpdate(uint8_t msgType, const void *data) {
   }
 
   if (auto* inv = uiMgr->GetPlayerInventory()) {
-    inv->gameMode = static_cast<GameMode>(resp->game_mode());
+    // `game_mode` is an unchecked uint8 off the wire (core.fbs:25) and
+    // flatbuffers does not range-check enum values on read, so this must be
+    // validated before the value becomes the client's mode — otherwise the
+    // client runs in a mode the enum does not name. Rejected, not clamped:
+    // clamping to 3 would silently hand a bogus 255 the full SPECTATOR
+    // permission set (fly, noclip, infinite items). The mode is left
+    // untouched so a bad response cannot disturb the mode the player is
+    // already in (gp-ul16).
+    GameMode mode{};
+    if (TryGameModeFromWire(resp->game_mode(), mode)) {
+      inv->gameMode = mode;
+    } else {
+      spdlog::warn(
+          "[GameScenario] rejecting out-of-range game_mode {} from scenario "
+          "{}, keeping {}",
+          static_cast<int>(resp->game_mode()),
+          static_cast<int>(resp->scenario_index()),
+          GameModeName(inv->gameMode));
+    }
     spdlog::info("[GameScenario] Applied game mode {} from scenario {}",
-                 static_cast<int>(resp->game_mode()),
+                 static_cast<int>(inv->gameMode),
                  static_cast<int>(resp->scenario_index()));
   }
 

@@ -30,6 +30,48 @@ inline const char* GameModeName(GameMode mode) {
   return "UNKNOWN";
 }
 
+// Whether `m` is one of the four modes the enum names. Every other byte is
+// a value no producer ever intended.
+inline bool IsDefinedGameMode(GameMode m) {
+  switch (m) {
+    case GameMode::SURVIVAL:
+    case GameMode::CREATIVE:
+    case GameMode::ADVENTURE:
+    case GameMode::SPECTATOR:
+      return true;
+  }
+  return false;
+}
+
+// Converts a raw byte off the wire into a GameMode, REJECTING anything the
+// enum does not name. `out` is written only when this returns true.
+//
+// This is the boundary validator for `GameMode`, which arrives as a bare
+// uint8 in the FlatBuffers schema (`enum GameMode : uint8` in core.fbs:25) and
+// is NOT range-checked on read — any of 0..255 can arrive.
+//
+// House rule, applied here exactly as BlockDrops.cpp:13-30 and
+// ItemRegistry.cpp:56-60 apply it to ItemId::pack: do not decide validity
+// from the VALUE's shape, decide it from the SET. ItemId::pack scans for
+// digits and returns 0 both for a deliberate air id and for a typo, so those
+// loaders re-check the literal spelling before trusting a 0. The analogous
+// trap here would be a "clamp anything above 3 down to 3" or a "non-zero
+// means valid" test, both of which invent a mode the enum does not name and
+// both of which fail OPEN — a bogus 255 would silently become SPECTATOR and
+// be handed every flight and infinite-item permission. So the check is an
+// explicit membership test over the four defined values.
+//
+// Note the FlatBuffers default: flatc omits a scalar field whose value equals
+// the declared default, so a legitimate SURVIVAL arrives as an ABSENT field
+// and reads back as 0. "0 is valid" is therefore required, and the rule
+// explicitly does not treat an absent field as a missing/invalid mode.
+inline bool TryGameModeFromWire(uint8_t raw, GameMode& out) {
+  const GameMode candidate = static_cast<GameMode>(raw);
+  if (!IsDefinedGameMode(candidate)) return false;
+  out = candidate;
+  return true;
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // GameModePerm — permission matrix, the single source of truth for what a
 // mode allows. Values mirror what the client enforces today:
@@ -43,8 +85,8 @@ inline const char* GameModeName(GameMode mode) {
 //
 // canFly/noClip: CREATIVE and SPECTATOR fly with no collision (current dev
 // behavior; a true creative-vs-spectator noclip split is future work).
-// canBreak/canPlace: enforced inline in GameClient::Update for now; the
-// separate `add-interaction-mode-gating` change will adopt these predicates.
+// canBreak/canPlace: enforced by GameClient::Update through
+// CanInteractWithWorld, which is these two conjoined.
 // ──────────────────────────────────────────────────────────────────────────
 namespace GameModePerm {
 inline bool CanFly(GameMode m) {
@@ -61,6 +103,18 @@ inline bool CanBreak(GameMode m) {
 }
 inline bool CanPlace(GameMode m) {
   return m == GameMode::CREATIVE || m == GameMode::SURVIVAL;
+}
+// Whether the client may run the world-interaction path (block break and
+// place) at all. This is the predicate GameClient::Update uses in place of
+// the old inline `gameMode != ADVENTURE && gameMode != SPECTATOR`, which was
+// a deny-list and therefore ADMITTED every mode the enum does not define
+// (gp-ul16). Deliberately identical to CanBreak && CanPlace rather than a
+// third spelling of the same set: the gate covers both actions, and a
+// separate copy is a third thing that can drift. The allow-list shape is
+// also what makes an out-of-range mode take the safe path, so it fails
+// closed even if a future assignment site bypasses TryGameModeFromWire.
+inline bool CanInteractWithWorld(GameMode m) {
+  return CanBreak(m) && CanPlace(m);
 }
 } // namespace GameModePerm
 
