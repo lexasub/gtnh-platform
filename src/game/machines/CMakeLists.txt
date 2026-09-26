@@ -152,4 +152,99 @@ if(BUILD_TESTING)
         spdlog::spdlog
     )
     add_test(NAME rotare_generator_system_test COMMAND rotare_generator_system_test)
+
+    # EBFSystem unit tests (gp-r3vd) — EU consumption, HU output and the
+    # stall conditions for the electric / hot blast furnace. The system is
+    # driven through the controllers_ map the production wiring hands it
+    # (main.cpp passes SimulationEngine::getControllers()), so the test owns a
+    # local map plus a synthetic recipe file and needs no router, socket or
+    # wall clock. Same harness as the suites above: no GoogleTest.
+    add_executable(ebf_system_test
+        test/test_ebf_system.cpp
+    )
+    target_include_directories(ebf_system_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+    )
+    target_link_libraries(ebf_system_test PRIVATE
+        # Same circular-static-archive situation as transformer_system_test:
+        # libsimcored.a holds the Network clients the machine systems call.
+        gtnh_game_machines
+        gtnh_engine_sim
+        gtnh_game_recipes
+        gtnh-net
+        simcored
+        gtnh_game_machines
+        gtnh_engine_sim
+        gtnh_game_recipes
+        gtnh-net
+        simcored
+        EnTT::EnTT
+        spdlog::spdlog
+        yaml-cpp::yaml-cpp
+        flatbuffers::flatbuffers
+    )
+    add_test(NAME ebf_system_test COMMAND ebf_system_test)
+
+    # LCRSystem unit tests (gp-mb2d) — the multiblock validation, tier and
+    # energy-hatch fallback questions from the openspec task
+    # add-scaled-energy-hatch-multiblock-verification 1.3. Same harness and
+    # same isolated wiring as the EBF suite above: a local controller map, a
+    # synthetic recipe file and a null pipe client, so no router, socket or
+    # wall clock is involved.
+    add_executable(lcr_system_test
+        test/test_lcr_system.cpp
+    )
+    target_include_directories(lcr_system_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+    )
+    target_link_libraries(lcr_system_test PRIVATE
+        gtnh_game_machines
+        gtnh_engine_sim
+        gtnh_game_recipes
+        gtnh-net
+        simcored
+        gtnh_game_machines
+        gtnh_engine_sim
+        gtnh_game_recipes
+        gtnh-net
+        simcored
+        EnTT::EnTT
+        spdlog::spdlog
+        yaml-cpp::yaml-cpp
+        flatbuffers::flatbuffers
+    )
+    add_test(NAME lcr_system_test COMMAND lcr_system_test)
+
+    # BoilerSystem + LargeBoilerSystem unit tests (gp-g850) — the HEAT ->
+    # STEAM conversion of the heat boiler and the solid-fuel burn, steam
+    # saturation and overheat path of the large boiler. Both are registered
+    # unconditionally in main.cpp:105 / :494, so neither is dead code; this
+    # suite drives them straight off the registry view / controller map with
+    # null pipe, fluid and port clients, so no router, socket or wall clock.
+    add_executable(boiler_system_test
+        test/test_boiler_system.cpp
+    )
+    target_include_directories(boiler_system_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+    )
+    target_link_libraries(boiler_system_test PRIVATE
+        gtnh_game_machines
+        gtnh_engine_sim
+        gtnh_game_recipes
+        gtnh-net
+        simcored
+        gtnh_game_machines
+        gtnh_engine_sim
+        gtnh_game_recipes
+        gtnh-net
+        simcored
+        EnTT::EnTT
+        spdlog::spdlog
+        yaml-cpp::yaml-cpp
+        flatbuffers::flatbuffers
+    )
+    add_test(NAME boiler_system_test COMMAND boiler_system_test)
 endif()
