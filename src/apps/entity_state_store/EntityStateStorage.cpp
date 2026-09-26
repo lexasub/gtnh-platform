@@ -1,5 +1,6 @@
 #include "EntityStateStorage.h"
 #include "core_generated.h"
+#include <filesystem>
 #include <stdexcept>
 #include <spdlog/spdlog.h>
 
@@ -28,7 +29,22 @@ bool EntityStateStorage::initialize() {
         return false;
     }
 
-    rc = mdb_env_open(env_, lmdbPath_.c_str(), MDB_FIXEDMAP | MDB_NOSUBDIR, 0664);
+    // The env is opened without MDB_NOSUBDIR, so lmdbPath_ must be a directory
+    // and LMDB will not create it. Create it here rather than pushing that onto
+    // every caller: main.cpp defaults to /tmp/lmdb, which does not exist on a
+    // fresh host, and a bare path would otherwise fail at mdb_env_open with
+    // ENOENT after mdb_env_create has already succeeded.
+    std::error_code ec;
+    if (!std::filesystem::exists(lmdbPath_)) {
+        std::filesystem::create_directories(lmdbPath_, ec);
+        if (ec) {
+            spdlog::error("Failed to create LMDB directory {}: {}", lmdbPath_, ec.message());
+            return false;
+        }
+        spdlog::info("Created LMDB directory {}", lmdbPath_);
+    }
+
+    rc = mdb_env_open(env_, lmdbPath_.c_str(), 0, 0664);
     if (rc) {
         spdlog::error("Failed to open LMDB environment at {}: {}", lmdbPath_, mdb_strerror(rc));
         return false;

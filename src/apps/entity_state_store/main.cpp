@@ -163,13 +163,16 @@ static void doReadFrame(std::shared_ptr<asio::ip::tcp::socket> socket, EntitySta
     if (g_io) g_io->stop();
 }
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
+int main(int argc, char* argv[]) {
     gtnh::metrics::printVersionAndExit("EntityStateStore Service (entitystated)", argc, argv);
 
     gtnh::metrics::Collector metrics;
     metrics.install();
 
     std::string lmdb_path = "/tmp/lmdb";
+    if (argc > 1) {
+        lmdb_path = argv[1];
+    }
     asio::io_context io_context;
     EntityStateStorage storage(lmdb_path, io_context, 1000);
 

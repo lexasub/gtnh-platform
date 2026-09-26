@@ -26,15 +26,16 @@ static void test_check(bool cond, const char* file, int line, const char* expr, 
 #define PASS() do { ++g_passed; } while(0)
 
 static std::string makeTempDb() {
-    char tmpl[] = "/tmp/entity_state_test_XXXXXX.mdb";
-    int fd = mkstemps(tmpl, 4);
-    if (fd == -1) { perror("mkstemps"); exit(1); }
-    close(fd);
-    return std::string(tmpl);
+    // EntityStateStorage opens LMDB without MDB_NOSUBDIR, so the path must be
+    // a directory (mirrors the integration TestMain layout: entityDir/db).
+    char tmpl[] = "/tmp/entity_state_test_XXXXXX";
+    char* dir = mkdtemp(tmpl);
+    if (!dir) { perror("mkdtemp"); exit(1); }
+    return std::string(dir);
 }
 
 static void removeDb(const std::string& path) {
-    std::string cmd = "rm -f " + path;
+    std::string cmd = "rm -rf " + path;
     [[maybe_unused]] int rc = system(cmd.c_str());
 }
 
