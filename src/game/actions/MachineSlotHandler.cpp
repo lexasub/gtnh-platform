@@ -105,8 +105,17 @@ skip_player_inv:
     int slotsIn = static_cast<int>(container->slot_count);
     if (auto* mc = reg.try_get<MachineComponent>(entity)) {
         machineId = mc->machine_id;
-        if (auto* info = MachineRegistry::instance()->Get(mc->machine_id)) {
-            slotsIn = info->slots_in;
+        // Both derefs below are guarded (gp-lsv7). MachineRegistry::instance()
+        // is only set by simcore's main.cpp, and entityState_ only by the daemon
+        // wiring, so a misconfigured or partially-wired process dereferenced a
+        // null singleton here and crashed on a player action. MachineInteractHandler
+        // (:51-53) already reads the same registry defensively via
+        // engine->getMachineRegistry(); this handler now matches it. Failing to
+        // persist a state snapshot is not a reason to take the process down.
+        if (auto* reg_inst = MachineRegistry::instance()) {
+            if (auto* info = reg_inst->Get(mc->machine_id)) {
+                slotsIn = info->slots_in;
+            }
         }
         flatbuffers::FlatBufferBuilder fbb(256);
         std::vector<flatbuffers::Offset<Protocol::MachineInventorySlot>> offs;
@@ -114,7 +123,12 @@ skip_player_inv:
         auto inv = Protocol::CreateMachineInventory(fbb, container->slot_count, fbb.CreateVector(offs));
         auto st = Protocol::CreateMachineState(fbb, 1, nullptr, 0, inv, 0);
         fbb.Finish(st); std::vector<uint8_t> blob(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
-        entityState_->SaveEntityState(0, mc->x, mc->y, mc->z, mc->machine_id, blob, [](bool){});
+        if (entityState_) {
+            entityState_->SaveEntityState(0, mc->x, mc->y, mc->z, mc->machine_id, blob, [](bool){});
+        } else {
+            spdlog::warn("MachineSlotHandler: no EntityStateStore wired; skipping snapshot for machine {}",
+                         mc->machine_id);
+        }
     }
     std::vector<uint8_t> rawInv(container->slots.size() * 5);
     {
