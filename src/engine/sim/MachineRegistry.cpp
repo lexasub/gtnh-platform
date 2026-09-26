@@ -118,10 +118,31 @@ bool MachineRegistry::ParseYamlMachineVariant(const YAML::Node& v, const std::st
             info.capacity = v["energy"]["capacity"].as<int>(0);
             info.maxInput = v["energy"]["usage"].as<int>(0);
             info.maxOutput = v["energy"]["max_output"].as<int>(0);
+            // No invented limits (gp-l02v). This used to fill a missing
+            // maxInput/maxOutput with 32, which is not a default - it is a
+            // fabricated EU/tick ceiling published to the pipe network
+            // (EBFSystem.cpp:179,235 and LCRSystem.cpp:82,155 send
+            // energy.maxInput / energy.maxOutput in every node update). MEASURED
+            // over machines.yaml: 25 of 25 energy-bearing machines were being
+            // given the fabricated 32, because 19 declare only `usage` and 6
+            // declare only `max_output` - not one declares both.
+            //
+            // A missing side now stays 0 and is logged once per machine rather
+            // than silently becoming 32. 0 means "no limit declared", and
+            // consumers that treat 0 as unlimited keep working on the declared
+            // side. What it does NOT do is guess the missing one: the machines
+            // affected are real (heat_furnace, all four battery_buffer tiers,
+            // steam_heat_boiler, rotare_generator, ...) and their true charge and
+            // output rates are a content decision, not something this loader may
+            // make up. See the issue for the data-side change.
             if (info.energy_in.has_value() && info.maxInput == 0) {
-                info.maxInput = 32;
+                spdlog::warn("machines.yaml: {} declares energy_in but no `usage`; "
+                             "maxInput stays 0 (unlimited) until content declares it",
+                             info.name);
             } else if (!info.energy_in.has_value() && info.maxOutput == 0) {
-                info.maxOutput = 32;
+                spdlog::warn("machines.yaml: {} has no energy_in and no `max_output`; "
+                             "maxOutput stays 0 (unlimited) until content declares it",
+                             info.name);
             }
         } else {
             info.capacity = 0;
