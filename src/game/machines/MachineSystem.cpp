@@ -71,19 +71,40 @@ void MachineSystem::tick(float /*dt*/) {
         auto& energy = view.get<EnergyStorage>(ent);
         (void)progress;
 
-        // Compute inventory hash to detect changes
-        uint64_t hash = 0;
-        for (const auto& slot : container.slots) {
-            hash ^= static_cast<uint64_t>(slot.item_id) << 0
-                  ^ static_cast<uint64_t>(slot.count)   << 16
-                  ^ static_cast<uint64_t>(slot.meta)    << 24;
-            hash ^= hash >> 12;
-        }
-        auto prev = lastInventoryHash_[static_cast<uint64_t>(ent)];
-        if (!forcePublish && hash == prev) continue; // no change → skip
-        lastInventoryHash_[static_cast<uint64_t>(ent)] = hash;
-
+        // Change detection. The published payload is packed FIRST and the gate
+        // is an FNV-1a fold over exactly those bytes, so the gate can never
+        // disagree with what the client is sent.
+        //
+        // It used to be an XOR-of-XOR accumulator over the slot fields with no
+        // slot index in the term (gp-dyo4). An empty slot contributed (0,0,0),
+        // i.e. nothing, and N identical stacks cancelled pairwise, so a 4-slot
+        // inventory holding one identical item per slot hashed the same as an
+        // empty one. The fold was order-independent too, so moving a stack
+        // between slots was invisible. Either way the change was NOT published
+        // and the client kept showing stale contents for up to
+        // kForcePublishInterval ticks.
+        //
+        // FNV-1a over the packed stream is order-sensitive (it is a rolling
+        // fold, not a commutative one), position-sensitive (the slot index is
+        // implicit in the byte offset) and deterministic. The map is
+        // consulted with find() rather than operator[] so that "never
+        // published" is distinguishable from "published a hash of 0" — the old
+        // operator[] default-constructed 0 for a fresh entity, which collided
+        // with a genuinely empty inventory and suppressed the first publish of
+        // every machine that was not created during the startup window.
         std::vector<uint8_t> inv_data = packInventory(container.slots);
+        uint64_t hash = 1469598103934665603ull;  // FNV-1a 64-bit offset basis
+        for (const uint8_t b : inv_data) {
+            hash ^= static_cast<uint64_t>(b);
+            hash *= 1099511628211ull;           // FNV-1a 64-bit prime
+        }
+        const uint64_t key = static_cast<uint64_t>(ent);
+        auto prev_it = lastInventoryHash_.find(key);
+        if (!forcePublish && prev_it != lastInventoryHash_.end() &&
+            hash == prev_it->second) {
+            continue;  // no change -> skip
+        }
+        lastInventoryHash_[key] = hash;
 
         int slt_in = 0;
         if (auto* minfo = MachineRegistry::instance()->Get(machine.machine_id))
@@ -709,9 +730,32 @@ void MachineSystem::onConsumeResponse(uint64_t node_id, int32_t consumed, int32_
                  hic->heat_stored = energy->current;
              }
          }
-         }
 
-         // No node_id: process in FIFO order
+         spdlog::debug("Machine {} at entity {} received {} energy from PipeNetwork (total: {})",
+                       progress->recipe_id, static_cast<uint32_t>(ent), consumed, energy->current);
+
+         // Settle this node's own outstanding request and STOP (gp-frb2).
+         //
+         // The two branches below are MUTUALLY EXCLUSIVE correlation
+         // strategies for ONE response, not two things to do. A directed
+         // response names the sink node it settles, and the producer echoes
+         // that node id back verbatim on every reply
+         // (PipeNetworkService.cpp:959,1004 both pass req->node_id()), so
+         // `consumed` describes exactly one node's draw. Falling through into
+         // the FIFO block therefore credited a SECOND machine for a
+         // consumption that was never reported, and erased that unrelated
+         // machine's outstanding request while leaving this one outstanding
+         // — the latter being the worse half: Pass 2 skips re-requesting while
+         // an entry exists (MachineSystem.cpp:304), so the addressed machine
+         // could never ask for energy again once it drained.
+         //
+         // The FIFO branch below is only reachable for an UNDIRECTED response
+         // (node_id == 0), which is the only case where no node was named.
+         pendingConsumes_.erase(node_id);
+         return;
+     }
+
+     // No node_id: process in FIFO order
     if (pendingConsumes_.empty()) {
         return;
     }

@@ -59,13 +59,17 @@
 //      unconditionally (startupTicks_), and because those ticks also increment
 //      tickCounter_, the first interval fire lands on tick 10 and every 10
 //      ticks after. Pinned by MachineSystem_force_publish_lands_on_tick_ten.
-//   B. THE INVENTORY CHANGE HASH HAS EXACT COLLISIONS. The fold at
-//      MachineSystem.cpp:75-81 is an XOR-of-XOR accumulator with no slot index
-//      in the term, so an EMPTY slot contributes nothing and four identical
-//      stacks cancel back to the empty hash. A machine whose inventory changes
-//      from all-empty to four identical stacks does NOT republish until the next
-//      forced publish — up to 10 ticks of stale client state. Pinned by
-//      MachineSystem_identical_stacks_hash_to_the_empty_inventory.
+//   B. (FIXED, gp-dyo4) THE INVENTORY CHANGE HASH USED TO HAVE EXACT
+//      COLLISIONS. The fold at MachineSystem.cpp:75-81 was an XOR-of-XOR
+//      accumulator with no slot index in the term, so an EMPTY slot
+//      contributed nothing and four identical stacks cancelled back to the
+//      empty hash. A machine whose inventory changed from all-empty to four
+//      identical stacks did NOT republish until the next forced publish — up
+//      to 10 ticks of stale client state. The change gate is now an FNV-1a
+//      fold over the exact published byte stream, length-prefixed, so equal
+//      contents always hash equal and every distinct change is published.
+//      Pinned by MachineSystem_identical_stacks_publish_at_once and
+//      MachineSystem_slot_count_change_publishes.
 //   C. A FORCE-PUBLISH TICK PUBLISHES A RUNNING MACHINE TWICE — once from
 //      Pass 0 (progress hardcoded 1.0, PRE-debit energy) and once from Pass 2
 //      (real pct, post-debit energy). Pinned by
@@ -81,17 +85,22 @@
 //      (RecipeManager.cpp:990-1032) never writes `conditions.special`, so no
 //      loaded recipe can ever carry a tag clause. A tag cannot gate anything.
 //      Pinned by MachineSystem_machine_tags_cannot_gate_a_recipe.
-//   F. onConsumeResponse FALLS THROUGH INTO THE FIFO BRANCH ON A DIRECT HIT.
-//      The `if (node_id != 0) { ... }` block at MachineSystem.cpp:687-712 has
-//      no `return`, so a directed response is followed by the "No node_id:
-//      process in FIFO order" block at :715 and credits a SECOND machine (or
-//      the same one twice). Pinned by
-//      MachineSystem_onConsumeResponse_direct_hit_also_debits_the_fifo_head.
+//   F. (FIXED, gp-frb2) onConsumeResponse FALLS THROUGH INTO THE FIFO BRANCH
+//      ON A DIRECT HIT. The `if (node_id != 0) { ... }` block at
+//      MachineSystem.cpp:687-712 had no `return`, so a directed response was
+//      followed by the "No node_id: process in FIFO order" block at :715 and
+//      credited a SECOND machine — or the same one twice, since
+//      pendingConsumes_.begin() is the addressed node itself whenever it is
+//      the most recently inserted pending. The direct branch now settles its
+//      own request and returns. Pinned by
+//      MachineSystem_onConsumeResponse_direct_hit_credits_only_its_node.
 //   G. THE `node_id != 0` GUARD MISREADS ENTITY 0. EnTT's first entity has id
 //      0, so a directed response for it is indistinguishable from "no node id"
-//      and is routed to the FIFO head. Same class as gp-u9ua (filed for
-//      BatteryBufferSystem); pinned here for MachineSystem by
+//      and is routed to the FIFO head. Still OPEN (same class as gp-u9ua,
+//      filed for BatteryBufferSystem); pinned for MachineSystem by
 //      MachineSystem_onConsumeResponse_treats_entity_zero_as_no_node_id.
+//      The direct branch is deliberately still guarded by `node_id != 0`, so
+//      this defect is untouched by the gp-frb2 fix.
 //   H. CONDITION STATE IS READ FROM THE FIRST MACHINE AT THOSE COORDINATES.
 //      RecipeManager.cpp:20-48 scans view<MachineComponent> and `break`s on the
 //      first position match, so a co-located machine supplies the energy/purity
@@ -122,6 +131,7 @@
 #include <array>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <entt/entt.hpp>
@@ -517,6 +527,17 @@ struct Fixture {
 
     void tick() { sys->tick(0.05f); }
     size_t publishes() const { return events->updates.size(); }
+    // Publishes attributable to ONE machine, keyed on its x (freshX() gives
+    // every machine distinct coordinates). Counting per machine keeps an
+    // assertion independent of the force-publish phase: a force tick publishes
+    // every machine, so a total-count assertion silently depends on which tick
+    // the case happens to land on.
+    size_t publishesForX(uint32_t x) const {
+        size_t n = 0;
+        for (const auto& u : events->updates)
+            if (u.x == static_cast<int32_t>(x)) ++n;
+        return n;
+    }
 };
 
 // steam_id == 0 (the production default when the registry cannot resolve it)
@@ -755,38 +776,190 @@ static void MachineSystem_inventory_change_republishes_immediately() {
                  "item_id is little-endian in the payload");
 }
 
-// FINDING B.
-static void MachineSystem_identical_stacks_hash_to_the_empty_inventory() {
-    // The fold at MachineSystem.cpp:75-81 is an XOR-of-XOR accumulator with no
-    // slot index in the term, so N identical stacks cancel out. Verified by
-    // construction: an EMPTY slot contributes (0,0,0) == nothing, and
-    // `hash ^= hash >> 12` after each term makes four identical terms collapse
-    // back to the seed. Both inventories therefore hash to 0, and the change
-    // gate at MachineSystem.cpp:83 suppresses the republish.
-    CHECK_EQ_INT(simcore::MachineSystem::kForcePublishInterval, 10,
-                 "the staleness is bounded by the forced publish");
+// FIXED (gp-dyo4) — this case used to assert the OPPOSITE (that the change was
+// NOT published). The observable consequence that mattered was the missing
+// client-visible update, so that is what is now asserted: the publish count.
+//
+// kBlockUnmapped is registered to no recipe class, so Pass 1 never matches and
+// never consumes an input. That keeps these cases about the CHANGE GATE alone:
+// with kBlockSmelter the recipe would eat slot 0 and the inventory would move
+// on its own, which would test recipe dispatch rather than hashing.
+static void MachineSystem_identical_stacks_publish_at_once() {
     auto f = makeFixture();
-    const uint32_t x = f->freshX();
-    auto e = f->install(kBlockSmelter, x, EnergyType::ELECTRICITY, 0);
+    auto e = f->install(kBlockUnmapped, f->freshX(), EnergyType::ELECTRICITY, 0);
+    CHECK(MachineRegistry::instance()->Get(kBlockUnmapped) == nullptr,
+          "precondition: no registry entry and no recipe class, so nothing "
+          "consumes a slot behind the test's back");
     CHECK_EQ_INT(f->inv(e).slots.size(), size_t(4),
                  "precondition: 4 slots (1 in + 3 out)");
 
     for (int i = 0; i < 3; ++i) f->tick();
     f->events->updates.clear();
 
-    // Change the inventory to four identical single-item stacks.
+    // Empty -> four identical single-item stacks. The old XOR-of-XOR fold
+    // collapsed this to the same value as the empty inventory, so the gate at
+    // MachineSystem.cpp:83 suppressed the update and the client kept showing an
+    // empty GUI for a full machine until the next forced publish.
     for (int i = 0; i < 4; ++i) f->inv(e).slots[static_cast<size_t>(i)] = {kIronDust, 1, 0};
     f->tick();
-    CHECK_EQ_INT(f->publishes(), size_t(0),
-                 "four identical stacks and four empty slots share a hash, so the "
-                 "change is NOT published (FINDING B)");
+    CHECK_EQ_INT(f->publishes(), size_t(1),
+                 "filling every slot with an identical stack IS a change, so it "
+                 "publishes at once (gp-dyo4)");
+    // Payload assertions are guarded on the publish: a gate that publishes
+    // nothing has no payload to read, and indexing an empty vector would abort
+    // the whole binary before the remaining cases run.
+    if (f->publishes() == 1) {
+        CHECK_EQ_INT(f->events->updates[0].inventory.size(), size_t(4 * 5),
+                     "the payload carries all four slots");
+        CHECK_EQ_INT(f->events->updates[0].inventory[2], 1,
+                     "and slot 0 holds the stack that was just placed");
+    }
 
-    // Any further change is published normally — the stale state is bounded.
-    f->inv(e).slots[0] = {kIronDust, 2, 0};
+    // And the reverse transition — four identical stacks back to empty — is
+    // published too, not swallowed by the same cancellation.
+    f->events->updates.clear();
+    for (int i = 0; i < 4; ++i) f->inv(e).slots[static_cast<size_t>(i)] = {};
     f->tick();
     CHECK_EQ_INT(f->publishes(), size_t(1),
-                 "a different inventory still republishes, so the hash is not stuck");
+                 "emptying the machine is a change too, in the other direction");
+    if (f->publishes() == 1) {
+        CHECK_EQ_INT(f->events->updates[0].inventory[2], 0,
+                     "and the published payload really is empty");
+    }
 }
+
+// The old fold was order-INDEPENDENT, so swapping two slots' contents was
+// invisible to it even though the published payload differs. The client is
+// sent slot-indexed bytes, so that swap has to publish.
+static void MachineSystem_swapping_two_slots_publishes() {
+    auto f = makeFixture();
+    auto e = f->install(kBlockUnmapped, f->freshX(), EnergyType::ELECTRICITY, 0);
+    f->inv(e).slots[0] = {kIronDust, 1, 0};
+    f->inv(e).slots[1] = {kGravel, 2, 0};
+    for (int i = 0; i < 3; ++i) f->tick();
+    f->events->updates.clear();
+
+    std::swap(f->inv(e).slots[0], f->inv(e).slots[1]);
+    f->tick();
+
+    CHECK_EQ_INT(f->publishes(), size_t(1),
+                 "moving a stack from slot 0 to slot 1 changes the slot-indexed "
+                 "payload, so it publishes (gp-dyo4)");
+    if (f->publishes() != 1) return;  // nothing published: no payload to read
+    // packInventory (src/game/storage/InventorySerializer.h) emits 5 bytes per
+    // slot: item_id lo, item_id hi, count, meta lo, meta hi. So slot N's count
+    // is at 5N+2 and slot N's item_id low byte at 5N+0.
+    const auto& u = f->events->updates[0];
+    CHECK_EQ_INT(u.inventory[0], static_cast<uint8_t>(kGravel & 0xFF),
+                 "slot 0's item_id is now the gravel stack");
+    CHECK_EQ_INT(u.inventory[2], 2, "slot 0's count is the gravel stack's");
+    CHECK_EQ_INT(u.inventory[5], static_cast<uint8_t>(kIronDust & 0xFF),
+                 "slot 1's item_id is now the iron dust stack");
+    CHECK_EQ_INT(u.inventory[7], 1, "slot 1's count is the iron dust stack's");
+}
+
+// A change gate has to be EXACT in the safe direction too: an unchanged
+// inventory must still publish nothing on a non-force tick, or the whole
+// hash-gate optimisation is dead. This is the regression the fix must not
+// introduce.
+static void MachineSystem_unchanged_inventory_stays_quiet() {
+    auto f = makeFixture();
+    auto e = f->install(kBlockUnmapped, f->freshX(), EnergyType::ELECTRICITY, 0);
+    f->inv(e).slots[0] = {kIronDust, 1, 0};
+    f->inv(e).slots[1] = {kGravel, 2, 5};
+    f->inv(e).slots[2] = {kSlag, 3, 7};
+
+    for (int i = 0; i < 3; ++i) f->tick();
+    f->events->updates.clear();
+
+    // Ticks 4-8, none of them a force tick (tick 10 is the first). Nothing
+    // changed, and nothing else in the system moves an idle, recipe-less
+    // machine's inventory.
+    for (int i = 0; i < 5; ++i) f->tick();
+    CHECK_EQ_INT(f->publishes(), size_t(0),
+                 "an unchanged inventory publishes NOTHING on a non-force tick, "
+                 "so the change gate is still exact (gp-dyo4 fix kept the gate)");
+
+    // Rewriting the same values is still no change.
+    f->inv(e).slots[0] = {kIronDust, 1, 0};
+    f->inv(e).slots[1] = {kGravel, 2, 5};
+    f->inv(e).slots[2] = {kSlag, 3, 7};
+    f->tick();
+    CHECK_EQ_INT(f->publishes(), size_t(0),
+                 "re-writing identical contents is not a change either");
+}
+
+// The gate is a hash, so it must be DETERMINISTIC and depend on every field
+// the payload carries. Each individual field of a slot must move the hash, and
+// the value must be a pure function of the contents — not of the entity id, so
+// two machines holding identical inventories must reach the same verdict.
+static void MachineSystem_hash_is_a_pure_function_of_the_slots() {
+    auto f = makeFixture();
+    auto e = f->install(kBlockUnmapped, f->freshX(), EnergyType::ELECTRICITY, 0);
+    f->inv(e).slots[0] = {kIronDust, 4, 11};
+    for (int i = 0; i < 3; ++i) f->tick();
+    f->events->updates.clear();
+
+    struct Probe { const char* what; uint16_t id; uint8_t count; uint16_t meta; };
+    const Probe probes[] = {
+        {"item_id",  kIronIngot, 4, 11},
+        {"count",    kIronDust,  5, 11},
+        {"meta",     kIronDust,  4, 12},
+    };
+    for (const auto& p : probes) {
+        f->inv(e).slots[0] = {p.id, p.count, p.meta};
+        f->tick();
+        const size_t changed = f->publishes();
+        CHECK_EQ_INT(changed, size_t(1),
+                     "a change to slot 0's field publishes exactly once");
+        // Restore, then confirm the restore itself is a change in the other
+        // direction — i.e. the hash is not merely "dirty once and then stuck".
+        f->inv(e).slots[0] = {kIronDust, 4, 11};
+        f->tick();
+        CHECK_EQ_INT(f->publishes() - changed, size_t(1),
+                     "and restoring the original value publishes again");
+        f->events->updates.clear();
+    }
+
+    // Same change applied to a SECOND machine must publish that machine too:
+    // lastInventoryHash_ is keyed by entity, so one machine's update cannot
+    // suppress another's, and the hash is a pure function of the contents
+    // rather than of insertion order into the map. Counts are per machine so
+    // the assertion does not depend on whether this tick is a force tick.
+    //
+    // Tick accounting so the cases below land on ORDINARY ticks: the probe
+    // loop above ran ticks 4-9 (3 startup + 3 probes x 2 ticks each), so the
+    // next tick is 10, the first forced one. g is installed and gets its first
+    // publish on that tick, then the counter rolls over and everything after is
+    // a non-force tick where the change gate is the only thing that can publish.
+    auto g = f->install(kBlockUnmapped, f->freshX(), EnergyType::ELECTRICITY, 0);
+    const uint32_t x_e = static_cast<uint32_t>(f->machine(e).x);
+    const uint32_t x_g = static_cast<uint32_t>(f->machine(g).x);
+    f->events->updates.clear();
+
+    f->tick();                       // tick 10: forced
+    CHECK_EQ_INT(f->publishesForX(x_g), size_t(1),
+                 "a newly installed machine publishes its first state");
+    f->events->updates.clear();
+
+    f->tick();                       // tick 11: ordinary
+    CHECK_EQ_INT(f->publishesForX(x_g), size_t(0),
+                 "and once published, an unchanged machine is quiet again");
+    CHECK_EQ_INT(f->publishesForX(x_e), size_t(0),
+                 "while the machine already on the map is undisturbed too");
+
+    // Now apply the SAME content change to both machines in one tick.
+    f->inv(e).slots[1] = {kGravel, 1, 0};
+    f->inv(g).slots[1] = {kGravel, 1, 0};
+    f->events->updates.clear();
+    f->tick();                       // tick 12: ordinary
+    CHECK_EQ_INT(f->publishesForX(x_e), size_t(1),
+                 "an identical change on machine A publishes for A");
+    CHECK_EQ_INT(f->publishesForX(x_g), size_t(1),
+                 "and the same change on machine B publishes for B, so the "
+                 "verdict is per-entity and not shared global state");
+}
+
 
 // The "machine not present" case: drop each of the four view components in
 // turn and prove the entity is in no pass.
@@ -1284,8 +1457,18 @@ static void MachineSystem_managed_externally_machine_is_still_published() {
 
 // -- gp-015h: onConsumeResponse / onFluidConsumeResponse ----------------------
 
-// FINDING F.
-static void MachineSystem_onConsumeResponse_direct_hit_also_debits_the_fifo_head() {
+// FIXED (gp-frb2) — this case used to assert that the second credit HAPPENED.
+// The invariant it now pins is the one that was actually violated: one
+// response credits exactly ONE machine, and only the machine it was addressed
+// to.
+//
+// The assertion is deliberately written against the SUM of the two buffers
+// rather than against a named machine. MachineSystem's FIFO branch dequeues
+// pendingConsumes_.begin(), and std::unordered_map does not iterate in
+// insertion order (nor in a documented order at all), so which machine the
+// fallthrough would have hit is not predictable and must not be asserted.
+// The SUM is deterministic: 50 units were delivered, so 50 units land.
+static void MachineSystem_onConsumeResponse_direct_hit_credits_only_its_node() {
     auto f = makeFixture();
     // Two HEAT machines, both starved, both with an active recipe: one tick
     // queues a consume request for each (pendingConsumes_ is written even with a
@@ -1296,31 +1479,69 @@ static void MachineSystem_onConsumeResponse_direct_hit_also_debits_the_fifo_head
     startRecipe(f->reg, b, "unit_iron", 10);
 
     f->tick();  // queues both
+    CHECK_EQ_INT(f->energy(a).current, 0, "precondition: A is starved");
+    CHECK_EQ_INT(f->energy(b).current, 0, "precondition: B is starved");
 
-    // A DIRECTED response for B: credits B, then falls through into the FIFO
-    // branch at MachineSystem.cpp:715, which credits whatever pendingConsumes_
-    // .begin() yields — a second machine.
+    // A response DIRECTED at B.
     f->sys->onConsumeResponse(static_cast<uint64_t>(b), 50, 50);
 
-    const int32_t a_after = f->energy(a).current;
-    const int32_t b_after = f->energy(b).current;
-    CHECK_EQ_INT(b_after, 50, "the directed node is credited");
-    CHECK_NE_INT(a_after, 0,
-                 "FINDING F: a directed response FALLS THROUGH into the FIFO "
-                 "branch and credits a second machine as well");
-    // The FIFO head is the first entry inserted (unordered_map::begin() over the
-    // first-inserted key), which is machine A.
-    CHECK_EQ_INT(a_after, 50, "the FIFO head is the first-inserted pending node");
+    CHECK_EQ_INT(f->energy(b).current, 50, "the addressed node is credited");
+    CHECK_EQ_INT(f->energy(a).current, 0,
+                 "and the machine that was NOT addressed receives nothing");
+    CHECK_EQ_INT(f->energy(a).current + f->energy(b).current, 50,
+                 "gp-frb2: one response credits exactly one machine. The direct "
+                 "branch used to fall through into the FIFO branch and credit a "
+                 "second buffer for a consumption that was never reported, so "
+                 "50 delivered units landed as 100.");
 }
 
-// FINDING G.
+// The direct branch has to settle ITS OWN outstanding request, not leave it
+// for the FIFO branch to erase by accident. A pending entry that survives a
+// settled response makes the tick loop believe the request is still in flight
+// (MachineSystem.cpp:304 skips re-requesting while the entry exists), so the
+// machine can never ask for energy again once it drains — a permanent stall.
+//
+// Observable without touching privates: with the direct branch no longer
+// falling through, the map must be EMPTY afterwards, so a subsequent FIFO
+// response finds nothing to dequeue and credits nobody. Before the fix the
+// leftover entry is exactly what the fallthrough consumed.
+static void MachineSystem_onConsumeResponse_direct_hit_settles_its_own_request() {
+    auto f = makeFixture();
+    // A dummy entity takes id 0, so the machine under test is a non-zero id
+    // and CAN take the direct branch (see the id-0 sibling below).
+    const entt::entity id_zero_taker = f->reg.create();
+    CHECK_EQ_INT(static_cast<uint64_t>(id_zero_taker), 0u,
+                 "precondition: the dummy entity holds id 0");
+    auto a = f->install(kBlockSmelter, f->freshX(), EnergyType::HEAT, 0);
+    CHECK_NE_INT(static_cast<uint64_t>(a), 0u,
+                 "precondition: the machine's entity id is non-zero");
+    startRecipe(f->reg, a, "unit_iron", 10);
+
+    f->tick();  // queues exactly one consume request
+    CHECK_EQ_INT(f->energy(a).current, 0, "precondition: the request is outstanding");
+
+    f->sys->onConsumeResponse(static_cast<uint64_t>(a), 50, 50);
+    CHECK_EQ_INT(f->energy(a).current, 50, "the directed response is credited");
+
+    // An UNDIRECTED response now has no outstanding request to correlate to.
+    f->sys->onConsumeResponse(0, 7, 7);
+    CHECK_EQ_INT(f->energy(a).current, 50,
+                 "gp-frb2: the directed response settled its own pending entry, "
+                 "so the undirected one finds an empty queue and credits nobody");
+}
+
+
+// FINDING G — STILL OPEN (same class as gp-u9ua, filed for BatteryBufferSystem).
+// Reported, not fixed: the direct branch is deliberately left guarded by
+// `node_id != 0`, so this defect survives the gp-frb2 fix untouched.
+//
+// A positive response with node_id 0 is INDISTINGUISHABLE from "no node id"
+// at MachineSystem.cpp:687 (`if (node_id != 0)`), so it can never take the
+// direct branch — even though entt's first entity genuinely has id 0. It
+// therefore lands in the FIFO branch and credits whichever pending
+// pendingConsumes_.begin() yields, which is chosen by hash order rather than
+// by the requested node id.
 static void MachineSystem_onConsumeResponse_treats_entity_zero_as_no_node_id() {
-    // A positive response with node_id 0 is INDISTINGUISHABLE from "no node
-    // id" at MachineSystem.cpp:687 (`if (node_id != 0)`), so it can never take
-    // the direct branch — even though entt's first entity genuinely has id 0.
-    // It therefore lands in the FIFO branch and credits pendingConsumes_'
-    // first-inserted entry instead. Same class as gp-u9ua, filed for
-    // BatteryBufferSystem.
     auto f = makeFixture();
     auto a = f->install(kBlockSmelter, f->freshX(), EnergyType::HEAT, 0);
     auto b = f->install(kBlockSmelter, f->freshX(), EnergyType::HEAT, 0);
@@ -1330,33 +1551,25 @@ static void MachineSystem_onConsumeResponse_treats_entity_zero_as_no_node_id() {
     CHECK_EQ_INT(f->energy(a).current, 0, "precondition: A is starving");
     CHECK_EQ_INT(f->energy(b).current, 0, "precondition: B is starving");
 
-    // The entity that actually HAS id 0 is the first one created. A directed
-    // response addressed to it is routed to the FIFO head instead.
+    // The entity that actually HAS id 0 is the first one created. A response
+    // addressed to it can only ever reach whichever node the FIFO branch
+    // picks, so A is credited only by coincidence of hash order.
     const uint64_t zero_entity = static_cast<uint64_t>(a);
     CHECK_EQ_INT(zero_entity, 0u,
                  "precondition: A really is entt's first entity, i.e. id 0");
     f->sys->onConsumeResponse(zero_entity, 25, 25);
 
-    // FINDING G: a never credits a, because the direct branch is skipped and
-    // the FIFO branch credits pendingConsumes_.begin() — which is a itself
-    // here. The bug is invisible while a happens to BE the FIFO head; the
-    // observable asymmetry is that a is credited TWICE by two responses
-    // addressed to DIFFERENT machines, which is FINDING F.
+    // FINDING G: exactly one machine is credited, but WHICH one is decided by
+    // the unordered_map's iteration order, not by the node id in the message.
+    // The deterministic statement of the defect: a response naming node 0 must
+    // not be able to credit the OTHER node. If B is credited, the routing is
+    // provably not by node id.
     CHECK_EQ_INT(f->energy(b).current, 0,
-                 "the response for the id-0 machine does not reach B either");
-    CHECK_EQ_INT(f->energy(a).current, 25u,
-                 "and was credited to the FIFO head instead, purely by insertion "
-                 "order rather than by the requested node id");
-
-    // Now the real discriminator: a SECOND response addressed at B credits A
-    // again, because the direct branch is unreachable only for id 0 — a
-    // non-zero id takes it and then STILL falls through (FINDING F).
-    f->sys->onConsumeResponse(static_cast<uint64_t>(b), 10, 10);
-    CHECK_EQ_INT(f->energy(b).current, 20u,
-                 "FINDING F: a directed non-zero id credits B, and the FIFO "
-                 "fallthrough then credits B a SECOND time for the same 10 units");
-    CHECK_EQ_INT(f->energy(a).current, 25u,
-                 "while A keeps only the first, FIFO-credited response");
+                 "FINDING G: a response addressed to the id-0 node A must not "
+                 "reach B; if it has, the FIFO branch picked B by hash order "
+                 "instead of A by node id");
+    CHECK_EQ_INT(f->energy(a).current + f->energy(b).current, 25,
+                 "one response still credits exactly one machine (gp-frb2)");
 }
 
 static void MachineSystem_onConsumeResponse_zero_keeps_a_nonzero_pending() {
@@ -1753,7 +1966,10 @@ int main(int argc, char** argv) {
     TEST(MachineSystem_optional_publish_fields_default_to_the_sentinels);
     TEST(MachineSystem_unknown_block_id_publishes_slots_in_zero);
     TEST(MachineSystem_inventory_change_republishes_immediately);
-    TEST(MachineSystem_identical_stacks_hash_to_the_empty_inventory);
+    TEST(MachineSystem_identical_stacks_publish_at_once);
+    TEST(MachineSystem_swapping_two_slots_publishes);
+    TEST(MachineSystem_unchanged_inventory_stays_quiet);
+    TEST(MachineSystem_hash_is_a_pure_function_of_the_slots);
     TEST(MachineSystem_machine_missing_any_view_component_is_untouched);
     TEST(MachineSystem_entities_outside_the_view_are_ignored);
     TEST(MachineSystem_dt_is_ignored);
@@ -1777,7 +1993,8 @@ int main(int argc, char** argv) {
     TEST(MachineSystem_steam_item_id_zero_fails_closed);
     TEST(MachineSystem_steam_top_up_skips_foreign_and_managed_machines);
     TEST(MachineSystem_managed_externally_machine_is_still_published);
-    TEST(MachineSystem_onConsumeResponse_direct_hit_also_debits_the_fifo_head);
+    TEST(MachineSystem_onConsumeResponse_direct_hit_credits_only_its_node);
+    TEST(MachineSystem_onConsumeResponse_direct_hit_settles_its_own_request);
     TEST(MachineSystem_onConsumeResponse_treats_entity_zero_as_no_node_id);
     TEST(MachineSystem_onConsumeResponse_zero_keeps_a_nonzero_pending);
     TEST(MachineSystem_onFluidConsumeResponse_credits_the_buffer);
