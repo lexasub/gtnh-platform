@@ -15,6 +15,42 @@ Gateway assigns **player 1** to every Ctrl connection
 (`src/apps/gateway/gateway.cpp`, `client_player_id_ = 1`), so two tests in one
 process share one player identity.
 
+## The cluster cannot outlive the test binary
+
+Every service runs under a per-service supervisor (testutil/supervisor.go).
+The test binary re-execs itself as a supervisor, hands it the real service, and
+keeps the write end of a guard pipe open. When the test binary dies — `os.Exit`,
+a `-test.timeout` panic, SIGINT, SIGKILL, anything — the kernel closes that
+pipe, the supervisor reads EOF, and it kills its own process group.
+
+This is a kernel-driven signal, not an in-process one, because nothing inside
+the test binary can cover SIGKILL or a timeout panic: `os.Exit` skips defers and
+the timeout panic is raised on the runtime's alarm goroutine. A `defer` alone
+would have been worse than nothing, because it looks like it works.
+
+Two consequences worth knowing:
+
+- **A missing service is a hard failure, never a skip.** `startServices` exits
+  non-zero with a `FATAL` banner if any service cannot start, and refuses to
+  begin at all if :4000/:5001/:7777/:7778 are already bound. A skip is reported
+  as a pass by `go test` and by most CI summaries, so a skipped cluster used to
+  produce runs that looked green while testing nothing.
+- **Teardown is idempotent and bounded.** `ServiceManager.Shutdown` is safe to
+  call repeatedly and from a signal handler; the second Ctrl-C restores the
+  default disposition and re-raises, so an interrupt can never become an
+  unkillable hang.
+
+## A readiness check is not proof a service is alive
+
+`ReadyCheck` callbacks inspect external surfaces — a port, a Router log line —
+and all of those can look ready while the service underneath is failing. The
+supervisor reports the service's pid and its exit status back over a handshake
+pipe, and `StartService` refuses to accept readiness until the launch has been
+confirmed and the service has not already reported an exit. A zombie is not an
+escape hatch: the service is the supervisor's child, so an unreaped one still
+answers `kill(pid, 0)`, which is why the exit report — not the process table —
+is authoritative.
+
 ## Single-run contract
 
 A test that proves a one-shot server effect must claim its run before doing any
