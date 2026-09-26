@@ -81,4 +81,46 @@ if(BUILD_TESTING)
     )
     add_dependencies(action_dispatch_test simcored_fbs)
     add_test(NAME action_dispatch_test COMMAND action_dispatch_test)
+
+    # wrench_server_test — the server half of the pipe wrench (issue gp-r946):
+    # WrenchHandler::cycleFace (the side-role cycle, including multiblock hatch
+    # slots) and WrenchActionHandler::handle (the wire decode, the 200 ms
+    # cooldown and the pipe/cable meta toggle). The client half already has
+    # five passing ctest targets; this closes the asymmetry.
+    #
+    # Same harness as action_dispatch_test: the project CHECK/TEST macros, no
+    # GoogleTest anywhere in the build.
+    #
+    # The meta expectations are the ones
+    # src/apps/game_client/tests/WrenchMetaLink_test.cpp already asserts (they
+    # were themselves taken from live server logs), so the server is checked
+    # against the client's contract rather than a fresh invention.
+    #
+    # EntityStateStoreClient is compiled from source rather than linked from the
+    # simcored static lib (which would drag in main.cpp.o and a second main()),
+    # same as src/game/storage/CMakeLists.txt:chest_state_manager_test. The
+    # test never connects it, so no socket, thread or network is created.
+    add_executable(wrench_server_test
+        test/test_wrench_server.cpp
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore/Network/clients/EntityStateStoreClient.cpp
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore/Network/clients/IoUringRouterClient.cpp
+    )
+    target_include_directories(wrench_server_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+        ${CMAKE_BINARY_DIR}/src/apps/simcore/simcored_fbs
+    )
+    target_link_libraries(wrench_server_test PRIVATE
+        gtnh_game_actions
+        gtnh_game_storage
+        gtnh_engine_sim
+        gtnh_engine_registry
+        gtnh-net
+        EnTT::EnTT
+        flatbuffers::flatbuffers
+        asio::asio
+        spdlog::spdlog
+    )
+    add_dependencies(wrench_server_test simcored_fbs)
+    add_test(NAME wrench_server_test COMMAND wrench_server_test)
 endif()
