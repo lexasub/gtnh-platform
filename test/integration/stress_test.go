@@ -10,6 +10,31 @@ import (
 	Protocol "github.com/gtnh-platform/protocol/generated/go/Protocol"
 )
 
+// SINGLE-PLAYER GATEWAY CONTRACT
+//
+// These two tests open more than one client connection, and the Gateway does not
+// support that yet - by design, not by accident:
+//
+//   gateway.h:112  std::unique_ptr<IoUringConnection> client_ctrl_;   ONE socket, not a map
+//   gateway.cpp:90-94  a new ctrl connection MOVES the old one out and destroys it
+//   gateway.cpp:112    CreatePlayerJoined(fbb, 1) - every client is announced as player 1
+//
+// So client N+1 evicts client N, and player.actions.ack has no routing key: the ack for
+// a CAS outcome is written to whichever single socket is currently attached, and the
+// payload's player_id is never consulted. These tests therefore cannot observe a
+// multi-client exchange today.
+//
+// What IS verified, and what these tests are really for: the SERVER-side CAS is correct.
+// Reading the log of a failing run shows
+//     Block CAS OK at (650,119,650) final_id=1
+//     Block CAS CONFLICT at (650,119,650) actual_id=1, from_id=0, to_id=1
+// i.e. one writer wins and the other is told it conflicted, exactly as designed. The
+// failures are the harness observing a capability the server does not claim to have.
+//
+// The assertions below are deliberately NOT relaxed to accept the observed values. Doing
+// so would assert that a silently-dropped ack is acceptable behaviour. Multi-client
+// routing is filed separately; until it lands these tests stay red and say why.
+
 func TestStress_ConcurrentBlockPlacement(t *testing.T) {
 	const numClients = 5
 	errs := make(chan error, numClients)
