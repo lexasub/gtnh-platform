@@ -165,6 +165,46 @@ data, err := c.WaitForInventoryItem(playerID, itemID, minCount, 5*time.Second)
 `WaitForInventoryItem` skips empty payloads, other players, other items and
 lower totals, and sums counts across slots because the server splits stacks.
 
+## Asserting a pick-up: wait on the cursor, not on the item's absence
+
+`WaitForInventoryItem` only expresses POSITIVE inventory state. A test that
+must prove a click moved a stack therefore has to reach for the *absence* of
+the item from the grid — and that negative holds in several cases where the
+click did nothing: the server dropped the click, the stack landed somewhere
+the snapshot does not cover, or another test sharing the player id moved it.
+Gateway assigns one player id to every Ctrl connection, so that last case is
+not hypothetical in a single-cluster suite.
+
+A pick-up click moves the whole stack out of the grid and onto the
+server-owned cursor (`InventoryClick.h:148-153`), and both halves are
+published in one frame (`InventoryActionHandler.cpp:96-99`). So assert the
+cursor, which is the positive form of the same fact:
+
+```go
+if _, err := c.WaitForCursorItem(playerID, itemID, minCount, 5*time.Second); err != nil {
+    t.Fatalf("pick-up did not move item %d onto the cursor: %v", itemID, err)
+}
+```
+
+`WaitForCursorItem` reads `InventoryUpdate.cursor`; `item_id == 0` with
+`count == 0` is an empty cursor. Note that the Go accessor returns a
+zero-valued struct rather than nil for an absent cursor, so test the fields,
+not the pointer.
+
+## Placement frames are guarded in Go, not only in C++
+
+The claim rule lives in `PlaceBlockHandler::isPlacementShape`: a right-click
+is a placement only when `held_item != 0` and it is not a mining tool or a
+wrench (`PlaceBlockHandler.cpp:32-36`). Nothing in the Go fixture layer
+enforces that, so a fixture that regresses to `BuildSetBlockAction` produces a
+frame no handler claims, and the only symptom is a `REJECTED` five seconds
+later that reads like a server bug.
+
+`TestPlaceAtCellSendsAClaimableFrame` (block_test.go) asserts the whole frame
+contract — action type, held item, face, the `y+1` clicked-cell convention,
+and request correlation — with no cluster and no timing. Run it after touching
+any placement builder or `placeAtCell`.
+
 ## Running
 
 ```bash

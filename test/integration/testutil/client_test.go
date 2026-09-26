@@ -113,6 +113,91 @@ func TestFirstSlotWithItemFindsRealSlot(t *testing.T) {
 	}
 }
 
+// TestWaitForCursorItemClosesTheGapLeftByWaitForInventoryItem pins the
+// predicate this package was missing: the server-owned cursor
+// (InventoryClick.h:148-153 moves a picked-up stack OUT of the player grid and
+// onto it) is a field of the same InventoryUpdate frame, but nothing could
+// wait on it.
+//
+// WaitForInventoryItem can only assert POSITIVE inventory state. A click test
+// that has to prove "the stack left the grid" therefore asserts the absence of
+// an item, which any of three unrelated events can also produce: another test
+// in the same process picking the item up, the item sitting on the cursor, or
+// the server splitting it across slots. This helper gives that test a
+// POSITIVE assertion instead.
+func TestWaitForCursorItemClosesTheGapLeftByWaitForInventoryItem(t *testing.T) {
+	client, server := pipeClient(t)
+
+	// Every frame below must be skipped: wrong type, empty payload, another
+	// player, an empty cursor, and a cursor holding a different item. The last
+	// frame is the one that satisfies the predicate.
+	writer := pushCtrlFrames(server, []ctrlFrame{
+		{msgType: MsgGameModeChange, payload: nil},
+		{msgType: MsgInventoryUpdate, payload: nil},
+		{msgType: MsgInventoryUpdate, payload: buildTestInventoryUpdate(7, []testSlot{})},
+		{msgType: MsgInventoryUpdate, payload: buildTestInventoryUpdateWithCursor(1, 22531, 9, []testSlot{{itemID: 22530, count: 4}})},
+		{msgType: MsgInventoryUpdate, payload: buildTestInventoryUpdateWithCursor(1, 22530, 4, []testSlot{})},
+	})
+
+	matched, err := client.WaitForCursorItem(1, 22530, 4, 2*time.Second)
+	if err != nil {
+		t.Fatalf("WaitForCursorItem: %v", err)
+	}
+	var stack Protocol.ItemStack
+	// Cursor() returns a zero-valued struct rather than nil when the frame
+	// carries no cursor, so read the fields rather than testing for nil.
+	Protocol.GetRootAsInventoryUpdate(matched, 0).Cursor(&stack)
+	if stack.ItemId() != 22530 || stack.Count() != 4 {
+		t.Fatalf("cursor = item %d x%d, want item 22530 x4", stack.ItemId(), stack.Count())
+	}
+	awaitWriter(t, writer)
+}
+
+// TestWaitForCursorItemRespectsMinCount is the split-stack guard: a pick-up
+// click moves the WHOLE stack, but a partial move leaves fewer items on the
+// cursor than the grid had. A helper that ignored minCount would accept the
+// partial state and the test would pass without the click having happened.
+func TestWaitForCursorItemRespectsMinCount(t *testing.T) {
+	client, server := pipeClient(t)
+
+	writer := pushCtrlFrames(server, []ctrlFrame{
+		{msgType: MsgInventoryUpdate, payload: buildTestInventoryUpdateWithCursor(1, 22530, 2, []testSlot{})},
+	})
+
+	_, err := client.WaitForCursorItem(1, 22530, 4, 300*time.Millisecond)
+	if err == nil {
+		t.Fatal("WaitForCursorItem accepted a cursor holding fewer items than minCount")
+	}
+	if !strings.Contains(err.Error(), "timeout waiting for cursor") {
+		t.Fatalf("WaitForCursorItem error = %q, want deadline timeout error", err)
+	}
+	awaitWriter(t, writer)
+}
+
+// TestWaitForCursorItemTimesOutWhenTheStackStaysInTheGrid is the RED for the
+// defect this helper exists to remove: the hand-rolled loop in
+// TestInventory_MoveBetweenSlots asserted only that the item was GONE from the
+// player grid. A server that silently dropped the pick-up — publishing
+// nothing, or moving the stack to a slot the snapshot omits — satisfies that
+// negative assertion. This asserts the positive fact instead, and fails when
+// the stack is still in the grid.
+func TestWaitForCursorItemTimesOutWhenTheStackStaysInTheGrid(t *testing.T) {
+	client, server := pipeClient(t)
+
+	// The grid still holds all 4 and the cursor is empty: the click did NOT
+	// move anything. A negative "item not in grid" check would not fire here
+	// (the item IS in the grid), but neither would it catch a silent drop
+	// where the item vanishes from BOTH — the cursor predicate does.
+	writer := pushCtrlFrames(server, []ctrlFrame{
+		{msgType: MsgInventoryUpdate, payload: buildTestInventoryUpdateWithCursor(1, 0, 0, []testSlot{{itemID: 22530, count: 4}})},
+	})
+
+	if _, err := client.WaitForCursorItem(1, 22530, 4, 300*time.Millisecond); err == nil {
+		t.Fatal("WaitForCursorItem succeeded while the stack was still in the player grid")
+	}
+	awaitWriter(t, writer)
+}
+
 type testSlot struct {
 	itemID uint16
 	count  byte
@@ -137,6 +222,37 @@ func buildTestInventoryUpdate(playerID uint64, slots []testSlot) []byte {
 	Protocol.InventoryUpdateStart(b)
 	Protocol.InventoryUpdateAddPlayerId(b, playerID)
 	Protocol.InventoryUpdateAddSlots(b, slotsVector)
+	b.Finish(Protocol.InventoryUpdateEnd(b))
+	return b.FinishedBytes()
+}
+
+// buildTestInventoryUpdateWithCursor is buildTestInventoryUpdate plus the
+// server-owned cursor struct, which PlayerInventoryStore::buildUpdate always
+// fills (PlayerInventoryStore.cpp:185-196) and which a pick-up click is the
+// only way to populate.
+func buildTestInventoryUpdateWithCursor(playerID uint64, cursorID uint16, cursorCount byte, slots []testSlot) []byte {
+	b := flatbuffers.NewBuilder(256)
+	offsets := make([]flatbuffers.UOffsetT, len(slots))
+	for i, slot := range slots {
+		Protocol.InventorySlotStart(b)
+		Protocol.InventorySlotAddItemId(b, slot.itemID)
+		Protocol.InventorySlotAddCount(b, slot.count)
+		offsets[i] = Protocol.InventorySlotEnd(b)
+	}
+	Protocol.InventoryUpdateStartSlotsVector(b, len(offsets))
+	for i := len(offsets) - 1; i >= 0; i-- {
+		b.PrependUOffsetT(offsets[i])
+	}
+	slotsVector := b.EndVector(len(offsets))
+	Protocol.InventoryUpdateStart(b)
+	Protocol.InventoryUpdateAddPlayerId(b, playerID)
+	Protocol.InventoryUpdateAddSlots(b, slotsVector)
+	// The cursor is an inline struct: CreateItemStack runs INSIDE the table's
+	// Start/End block and its offset is handed to AddCursor — the same shape
+	// CreateVec3i/AddPos uses in the production builders. Creating it before
+	// Start panics in PrependStructSlot.
+	cursorOffset := Protocol.CreateItemStack(b, cursorID, cursorCount, 0)
+	Protocol.InventoryUpdateAddCursor(b, cursorOffset)
 	b.Finish(Protocol.InventoryUpdateEnd(b))
 	return b.FinishedBytes()
 }

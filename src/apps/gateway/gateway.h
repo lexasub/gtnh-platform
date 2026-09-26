@@ -42,9 +42,14 @@ struct ChunkCoord {
   int32_t x, y, z;
 };
 
+// PlayerInterest is the chunk-interest window a session would be filtered
+// against. It is defined and ready, but nothing constructs one yet: the
+// Gateway has a single ctrl client and the chunk-loaded frame carries no
+// player, so there is no session to attach an interest to. client_interest()
+// documents the four blocking dependencies and the task ids that clear them.
 struct PlayerInterest {
   int32_t center_x = 0, center_y = 0, center_z = 0;
-  int radius = 8; // chunks
+  int32_t radius = 8; // chunks
 
   bool ShouldSendChunk(ChunkCoord cc) const {
     return std::abs(cc.x - center_x) <= radius &&

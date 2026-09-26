@@ -18,6 +18,28 @@
 - [ ] 3.3 `world.blocks.changed`: exclude only source session; relay to others (per-session `source_player_id` check)
 
 ## 4. Per-session interest
+> **Blocked by 4.0 (gp-0yf).** Gateway interest management cannot be wired up
+> before this section, for two reasons 4.1/4.2 do not yet name:
+>
+> - **The client has no position channel.** `gateway.on_client_message`
+>   (main.cpp:84-95) drops `MOVE`/`UNLOAD` as flood control, so
+>   `last_x_/last_y_/last_z_` are only ever the saved spawn point
+>   (gateway.cpp:108-110) or whatever a `SetBlockAction` clicked
+>   (gateway.cpp:544, 568). An interest center needs a real position stream;
+>   filtering on a stale one silently drops every chunk outside the radius.
+> - **A dropped chunk has no recovery path.** `on_router_publish` forwards
+>   chunk data unconditionally, and the client cannot re-request a chunk it was
+>   never sent. Until a filtered send also publishes a `chunk.requests` entry
+>   for what it dropped, the filter turns "render distance" into "holes in the
+>   world". Whoever implements 4.1 must add that re-request, or keep the
+>   filter unshipped.
+>
+> `PlayerInterest::ShouldSendChunk` (gateway.h) and the filter site
+> (gateway.cpp, the `world.chunk.loaded.compressed` branch) both already
+> exist; the blockers are above, not the predicate.
+
+- [ ] 4.0 Client reports its own position on a throttled channel; Gateway
+      consumes it into the session instead of dropping MOVE (main.cpp:84-95)
 - [ ] 4.1 Move `PlayerInterest` into session; per-session `ShouldSendChunk` filtering for `world.chunk.loaded.compressed`
 - [ ] 4.2 `chunk.requests` published with session player_id (no more player_id=0: gateway.cpp:131, gateway.cpp:488-492)
 - [ ] 4.3 Route `player.position.load` to owning session; ChunkLoadManager sends unload/requests with session id

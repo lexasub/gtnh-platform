@@ -259,6 +259,57 @@ func (c *GatewayClient) WaitForInventoryItem(playerID uint64, itemID uint16, min
 	}
 }
 
+// WaitForCursorItem waits for an InventoryUpdate snapshot belonging to
+// playerID whose server-owned cursor holds itemID with a count of at least
+// minCount.
+//
+// This is the predicate for "a pick-up click actually happened". The click
+// rules move the whole stack out of the player grid and onto the cursor
+// (InventoryClick.h:148-153, IsEmpty(cursor) → cursor = *tgt), and
+// setSlotsAndCursor publishes both halves in one frame
+// (InventoryActionHandler.cpp:96-99). Asserting the cursor is therefore the
+// POSITIVE form of "the item left the grid"; asserting the grid no longer
+// holds it is only a negative, which also holds when the click never ran.
+//
+// Snapshots that are empty, belong to another player, or show a cursor with a
+// different item or a smaller count are skipped until the deadline.
+func (c *GatewayClient) WaitForCursorItem(playerID uint64, itemID uint16, minCount byte, timeout time.Duration) ([]byte, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return nil, fmt.Errorf("timeout waiting for cursor player=%d item=%d count>=%d", playerID, itemID, minCount)
+		}
+		if remaining < 10*time.Millisecond {
+			remaining = 10 * time.Millisecond
+		}
+		msgType, data, err := c.ReadCtrl(remaining)
+		if err != nil {
+			// A read that expires exactly at the deadline is the timeout path,
+			// not a transport failure; report the predicate that never matched.
+			if time.Now().Before(deadline) {
+				return nil, fmt.Errorf("wait for cursor player=%d item=%d count>=%d: %w", playerID, itemID, minCount, err)
+			}
+			return nil, fmt.Errorf("timeout waiting for cursor player=%d item=%d count>=%d", playerID, itemID, minCount)
+		}
+		// A zero-length FlatBuffer has no root table; GetRootAs* would panic.
+		if msgType != MsgInventoryUpdate || len(data) == 0 {
+			continue
+		}
+		update := Protocol.GetRootAsInventoryUpdate(data, 0)
+		if update.PlayerId() != playerID {
+			continue
+		}
+		var stack Protocol.ItemStack
+		if update.Cursor(&stack) == nil {
+			continue
+		}
+		if stack.ItemId() == itemID && stack.Count() >= minCount {
+			return data, nil
+		}
+	}
+}
+
 // InventoryItemCount sums the counts of itemID across every player slot in an
 // InventoryUpdate payload. The server splits stacks across slots
 // (PlayerInventoryStore stacking, max 64), so a per-slot check is not enough.

@@ -109,27 +109,17 @@ func TestInventory_MoveBetweenSlots(t *testing.T) {
 		t.Fatalf("send pick-up click: %v", err)
 	}
 
-	deadline := time.Now().Add(5 * time.Second)
-	moved := false
-	for time.Now().Before(deadline) {
-		msgType, data, err := c.ReadCtrl(time.Until(deadline))
-		if err != nil {
-			t.Fatalf("read post-click snapshot: %v", err)
-		}
-		if msgType != testutil.MsgInventoryUpdate || len(data) == 0 {
-			continue
-		}
-		update := Protocol.GetRootAsInventoryUpdate(data, 0)
-		if update.PlayerId() != playerID {
-			continue
-		}
-		if testutil.InventoryItemCount(data, cobblestoneID) == 0 {
-			moved = true
-			break
-		}
-	}
-	if !moved {
-		t.Fatalf("pick-up left item %d in the player grid (source slot %d)", cobblestoneID, srcSlot)
+	// The server-owned cursor is the POSITIVE half of this assertion
+	// (gp-03n). The old hand-rolled loop only checked that the item had LEFT
+	// the player grid, which is a negative: it also passes when the click
+	// never ran, when the stack was silently dropped, and — because the
+	// cluster is shared and Gateway hands every Ctrl connection the same
+	// player id — when any other test in this process picks up the same item.
+	// PlayerInventoryStore::buildUpdate publishes cursor and grid in one
+	// frame, so waiting on the cursor states the fact the click claims.
+	if _, err := c.WaitForCursorItem(playerID, cobblestoneID, 4, 5*time.Second); err != nil {
+		t.Fatalf("pick-up did not move item %d x4 from player slot %d onto the cursor: %v",
+			cobblestoneID, srcSlot, err)
 	}
 }
 

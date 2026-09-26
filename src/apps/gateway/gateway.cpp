@@ -304,13 +304,49 @@ bool IoUringGateway::send_to_client_bulk_raw(uint8_t msg_type, const uint8_t* da
     return true;
 }
 
+// client_interest returns the chunk-interest state for the connected client,
+// or nullptr when interest management is not active.
+//
+// The return is nullptr on purpose and the pointer is NOT a placeholder for
+// unimplemented work: the whole call graph is the placeholder. There are no
+// callers, and there cannot be correct ones yet, for four reasons that are
+// each independently blocking. Verified against this tree, not assumed:
+//
+//   1. There is no per-session state to return. ctrl is a singleton
+//      (`client_ctrl_`, swapped on accept), so "the client's interest" has no
+//      identity of its own. Per-session interest is task 4.1 of
+//      openspec/changes/add-multiplayer-foundation — that change introduces
+//      ClientSession and is not started.
+//   2. The frame a filter would run on carries no player. chunkd publishes
+//      `world.chunk.loaded.compressed` as CompressedChunkData { coord,
+//      palette_data } (core.fbs:201-204) — there is no player id and no
+//      requesting-player set, so "is this chunk in the client's interest" has
+//      no subject to ask about. This is the same attribution gap that
+//      add-multiplayer-foundation calls out for `chunk.requests` (published
+//      with player_id=0 at gateway.cpp:489-492 and 128-132).
+//   3. There is no center to measure from. The client never reports its
+//      position: main.cpp's on_client_message drops MOVE/UNLOAD as flood
+//      control, so last_x_/last_y_/last_z_ are only ever the saved spawn
+//      point (gateway.cpp:108-110) or whatever a SetBlockAction happened to
+//      click (gateway.cpp:544, 568). Filtering on that would silently drop
+//      every chunk outside a radius around a stale coordinate.
+//   4. Nothing consumes a rejection. on_router_publish forwards chunk data
+//      unconditionally to the bulk socket, and the client has no re-request
+//      path for a chunk it was not sent, so a dropped chunk is a hole in the
+//      world with no recovery.
+//
+// The filter itself is NOT the blocker — it is one ShouldSendChunk call in
+// the world.chunk.loaded.compressed branch (gateway.cpp:389-396), and
+// PlayerInterest::ShouldSendChunk already exists (gateway.h:49-53). Wiring it
+// up before 1-4 are resolved is precisely the "half-version that silently
+// drops chunks" the task forbids: with a stale center (3) the client would
+// receive a sparse world and report it as a rendering bug.
+//
+// Landed: the dependency, above, with its task ids. Not landed: the filter.
 PlayerInterest* IoUringGateway::client_interest() {
     // Use unified client_state_mutex_ for all connection state operations
     // This prevents asymmetry between client_ctrl_mutex_, client_bulk_mutex_, and client_state_mutex_
     std::lock_guard<std::mutex> lock(client_state_mutex_);
-    // TODO: Implement actual interest management - return nullptr for now as placeholder
-    // This would normally return a pointer to the current interest state
-    // For now, maintain backward compatibility by returning nullptr
     return nullptr;
 }
 

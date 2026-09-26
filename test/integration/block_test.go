@@ -61,6 +61,62 @@ func placeAtCell(playerID uint64, x, y, z int32, blockID uint16, reqID uint32) [
 		testutil.SetBlockActionOptions{RequestID: reqID, Face: 0})
 }
 
+// TestPlaceAtCellSendsAClaimableFrame is the Go-side guard for the defect
+// gp-j23p recorded: TestChunk_GetBlockAfterSet used to send an EMPTY-HAND
+// frame, which no handler claims, so the server correctly answered REJECTED
+// and the test failed against correct behaviour.
+//
+// The reason that bug is easy to reintroduce is that the claim rule lives only
+// in C++ — PlaceBlockHandler::isPlacementShape requires held_item != 0, not a
+// mining tool and not a wrench (PlaceBlockHandler.cpp:32-36). A Go fixture
+// that regresses to the no-options builder produces a byte-identical frame to a
+// legitimate negative-path one, and the only symptom is a REJECTED that looks
+// like a server bug five seconds later.
+//
+// This asserts the frame every placement fixture depends on. It is
+// deterministic, needs no cluster, and fails at build time of the test rather
+// than at 5 s into a placement.
+func TestPlaceAtCellSendsAClaimableFrame(t *testing.T) {
+	var pos Protocol.Vec3i
+	action := Protocol.GetRootAsSetBlockAction(
+		placeAtCell(42, 100, 60, 200, cobblestoneID, 41001), 0)
+
+	// 1. RIGHT_MOUSE_CLICK — a LEFT_MOUSE_CLICK is a break, which
+	// BreakBlockHandler claims instead (BreakBlockHandler.cpp:53-55).
+	if action.Action() != Protocol.PlayerActionTypeRIGHT_MOUSE_CLICK {
+		t.Errorf("action = %v, want RIGHT_MOUSE_CLICK", action.Action())
+	}
+	// 2. held_item != 0 — the empty hand is what gp-j23p was about.
+	if action.HeldItem() == 0 {
+		t.Error("held_item = 0: no handler claims an empty-hand right-click, " +
+			"so the server answers REJECTED and the placement never happens")
+	}
+	// 3. held_item is the block being placed, matching NetClient::SendBlockAction
+	// (NetClient.cpp:695-706), which writes the equipped item to both fields.
+	if action.HeldItem() != cobblestoneID {
+		t.Errorf("held_item = %d, want the placed block %d", action.HeldItem(), cobblestoneID)
+	}
+	// 4. Face 0 (DOWN) is what makes the server's --y land on the intended cell
+	// rather than one below it (ActionContext faceAdjacentBlock).
+	if action.Face() != 0 {
+		t.Errorf("face = %d, want 0 (DOWN)", action.Face())
+	}
+	// 5. The coordinate is the CLICKED cell, so it is y+1 — placeAtCell adds
+	// it, and the server subtracts it. Assert the pair, not the y.
+	if action.Pos(&pos) == nil {
+		t.Fatal("SetBlockAction has no pos struct")
+	}
+	if pos.X() != 100 || pos.Y() != 61 || pos.Z() != 200 {
+		t.Errorf("clicked pos = (%d,%d,%d), want (100,61,200) — placeAtCell(…, y=60) "+
+			"must send the cell ABOVE the target", pos.X(), pos.Y(), pos.Z())
+	}
+	// 6. Request correlation, so WaitForBlockAck can match the ACK and the
+	// test does not consume a neighbouring test's.
+	if action.RequestId() != 41001 {
+		t.Errorf("request_id = %d, want 41001", action.RequestId())
+	}
+}
+
 // primeChunk generates the chunk containing (x,y,z) before a CAS placement
 // touches it. Gateway's automatic spawn request only covers the player's saved
 // position (src/apps/gateway/gateway.cpp:116-131), so a placement far from
