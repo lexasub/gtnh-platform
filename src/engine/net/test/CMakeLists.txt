@@ -42,3 +42,18 @@ add_test(NAME gtnh_net_test COMMAND gtnh_net_test)
 add_test(NAME toctou_test COMMAND toctou_test)
 set_tests_properties(toctou_test PROPERTIES DISABLED TRUE)
 add_test(NAME integration_test COMMAND integration_test)
+
+# RouterClient unit tests (gp-sst5). Own executable with its own harness
+# definitions, so nothing collides with gtnh_net_test at link time.
+# No GoogleTest: the project has no gtest dependency and CI builds Release
+# with -Werror.
+add_executable(router_client_test
+    test_router_client.cpp
+)
+
+target_link_libraries(router_client_test PRIVATE
+    gtnh-net
+    pthread
+)
+
+add_test(NAME router_client_test COMMAND router_client_test)
