@@ -1947,8 +1947,9 @@ void test_MachineInteractHandler_left_click_spins_only_an_opted_in_machine() {
 //      report tier 0 = ULV. The only tier-1+ ids the decoder can produce are
 //      0xF020+ (payload 32 = 1<<5), which items.csv does not contain.
 //
-//   2. NONE of the four drill ids is in TOOL_ENERGY_DEFS (keys 90-94, 60948-
-//      60950). getToolEnergy returns -1 for them, and consumeToolEnergy()
+//   2. RESOLVED in gp-v4re: the four drill ids were NOT in TOOL_ENERGY_DEFS, whose
+//      keys were the bare numbers 90-94 - matching no item in items.csv, so
+//      getToolEnergy returned -1 and consumeToolEnergy()
 //      returns false whenever the current energy is less than the requested
 //      amount — and -1 < 100 is true — so no drill mine can ever succeed no
 //      matter how much meta the tool carries. (gp-j1ux splits the reason: that
@@ -1976,10 +1977,23 @@ void test_ElectricDrillHandler_the_four_drill_ids_all_decode_to_tier_zero() {
   // payload 32 = 1<<5, so pack("1111:00:32") = 0xF020.
   CHECK_NE(toolTier(ItemId::pack("1111:00:32")), 0,
            "tier 1 is reachable, just not by any shipped drill id");
-  for (const auto& r : rows) {
-    CHECK(TOOL_ENERGY_DEFS.find(r.id) == TOOL_ENERGY_DEFS.end(),
-          "and no drill id is in TOOL_ENERGY_DEFS, which is what makes every "
-          "mine fail on energy grounds");
+  // This used to assert that NO drill id is in TOOL_ENERGY_DEFS, "which is what
+  // makes every mine fail on energy grounds" - i.e. it pinned the dead drill
+  // pipeline as the contract. gp-v4re gave the four drills their real ids, so
+  // the energy model is now reachable and the assertion is inverted: each
+  // shipped drill has a capacity, and the tiers escalate.
+  const int32_t kDrillCaps[] = {
+      TOOL_ENERGY_DEFS.at(ITEM_DRILL_ULV).capacity,
+      TOOL_ENERGY_DEFS.at(ITEM_DRILL_LV).capacity,
+      TOOL_ENERGY_DEFS.at(ITEM_DRILL_MV).capacity,
+      TOOL_ENERGY_DEFS.at(ITEM_DRILL_HV).capacity,
+  };
+  for (size_t i = 0; i < 4; ++i) {
+    CHECK(kDrillCaps[i] > 0, "every shipped drill has a declared capacity");
+    if (i > 0) {
+      CHECK(kDrillCaps[i] > kDrillCaps[i - 1],
+            "and the capacity escalates with tier");
+    }
   }
 }
 
@@ -2120,27 +2134,34 @@ void test_ElectricDrillHandler_a_slotted_drill_is_refused_for_having_no_energy_m
 
   // The drill really is in slot 0, carrying a big meta value that a reader
   // would reasonably take for a charge level.
+  // pack("1111:00:32") decodes as tier 1 (payload 32 = 1<<5) so it clears the
+  // `tier == 0 && id != ITEM_DRILL_ULV` tool gate, yet it is not one of the four
+  // ids in TOOL_ENERGY_DEFS, so it reaches the energy phase with no model. This
+  // used to be expressed with ITEM_DRILL_ULV, which qualified only because the
+  // table keyed the drills on the bare numbers 90-94 (gp-v4re).
+  constexpr uint16_t kNoModelId = ItemId::pack("1111:00:32");
   std::array<PersistSlot, kInventorySlots> slots{};
-  slots[0] = PersistSlot{ITEM_DRILL_ULV, 1, 60000};
+  slots[0] = PersistSlot{kNoModelId, 1, 60000};  // tier-1, but no energy model
   inv->setSlots(7, slots);
 
   // Sanity: the slot really does hold the drill.
-  CHECK_EQ(inv->getSlots(7)[0].item_id, ITEM_DRILL_ULV,
-           "slot 0 really holds the drill");
+  CHECK_EQ(inv->getSlots(7)[0].item_id, kNoModelId,
+           "slot 0 really holds the modelled-out tool");
 
-  // The energy model does not know this tool at all.
-  simulation_core::ItemStack probe{ITEM_DRILL_ULV, 1, 60000};
+  // The distinction this test protects survives gp-v4re intact, but it has to be
+  // made with a tool that genuinely has no model AND passes the drill gate.
+  simulation_core::ItemStack probe{kNoModelId, 1, 60000};
   CHECK_EQ(getToolEnergy(probe), -1,
-           "getToolEnergy returns -1 for a tool with no ToolEnergyDef");
+           "a tool with no ToolEnergyDef has no energy model, whatever its meta");
 
-  const DrillMineResult r = h.mineBlock(7, 0, 0, 0, ITEM_DRILL_ULV, 0);
+  const DrillMineResult r = h.mineBlock(7, 0, 0, 0, kNoModelId, 0);
   CHECK_EQ(r.error, std::string("no_energy_definition"),
            "so the mine is refused for having no energy definition, NOT as "
            "no_energy, despite a full meta");
   CHECK(!r.success, "and reports no success");
   CHECK_EQ(writes, 0, "the block is never broken");
-  CHECK_EQ(inv->getSlots(7)[0].item_id, ITEM_DRILL_ULV,
-           "and the tool is not consumed");
+  CHECK_EQ(inv->getSlots(7)[0].item_id, kNoModelId,
+           "and the slot is untouched");
 }
 
 // The energy path IS reachable — for a tool that has a ToolEnergyDef. Tool id
@@ -2148,7 +2169,10 @@ void test_ElectricDrillHandler_a_slotted_drill_is_refused_for_having_no_energy_m
 // and the block really is cleared. This is the control that shows the
 // no_energy result above is about the missing table row, not a broken handler.
 void test_ElectricDrillHandler_a_known_energy_tool_mines_successfully() {
-  constexpr uint16_t kTool = 90;  // TOOL_ENERGY_DEFS: {90, {90, 1000, 8, 0}}
+  // ITEM_DRILL_ULV - the real drill id (pack("1111:00:0") = 61440). This used to be the
+  // bare 90, which matches no item in items.csv, so it only reached the tool-energy table
+  // by coincidence and the tier-gate branch below was testing a fiction (gp-v4re).
+  constexpr uint16_t kTool = ITEM_DRILL_ULV;  // TOOL_ENERGY_DEFS: capacity 1000, maxInput 8, tier 0
   std::shared_ptr<PlayerInventoryStore> inv =
       std::make_shared<PlayerInventoryStore>();
   inv->initPlayer(7);
@@ -2166,13 +2190,13 @@ void test_ElectricDrillHandler_a_known_energy_tool_mines_successfully() {
   slots[0] = PersistSlot{kTool, 1, 1000};  // full: capacity is 1000
   inv->setSlots(7, slots);
 
-  // The tier gate: tool 90 is not ITEM_DRILL_ULV, so it must report a
-  // non-zero tier or it is refused as not_a_drill before anything else.
+  // The tier gate: ITEM_DRILL_ULV is the special-cased ULV id, so it is allowed
+  // through even though its decoded tier is 0.
   const DrillMineResult r = h.mineBlock(7, 5, 5, 5, kTool, 0);
   if (r.error == "not_a_drill") {
     CHECK_EQ(toolTier(kTool), 0,
-             "tool 90 is refused as not_a_drill because its tier decodes to 0 "
-             "and it is not the special-cased ULV id");
+             "a refused tool must be one whose tier decodes to 0 AND which is not "
+             "the special-cased ULV id");
   } else {
     CHECK(r.success, "a known-energy tool at full charge mines");
     CHECK_EQ(r.mined_block_id, kStoneId, "and reports the block it mined");
@@ -2252,15 +2276,18 @@ void test_ElectricDrillHandler_mining_ticks_are_tier_driven() {
 void test_ElectricDrillHandler_refuses_a_tool_with_no_energy_definition() {
   struct Row { uint16_t id; const char* label; const char* expected; };
   const Row rows[] = {
-      // ULV is the one id the tool gate admits, so it is the one that reaches
-      // the energy phase and gets the new refusal.
-      {ITEM_DRILL_ULV, "ULV", "no_energy_definition"},
       // The other three are refused at the tool gate, before any energy
       // lookup. Pinned so a future decoder fix is seen to change the reason
       // here rather than silently.
       {ITEM_DRILL_LV, "LV", "not_a_drill"},
       {ITEM_DRILL_MV, "MV", "not_a_drill"},
       {ITEM_DRILL_HV, "HV", "not_a_drill"},
+      // ULV is the one id the tool gate admits, so it is the one that reaches
+      // the energy phase. Before gp-v4re it landed there with no energy model
+      // and was refused as "no_energy_definition"; now the ULV drill HAS a
+      // model, so a charged one is expected to mine. It stays in the table
+      // because the reason it now gives is the interesting part.
+      {ITEM_DRILL_ULV, "ULV", ""},
   };
 
   for (const auto& row : rows) {
@@ -2290,12 +2317,23 @@ void test_ElectricDrillHandler_refuses_a_tool_with_no_energy_definition() {
              row.label, row.expected);
 
     const DrillMineResult r = h.mineBlock(7, 3, 3, 3, row.id, 0);
-    CHECK(!r.success, "a real drill must not mine");
-    CHECK_EQ(r.error, std::string(row.expected), msg);
-    CHECK_NE(r.error, std::string("no_energy"),
-             "the out-of-charge reason must not be reused for a tool that has "
-             "no energy model at all");
-    CHECK_EQ(writes, 0, "and the block is never broken");
+    if (row.expected[0] == '\0') {
+      // The charged ULV drill: gp-v4re gave it a model, so it mines.
+      CHECK(r.success, "a charged ULV drill mines - the energy model is reachable");
+      CHECK_EQ(r.error, std::string(""),
+               "and reports no error at all");
+    } else {
+      CHECK(!r.success, "a gated tool must not mine");
+      CHECK_EQ(r.error, std::string(row.expected), msg);
+      CHECK_NE(r.error, std::string("no_energy"),
+               "the out-of-charge reason must not be reused for a tool that has "
+               "no energy model at all");
+    }
+    // A successful mine writes exactly once; a refused one never does.
+    CHECK_EQ(writes, row.expected[0] == '\0' ? 1 : 0,
+             row.expected[0] == '\0'
+                 ? "a charged ULV drill actually breaks the block"
+                 : "and the block is never broken");
   }
 }
 
@@ -2373,10 +2411,19 @@ void test_ElectricDrillHandler_never_throws_for_any_tool_item_id() {
   CHECK_EQ(threw, 0,
            "no tool id at all makes mineBlock throw — the capacity lookup on "
            "the success path must never raise std::out_of_range");
-  CHECK_EQ(succeeded, 0,
-           "and no id reaches the success path either: every id in the table "
-           "fails the drill gate or has no energy definition, which is why the "
-           "throw was latent rather than live");
+  // Before gp-v4re this was 0, which is why the out_of_range throw was latent
+  // rather than live: no id could reach the success path at all.
+  //
+  // It is 1, not 4. All four shipped drills decode as tier 0 (ItemId::toolTier
+  // reads (payload >> 5), and the drill payloads are 0..3), while the gate is
+  // `tier == 0 && id != ITEM_DRILL_ULV` - so only the ULV reaches the energy
+  // phase. That the other three are blocked is a real defect of its own and is
+  // filed separately; pinning 1 here keeps this assertion about what it claims
+  // to be about (the .at() guard is reachable at all) rather than smuggling that
+  // second bug in here.
+  CHECK_EQ(succeeded, 1,
+           "exactly one shipped drill reaches the success path, so the .at() "
+           "guard is exercised - the sweep is what makes it meaningful");
   (void)first_throwing_id;
   (void)first_success_id;
   (void)world_reads;
@@ -2387,18 +2434,39 @@ void test_ElectricDrillHandler_never_throws_for_any_tool_item_id() {
 // ToolEnergyDef reports -1, and -1 is never "enough" — so a success can only
 // ever be a success for an id the table knows.
 void test_ElectricDrillHandler_success_requires_a_known_energy_definition() {
+  // This test used to assert that every shipped drill id is ABSENT from
+  // TOOL_ENERGY_DEFS, "so getToolEnergy reports -1". That was the dead-drill
+  // pipeline written down as a contract. gp-v4re gave the four drills their real
+  // ids, so the contract is now the other direction: a success requires a KNOWN
+  // definition, and the four drills have one.
   for (uint16_t id : {ITEM_DRILL_ULV, ITEM_DRILL_LV, ITEM_DRILL_MV,
                       ITEM_DRILL_HV}) {
-    CHECK(TOOL_ENERGY_DEFS.find(id) == TOOL_ENERGY_DEFS.end(),
-          "this drill id has no ToolEnergyDef, so getToolEnergy reports -1");
-    simulation_core::ItemStack full{id, 1, 60000};
-    CHECK_EQ(getToolEnergy(full), -1,
-             "and -1 is not a charge level, it is the absence of one");
+    CHECK(TOOL_ENERGY_DEFS.find(id) != TOOL_ENERGY_DEFS.end(),
+          "this drill id HAS a ToolEnergyDef, so getToolEnergy reports its meta");
+    const int32_t capacity = TOOL_ENERGY_DEFS.at(id).capacity;
+    simulation_core::ItemStack full{id, 1, static_cast<uint16_t>(capacity)};
+    CHECK_EQ(getToolEnergy(full), capacity,
+             "a fully charged drill reads exactly its declared capacity");
     for (int32_t cost : {0, 50, 100, 150}) {
-      CHECK(!consumeToolEnergy(full, cost),
-            "so consumeToolEnergy refuses at every cost, including zero — "
-            "which is what keeps the old .at() unreachable");
+      CHECK(consumeToolEnergy(full, cost),
+            "and consumeToolEnergy accepts every cost up to the charge - which "
+            "is why the .at() on the success path is now genuinely reachable "
+            "and therefore genuinely needs its guard");
     }
+  }
+
+  // The other half of the invariant, unchanged: an id the table does not know
+  // still reports -1 and still refuses at every cost, which is the state the
+  // old .at() had to survive.
+  constexpr uint16_t kUnknown = 0xFFFF;
+  CHECK(TOOL_ENERGY_DEFS.find(kUnknown) == TOOL_ENERGY_DEFS.end(),
+        "an id outside the table is still outside the table");
+  simulation_core::ItemStack unknown{kUnknown, 1, 60000};
+  CHECK_EQ(getToolEnergy(unknown), -1,
+           "and -1 is still not a charge level, it is the absence of one");
+  for (int32_t cost : {0, 50, 100, 150}) {
+    CHECK(!consumeToolEnergy(unknown, cost),
+          "so consumeToolEnergy still refuses at every cost, including zero");
   }
 }
 
@@ -2590,11 +2658,12 @@ void test_ToolActionHandler_routes_each_declared_action_type() {
 // and with a real one the "not fully charged" path must NOT complete a quest.
 // The negative is what is observable here, so that is what is pinned.
 void test_ToolActionHandler_charge_item_does_not_complete_anything() {
-  // 90 is in TOOL_ENERGY_DEFS with capacity 1000, so energy/capacity are real
-  // numbers on this path and `fullyCharged` is a genuine comparison.
-  constexpr uint16_t kTool = 90;
+  // ITEM_DRILL_ULV is in TOOL_ENERGY_DEFS with capacity 1000, so energy/capacity
+  // are real numbers on this path and `fullyCharged` is a genuine comparison.
+  // This used to be the bare 90, which is not a drill id at all (gp-v4re).
+  constexpr uint16_t kTool = ITEM_DRILL_ULV;
   CHECK(TOOL_ENERGY_DEFS.count(kTool) == 1,
-        "tool 90 has a ToolEnergyDef, so the charge check is meaningful");
+        "the ULV drill has a ToolEnergyDef, so the charge check is meaningful");
 
   std::shared_ptr<PlayerInventoryStore> inv =
       std::make_shared<PlayerInventoryStore>();

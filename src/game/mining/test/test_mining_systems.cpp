@@ -205,8 +205,11 @@ using ::HatchUpdateData;
 constexpr float kDt = 0.05f;
 
 // Item ids from src/game/machines/ItemEnergyStorage.h. Named, never raw.
-constexpr uint16_t kDrillUlv = 90;    // capacity 1000, maxInput 8,  tier 0
-constexpr uint16_t kDrillMv = 91;     // capacity 4000, maxInput 32, tier 1
+// ITEM_DRILL_ULV, the real drill id: pack("1111:00:0") = 61440. It used to be the
+// bare 90, which matches no item in items.csv and therefore matched no entry in
+// TOOL_ENERGY_DEFS either (gp-v4re).
+constexpr uint16_t kDrillUlv = ITEM_DRILL_ULV;  // capacity 1000, maxInput 8,  tier 0
+constexpr uint16_t kDrillMv = ITEM_DRILL_LV;  // capacity 4000, maxInput 32, tier 1
 constexpr uint16_t kBatteryLv = 60948; // capacity 1000, maxInput 32, tier 0
 constexpr uint16_t kBatteryHv = 60950; // capacity 16000, maxInput 512, tier 2
 
@@ -874,7 +877,7 @@ static void test_DrillSystem_output_buffer_fills_and_blocks_at_the_cap() {
     auto ent = f.addDrill(0, 64, 0, 0);
     // A full ULV drill (1000 EU) covers the 64 blocks needed to fill the buffer at
     // 10 EU/tick each: 64 * 10 = 640 < 1000. Tool energy lives in a uint16_t
-    // meta, so a ULV drill can never hold more than TOOL_ENERGY_DEFS[90].capacity.
+    // meta, so a ULV drill can never hold more than TOOL_ENERGY_DEFS[kDrillUlv].capacity.
     giveDrillTool(f.reg, ent, kDrillUlv, TOOL_ENERGY_DEFS.at(kDrillUlv).capacity);
 
     auto &d = f.drill(ent);

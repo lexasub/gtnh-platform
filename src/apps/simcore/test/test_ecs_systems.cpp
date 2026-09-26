@@ -841,7 +841,7 @@ static void test_BatteryBufferSystem_charges_tool() {
         1        // numSlots
     );
     reg.emplace<simcore::InventoryContainer>(ent, 0, 1,
-        std::vector<simcore::InventorySlot>{{90, 1, 0}}  // drill_ulv, meta=0 = 0 EU
+        std::vector<simcore::InventorySlot>{{ITEM_DRILL_ULV, 1, 0}}  // drill_ulv, meta=0 = 0 EU
     );
 
     simcore::BatteryBufferSystem sys(reg);
@@ -894,7 +894,7 @@ static void test_BatteryBufferSystem_full_tool_skips() {
     );
     // meta=1000 is drill_ulv full capacity
     reg.emplace<simcore::InventoryContainer>(ent, 0, 1,
-        std::vector<simcore::InventorySlot>{{90, 1, 1000}}
+        std::vector<simcore::InventorySlot>{{ITEM_DRILL_ULV, 1, 1000}}
     );
 
     simcore::BatteryBufferSystem sys(reg);
@@ -1109,9 +1109,9 @@ static void test_DrillSystem_drains_tool_energy() {
     drill.miningTicksTotal = 1;
     drill.miningProgress = 1;
     reg.emplace<simcore::DrillComponent>(ent, drill);
-    // Full drill_ulv (item 90, capacity 1000 EU) in the machine inventory.
+    // Full drill_ulv (ITEM_DRILL_ULV, capacity 1000 EU) in the machine inventory.
     reg.emplace<simcore::InventoryContainer>(ent, 0, 1,
-        std::vector<simcore::InventorySlot>{{90, 1, 1000}});
+        std::vector<simcore::InventorySlot>{{ITEM_DRILL_ULV, 1, 1000}});
 
     sys.tick(0.05f);
 
@@ -1138,7 +1138,7 @@ static void test_DrillSystem_insufficient_tool_energy_aborts() {
     reg.emplace<simcore::DrillComponent>(ent, drill);
     // Only 5 EU left in the tool — less than the 10 EU/tick required.
     reg.emplace<simcore::InventoryContainer>(ent, 0, 1,
-        std::vector<simcore::InventorySlot>{{90, 1, 5}});
+        std::vector<simcore::InventorySlot>{{ITEM_DRILL_ULV, 1, 5}});
 
     sys.tick(0.05f);
 
@@ -1214,7 +1214,7 @@ static void test_BatteryBufferSystem_publishes_electricity_sink() {
     reg.emplace<simcore::MachineComponent>(ent, 0xE940, 0, 301, 64, 301, 2);
     reg.emplace<simcore::Position>(ent, 301, 64, 301);
     reg.emplace<simcore::InventoryContainer>(ent, 1, 1,
-        std::vector<simcore::InventorySlot>{{90, 1, 0}});
+        std::vector<simcore::InventorySlot>{{ITEM_DRILL_ULV, 1, 0}});
     reg.emplace<simcore::BatteryBufferComponent>(ent,
         simcore::BatteryBufferComponent{40000, 0, 0, 32, 8, 1});
     sys.tick(0.05f);

@@ -17,14 +17,27 @@ struct ToolEnergyDef {
 // Tool and rechargeable battery energy definitions. Battery cells use the
 // same metadata-backed energy contract as powered tools.
 inline const std::unordered_map<uint16_t, ToolEnergyDef> TOOL_ENERGY_DEFS = {
-    {90, {90, 1000, 8, 0}},
-    {91, {91, 4000, 32, 1}},
-    {92, {92, 16000, 128, 2}},
-    {93, {93, 64000, 512, 3}},
-    {94, {94, 4000, 32, 1}},
-    {60948, {60948, 1000, 32, 0}},
-    {60949, {60949, 4000, 128, 1}},
-    {60950, {60950, 16000, 512, 2}},
+    // The four shipped drills (gp-v4re). These keys used to be the bare numbers
+    // 90-94, which match NO item in items.csv - grep -cE "^(90|91|92|93|94)([:,]|$)"
+    // returns 0 for every one of them - so DrillSystem::findToolSlot, which
+    // looks a tool up by item_id, could never match a real drill and the whole
+    // drill energy path was unreachable. The ids come from ToolIds.h, the repo's
+    // own compile-time pack of the registry notation; the capacities and charge
+    // rates are unchanged from the rows that were already here, so no new number
+    // is invented by this change - the four entries are simply attached to the
+    // tools they were always describing, in the same ULV/LV/MV/HV order.
+    {ITEM_DRILL_ULV, {ITEM_DRILL_ULV, 1000, 8, 0}},
+    {ITEM_DRILL_LV, {ITEM_DRILL_LV, 4000, 32, 1}},
+    {ITEM_DRILL_MV, {ITEM_DRILL_MV, 16000, 128, 2}},
+    {ITEM_DRILL_HV, {ITEM_DRILL_HV, 64000, 512, 3}},
+
+    // Battery cells. These three were already correct: items.csv carries
+    // battery_lv/mv/hv as 1110:111:20/21/22, which pack to exactly 60948/60949/60950.
+    // (the BATTERY_* constants are declared just below this table, so the
+    // packed forms are spelled out here to keep the declaration order simple)
+    {60948, {60948, 1000, 32, 0}},  // == BATTERY_LV, pack("1110:111:20")
+    {60949, {60949, 4000, 128, 1}},  // == BATTERY_MV, pack("1110:111:21")
+    {60950, {60950, 16000, 512, 2}}, // == BATTERY_HV, pack("1110:111:22")
 };
 
 inline constexpr uint16_t BATTERY_LV = 60948;
