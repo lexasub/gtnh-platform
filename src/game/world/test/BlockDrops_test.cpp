@@ -3,14 +3,12 @@
 //
 // File under test: src/game/world/BlockDrops.cpp
 //
-// These tests assert the OBSERVED behaviour of the loader, including the
-// quirks documented at the bottom of this file. Nothing here is aspirational:
-// every expectation matches what the implementation actually does today.
-//
-// The issue (gp-fmeu) asked for two things: the drop table lookup, and that
-// an unknown block yields the documented empty result. Both are pinned here,
-// plus the loader's validation behaviour, which turned out to be weaker than
-// the "bad line" warning suggests — see the QUIRKS section.
+// The drop table lookup and the documented empty result for an unknown block
+// are pinned here, plus the loader's validation behaviour. The suite
+// originally (gp-fmeu) recorded the validation WEAKNESS as observed quirks;
+// gp-pukq has since fixed the id-column half, and those assertions were
+// flipped to pin the fixed behaviour. See the FIXED/STILL-OPEN block at the
+// bottom of this file.
 
 // ---- project test harness (mirrors src/game/world/test/BlockTransforms_test.cpp) ----
 #include <cstdint>
@@ -300,20 +298,18 @@ static void test_AllEmptyRowIsSkippedBecauseGetlineDropsTheTrailingField() {
         "and nothing is keyed on the plain decimal zero either");
 }
 
-static void test_EmptySourceCellYieldsARuleKeyedOnBlockZero() {
+static void test_EmptySourceCellIsRejectedNotStoredAsBlockZero() {
   // ",6" DOES yield two columns (["", "6"]), so it passes the arity gate.
-  // ItemId::pack("") returns 0, so the rule is stored keyed on BLOCK ID 0
-  // yielding item 6. QUIRK — a blank source column silently means air.
+  // gp-pukq FIXED: ItemId::pack("") returns 0, so this used to mint a live
+  // block-0 -> item-6 rule from a blank cell. A blank id is now rejected,
+  // matching ClientItemRegistry.cpp:41-43 (which skips on an empty field) and
+  // ItemRegistry.cpp:57 (which tolerates only the two literal zero spellings).
   std::unique_ptr<BlockDrops> drops(loadCsv("empty-cells-src", ",6\n"));
   const DropInfo* d = drops->Get(0);
-  CHECK(d != nullptr, "an empty source cell becomes a rule keyed on block id 0");
-  if (d) {
-    CHECK_EQ(d->result_id, ItemId::pack("6"));
-    CHECK_EQ(d->count, 1u);
-    CHECK_EQ(d->meta, 0u);
-  }
+  CHECK(d == nullptr,
+        "a blank source cell is rejected instead of minting a block-0 rule");
   CHECK(drops->Get(ItemId::pack("6")) == nullptr,
-        "the rule is keyed on 0, not on the result id 6");
+        "and the result id is not implicitly a source id");
 }
 
 static void test_RowWithATrailingDelimiterIsSkipped() {
@@ -325,29 +321,101 @@ static void test_RowWithATrailingDelimiterIsSkipped() {
   CHECK(drops->Get(0) == nullptr, "and it creates no id-0 rule either");
 }
 
-static void test_NonNumericSourceOrResultPacksToZeroInsteadOfBeingRejected() {
-  // QUIRK: only the count/meta columns go through std::stoi, so only THEY
-  // can fail validation. ItemId::pack scans for digits and returns 0 when it
-  // finds none, so a typo'd id becomes block 0 / item 0 (air) SILENTLY.
+static void test_NonNumericSourceOrResultIsRejectedWithAWarning() {
+  // gp-pukq. FIXED: an id column that ItemId::pack cannot decode is now
+  // rejected with a warning and the row is skipped, instead of silently
+  // becoming block 0 / item 0 (air).
+  //
+  // The house rule is already set by the two sibling id-table loaders:
+  // ItemRegistry.cpp:57-60 and ClientItemRegistry.cpp:41-43 both do
+  //     uint16_t id = ItemId::pack(field);
+  //     if (id == 0 && field != "0" && field != "0:0:0") { warn; continue; }
+  // i.e. a zero result is fine ONLY for the literal zero spellings, because
+  // ItemId::pack scans for digits and returns 0 whenever it finds none. A
+  // typo'd "stone" is therefore indistinguishable from a deliberate air id
+  // UNLESS the loader looks at the text — which is what the neighbours do.
+  // BlockDrops was the only loader that did not, so a typo created a live
+  // block-0 -> item-0 (air) rule.
   std::unique_ptr<BlockDrops> drops(loadCsv("garbage-ids", "stone,cobblestone\n"));
-  const DropInfo* d = drops->Get(0);
-  CHECK(d != nullptr, "a non-numeric source id is stored, not rejected");
-  if (d) {
-    CHECK_EQ(d->result_id, 0u, "and it packs to item id 0");
+  CHECK(drops->Get(0) == nullptr,
+        "a non-numeric source id is REJECTED, not stored as an air rule");
+  CHECK(drops->Get(ItemId::pack("cobblestone")) == nullptr,
+        "and nothing is keyed on the non-numeric result either");
+  // The table is still usable — only the bad row is gone.
+  CHECK(drops->Get(ItemId::pack("0:0:1")) == nullptr, "the table is otherwise empty");
+}
+
+static void test_NonNumericResultWithAValidSourceIsRejected() {
+  // Only the source id is usable for lookup, so a bad RESULT id is the more
+  // insidious case: the rule keys on a real block and silently drops air
+  // instead of the intended cobblestone. Rejected for the same reason.
+  std::unique_ptr<BlockDrops> drops(loadCsv("garbage-result", "5,cobblestone\n"));
+  const DropInfo* d = drops->Get(ItemId::pack("5"));
+  CHECK(d == nullptr,
+        "a row whose RESULT id is unparseable is dropped, not stored with result 0");
+}
+
+static void test_LiteralZeroIdsAreStillAccepted() {
+  // The rejection is keyed on the TEXT, not on the value, so the two
+  // spellings of a deliberate air id must keep working — exactly as they do
+  // in ItemRegistry.cpp:57.
+  std::unique_ptr<BlockDrops> plain(loadCsv("zero-plain", "0,9\n"));
+  if (const DropInfo* d = plain->Get(0)) {
+    CHECK_EQ(d->result_id, ItemId::pack("9"), "the literal \"0\" source is a valid rule");
+    CHECK_EQ(d->count, 1u);
+  } else {
+    CHECK(false, "a literal \"0\" source must still load");
+  }
+
+  std::unique_ptr<BlockDrops> packed(loadCsv("zero-packed", "0:0:0,9\n"));
+  if (const DropInfo* d = packed->Get(0)) {
+    CHECK_EQ(d->result_id, ItemId::pack("9"), "the \"0:0:0\" source is a valid rule too");
+  } else {
+    CHECK(false, "a \"0:0:0\" source must still load");
   }
 }
 
-static void test_NonNumericSourceCollidesWithTheRealZeroRow() {
-  // Follows from the quirk above: emplace keeps the FIRST row for a key, so
-  // a garbage row that packs to 0 can shadow (or be shadowed by) a real
-  // block-0 rule depending on file order.
-  std::unique_ptr<BlockDrops> first(loadCsv("collide-first", "stone,cobblestone\n0,9\n"));
-  if (const DropInfo* d = first->Get(0)) {
-    CHECK_EQ(d->result_id, 0u, "the garbage row won because it came first");
+static void test_AnEmptyIdCellIsRejected() {
+  // An empty cell is the degenerate form of the same typo: ItemId::pack("")
+  // returns 0. Neighbours treat it as invalid (ClientItemRegistry.cpp:41-43
+  // skips on empty, ItemRegistry.cpp:57 only tolerates the two literal
+  // spellings), so a blank source must not mint an air rule.
+  std::unique_ptr<BlockDrops> src(loadCsv("empty-cells-src-fixed", ",6\n"));
+  CHECK(src->Get(0) == nullptr,
+        "a blank source cell is rejected instead of becoming a block-0 rule");
+
+  std::unique_ptr<BlockDrops> dst(loadCsv("empty-cells-dst-fixed", "5,\n"));
+  CHECK(dst->Get(ItemId::pack("5")) == nullptr,
+        "and a row with a blank result is already skipped by the arity gate");
+}
+
+static void test_AnOverLongPrefixIsRejected() {
+  // ItemId::pack returns 0 past 15 prefix bits (ItemId.h:116-117), so a
+  // malformed id collapses to 0. Same class as the non-numeric case: the
+  // text is well-formed-looking but the packed value is a lie.
+  std::unique_ptr<BlockDrops> drops(loadCsv("long-prefix-fixed",
+                                            "11111111111111111:1,2\n"));
+  CHECK(drops->Get(0) == nullptr,
+        "an over-long prefix is rejected instead of being stored under id 0");
+}
+
+static void test_NonNumericSourceNoLongerCollidesWithARealZeroRow() {
+  // Follows from the rejection above: a typo'd row can no longer shadow (or be
+  // shadowed by) a genuine block-0 rule, because it is never inserted.
+  std::unique_ptr<BlockDrops> first(
+      loadCsv("collide-first-fixed", "stone,cobblestone\n0,9\n"));
+  const DropInfo* a = first->Get(0);
+  CHECK(a != nullptr, "the real block-0 row loads");
+  if (a) {
+    CHECK_EQ(a->result_id, ItemId::pack("9"),
+             "and the typo'd row no longer shadows it");
   }
-  std::unique_ptr<BlockDrops> second(loadCsv("collide-second", "0,9\nstone,cobblestone\n"));
-  if (const DropInfo* d = second->Get(0)) {
-    CHECK_EQ(d->result_id, ItemId::pack("9"), "the real row won because it came first");
+
+  std::unique_ptr<BlockDrops> second(
+      loadCsv("collide-second-fixed", "0,9\nstone,cobblestone\n"));
+  if (const DropInfo* b = second->Get(0)) {
+    CHECK_EQ(b->result_id, ItemId::pack("9"),
+             "the real row wins regardless of file order");
   }
 }
 
@@ -510,12 +578,14 @@ static void test_SourceAndResultIdsAreDecodedByItemIdPack() {
   }
 }
 
-static void test_PackedIdWithTooManyPrefixBitsCollapsesToZero() {
-  // ItemId::pack returns 0 past 15 prefix bits, so a malformed id becomes
-  // block 0 rather than failing.
+static void test_PackedIdWithTooManyPrefixBitsIsRejected() {
+  // ItemId::pack returns 0 past 15 prefix bits (ItemId.h:116-117), so a
+  // malformed id collapses to 0. gp-pukq FIXED: the loader now checks the
+  // packed value against the cell TEXT, so this is rejected instead of being
+  // silently stored as a block-0 drop.
   std::unique_ptr<BlockDrops> drops(loadCsv("long-prefix", "11111111111111111:1,2\n"));
-  CHECK(drops->Get(0) != nullptr,
-        "an over-long prefix is stored under id 0 instead of being rejected");
+  CHECK(drops->Get(0) == nullptr,
+        "an over-long prefix is rejected instead of being stored under id 0");
 }
 
 // ===========================================================================
@@ -629,25 +699,34 @@ static void test_SetInstanceDoesNotTakeOwnership() {
 }
 
 // ===========================================================================
-// QUIRKS (observed, reported to beads, NOT worked around here)
+// FIXED and STILL-OPEN
 //
-//  1. Only the count/meta columns are validated. A typo in the source or
-//     result column never reaches the "skipping bad line" warning at all —
-//     ItemId::pack scans for digits and returns 0 when it finds none, so
-//     "stone" becomes block id 0 and "cobblestone" becomes item id 0 (air).
-//     The rule is stored anyway, and emplace-first-wins means such a row can
-//     shadow a real block-0 rule.  BlockDrops.cpp:31-39
-//  2. uint8 count/meta truncate instead of being rejected (300 -> 44), so a
-//     typo'd count silently changes the drop quantity. Only a value past
-//     INT_MAX is rejected, and then by stoi rather than by design.
-//     BlockDrops.cpp:34-35
-//  3. The parsed meta column is never USED: the drop path in
-//     BreakBlockHandler.cpp:106-111 copies d->result_id and d->count but not
-//     d->meta, so the fourth drops.csv column is parsed, stored and dropped.
-//  4. Get() hands out a pointer into an unordered_map. That is only safe
+//  gp-pukq FIXED. The two id columns are now validated, not just count/meta.
+//  Previously only cols[2]/cols[3] went through std::stoi, so only THEY could
+//  fail and reach the "skipping bad line" warning; the id columns went through
+//  ItemId::pack, which scans for digits and returns 0 when it finds none, so a
+//  typo like "stone,cobblestone" became a live block-0 -> item-0 (air) rule
+//  with no warning, and emplace-first-wins let it shadow a real block-0 rule.
+//  Both columns are now decoded through decodeId(), which rejects a zero
+//  result unless the cell is one of the two literal air spellings ("0" or
+//  "0:0:0") — the same rule the sibling id-table loaders already apply at
+//  ItemRegistry.cpp:57-60 and ClientItemRegistry.cpp:41-43. A row is skipped
+//  with a warning naming the column.  BlockDrops.cpp:9-31, 54-60
+//
+//  STILL OPEN, unchanged here (each needs a caller-side fix, not a loader one):
+//
+//  1. uint8 count/meta TRUNCATE instead of being rejected (300 -> 44, -1 ->
+//     255), so a typo'd count silently changes the drop quantity. Only a
+//     value past INT_MAX is rejected, and then by stoi rather than by design.
+//     BlockDrops.cpp:63-64
+//  2. The parsed meta column is never USED: the drop path in
+//     src/game/actions/handlers/BreakBlockHandler.cpp copies d->result_id and
+//     d->count but not d->meta, so the fourth drops.csv column is parsed,
+//     stored and dropped.
+//  3. Get() hands out a pointer into an unordered_map. That is only safe
 //     because the map is private and written only by Load(); callers
 //     dereference the pointer after return, so a future in-place reload
-//     would be a use-after-free.  BlockDrops.cpp:46-49
+//     would be a use-after-free.  BlockDrops.cpp:79-82
 // ===========================================================================
 
 int main() {
@@ -668,10 +747,14 @@ int main() {
   TEST(TrailingCommentInTheCountColumnDropsTheRule);
   TEST(RowsWithFewerThanTwoColumnsAreSkipped);
   TEST(AllEmptyRowIsSkippedBecauseGetlineDropsTheTrailingField);
-  TEST(EmptySourceCellYieldsARuleKeyedOnBlockZero);
+  TEST(EmptySourceCellIsRejectedNotStoredAsBlockZero);
   TEST(RowWithATrailingDelimiterIsSkipped);
-  TEST(NonNumericSourceOrResultPacksToZeroInsteadOfBeingRejected);
-  TEST(NonNumericSourceCollidesWithTheRealZeroRow);
+  TEST(NonNumericSourceOrResultIsRejectedWithAWarning);
+  TEST(NonNumericResultWithAValidSourceIsRejected);
+  TEST(LiteralZeroIdsAreStillAccepted);
+  TEST(AnEmptyIdCellIsRejected);
+  TEST(AnOverLongPrefixIsRejected);
+  TEST(NonNumericSourceNoLongerCollidesWithARealZeroRow);
 
   TEST(NonNumericCountDropsTheWholeRule);
   TEST(NonNumericMetaDropsTheWholeRule);
@@ -689,7 +772,7 @@ int main() {
   TEST(RuleIsDirectionalAndNotSymmetric);
 
   TEST(SourceAndResultIdsAreDecodedByItemIdPack);
-  TEST(PackedIdWithTooManyPrefixBitsCollapsesToZero);
+  TEST(PackedIdWithTooManyPrefixBitsIsRejected);
 
   TEST(ShippedRegistryDropsCsvMatchesTheExpectedTable);
 
