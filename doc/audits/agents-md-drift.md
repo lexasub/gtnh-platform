@@ -138,7 +138,7 @@ the wrong one.)
 
 `AGENTS.md:176-215` ("LIBRARY DECISIONS"). Audited row by row.
 
-### AD-11 (HIGH) — `IExternalLogic` does not exist anywhere in the tree
+### AD-11 (HIGH) — `IExternalLogic` exists in no code, only in three README copies of the same claim
 
 `AGENTS.md:171` (CONVENTIONS): "**Language boundaries**: Hot path = C++ only. Sidecars = Go/Python via `IExternalLogic`"
 
@@ -147,9 +147,13 @@ $ grep -rln "IExternalLogic" --include=*.h --include=*.cpp src/
 (no output)
 ```
 
-Zero hits. There is no `IExternalLogic` interface, no header, no implementation. The
-`src/engine/storage/` directory that would host it contains only
-`IEntityStateStorage.h`, `IPlayerInventoryStorage.h` and a `CMakeLists.txt`.
+Zero hits in code. There is no `IExternalLogic` interface, no header, no
+implementation — the only three occurrences in the tree are the identical claim copied
+into `src/apps/chunk_store/README.md:19`, `src/apps/world_generator/README.md:36` and
+`src/apps/game_client/README.md:36`, so the same untrue sentence appears in four
+documents rather than one. The `src/engine/storage/` directory that would host it
+contains only `IEntityStateStorage.h`, `IPlayerInventoryStorage.h` and a
+`CMakeLists.txt`.
 
 This is the most misleading line in `AGENTS.md`: it describes a plugin/extension seam
 that was never built, and a reader designing a sidecar would look for an interface
