@@ -124,6 +124,29 @@ func (c *client) send(action *flatbuffers.Builder, fbData []byte, desc string) {
 	c.sendRaw(kSetBlockAction, fbData, desc)
 }
 
+// requestChunk sends a CHUNK_REQUEST PlayerAction so the world generator
+// materializes the chunk before blocks are CAS-placed into it.
+func (c *client) requestChunk(playerID uint64, cx, cy, cz int32) {
+	b := flatbuffers.NewBuilder(64)
+	Protocol.PlayerActionStart(b)
+	Protocol.PlayerActionAddPlayerId(b, playerID)
+	Protocol.PlayerActionAddAction(b, Protocol.PlayerActionTypeCHUNK_REQUEST)
+	Protocol.PlayerActionAddBlockId(b, 0)
+	Protocol.PlayerActionAddCount(b, 0)
+	pos := Protocol.CreateVec3i(b, cx, cy, cz)
+	Protocol.PlayerActionAddPos(b, pos)
+	act := Protocol.PlayerActionEnd(b)
+	b.Finish(act)
+	c.sendRaw(kPlayerAction, b.FinishedBytes(),
+		fmt.Sprintf("chunk  request (%d,%d,%d) player=%d", cx, cy, cz, playerID))
+}
+
+// place sends a RIGHT_MOUSE_CLICK SetBlockAction so the block lands exactly at
+// (x,y,z). The server treats RIGHT_MOUSE_CLICK + face=0 (DOWN) as "click the
+// block above and place into the cell below the click", i.e. it shifts the
+// effective position to y-1 (see ActionContext::faceAdjacentBlock). The
+// integration tests compensate by sending y+1 (testutil.PlaceBlockAndWait), so
+// we do the same here: place at (x, y+1, z) with face=0 → block lands at (x,y,z).
 func (c *client) place(x, y, z int32, item uint16, expected uint16) uint32 {
 	req := c.nextRequestID
 	c.nextRequestID++
@@ -131,8 +154,9 @@ func (c *client) place(x, y, z int32, item uint16, expected uint16) uint32 {
 	Protocol.SetBlockActionStart(b)
 	Protocol.SetBlockActionAddPlayerId(b, 0)
 	Protocol.SetBlockActionAddAction(b, Protocol.PlayerActionTypeRIGHT_MOUSE_CLICK)
-	pos := Protocol.CreateVec3i(b, x, y, z)
+	pos := Protocol.CreateVec3i(b, x, y+1, z)
 	Protocol.SetBlockActionAddPos(b, pos)
+	Protocol.SetBlockActionAddFace(b, 0) // DOWN → server places at y-1 of the sent pos = y
 	Protocol.SetBlockActionAddExpectedBlockId(b, expected)
 	Protocol.SetBlockActionAddNewBlockId(b, item)
 	Protocol.SetBlockActionAddHeldItem(b, item)
@@ -477,6 +501,17 @@ func main() {
 				y, _ := strconv.ParseInt(fields[2], 10, 32)
 				z, _ := strconv.ParseInt(fields[3], 10, 32)
 				c.pipeQuery(int32(x), int32(y), int32(z), *playerID)
+				waitAck(*timeout)
+			case "chunk":
+				if len(fields) < 5 {
+					fmt.Println("bad script line:", line)
+					continue
+				}
+				cx, _ := strconv.ParseInt(fields[1], 10, 32)
+				cy, _ := strconv.ParseInt(fields[2], 10, 32)
+				cz, _ := strconv.ParseInt(fields[3], 10, 32)
+				player, _ := strconv.ParseUint(fields[4], 10, 64)
+				c.requestChunk(player, int32(cx), int32(cy), int32(cz))
 				waitAck(*timeout)
 			default:
 				fmt.Println("unknown script cmd:", fields[0])
