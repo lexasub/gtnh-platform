@@ -290,4 +290,36 @@ if(BUILD_TESTING)
         simcored
     )
     add_test(NAME machine_system_test COMMAND machine_system_test)
+
+    # GeneratorSystem unit tests (gp-lqj) — the solid-fuel burn path, and the
+    # removal of the invented maxOutput=32 / capacity=10000 fallback. The
+    # system iterates a plain EnTT view of MachineComponent +
+    # InventoryContainer + EnergyStorage (GeneratorSystem.cpp:33), so the test
+    # places that triple directly. Null PipeEnergyClient and null FluidClient:
+    # every publish call site is guarded, so the burn runs with no router,
+    # socket or wall clock. Same harness as the EBF/LCR suites (no GTest: the
+    # repo has no GTest dependency and CI builds with -Werror).
+    add_executable(generator_system_test
+        test/test_generator_system.cpp
+    )
+    target_include_directories(generator_system_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+    )
+    target_link_libraries(generator_system_test PRIVATE
+        # Same circular-static-archive situation as transformer_system_test.
+        gtnh_game_machines
+        gtnh_engine_sim
+        gtnh_game_recipes
+        gtnh-net
+        simcored
+        gtnh_game_machines
+        gtnh_engine_sim
+        gtnh_game_recipes
+        gtnh-net
+        simcored
+        EnTT::EnTT
+        spdlog::spdlog
+    )
+    add_test(NAME generator_system_test COMMAND generator_system_test)
 endif()

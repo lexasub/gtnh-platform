@@ -73,6 +73,40 @@ void GeneratorSystem::tick(float /*dt*/) {
                       container.slots.size(),
                       (!container.slots.empty() ? container.slots[0].item_id : 0),
                       energy.current, energy.capacity);
+        // The burn rate and the buffer size are CONTENT, not derived from the
+        // fuel: SimulationEngine.cpp:241-244 copies MachineInfo::capacity /
+        // ::maxInput / ::maxOutput out of machines.yaml into the very
+        // EnergyStorage this tick is holding. They are never 0 for a
+        // well-configured generator, so there is no honest fallback number —
+        // 32/10000 were invented here, and a capacity invented this way is
+        // published to the client as fact.
+        //
+        // This gate sits ABOVE the isFull() check and above the fuel scan, both
+        // deliberately. Above isFull() because a generator with capacity 0 is
+        // trivially `current >= 0` — i.e. permanently "full" — so checking later
+        // would leave a capacity-0 generator silently idle forever, which is the
+        // same invisibility this removes, just quieter. Above the fuel scan
+        // because burning coal into a buffer that can never charge destroys the
+        // item for nothing.
+        //
+        // Fail LOUD, then skip: log and leave the fuel untouched. Same
+        // fail-closed shape as the steam-id gate at the top of the tick.
+        if (energy.capacity <= 0 || energy.maxOutput <= 0) {
+            const MachineInfo* minfo = MachineRegistry::instance()
+                                           ? MachineRegistry::instance()->Get(machine.machine_id)
+                                           : nullptr;
+            spdlog::error(
+                "[GeneratorSystem] machine {} has no usable energy data "
+                "(registry entry: {}, capacity={}, max_output={}) — refusing "
+                "to burn fuel. Declare energy.capacity and energy.max_output "
+                "in machines.yaml.",
+                machine.machine_id,
+                minfo ? "present" : "MISSING",
+                minfo ? minfo->capacity : energy.capacity,
+                minfo ? minfo->maxOutput : energy.maxOutput);
+            continue;
+        }
+
         if (energy.isFull()) continue;
 
         int32_t& remaining = burnEnergy_[ent];
@@ -90,10 +124,10 @@ void GeneratorSystem::tick(float /*dt*/) {
             if (remaining <= 0) continue;
         }
 
-       // Safety: fallback if MachineRegistry data is corrupted (maxOutput=0, capacity=0)
-        int32_t rate = energy.maxOutput > 0 ? energy.maxOutput : 32;//TODO fix reading real data
-        energy.capacity = energy.capacity > 0 ? energy.capacity : 10000;//TODO fix reading real data
-        int32_t produced = std::min(rate, remaining);
+        // Rate is the component's own max_output — the value seeded from
+        // machines.yaml, the same source the block-entity update publishes at
+        // the bottom of this tick, so rate and capacity can no longer disagree.
+        int32_t produced = std::min(energy.maxOutput, remaining);
         int32_t accepted = energy.produceEnergy(produced);
         remaining -= accepted;
 
