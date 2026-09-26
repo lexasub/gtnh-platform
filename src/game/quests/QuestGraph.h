@@ -23,6 +23,14 @@ public:
   CanComplete(uint32_t questId,
               const std::unordered_map<uint32_t, QuestStatus> &current) const;
 
+  // True when every quest that belongs to `era` — per `questEraMap`, which
+  // QuestData::BuildQuestEraMap derives from the loaded quest set rather than
+  // from any player — is present in `current` AND COMPLETED. A quest of the era
+  // ABSENT from `current` counts as not completed, the same rule
+  // LockedByPrereqs applies to an absent prerequisite: a partially-seeded
+  // player state must not read as era-complete. An era with no quests of its own
+  // is complete (nothing left to fail on), as is a query with an empty
+  // `questEraMap` (no era has an outstanding quest).
   bool
   IsEraComplete(Era era,
                 const std::unordered_map<uint32_t, QuestStatus> &current,

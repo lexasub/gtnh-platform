@@ -1156,6 +1156,101 @@ static void test_era_transition_fires_once_when_the_era_completes() {
               "the era transition is not repeated");
 }
 
+// ---------------------------------------------------------------------------
+// gp-kjfh: a pre-join craft must not publish (or LATCH) a spurious
+// quest.era.transition, and the genuine completion must still publish.
+// ---------------------------------------------------------------------------
+// The 5-quest VAGRANT fixture makes the whole story checkable in one case:
+//
+//   1. A player crafts quest 1's item BEFORE onPlayerJoined. This is the
+//      documented pre-join path (QuestManager.h:71 "Seeds missing quests as
+//      LOCKED so detection works even before onPlayerJoined") and it is
+//      reachable in production because PlayerJoinedHandler and
+//      CraftRequestHandler are independent message paths with no ordering
+//      guarantee. completeQuestInternal seeds ONLY quest 1, so the player's
+//      state is a strict subset of the era's quest set.
+//
+//   2. IsEraComplete used to iterate that partial map and only fail on quests
+//      it found, so VAGRANT read as complete after one of five quests — and
+//      maybePublishEraTransition LATCHED era 0 into completedEras_.
+//
+//   3. The player then joins and finishes quests 2,3,4,5. Because of the latch
+//      the real transition never published, so the client got "VAGRANT
+//      complete -> APPRENTICE" at the FIRST quest of the era and nothing after.
+//
+// So the assertions are the full transcript, not a single count: no transition
+// at the pre-join craft, none through the middle of the era, and exactly one
+// at the quest that genuinely finishes it.
+static void test_pre_join_craft_does_not_latch_a_spurious_era_transition() {
+  const uint64_t player = 21;
+  Fixture fx("kjfh", /*withRequirements=*/true);
+  ensureItemRegistry();
+
+  // --- 1. The pre-join craft. No onPlayerJoined, no loadProgress. ---------
+  fx.mgr.checkCraftCompletion(player, ItemId::pack(targetOf(kRoot)), 1);
+  CHECK_EQI(countTopic(fx.pub, "quest.completed"), 1,
+            "precondition: the root completes with no prior join");
+  CHECK_EQI(lastAdvertisedStatus(fx.pub, kRoot), kStatusCompleted,
+            "precondition: the root is advertised COMPLETED");
+  // THE gp-kjfh assertion. One of the era's five quests is done; four are not
+  // even in the player's state yet, so the era is not complete.
+  CHECK_EQI(countTopic(fx.pub, "quest.era.transition"), 0,
+            "gp-kjfh: a pre-join craft on the era's FIRST quest publishes NO "
+            "era transition (4 of the 5 VAGRANT quests are unfinished)");
+
+  // --- 2. The join and the MetaDB restore arrive, seeding the full graph ---
+  seed(fx.mgr, player, {{kRoot, kCompleted, 100}});
+  CHECK_EQI(countTopic(fx.pub, "quest.era.transition"), 0,
+            "gp-kjfh: seeding the rest of the graph publishes no transition "
+            "either — the era is still open");
+
+  // --- 3. The player works through the era. No transition until the end. --
+  fx.mgr.checkCraftCompletion(player, ItemId::pack(targetOf(kLeft)), 1);
+  CHECK_EQI(countTopic(fx.pub, "quest.era.transition"), 0,
+            "gp-kjfh: quests 1 and 2 done — quests 3, 4 and 5 are outstanding");
+  fx.mgr.checkCraftCompletion(player, ItemId::pack(targetOf(kRight)), 1);
+  CHECK_EQI(countTopic(fx.pub, "quest.era.transition"), 0,
+            "gp-kjfh: quests 1, 2, 3 done — quests 4 and 5 are outstanding");
+  fx.mgr.checkCraftCompletion(player, ItemId::pack(targetOf(kJoin)), 1);
+  CHECK_EQI(countTopic(fx.pub, "quest.era.transition"), 0,
+            "gp-kjfh: quests 1-4 done — the independent root 5 is outstanding");
+
+  // --- 4. The genuine completion, and only it, publishes -------------------
+  CHECK(fx.mgr.completeQuest(player, kOther), "quest 5 completes");
+  CHECK_EQI(countTopic(fx.pub, "quest.era.transition"), 1,
+            "gp-kjfh: the REAL era completion publishes — exactly once, and "
+            "not as a repeat of the earlier bogus value");
+
+  int seen = 0;
+  for (const auto &m : fx.pub.msgs) {
+    if (m.topic != "quest.era.transition")
+        continue;
+    ++seen;
+    flatbuffers::Verifier v(m.data.data(), m.data.size());
+    CHECK(v.VerifyBuffer<Protocol::EraTransitionNotification>(nullptr),
+          "gp-kjfh: the era transition buffer verifies");
+    auto *era = flatbuffers::GetRoot<Protocol::EraTransitionNotification>(m.data.data());
+    if (!era)
+        continue;
+    CHECK_EQI(era->player_id(), player, "gp-kjfh: it names the right player");
+    CHECK_EQI(era->completed_era(), static_cast<uint8_t>(quest::Era::VAGRANT),
+              "gp-kjfh: completed_era is VAGRANT");
+    CHECK_EQI(era->next_era(), static_cast<uint8_t>(quest::Era::APPRENTICE),
+              "gp-kjfh: next_era is APPRENTICE");
+  }
+  CHECK_EQI(seen, 1, "gp-kjfh: exactly one era transition in the whole session");
+
+  // --- 5. Not one latch away from being lost again -------------------------
+  // completedEras_ is a set keyed on the era, so a second completion in the
+  // same era must still publish nothing. This is the shape of the old bug's
+  // second half: the first (bogus) insert suppressed the real one.
+  CHECK(!fx.mgr.completeQuest(player, kRoot),
+        "precondition: an already-COMPLETED quest is still refused");
+  CHECK_EQI(countTopic(fx.pub, "quest.era.transition"), 1,
+            "gp-kjfh: the latch now holds a TRUE completion, so it suppresses "
+            "only the repeat — the real transition is not swallowed");
+}
+
 #define TEST(name)                                                             \
     do {                                                                       \
         ++g_tests;                                                             \
@@ -1188,6 +1283,7 @@ int main(int argc, char **argv) {
     TEST(detection_before_the_join_completes_only_the_detected_quest);
     TEST(autoComplete_false_stops_at_AVAILABLE_and_gates_dependents);
     TEST(era_transition_fires_once_when_the_era_completes);
+    TEST(pre_join_craft_does_not_latch_a_spurious_era_transition);
 
     printf("\n=== Results: %d tests, %d passed, %d failed ===\n", g_tests,
            g_passed, g_failed);
