@@ -107,5 +107,42 @@ if(BUILD_TESTING)
 
     add_test(NAME gameclient_gamemode_gate_test
              COMMAND gameclient_gamemode_gate_test)
+
+    # gameclient_raycaster_test — the DDA in both Raycaster entry points
+    # (beads gp-nm51).
+    #
+    # Raycaster::GetTargetedBlock and Raycaster::RaycastHit are two copies of
+    # one grid-walking algorithm in one file. gp-nm51 was a divergence between
+    # them: the HitInfo copy advanced its point RELATIVELY (`pz += tMaxZ * dz`)
+    # while the other advanced it ABSOLUTELY, so tMax — which already grows by
+    # tDelta every step — compounded into the point, the walker's position
+    # outran the ray, and the reach guard stopped it before the first cell.
+    # Nothing caught it: the wrench tests cover the grid mapping and the
+    # overlay maths, and InteractionSystem_test only ever aims rays that hit in
+    # the adjacent cell, the one case both copies still got right.
+    #
+    # The target compiles Raycaster.cpp in place rather than linking `renderlib`,
+    # so the test never pulls in bgfx/bx/bimg or a GL context — the same
+    # pattern the targets above use for their single production .cpp. The
+    # block query is an in-process map double, so there is no world, no chunk
+    # store, no socket and no display.
+    add_executable(gameclient_raycaster_test
+        test/Raycaster_test.cpp
+        ${CMAKE_SOURCE_DIR}/src/apps/game_client/RenderLib/Utils/Raycaster.cpp
+    )
+
+    target_include_directories(gameclient_raycaster_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/game_client
+        ${CMAKE_SOURCE_DIR}/src/game/client
+        ${CMAKE_SOURCE_DIR}/src/game/client/Common
+    )
+
+    target_link_libraries(gameclient_raycaster_test PRIVATE
+        glm::glm
+    )
+
+    add_test(NAME gameclient_raycaster_test
+             COMMAND gameclient_raycaster_test)
 endif()
 

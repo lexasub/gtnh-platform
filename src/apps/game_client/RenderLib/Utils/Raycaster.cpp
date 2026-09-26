@@ -161,12 +161,29 @@ Raycaster::HitInfo Raycaster::RaycastHit(const Ray& ray, float maxDist) const {
             else { info.u = hx; info.v = hy; }
             return info;
         }
+        // Advance the DDA point ABSOLUTELY (gp-nm51).
+        //
+        // This used to advance it RELATIVELY (`px += tMaxX * dx`), which is
+        // wrong because tMax* is not a step length — it already grows by
+        // tDelta* on every iteration below, so it is the parameter of the
+        // ALREADY-STEPPED point. Adding it again compounds: for a straight -Z
+        // ray from z = 8.5 the point read 8.0, 6.5, 4.0, 0.5 instead of 8.0,
+        // 7.0, 6.0, 5.0, so the walker left the ray's line entirely, the
+        // inflated distance tripped the reach guard above while the DDA was
+        // still nowhere near maxDist, and this function returned the no-hit
+        // sentinel for every target past the adjacent cell.
+        //
+        // GetTargetedBlock below already used the absolute form, which is why
+        // the block highlight and the left-click gate worked out to REACH_DIST
+        // while the wrench side selection built on this HitInfo did not. The
+        // two functions must now stay in step; the cross-check
+        // Raycaster_the_two_entry_points_agree fails if either drifts again.
         if (tMaxX < tMaxY) {
-            if (tMaxX < tMaxZ) { lastStepX = stepX; lastStepY = 0; lastStepZ = 0; vx += stepX; px += tMaxX * dx; py += tMaxX * dy; pz += tMaxX * dz; tMaxX += tDeltaX; }
-            else { lastStepX = 0; lastStepY = 0; lastStepZ = stepZ; vz += stepZ; px += tMaxZ * dx; py += tMaxZ * dy; pz += tMaxZ * dz; tMaxZ += tDeltaZ; }
+            if (tMaxX < tMaxZ) { lastStepX = stepX; lastStepY = 0; lastStepZ = 0; vx += stepX; px = ray.origin.x + tMaxX * dx; py = ray.origin.y + tMaxX * dy; pz = ray.origin.z + tMaxX * dz; tMaxX += tDeltaX; }
+            else { lastStepX = 0; lastStepY = 0; lastStepZ = stepZ; vz += stepZ; px = ray.origin.x + tMaxZ * dx; py = ray.origin.y + tMaxZ * dy; pz = ray.origin.z + tMaxZ * dz; tMaxZ += tDeltaZ; }
         } else {
-            if (tMaxY < tMaxZ) { lastStepX = 0; lastStepY = stepY; lastStepZ = 0; vy += stepY; px += tMaxY * dx; py += tMaxY * dy; pz += tMaxY * dz; tMaxY += tDeltaY; }
-            else { lastStepX = 0; lastStepY = 0; lastStepZ = stepZ; vz += stepZ; px += tMaxZ * dx; py += tMaxZ * dy; pz += tMaxZ * dz; tMaxZ += tDeltaZ; }
+            if (tMaxY < tMaxZ) { lastStepX = 0; lastStepY = stepY; lastStepZ = 0; vy += stepY; px = ray.origin.x + tMaxY * dx; py = ray.origin.y + tMaxY * dy; pz = ray.origin.z + tMaxY * dz; tMaxY += tDeltaY; }
+            else { lastStepX = 0; lastStepY = 0; lastStepZ = stepZ; vz += stepZ; px = ray.origin.x + tMaxZ * dx; py = ray.origin.y + tMaxZ * dy; pz = ray.origin.z + tMaxZ * dz; tMaxZ += tDeltaZ; }
         }
     }
     return info;

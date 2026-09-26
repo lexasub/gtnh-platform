@@ -457,8 +457,8 @@ static void test_MouseRayAgreesWithTheCrosshairRayAtScreenCenter() {
 
   // The exact screen centre must un-project onto the camera forward ray, so
   // the mouse-pixel picker and the crosshair picker agree. (Only
-  // GetTargetedBlock is compared here: RaycastHitAtCenter is defective past
-  // the first cell — see test_RaycastHitMissesBlocksThatGetTargetedBlockFinds.)
+  // GetTargetedBlock is compared here; the HitInfo path's agreement with it is
+  // asserted separately in test_RaycastHitAgreesWithRaycastTarget.)
   CHECK_EQ(sys.RaycastTargetAtMouse(cam, kViewportW, kViewportH, kViewportW * 0.5,
                                     kViewportH * 0.5)
                .z,
@@ -562,8 +562,19 @@ static void test_RaycastHitFindsTheImmediatelyAdjacentCell() {
   CHECK_NEAR(hit.v, 0.5f);  // Z fraction of the entered face
 }
 
-static void test_RaycastHitMissesBlocksThatGetTargetedBlockFinds() {
-  // The block picker used by the highlight/click gate finds the far block...
+static void test_RaycastHitAgreesWithRaycastTarget() {
+  // The block picker used by the highlight/click gate and the HitInfo raycaster
+  // behind the wrench selection MUST see the same world.
+  //
+  // This test used to assert the opposite - that the picker found a far block
+  // "while the HitInfo raycaster for the SAME camera reports no hit at all" -
+  // i.e. it characterised a bug as if it were a contract, and its name said so.
+  // RaycastHit advanced its DDA point relatively (px += tMaxX*dx) while
+  // GetTargetedBlock used the absolute form; tMax* is not a step length, it
+  // already grows by tDelta* each iteration, so the relative form compounded
+  // and the walker left the ray's line entirely. The inflated distance then
+  // tripped the reach guard while the DDA was still nowhere near maxDist.
+  // Fixed in Raycaster.cpp (gp-nm51).
   Fixture fixture([](MutableChunk &mc) { setBlock(mc, 8, 70, 4, kSolid); });
   InteractionSystem sys(&fixture.world);
   const Camera cam = makeCamera(kEye);
@@ -571,18 +582,15 @@ static void test_RaycastHitMissesBlocksThatGetTargetedBlockFinds() {
   const BlockPos picked = sys.RaycastTarget(cam);
   CHECK_EQ(picked.z, 4);
 
-  // ...while the HitInfo raycaster for the SAME camera reports no hit at all.
+  // The SAME camera now finds the SAME block through the HitInfo path.
   const renderlib::Raycaster::HitInfo hit =
       sys.RaycastHitAtCenter(cam, kViewportW, kViewportH);
-  CHECK_EQ(hit.pos.z, kNoHit);
-  CHECK_EQ(hit.pos.x, kNoHit);
-  CHECK_EQ(hit.pos.y, kNoHit);
-  CHECK_EQ(hit.faceX, 0);
-  CHECK_EQ(hit.faceY, 0);
-  CHECK_EQ(hit.faceZ, 0);
+  CHECK_EQ(hit.pos.z, picked.z);
+  CHECK_EQ(hit.pos.x, picked.x);
+  CHECK_EQ(hit.pos.y, picked.y);
 
-  // The disagreement is not limited to the centre ray: an off-centre mouse
-  // pixel produces a non-axis-aligned ray, which drifts even faster.
+  // And not merely at the centre ray: an off-centre mouse pixel produces a
+  // non-axis-aligned ray, which drifted even faster under the old form.
   Fixture diag([](MutableChunk &mc) { setBlock(mc, 6, 70, 6, kSolid); });
   InteractionSystem diagSys(&diag.world);
   const Camera diagCam = makeCamera(kEye);
@@ -593,7 +601,7 @@ static void test_RaycastHitMissesBlocksThatGetTargetedBlockFinds() {
   CHECK_EQ(diagSys.RaycastHitAtMouse(diagCam, kViewportW, kViewportH, 0.0,
                                      kViewportH * 0.5)
                .pos.x,
-           kNoHit);
+           6);
 }
 
 // A tall, narrow viewport is a legal aspect and must un-project correctly:
@@ -1651,7 +1659,7 @@ int main() {
   TEST(MouseRayAtAnEdgeLooksDownNotForward);
   TEST(OffCenterMouseRayHitsABlockTheCrosshairMisses);
   TEST(RaycastHitFindsTheImmediatelyAdjacentCell);
-  TEST(RaycastHitMissesBlocksThatGetTargetedBlockFinds);
+  TEST(RaycastHitAgreesWithRaycastTarget);
   TEST(ExtremeAspectStillHitsFromTheScreenCentre);
 
   TEST(TargetFaceOfTheForwardRayIsSouth);
