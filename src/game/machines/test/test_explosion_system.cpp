@@ -29,10 +29,22 @@
 //   5. queues the entity, and destroys every queued entity AFTER the view loop
 //      finishes (deferred destroy — keeps the view iterator valid)
 //
-// NOTE: there is no radius, no falloff, and no damage scaling anywhere in this
-// file. An explosion affects exactly one block: the exploding machine's own
-// position. See test_ExplosionSystem_no_radius_or_falloff_is_emitted below, which
-// pins that so a future radius/falloff feature has to update this test on purpose.
+// gp-dd5q CHANGED THIS. Explosion now has a radius and a falloff: the exploding
+// machine plus every *loaded* machine within HeatConstants::EXPLOSION_RADIUS is
+// destroyed, with blocks farther from the epicentre dealt proportionally less
+// blast. The falloff decides WHICH blocks die, not how big a number is
+// published — the published payload is still air (block_id=0, meta=0).
+//
+// IMPORTANT: the blast is resolved against the ECS registry, not against the
+// world. ExplosionSystem has no chunk/block repository — its only output channel
+// is IEventPublisher::publishBlockChangedEvent — so it can only ever clear the
+// blocks of machines it can SEE. Non-machine blocks and unloaded chunks are
+// untouched. That limitation is written into the spec as the blast-visibility
+// rule rather than hidden.
+//
+// The section "Blast radius and falloff (gp-dd5q)" near the bottom of this file
+// is the gp-dd5q RED->GREEN evidence: those checks fail against the old
+// single-block implementation.
 #include <cstdio>
 #include <cstdint>
 #include <memory>
@@ -138,6 +150,45 @@ static entt::entity makeCandidate(entt::registry& reg, uint32_t x, uint32_t y, u
 static bool hasAllComponents(const entt::registry& reg, entt::entity ent) {
     return reg.valid(ent) && reg.all_of<simcore::MachineComponent, simcore::Position,
                                        simcore::OverheatComponent>(ent);
+}
+
+// ---------------------------------------------------------------------------
+// gp-dd5q blast-geometry helpers
+// ---------------------------------------------------------------------------
+//
+// The blast constants are DUPLICATED here as literals on purpose. A test that
+// reads its own expectations out of the same header it is testing cannot catch a
+// wrong radius — it would just agree with itself. These literals are the
+// intended geometry; the static_asserts below (added with the GREEN step) then
+// forbid the header from drifting away from them.
+
+constexpr int32_t kRadius = 3;   // intended max blast reach, in blocks
+constexpr int32_t kAnchorReach = 2;   // multiblock anchor: destroyed at d <= 2
+constexpr int32_t kSingleReach = 3;   // single-block machine: destroyed at d <= 3
+
+// A machine that is NOT a multiblock anchor (mb_id == 0), i.e. the structural
+// kind the epicentre gate rejects but a neighbour's blast must still destroy.
+static entt::entity makeSingleBlock(entt::registry& reg, uint32_t x, uint32_t y, uint32_t z) {
+    auto ent = reg.create();
+    reg.emplace<simcore::MachineComponent>(ent, 2002, 0, x, y, z, 9);
+    reg.emplace<simcore::Position>(ent, x, y, z);
+    return ent;
+}
+
+// A non-machine block: a Position with no MachineComponent. The blast must not
+// clear these — ExplosionSystem has no world access, only the ECS registry.
+static entt::entity makePlainBlock(entt::registry& reg, uint32_t x, uint32_t y, uint32_t z) {
+    auto ent = reg.create();
+    reg.emplace<simcore::Position>(ent, x, y, z);
+    return ent;
+}
+
+static int countEventsAt(const std::vector<ChangedEvent>& ev, int32_t x, int32_t y, int32_t z) {
+    int n = 0;
+    for (const auto& e : ev) {
+        if (e.x == x && e.y == y && e.z == z) ++n;
+    }
+    return n;
 }
 
 // ---------------------------------------------------------------------------
@@ -269,34 +320,39 @@ static void test_ExplosionSystem_publishes_air_at_machine_position() {
     }
 }
 
-static void test_ExplosionSystem_no_radius_or_falloff_is_emitted() {
+// gp-dd5q: this test used to be named
+// test_ExplosionSystem_no_radius_or_falloff_is_emitted and asserted the OPPOSITE
+// — that a CRITICAL anchor with six healthy neighbours cleared exactly one
+// block. That pin is what the radius/falloff feature had to break, so it was
+// replaced on purpose. The replacement pins the falloff CURVE instead, which is
+// the property the old single-block implementation could not express.
+static void test_ExplosionSystem_falloff_reach_shrinks_with_distance() {
     entt::registry reg;
     auto events = std::make_shared<MockEventPublisher>();
     simcore::ExplosionSystem sys(reg, events);
 
-    // Neighbouring machines on all six faces, all healthy. The system has no
-    // radius/falloff/damage concept, so none of them may be touched: exactly
-    // one block event, for the exploding machine only.
+    // Epicentre at the origin. Single-block machines (mb_id == 0) at d = 1, 2, 3
+    // and 4 on the +X axis. The falloff is linear in distance: a machine dies
+    // iff its distance is within the single-block reach.
     makeCandidate(reg, 500, 64, 500, simcore::OverheatState::CRITICAL, kDelay);
-    auto north = makeCandidate(reg, 501, 64, 500, simcore::OverheatState::NONE, 0);
-    auto south = makeCandidate(reg, 499, 64, 500, simcore::OverheatState::NONE, 0);
-    auto east  = makeCandidate(reg, 500, 64, 501, simcore::OverheatState::NONE, 0);
-    auto west  = makeCandidate(reg, 500, 64, 499, simcore::OverheatState::NONE, 0);
-    auto above = makeCandidate(reg, 500, 65, 500, simcore::OverheatState::NONE, 0);
-    auto below = makeCandidate(reg, 500, 63, 500, simcore::OverheatState::NONE, 0);
+
+    auto at1 = makeSingleBlock(reg, 501, 64, 500);
+    auto at2 = makeSingleBlock(reg, 502, 64, 500);
+    auto at3 = makeSingleBlock(reg, 503, 64, 500);
+    auto at4 = makeSingleBlock(reg, 504, 64, 500);
 
     sys.tick(0.05f);
 
-    CHECK_EQ_INT(events->changed.size(), size_t(1),
-                 "explosion destroys exactly one block — no radius, no falloff");
-    if (events->changed.size() == 1) {
-        CHECK_EQ_INT(events->changed[0].x, 500, "the event targets the exploding machine");
-        CHECK_EQ_INT(events->changed[0].y, 64, "the event targets the exploding machine");
-        CHECK_EQ_INT(events->changed[0].z, 500, "the event targets the exploding machine");
-    }
-    for (entt::entity e : {north, south, east, west, above, below}) {
-        CHECK(reg.valid(e), "adjacent machine is not destroyed by a neighbour's explosion");
-    }
+    CHECK_EQ_INT(countEventsAt(events->changed, 500, 64, 500), 1, "epicentre is destroyed");
+    CHECK_EQ_INT(countEventsAt(events->changed, 501, 64, 500), 1, "d=1 is inside the blast");
+    CHECK_EQ_INT(countEventsAt(events->changed, 502, 64, 500), 1, "d=2 is inside the blast");
+    CHECK_EQ_INT(countEventsAt(events->changed, 503, 64, 500), 1, "d=3 is on the blast edge");
+    CHECK_EQ_INT(countEventsAt(events->changed, 504, 64, 500), 0, "d=4 is past the blast edge");
+
+    CHECK(!reg.valid(at1), "d=1 neighbour entity destroyed");
+    CHECK(!reg.valid(at2), "d=2 neighbour entity destroyed");
+    CHECK(!reg.valid(at3), "d=3 neighbour entity destroyed");
+    CHECK(reg.valid(at4), "d=4 neighbour survives the falloff");
 }
 
 static void test_ExplosionSystem_only_the_expired_fuse_explodes() {
@@ -306,10 +362,15 @@ static void test_ExplosionSystem_only_the_expired_fuse_explodes() {
 
     // Mixed fuses in one tick: one past the delay, one just short of it, one
     // WARNING. Only the expired one goes off.
+    //
+    // The machines are spread far apart (gp-dd5q): the blast reaches 2 blocks
+    // around the epicentre, so machines at (2,2,2) etc. would be inside the
+    // blast of a boom at (1,1,1) and correctly die as collateral. This test is
+    // about the FUSE, so its candidates must not be in each other's blast.
     auto boom  = makeCandidate(reg, 1, 1, 1, simcore::OverheatState::CRITICAL, kDelay);
-    auto young = makeCandidate(reg, 2, 2, 2, simcore::OverheatState::CRITICAL, 0);
-    auto warn  = makeCandidate(reg, 3, 3, 3, simcore::OverheatState::WARNING, 0);
-    auto fresh = makeCandidate(reg, 4, 4, 4, simcore::OverheatState::CRITICAL, kDelay - 2);
+    auto young = makeCandidate(reg, 20, 20, 20, simcore::OverheatState::CRITICAL, 0);
+    auto warn  = makeCandidate(reg, 40, 40, 40, simcore::OverheatState::WARNING, 0);
+    auto fresh = makeCandidate(reg, 60, 60, 60, simcore::OverheatState::CRITICAL, kDelay - 2);
 
     sys.tick(0.05f);
 
@@ -524,6 +585,231 @@ static void test_ExplosionSystem_warning_does_not_extend_the_critical_fuse() {
     CHECK(!reg.valid(ent), "entity destroyed on the kDelay'th CRITICAL tick");
 }
 
+// ---------------------------------------------------------------------------
+// Blast radius and falloff (gp-dd5q)
+//
+// The four checks above that used to assert "exactly one event" are
+// EPICENTRE-ISOLATION tests: they place no neighbour machines, so a correct
+// radius implementation still emits exactly one event and they stay green. The
+// tests below are the ones that were RED before the fix.
+// ---------------------------------------------------------------------------
+
+static void test_ExplosionSystem_clears_the_full_blast_radius() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    simcore::ExplosionSystem sys(reg, events);
+
+    // Epicentre at (200,64,200) plus single-block machines on every face at
+    // d = 1. The old implementation emitted 1 event; a radius implementation
+    // must emit 7 (epicentre + 6 faces) and destroy all 6 neighbour entities.
+    makeCandidate(reg, 200, 64, 200, simcore::OverheatState::CRITICAL, kDelay);
+    std::vector<entt::entity> neighbours = {
+        makeSingleBlock(reg, 201, 64, 200), makeSingleBlock(reg, 199, 64, 200),
+        makeSingleBlock(reg, 200, 64, 201), makeSingleBlock(reg, 200, 64, 199),
+        makeSingleBlock(reg, 200, 65, 200), makeSingleBlock(reg, 200, 63, 200),
+    };
+
+    sys.tick(0.05f);
+
+    CHECK_EQ_INT(events->changed.size(), size_t(7),
+                 "blast clears the epicentre plus all six face neighbours");
+    for (entt::entity e : neighbours) {
+        CHECK(!reg.valid(e), "a face neighbour is destroyed by the blast");
+    }
+}
+
+static void test_ExplosionSystem_falloff_is_spherical_not_manhattan() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    simcore::ExplosionSystem sys(reg, events);
+
+    // Two diagonal neighbours. A cubical (per-axis) blast would kill anything
+    // within 3 on each axis; a spherical one uses true Euclidean distance. The
+    // discriminator is (2,2,2): d = sqrt(12) = 3.46, so it is INSIDE a 3-cube
+    // but OUTSIDE a 3-sphere. (2,2,0) at d = 2.83 is inside both and proves
+    // nothing, so it is not used here.
+    makeCandidate(reg, 300, 64, 300, simcore::OverheatState::CRITICAL, kDelay);
+    auto nearDiag = makeSingleBlock(reg, 302, 66, 300);  // d = 2.83, inside both
+    auto farDiag  = makeSingleBlock(reg, 302, 66, 302);  // d = 3.46, cube-only
+
+    sys.tick(0.05f);
+
+    CHECK_EQ_INT(countEventsAt(events->changed, 302, 66, 300), 1,
+                 "the near diagonal (d=2.83) is inside a spherical blast");
+    CHECK_EQ_INT(countEventsAt(events->changed, 302, 66, 302), 0,
+                 "the body diagonal (d=3.46) is outside a sphere — a cubical blast would wrongly kill it");
+    CHECK(!reg.valid(nearDiag), "near diagonal entity destroyed");
+    CHECK(reg.valid(farDiag), "far diagonal entity survives a spherical falloff");
+}
+
+static void test_ExplosionSystem_ballast_anchors_take_the_lower_reach() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    simcore::ExplosionSystem sys(reg, events);
+
+    // Multiblock anchors are reinforced: they survive at d = 3 where a
+    // single-block machine does not. This is the falloff's tier split — a
+    // blast that ignores it would flatten every multiblock in range.
+    //
+    // Both targets are at distance EXACTLY 3.0 — the anchor on the X axis
+    // (3,0,0) and the single block on a diagonal whose distance also works out
+    // to 3.0, (2,2,1). Using two different directions at the same radius rules
+    // out an accidental axis-specific behaviour.
+    makeCandidate(reg, 400, 64, 400, simcore::OverheatState::CRITICAL, kDelay);
+    auto anchorAt3 = makeCandidate(reg, 403, 64, 400, simcore::OverheatState::NONE, 0);
+    auto singleAt3 = makeSingleBlock(reg, 402, 66, 401);
+
+    sys.tick(0.05f);
+
+    CHECK(reg.valid(anchorAt3), "a multiblock anchor at d=3.0 outranges the blast");
+    CHECK(!reg.valid(singleAt3), "a single-block machine at the same distance does not");
+    CHECK_EQ_INT(countEventsAt(events->changed, 403, 64, 400), 0, "the d=3 anchor is not cleared");
+    CHECK_EQ_INT(countEventsAt(events->changed, 402, 66, 401), 1, "the d=3 single block is cleared");
+}
+
+static void test_ExplosionSystem_blast_skips_non_machine_blocks() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    simcore::ExplosionSystem sys(reg, events);
+
+    // ExplosionSystem's only output is IEventPublisher — it has no chunk store,
+    // so it cannot know what a non-machine block is. A Position-only entity
+    // inside the blast must be left completely alone.
+    makeCandidate(reg, 600, 64, 600, simcore::OverheatState::CRITICAL, kDelay);
+    auto plain = makePlainBlock(reg, 601, 64, 600);
+
+    sys.tick(0.05f);
+
+    CHECK(reg.valid(plain), "a non-machine block entity survives the blast");
+    CHECK_EQ_INT(countEventsAt(events->changed, 601, 64, 600), 0,
+                 "no block event is published for a non-machine block");
+    CHECK_EQ_INT(events->changed.size(), size_t(1), "only the machine blast is published");
+}
+
+static void test_ExplosionSystem_blast_does_not_chain() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    simcore::ExplosionSystem sys(reg, events);
+
+    // A neighbour killed by the blast is destroyed AFTER the epicentre is
+    // resolved and must NOT re-explode: a victim is not a CRITICAL fuse. This
+    // also guards the deferred-destroy ordering — victims are collected, not
+    // exploded.
+    makeCandidate(reg, 700, 64, 700, simcore::OverheatState::CRITICAL, kDelay);
+    // A second CRITICAL anchor inside the blast IS a live fuse: it explodes on
+    // its own, in the same tick, because the view loop reaches it regardless
+    // of the first explosion.
+    auto victim = makeSingleBlock(reg, 701, 64, 700);
+    auto fellow  = makeCandidate(reg, 702, 64, 700, simcore::OverheatState::CRITICAL, kDelay);
+
+    sys.tick(0.05f);
+
+    CHECK(!reg.valid(victim), "the single-block victim is destroyed");
+    CHECK(!reg.valid(fellow), "the fellow CRITICAL anchor explodes on its own fuse");
+    CHECK_EQ_INT(countEventsAt(events->changed, 701, 64, 700), 1,
+                 "a blast victim is cleared once, not re-published");
+    CHECK_EQ_INT(countEventsAt(events->changed, 702, 64, 700), 1,
+                 "the fellow anchor is published exactly once, by its own fuse");
+}
+
+static void test_ExplosionSystem_blast_cannot_relay_through_a_victim() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    simcore::ExplosionSystem sys(reg, events);
+
+    // The chaining guard, stated so it actually discriminates. A machine is
+    // NOT a new epicentre just because it was caught in a blast: if victims
+    // became epicentres, the wave would relay outward, one machine per hop.
+    //
+    // A line of machines alone cannot prove this, because the sweep visits
+    // entities in entt id order, and this registry hands ids out ascending
+    // while the view walks them DESCENDING. A relaying implementation only
+    // propagates toward entities it has not visited yet, so the relay has to
+    // be created LAST to be visited FIRST. Creating the spur first (ent 2) and
+    // the relay second (ent 1) therefore guarantees the relay is already a
+    // victim by the time the spur is tested — which is exactly the moment a
+    // relaying implementation would use it as an epicentre.
+    //
+    //   epicentre (0,0,0)     -- ent 0, reaches 3
+    //   spur      (4,1,0)     -- ent 2, d = 4.12 from the epicentre: OUT of reach
+    //   relay     (2,0,0)     -- ent 1, d = 2.0 from the epicentre: a victim,
+    //                          -- and only d = 2.24 from the spur
+    //
+    // The spur survives only if the wave is resolved from the epicentre list
+    // alone. A victim-as-epicentre implementation kills it.
+    makeCandidate(reg, 1000, 64, 1000, simcore::OverheatState::CRITICAL, kDelay);
+    auto spur  = makeSingleBlock(reg, 1004, 65, 1000);  // created FIRST => ent 2 => visited FIRST
+    auto relay = makeSingleBlock(reg, 1002, 64, 1000);  // created last  => ent 1 => visited second
+
+    sys.tick(0.05f);
+
+    CHECK(!reg.valid(relay), "the relay is caught by the direct blast");
+    CHECK(reg.valid(spur),
+          "the blast must not relay: the spur at d=4.12 survives even though it is "
+          "only d=2.24 from the destroyed relay");
+    CHECK_EQ_INT(countEventsAt(events->changed, 1004, 65, 1000), 0,
+                 "no event is published for the un-relayed spur");
+}
+
+static void test_ExplosionSystem_two_epicentres_do_not_double_publish() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    simcore::ExplosionSystem sys(reg, events);
+
+    // Two CRITICAL anchors 2 apart: their blasts overlap on the single-block
+    // machine sitting between them. Each block must still be cleared exactly
+    // once — the overlap is not a reason to publish a second event.
+    makeCandidate(reg, 800, 64, 800, simcore::OverheatState::CRITICAL, kDelay);
+    makeCandidate(reg, 802, 64, 800, simcore::OverheatState::CRITICAL, kDelay);
+    auto middle = makeSingleBlock(reg, 801, 64, 800);
+
+    sys.tick(0.05f);
+
+    CHECK(!reg.valid(middle), "the machine between two epicentres is destroyed");
+    CHECK_EQ_INT(countEventsAt(events->changed, 801, 64, 800), 1,
+                 "an overlapping blast clears the shared victim only once");
+    CHECK_EQ_INT(events->changed.size(), size_t(3),
+                 "three distinct blocks cleared: two epicentres plus the shared victim");
+}
+
+static void test_ExplosionSystem_radius_is_centered_on_the_exploding_machine() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    simcore::ExplosionSystem sys(reg, events);
+
+    // The blast is centred on the entity that exploded, not on the world
+    // origin and not on a neighbouring machine. A machine 2 blocks from a
+    // fused epicentre dies even though it is far from every other candidate.
+    makeCandidate(reg, 900, 64, 900, simcore::OverheatState::CRITICAL, kDelay);
+    auto near = makeSingleBlock(reg, 902, 64, 900);
+    auto far  = makeSingleBlock(reg, 990, 64, 990);
+
+    sys.tick(0.05f);
+
+    CHECK(!reg.valid(near), "a machine 2 blocks from the epicentre is destroyed");
+    CHECK(reg.valid(far), "a machine far from every epicentre is untouched");
+    CHECK_EQ_INT(countEventsAt(events->changed, 990, 64, 990), 0, "no event for the far machine");
+}
+
+// The header constants are pinned to the geometry the tests above assert. If
+// someone retunes HeatConstants without retuning the spec and these tests,
+// the build breaks instead of the world silently changing.
+static_assert(simcore::HeatConstants::EXPLOSION_RADIUS == 3,
+              "EXPLOSION_RADIUS must match kRadius above (see the gp-dd5q spec delta)");
+static_assert(simcore::HeatConstants::EXPLOSION_ANCHOR_REACH == 2,
+              "EXPLOSION_ANCHOR_REACH must match kAnchorReach above");
+static_assert(simcore::HeatConstants::EXPLOSION_SINGLEBLOCK_REACH == 3,
+              "EXPLOSION_SINGLEBLOCK_REACH must match kSingleReach above");
+// The three reach values must satisfy the blast-visibility contract: a
+// single-block machine is the weakest thing the blast destroys, so it can never
+// reach further than an anchor.
+static_assert(simcore::HeatConstants::EXPLOSION_SINGLEBLOCK_REACH >=
+                  simcore::HeatConstants::EXPLOSION_ANCHOR_REACH,
+              "single-block reach must be >= anchor reach (blast tier ordering)");
+static_assert(simcore::HeatConstants::EXPLOSION_SINGLEBLOCK_REACH <=
+                  simcore::HeatConstants::EXPLOSION_RADIUS,
+              "no reach may exceed EXPLOSION_RADIUS");
+
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while (0)
 
 int main(int argc, char** argv) {
@@ -538,7 +824,7 @@ int main(int argc, char** argv) {
     TEST(ExplosionSystem_fuse_counts_down_one_tick_per_tick);
     TEST(ExplosionSystem_counter_is_advanced_before_the_delay_check);
     TEST(ExplosionSystem_publishes_air_at_machine_position);
-    TEST(ExplosionSystem_no_radius_or_falloff_is_emitted);
+    TEST(ExplosionSystem_falloff_reach_shrinks_with_distance);
     TEST(ExplosionSystem_only_the_expired_fuse_explodes);
     TEST(ExplosionSystem_multiple_simultaneous_explosions);
     TEST(ExplosionSystem_dt_is_ignored);
@@ -550,6 +836,16 @@ int main(int argc, char** argv) {
     TEST(ExplosionSystem_one_event_per_exploded_entity);
     TEST(ExplosionSystem_replaced_entity_can_explode_again);
     TEST(ExplosionSystem_warning_does_not_extend_the_critical_fuse);
+
+    // gp-dd5q: blast radius + falloff
+    TEST(ExplosionSystem_clears_the_full_blast_radius);
+    TEST(ExplosionSystem_falloff_is_spherical_not_manhattan);
+    TEST(ExplosionSystem_ballast_anchors_take_the_lower_reach);
+    TEST(ExplosionSystem_blast_skips_non_machine_blocks);
+    TEST(ExplosionSystem_blast_does_not_chain);
+    TEST(ExplosionSystem_blast_cannot_relay_through_a_victim);
+    TEST(ExplosionSystem_two_epicentres_do_not_double_publish);
+    TEST(ExplosionSystem_radius_is_centered_on_the_exploding_machine);
 
     printf("\n=== Results: %d tests, %d passed, %d failed ===\n",
            g_tests, g_passed, g_failed);
