@@ -73,4 +73,34 @@ if(BUILD_TESTING)
         gtnh_game_recipes
     )
     add_test(NAME condition_evaluator_test COMMAND condition_evaluator_test)
+
+    # recipe_manager_matching_test — gp-82b9 (findRecipeByInputs matching) and
+    # the craft-boundary half of gp-1t0w (input consumption, one-shot output
+    # production). Same CHECK/TEST harness, same no-GTest rule as above.
+    #
+    # It DOES read the real data files: the loader resolves `item:` strings and
+    # the machine tier/energy maps come from items.csv, recipes/ and
+    # machines.yaml, so a fixture-free manager cannot exercise the resolution
+    # path these issues are about. DATA_DIR is an absolute path injected by
+    # CMake, so nothing depends on the CWD. Recipe fixtures are written to
+    # mkstemp files and removed again; no directory, network or wall clock.
+    add_executable(recipe_manager_matching_test
+        test/test_recipe_manager_matching.cpp
+    )
+    target_compile_definitions(recipe_manager_matching_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/src/content/data"
+    )
+    target_include_directories(recipe_manager_matching_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(recipe_manager_matching_test PRIVATE
+        gtnh_game_recipes
+        flatbuffers::flatbuffers
+        spdlog::spdlog
+        yaml-cpp::yaml-cpp
+        SQLite::SQLite3
+    )
+    add_test(NAME recipe_manager_matching_test
+             COMMAND recipe_manager_matching_test)
 endif()
