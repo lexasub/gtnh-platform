@@ -1024,9 +1024,9 @@ void test_PlaceBlockHandler_charges_creative_the_same_as_survival() {
   CHECK_EQ(charged.size(), size_t(2), "both placeable modes were exercised");
   if (charged.size() == 2) {
     CHECK_EQ(charged[0], 1, "SURVIVAL pays one block, as the spec requires");
-    CHECK_EQ(charged[1], 1,
-             "CREATIVE also pays one block — the spec says it should be free "
-             "(gp-t51b)");
+    CHECK_EQ(charged[1], 0,
+             "CREATIVE places for free (gp-t51b): the spec is explicit that no "
+             "inventory slot SHALL be consumed for a creative placement");
   }
 }
 
@@ -1090,8 +1090,15 @@ void test_PlaceBlockHandler_refuses_adventure_and_spectator() {
       if (placed_here) ++placed_allowed;
       CHECK(claimed, "a permitted mode is still claimed by the dispatcher");
       CHECK(placed_here, "a permitted mode still places the block");
-      CHECK_EQ(charged, 1, "a permitted mode still pays the block (see gp-t51b "
-                           "for the CREATIVE-is-free half)");
+      // Not "every permitted mode pays": CREATIVE places for free, and that is
+      // the spec, not an exception (gp-t51b). The table is keyed on the mode
+      // rather than on a blanket expectation because the two permitted modes
+      // genuinely differ in cost.
+      const int expected_cost = (r.mode == 1 /* CREATIVE */) ? 0 : 1;
+      CHECK_EQ(charged, expected_cost,
+               expected_cost == 0
+                   ? "CREATIVE places for free"
+                   : "a permitted non-creative mode pays one block");
       continue;
     }
     if (placed_here) ++placed_forbidden;

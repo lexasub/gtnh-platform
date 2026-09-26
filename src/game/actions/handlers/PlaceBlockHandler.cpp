@@ -78,8 +78,18 @@ void PlaceBlockHandler::handle(const ActionContext& ctx) const {
               final_block_id, final_meta,
       [inventoryStore, publisher, engine, onBlockPlaced, player_id, request_id,
        eff_x = ctx.eff_x, eff_y = ctx.eff_y, eff_z = ctx.eff_z,
-       placed_block = ctx.held_item, final_block_id, final_meta]() {
-        if (placed_block != 0 && inventoryStore) {
+       placed_block = ctx.held_item, final_block_id, final_meta,
+       charge = !GameModePerm::InfiniteItems(
+                    static_cast<GameMode>(storedModeOf(ctx)))]() {
+        // CREATIVE places for free (gp-t51b). The spec is explicit
+        // (openspec/changes/add-interaction-mode-gating/specs/player-interaction/spec.md:22):
+        // "no inventory slot SHALL be consumed (server applies the placement without a
+        // cost)", and the matrix already carries the column - InfiniteItems is true for
+        // CREATIVE and SPECTATOR. Charging a creative player was the same
+        // unconditional-decrement bug the mode gate was found next to, and the two are
+        // independent: the gate refuses the modes that cannot place at all, this decides
+        // what the modes that CAN place actually pay.
+        if (charge && placed_block != 0 && inventoryStore) {
           auto slots = inventoryStore->getSlots(player_id);
           for (auto& s : slots) {
             if (s.item_id == placed_block && s.count > 0) {
