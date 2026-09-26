@@ -86,6 +86,13 @@ bool PlayerInventoryStore::giveItem(uint64_t player_id, uint16_t item_id,
 
     spdlog::info("giveItem: player={} item={} count={} target_slot={}", player_id, item_id, count, target_slot);
 
+    // A zero-count grant must be a no-op (gp-gn2n). It is reachable from the
+    // wire, and before the target_slot guard below it wrote {item_id, 0, 0}
+    // into a slot: a permanently "occupied" cell holding nothing, which the
+    // UI renders as an item and every later pass skips because item_id != 0.
+    // Returns true, because the caller's intent - grant nothing - was met.
+    if (count == 0) return true;
+
     std::unique_lock<std::mutex> lock(mutex_);
     auto& slots = inventories_[player_id];
 

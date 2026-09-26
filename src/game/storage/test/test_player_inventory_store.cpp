@@ -369,9 +369,12 @@ static void test_a_zero_count_grant_without_a_target_changes_nothing() {
         "granting zero items reports success");
   CHECK(sameSlots(r.store.getSlots(kPlayer), s),
         "and leaves every slot byte-identical");
-  CHECK(r.changes.empty() == false,
-        "but still fires the per-slot change callbacks for all 40 slots");
-  CHECK_EQ(i_(r.changes.size()), 40, "one callback per slot");
+  // It used to fire the per-slot change callbacks for all 40 slots anyway,
+  // publishing a full inventory snapshot that says nothing changed - 40 wasted
+  // publications per no-op grant, reachable from the wire. A grant that changed
+  // nothing must publish nothing (gp-gn2n).
+  CHECK(r.changes.empty(),
+        "a no-op grant publishes no inventory update at all");
 }
 
 // ---------------------------------------------------------------------------
@@ -511,25 +514,26 @@ static void test_a_targeted_grant_above_max_stack_is_clamped_at_slot_zero() {
 // OBSERVED, NOT BLESSED: the same branch with count 0 stores {item_id, 0} in a
 // slot that was empty, which every other "is this slot free?" predicate in the
 // codebase reads as OCCUPIED. Filed as gp-obtt-fix-1.
-static void test_a_zero_count_targeted_grant_creates_a_phantom_slot() {
+static void test_a_zero_count_targeted_grant_changes_nothing() {
   Rig r;
   r.store.initPlayer(kPlayer);
 
   CHECK(r.store.giveItem(kPlayer, kItemA, 0, 4), "a zero-count grant reports success");
   const Slots s = r.store.getSlots(kPlayer);
-  CHECK_EQ(i_(s[4].item_id), i_(kItemA),
-           "OBSERVED: the target slot now names item A");
-  CHECK_EQ(i_(s[4].count), 0, "OBSERVED: with a count of zero");
-  CHECK(occupiedSlots(s) == 1,
-        "OBSERVED: a consumer summing item_id != 0 counts this phantom as occupied");
+  CHECK_EQ(i_(s[4].item_id), 0,
+           "the target slot stays empty: a zero-count grant writes nothing (gp-gn2n)");
+  CHECK_EQ(i_(s[4].count), 0, "and holds no count either");
+  CHECK(occupiedSlots(s) == 0,
+        "no consumer summing item_id != 0 sees a phantom occupied slot");
 
-  // And it is not harmless: the phantom now absorbs the next grant through the
+  // It was not harmless: the phantom used to absorb the next grant through the
   // partial-stack pass, because a slot with count 0 and a matching item id has
-  // a full 64 items of "room".
+  // a full 64 items of "room" - so a later targeted grant silently landed in a
+  // slot nobody asked for.
   CHECK(r.store.giveItem(kPlayer, kItemA, 5, kNoTarget), "the follow-up grant succeeds");
   const Slots after = r.store.getSlots(kPlayer);
-  CHECK_EQ(i_(after[4].count), 5, "the phantom slot absorbed all 5 items");
-  CHECK(occupiedSlots(after) == 1, "no new slot was opened");
+  CHECK(occupiedSlots(after) == 1, "exactly one slot is occupied by the real grant");
+  CHECK_EQ(i_(after[0].count), 5, "and it holds all 5 items, unmerged");
 }
 
 // ---------------------------------------------------------------------------
@@ -988,7 +992,7 @@ int main(int argc, char** argv) {
   TEST(an_out_of_range_target_slot_is_ignored_entirely);
   TEST(a_targeted_grant_above_max_stack_spills_like_any_other);
   TEST(a_targeted_grant_above_max_stack_is_clamped_at_slot_zero);
-  TEST(a_zero_count_targeted_grant_creates_a_phantom_slot);
+  TEST(a_zero_count_targeted_grant_changes_nothing);
   TEST(a_grant_into_a_full_inventory_fails_without_corrupting_state);
   TEST(a_partial_grant_into_an_almost_full_inventory_succeeds_exactly);
   TEST(a_full_inventory_does_not_block_a_same_item_top_up);
