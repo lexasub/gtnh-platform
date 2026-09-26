@@ -22,29 +22,39 @@ import (
 
 // Gateway message types (mirrors GatewayMsg in gateway.h)
 const (
-	MsgPlayerAction        = 1
-	MsgChunkSnapshot       = 2
-	MsgEntitySnapshot      = 3
-	MsgBlockUpdate         = 4
-	MsgBlockAck            = 5
-	MsgInventoryUpdate     = 6
-	MsgInventoryAction     = 7
-	MsgBlockEntityUpdate   = 8
-	MsgCraftRequest        = 9
-	MsgCraftResponse       = 10
-	MsgSetBlockAction      = 11
-	MsgCompressedChunk     = 12
-	MsgSetMachineSlot      = 15
-	MsgSetMachineSlotResp  = 16
+	MsgPlayerAction               = 1
+	MsgChunkSnapshot              = 2
+	MsgEntitySnapshot             = 3
+	MsgBlockUpdate                = 4
+	MsgBlockAck                   = 5
+	MsgInventoryUpdate            = 6
+	MsgInventoryAction            = 7
+	MsgBlockEntityUpdate          = 8
+	MsgCraftRequest               = 9
+	MsgCraftResponse              = 10
+	MsgSetBlockAction             = 11
+	MsgCompressedChunk            = 12
+	MsgToolAction                 = 13
+	MsgToolActionResp             = 14
+	MsgSetMachineSlot             = 15
+	MsgSetMachineSlotResp         = 16
 	MsgMachineOpenReq             = 18
+	MsgChestOpenReq               = 19
 	MsgQuestProgressUpdate        = 20
+	MsgQuestUnlockNotification    = 21
 	MsgQuestCompletedNotification = 22
 	MsgMultiblockEvent            = 23
+	MsgQuestCompleteRequest       = 24
 	MsgGameModeChange             = 30
+	MsgStartScenarioReq           = 31
+	MsgStartScenarioResp          = 32
 	MsgQuestBookOpen              = 33
+	MsgWorkbenchOpenReq           = 44
+	MsgChestCloseReq              = 45
+	MsgMachineCloseReq            = 46
 	MsgResourceBufferState        = 47
-	MsgPipeContentsReq     = 48
-	MsgPipeContentsResp    = 49
+	MsgPipeContentsReq            = 48
+	MsgPipeContentsResp           = 49
 )
 
 // GatewayAddress holds ctrl and bulk addresses.
@@ -90,6 +100,9 @@ func (c *GatewayClient) Close() {
 // Wire format: [4 bytes BE payload size][1 byte msg_type][FlatBuffer data]
 func (c *GatewayClient) SendCtrl(msgType uint8, fbData []byte) error {
 	totalLen := 1 + len(fbData) // msg_type + FB
+	if totalLen > int(^uint32(0)) {
+		return fmt.Errorf("ctrl frame too large: %d", totalLen)
+	}
 	frame := make([]byte, 4+totalLen)
 	binary.BigEndian.PutUint32(frame[0:4], uint32(totalLen))
 	frame[4] = msgType
@@ -244,6 +257,49 @@ func (c *GatewayClient) WaitForInventoryItem(playerID uint64, itemID uint16, min
 			return data, nil
 		}
 	}
+}
+
+// InventoryItemCount sums the counts of itemID across every player slot in an
+// InventoryUpdate payload. The server splits stacks across slots
+// (PlayerInventoryStore stacking, max 64), so a per-slot check is not enough.
+// Returns 0 for a payload with no root table.
+func InventoryItemCount(data []byte, itemID uint16) int {
+	if len(data) == 0 {
+		return 0
+	}
+	update := Protocol.GetRootAsInventoryUpdate(data, 0)
+	if update == nil {
+		return 0
+	}
+	total := 0
+	var slot Protocol.InventorySlot
+	for i := 0; i < update.SlotsLength(); i++ {
+		if update.Slots(&slot, i) && slot.ItemId() == itemID {
+			total += int(slot.Count())
+		}
+	}
+	return total
+}
+
+// FirstSlotWithItem returns the index of the first player slot in an
+// InventoryUpdate payload holding itemID, or -1 when the item is not in the
+// player grid. Item grants land in the first free slot, which is not
+// necessarily 0, so a click fixture must locate the real slot.
+func FirstSlotWithItem(data []byte, itemID uint16) int {
+	if len(data) == 0 {
+		return -1
+	}
+	update := Protocol.GetRootAsInventoryUpdate(data, 0)
+	if update == nil {
+		return -1
+	}
+	var slot Protocol.InventorySlot
+	for i := 0; i < update.SlotsLength(); i++ {
+		if update.Slots(&slot, i) && slot.ItemId() == itemID {
+			return i
+		}
+	}
+	return -1
 }
 
 // WaitForBlockAck waits for the ACK matching both request ID and status.

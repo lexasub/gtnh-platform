@@ -57,8 +57,8 @@ func TestGateway_ThermalPowerChain(t *testing.T) {
 	for i, p := range positions {
 		reqID := uint32(10000 + i)
 		if err := c.SendCtrl(testutil.MsgSetBlockAction,
-			testutil.BuildSetBlockActionWithOptions(playerID, p.x, p.y+1, p.z, 0, p.id,
-				testutil.SetBlockActionOptions{RequestID: reqID, Face: 0, HeldItem: p.id})); err != nil {
+			testutil.BuildPlaceBlockActionWithOptions(playerID, p.x, p.y+1, p.z, 0, p.id,
+				testutil.SetBlockActionOptions{RequestID: reqID, Face: 0})); err != nil {
 			t.Fatalf("place block %d: %v", p.id, err)
 		}
 		ackData, err := c.WaitForBlockAck(reqID, Protocol.BlockAckStatusACCEPTED, 5*time.Second)

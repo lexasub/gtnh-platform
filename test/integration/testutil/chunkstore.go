@@ -133,9 +133,19 @@ func (c *GatewayClient) PlaceBlockAndWait(cs *ChunkStoreClient, playerID uint64,
 	x, y, z int32, blockID uint16, requestID uint32, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
+		// Resolve the authoritative current block id so the CAS compares
+		// against reality instead of 0. Fixes placement into chunks that
+		// already carry blocks (worldgen terrain, previous test runs).
+		curID, _, _, err := cs.GetBlock(x, y, z, 2*time.Second)
+		if err != nil {
+			return err
+		}
+		if curID == blockID {
+			return nil // already in place (idempotent placement)
+		}
 		if err := c.SendCtrl(MsgSetBlockAction,
-			BuildSetBlockActionWithOptions(playerID, x, y+1, z, 0, blockID,
-				SetBlockActionOptions{RequestID: requestID, Face: 0, HeldItem: blockID})); err != nil {
+			BuildPlaceBlockActionWithOptions(playerID, x, y+1, z, curID, blockID,
+				SetBlockActionOptions{RequestID: requestID, Face: 0})); err != nil {
 			return err
 		}
 		if _, err := c.WaitForBlockAck(requestID, Protocol.BlockAckStatusACCEPTED,

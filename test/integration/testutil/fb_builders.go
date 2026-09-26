@@ -7,20 +7,52 @@ import (
 	Protocol "github.com/gtnh-platform/protocol/generated/go/Protocol"
 )
 
-// BuildSetBlockAction builds a SetBlockAction FlatBuffer.
 // NOTE: In Go FlatBuffers, struct fields must be written AFTER StartObject
 // and ALL scalar fields, immediately before AddPos (struct data is inline).
 // SetBlockActionOptions contains optional client correlation and placement fields.
+//
+// Face follows Protocol::Vec3i-adjacent conventions in ActionContext.h:
+// 0 = DOWN, 1 = UP, 2 = NORTH, 3 = SOUTH, 4 = WEST, 5 = EAST. Face 0 (DOWN)
+// means "clicked the top face of the block below", so the server places at
+// (x, y, z) itself — the same cell the client sent.
 type SetBlockActionOptions struct {
 	RequestID uint32
 	Face      byte
 	HeldItem  uint16
 }
 
-// BuildSetBlockAction builds a SetBlockAction FlatBuffer for placing a block.
-// Uses RIGHT_MOUSE_CLICK (place). For breaking blocks, use BuildBreakBlockAction.
+// BuildSetBlockAction builds a RIGHT_MOUSE_CLICK SetBlockAction with an EMPTY
+// HAND (held_item = 0).
+//
+// This is NOT a block placement. SimCore's PlaceBlockHandler::canHandle
+// (src/game/actions/handlers/PlaceBlockHandler.cpp:14-18) requires
+// held_item != 0, so an empty-hand frame is claimed by no handler and the
+// facade answers REJECTED "nothing placeable in hand"
+// (src/game/actions/SetBlockCASHandler.cpp:44-51). The production client never
+// sends this: NetClient::SendBlockAction
+// (src/apps/game_client/Network/NetClient.cpp:689-706) always writes
+// held_item = the equipped item.
+//
+// Use BuildPlaceBlockAction for anything that is meant to place a block.
+// This builder remains for raw-protocol and negative-path tests that
+// deliberately exercise an empty hand.
 func BuildSetBlockAction(playerID uint64, x, y, z int32, expectedBlockID, newBlockID uint16) []byte {
 	return BuildSetBlockActionWithOptions(playerID, x, y, z, expectedBlockID, newBlockID, SetBlockActionOptions{})
+}
+
+// BuildPlaceBlockAction builds the production placement frame: a
+// RIGHT_MOUSE_CLICK whose held_item equals the block being placed, mirroring
+// NetClient::SendBlockAction, which writes the equipped item into both
+// new_block_id and held_item.
+func BuildPlaceBlockAction(playerID uint64, x, y, z int32, expectedBlockID, blockID uint16) []byte {
+	return BuildPlaceBlockActionWithOptions(playerID, x, y, z, expectedBlockID, blockID, SetBlockActionOptions{Face: 0, HeldItem: blockID})
+}
+
+// BuildPlaceBlockActionWithOptions is BuildPlaceBlockAction with client
+// correlation (RequestID) and an explicit face.
+func BuildPlaceBlockActionWithOptions(playerID uint64, x, y, z int32, expectedBlockID, blockID uint16, opts SetBlockActionOptions) []byte {
+	opts.HeldItem = blockID
+	return BuildSetBlockActionWithOptions(playerID, x, y, z, expectedBlockID, blockID, opts)
 }
 
 // BuildSetBlockActionWithOptions builds a placement action with request-aware fields.
@@ -107,6 +139,9 @@ func AssertCraftResponse(t *testing.T, data []byte, expectSuccess bool) *Protoco
 
 // BuildBreakBlockAction builds a SetBlockAction FlatBuffer for breaking a block.
 // Uses LEFT_MOUSE_CLICK (break). expectedBlockID = 0 means "any block".
+// held_item is left empty: BreakBlockHandler::canHandle only tests
+// action_type, and breaking is not a placement, so there is no item in hand
+// to report.
 func BuildBreakBlockAction(playerID uint64, x, y, z int32, expectedBlockID uint16) []byte {
 	return BuildBreakBlockActionWithOptions(playerID, x, y, z, expectedBlockID, SetBlockActionOptions{})
 }
@@ -165,6 +200,34 @@ func BuildQuestBookOpen(playerID uint64) []byte {
 	return b.FinishedBytes()
 }
 
+// BuildStartScenarioReq builds the client→server StartScenarioReq FlatBuffer.
+func BuildStartScenarioReq(playerID uint64, scenarioIndex byte) []byte {
+	b := flatbuffers.NewBuilder(32)
+	Protocol.StartScenarioReqStart(b)
+	Protocol.StartScenarioReqAddPlayerId(b, playerID)
+	Protocol.StartScenarioReqAddScenarioIndex(b, scenarioIndex)
+	req := Protocol.StartScenarioReqEnd(b)
+	b.Finish(req)
+	return b.FinishedBytes()
+}
+
+// BuildInventoryActionWithOptions builds a complete InventoryAction using the
+// current authoritative container-click schema.
+func BuildInventoryActionWithOptions(playerID uint64, actionType, button, mods, containerID byte, slot uint16, count byte) []byte {
+	b := flatbuffers.NewBuilder(64)
+	Protocol.InventoryActionStart(b)
+	Protocol.InventoryActionAddPlayerId(b, playerID)
+	Protocol.InventoryActionAddActionType(b, actionType)
+	Protocol.InventoryActionAddButton(b, button)
+	Protocol.InventoryActionAddMods(b, mods)
+	Protocol.InventoryActionAddContainerId(b, containerID)
+	Protocol.InventoryActionAddSlot(b, slot)
+	Protocol.InventoryActionAddCount(b, count)
+	action := Protocol.InventoryActionEnd(b)
+	b.Finish(action)
+	return b.FinishedBytes()
+}
+
 // BuildInventoryAction builds an InventoryAction FlatBuffer.
 // The current schema represents the source slot as Slot; targetSlot and meta
 // remain parameters for compatibility with older callers.
@@ -188,6 +251,35 @@ func BuildContainerOpenReq(playerID uint64, x, y, z int32) []byte {
 	pos := Protocol.CreateVec3i(b, x, y, z)
 	Protocol.ContainerOpenReqAddPos(b, pos)
 	req := Protocol.ContainerOpenReqEnd(b)
+	b.Finish(req)
+	return b.FinishedBytes()
+}
+
+// BuildToolAction builds a ToolAction FlatBuffer for wrench/drill etc.
+func BuildToolAction(playerID uint64, actionType uint8, x, y, z int32, face uint8, itemID uint16) []byte {
+	b := flatbuffers.NewBuilder(64)
+	Protocol.ToolActionStart(b)
+	Protocol.ToolActionAddPlayerId(b, playerID)
+	Protocol.ToolActionAddAction(b, Protocol.ToolActionType(actionType))
+	pos := Protocol.CreateVec3i(b, x, y, z)
+	Protocol.ToolActionAddPos(b, pos)
+	Protocol.ToolActionAddFace(b, face)
+	Protocol.ToolActionAddItemId(b, itemID)
+	Protocol.ToolActionAddSlotIdx(b, 0)
+	Protocol.ToolActionAddExtraData(b, 0)
+	act := Protocol.ToolActionEnd(b)
+	b.Finish(act)
+	return b.FinishedBytes()
+}
+
+// BuildPipeContentsReq builds a PipeContentsReq FlatBuffer.
+func BuildPipeContentsReq(playerID uint64, x, y, z int32) []byte {
+	b := flatbuffers.NewBuilder(64)
+	Protocol.PipeContentsReqStart(b)
+	Protocol.PipeContentsReqAddPlayerId(b, playerID)
+	pos := Protocol.CreateVec3i(b, x, y, z)
+	Protocol.PipeContentsReqAddPos(b, pos)
+	req := Protocol.PipeContentsReqEnd(b)
 	b.Finish(req)
 	return b.FinishedBytes()
 }

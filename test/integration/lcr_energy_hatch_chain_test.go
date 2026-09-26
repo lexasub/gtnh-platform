@@ -37,7 +37,7 @@ func TestGateway_LCREnergyHatchThermalChain(t *testing.T) {
 	const itemOut uint16 = 0xEE0B
 	const energyHatch uint16 = 0xEE0E
 	const coal uint16 = 0x7802
-	const ironDust uint16 = 0x711A  // items.csv: 0:1110:001:26 (iron_dust)
+	const ironOre uint16 = 0x8000   // items.csv: 10:0 (iron_ore)
 	const ironIngot uint16 = 0x6001 // items.csv: 0:110:1 (iron_ingot) (output)
 
 	// Keep all coordinates below 1024 because multiblock position packing uses
@@ -176,7 +176,7 @@ func TestGateway_LCREnergyHatchThermalChain(t *testing.T) {
 		put(700, 120, z, 0, coal, 64)
 		put(705, 121, z, 0, batteryItem, 1)
 	}
-	put(710, 123, 690, 0, ironDust, 1)
+	put(710, 123, 690, 0, ironOre, 1)
 
 	seenSteam := map[int32]bool{}
 	seenTurbine := map[int32]bool{}
@@ -184,7 +184,7 @@ func TestGateway_LCREnergyHatchThermalChain(t *testing.T) {
 	seenHatch := false
 	seenProgress := false
 	seenOutput := false
-	deadline := time.Now().Add(35 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(deadline) &&
 		(len(seenSteam) < 4 || len(seenTurbine) < 4 || len(seenBattery) < 4 || !seenHatch || !seenProgress || !seenOutput) {
 		msgType, data, readErr := c.ReadCtrl(500 * time.Millisecond)

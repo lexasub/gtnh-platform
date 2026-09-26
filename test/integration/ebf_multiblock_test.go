@@ -8,6 +8,65 @@ import (
 	Protocol "github.com/gtnh-platform/protocol/generated/go/Protocol"
 )
 
+// Canonical EBF block ids (pattern "ebf", pattern_id 1).
+const (
+	canonicalCasing  uint16 = 0xEE05 // 1110:111:5
+	canonicalCoil    uint16 = 0xEE06 // 1110:111:6 (Kanthal)
+	canonicalCtrl    uint16 = 0xE42F // 1110:010:47
+	canonicalItemIn  uint16 = 0xEE0A // 1110:111:10
+	canonicalItemOut uint16 = 0xEE0B // 1110:111:11
+	canonicalEnergy  uint16 = 0xEE0E // 1110:111:14
+	canonicalCable   uint16 = 0xF400 // 1111:01:0
+	creativeGen      uint16 = 0xE800
+)
+
+type fixtureBlock struct {
+	x, y, z int32
+	id      uint16
+}
+
+// ebfFixtureBlocks builds the physical EBF layout: 3x3x3 casing frame with two
+// Kanthal coil layers, ITEM_IN/ITEM_OUT hatches on layer 1 and the controller
+// placed last. When energy positions are non-negative, the fixture also links a
+// creative EU source through one tin cable to the physical energy hatch.
+func ebfFixtureBlocks(cornerX, cornerY, cornerZ, energyX, energyY, energyZ int32) []fixtureBlock {
+	var blocks []fixtureBlock
+	for x := int32(0); x < 3; x++ {
+		for z := int32(0); z < 3; z++ {
+			blocks = append(blocks, fixtureBlock{cornerX + x, cornerY, cornerZ + z, canonicalCasing})
+		}
+	}
+	blocks = append(blocks,
+		fixtureBlock{cornerX, cornerY + 1, cornerZ, canonicalCasing},
+		fixtureBlock{cornerX + 2, cornerY + 1, cornerZ, canonicalCasing},
+		fixtureBlock{cornerX, cornerY + 1, cornerZ + 2, canonicalCasing},
+		fixtureBlock{cornerX + 2, cornerY + 1, cornerZ + 2, canonicalCasing},
+		fixtureBlock{cornerX + 1, cornerY + 1, cornerZ + 1, canonicalCoil},
+		fixtureBlock{cornerX, cornerY + 2, cornerZ, canonicalCasing},
+		fixtureBlock{cornerX + 2, cornerY + 2, cornerZ, canonicalCasing},
+		fixtureBlock{cornerX, cornerY + 2, cornerZ + 2, canonicalCasing},
+		fixtureBlock{cornerX + 2, cornerY + 2, cornerZ + 2, canonicalCasing},
+		fixtureBlock{cornerX + 1, cornerY + 2, cornerZ + 1, canonicalCoil})
+	for x := int32(0); x < 3; x++ {
+		for z := int32(0); z < 3; z++ {
+			if x != 1 || z != 1 {
+				blocks = append(blocks, fixtureBlock{cornerX + x, cornerY + 3, cornerZ + z, canonicalCasing})
+			}
+		}
+	}
+	if energyX >= 0 && energyY >= 0 && energyZ >= 0 {
+		blocks = append(blocks,
+			fixtureBlock{energyX, energyY, energyZ, canonicalEnergy},
+			fixtureBlock{energyX + 1, energyY, energyZ, canonicalCable},
+			fixtureBlock{energyX + 2, energyY, energyZ, creativeGen})
+	}
+	blocks = append(blocks,
+		fixtureBlock{cornerX, cornerY + 1, cornerZ + 1, canonicalItemIn},
+		fixtureBlock{cornerX + 2, cornerY + 1, cornerZ + 1, canonicalItemOut},
+		fixtureBlock{cornerX + 1, cornerY + 3, cornerZ + 1, canonicalCtrl})
+	return blocks
+}
+
 func TestGateway_EBFMultiblockLifecycle(t *testing.T) {
 	c, err := testutil.DialGateway(gw, 5*time.Second)
 	if err != nil {
@@ -16,108 +75,26 @@ func TestGateway_EBFMultiblockLifecycle(t *testing.T) {
 	defer c.Close()
 
 	const playerID = uint64(1003)
-	const casing uint16 = 1001
-	const coil uint16 = 1002
-	const controller uint16 = 1003
-	const itemIn uint16 = 0xEA00
-	const itemOut uint16 = 0xEA01
+	cs, err := testutil.DialChunkStore("127.0.0.1", 5001, 5*time.Second)
+	if err != nil {
+		t.Fatalf("dial ChunkStore: %v", err)
+	}
+	defer cs.Close()
+
 	// Keep the fixture above generated terrain and away from other tests.
 	corner := [3]int32{511, 197, 511}
 	anchor := [3]int32{512, 200, 512}
 
-	var placements []struct {
-		x, y, z int32
-		id      uint16
+	if err := c.RequestChunk(playerID, corner[0]>>5, corner[1]>>5, corner[2]>>5); err != nil {
+		t.Fatalf("request EBF fixture chunk: %v", err)
 	}
-	for x := int32(0); x < 3; x++ {
-		for z := int32(0); z < 3; z++ {
-			placements = append(placements, struct {
-				x, y, z int32
-				id      uint16
-			}{corner[0] + x, corner[1], corner[2] + z, casing})
-		}
-	}
-	// Layer 1: casing corners, item hatches, and the center coil.
-	placements = append(placements,
-		struct {
-			x, y, z int32
-			id      uint16
-		}{corner[0], corner[1] + 1, corner[2], casing},
-		struct {
-			x, y, z int32
-			id      uint16
-		}{corner[0] + 2, corner[1] + 1, corner[2], casing},
-		struct {
-			x, y, z int32
-			id      uint16
-		}{corner[0], corner[1] + 1, corner[2] + 2, casing},
-		struct {
-			x, y, z int32
-			id      uint16
-		}{corner[0] + 2, corner[1] + 1, corner[2] + 2, casing},
-		struct {
-			x, y, z int32
-			id      uint16
-		}{corner[0], corner[1] + 1, corner[2] + 1, itemIn},
-		struct {
-			x, y, z int32
-			id      uint16
-		}{corner[0] + 2, corner[1] + 1, corner[2] + 1, itemOut},
-		struct {
-			x, y, z int32
-			id      uint16
-		}{corner[0] + 1, corner[1] + 1, corner[2] + 1, coil},
-	)
-	// Layer 2: casing corners and the second center coil.
-	placements = append(placements,
-		struct {
-			x, y, z int32
-			id      uint16
-		}{corner[0], corner[1] + 2, corner[2], casing},
-		struct {
-			x, y, z int32
-			id      uint16
-		}{corner[0] + 2, corner[1] + 2, corner[2], casing},
-		struct {
-			x, y, z int32
-			id      uint16
-		}{corner[0], corner[1] + 2, corner[2] + 2, casing},
-		struct {
-			x, y, z int32
-			id      uint16
-		}{corner[0] + 2, corner[1] + 2, corner[2] + 2, casing},
-		struct {
-			x, y, z int32
-			id      uint16
-		}{corner[0] + 1, corner[1] + 2, corner[2] + 1, coil},
-	)
-	// Layer 3 is a casing ring; the controller is deliberately last.
-	for x := int32(0); x < 3; x++ {
-		for z := int32(0); z < 3; z++ {
-			if x == 1 && z == 1 {
-				continue
-			}
-			placements = append(placements, struct {
-				x, y, z int32
-				id      uint16
-			}{corner[0] + x, corner[1] + 3, corner[2] + z, casing})
-		}
-	}
-	placements = append(placements, struct {
-		x, y, z int32
-		id      uint16
-	}{anchor[0], anchor[1], anchor[2], controller})
+	c.WaitForChunkGeneration(4 * time.Second)
 
-	for requestID, p := range placements {
-		req := uint32(requestID + 1)
-		// RIGHT_MOUSE_CLICK resolves the placement adjacent to the targeted block.
-		// Face=DOWN decrements Y, so target one block above the desired cell.
-		targetY := p.y + 1
-		if err := c.SendCtrl(testutil.MsgSetBlockAction, testutil.BuildSetBlockActionWithOptions(playerID, p.x, targetY, p.z, 0, p.id, testutil.SetBlockActionOptions{RequestID: req, Face: 0, HeldItem: p.id})); err != nil {
-			t.Fatalf("place %d (%d,%d,%d): %v", req, p.x, p.y, p.z, err)
-		}
-		if _, err := c.WaitForBlockAck(req, Protocol.BlockAckStatusACCEPTED, 5*time.Second); err != nil {
-			t.Fatalf("ack %d (%d,%d,%d): %v", req, p.x, p.y, p.z, err)
+	placements := ebfFixtureBlocks(corner[0], corner[1], corner[2], -1, -1, -1)
+	for i, p := range placements {
+		if err := c.PlaceBlockAndWait(cs, playerID, p.x, p.y, p.z, p.id,
+			uint32(30000+i), 8*time.Second); err != nil {
+			t.Fatalf("place EBF block %d at (%d,%d,%d): %v", p.id, p.x, p.y, p.z, err)
 		}
 	}
 
@@ -137,7 +114,7 @@ func TestGateway_EBFMultiblockLifecycle(t *testing.T) {
 	}
 
 	teardownRequest := uint32(len(placements) + 1000)
-	if err := c.SendCtrl(testutil.MsgSetBlockAction, testutil.BuildBreakBlockActionWithOptions(playerID, anchor[0], anchor[1], anchor[2], controller, testutil.SetBlockActionOptions{RequestID: teardownRequest})); err != nil {
+	if err := c.SendCtrl(testutil.MsgSetBlockAction, testutil.BuildBreakBlockActionWithOptions(playerID, anchor[0], anchor[1], anchor[2], canonicalCtrl, testutil.SetBlockActionOptions{RequestID: teardownRequest})); err != nil {
 		t.Fatalf("break EBF anchor: %v", err)
 	}
 	ackData, err := c.WaitForBlockAck(teardownRequest, Protocol.BlockAckStatusACCEPTED, 5*time.Second)
@@ -173,14 +150,6 @@ func TestGateway_EBFProcessesIronDust(t *testing.T) {
 	defer cs.Close()
 
 	const playerID = uint64(1401)
-	const casing uint16 = 0xEE05      // 1110:111:5
-	const coil uint16 = 0xEE06        // 1110:111:6 (Kanthal)
-	const controller uint16 = 0xE42F  // 1110:010:47
-	const itemIn uint16 = 0xEE0A      // 1110:111:10
-	const itemOut uint16 = 0xEE0B     // 1110:111:11
-	const energyHatch uint16 = 0xEE0E // 1110:111:14
-	const creativeGenerator uint16 = 0xE800
-	const cable uint16 = 0xF400     // 1111:01:0
 	const ironDust uint16 = 0x711A  // 0:1110:001:26
 	const ironIngot uint16 = 0x6001 // 0:110:1
 
@@ -200,43 +169,8 @@ func TestGateway_EBFProcessesIronDust(t *testing.T) {
 	}
 	c.WaitForChunkGeneration(4 * time.Second)
 
-	type block struct {
-		x, y, z int32
-		id      uint16
-	}
-	var blocks []block
-	for x := int32(0); x < 3; x++ {
-		for z := int32(0); z < 3; z++ {
-			blocks = append(blocks, block{cornerX + x, cornerY, cornerZ + z, casing})
-		}
-	}
-	blocks = append(blocks,
-		block{cornerX, cornerY + 1, cornerZ, casing},
-		block{cornerX + 2, cornerY + 1, cornerZ, casing},
-		block{cornerX, cornerY + 1, cornerZ + 2, casing},
-		block{cornerX + 2, cornerY + 1, cornerZ + 2, casing},
-		block{cornerX + 1, cornerY + 1, cornerZ + 1, coil},
-		block{cornerX, cornerY + 2, cornerZ, casing},
-		block{cornerX + 2, cornerY + 2, cornerZ, casing},
-		block{cornerX, cornerY + 2, cornerZ + 2, casing},
-		block{cornerX + 2, cornerY + 2, cornerZ + 2, casing},
-		block{cornerX + 1, cornerY + 2, cornerZ + 1, coil})
-	for x := int32(0); x < 3; x++ {
-		for z := int32(0); z < 3; z++ {
-			if x != 1 || z != 1 {
-				blocks = append(blocks, block{cornerX + x, cornerY + 3, cornerZ + z, casing})
-			}
-		}
-	}
-	blocks = append(blocks,
-		block{cornerX, cornerY + 1, cornerZ + 1, itemIn},
-		block{cornerX + 2, cornerY + 1, cornerZ + 1, itemOut},
-		block{energyX, energyY, energyZ, energyHatch},
-		block{anchorX, anchorY, anchorZ, controller})
-	// A creative EU source and one cable touch the physical hatch endpoint.
-	blocks = append(blocks,
-		block{energyX + 1, energyY, energyZ, cable},
-		block{energyX + 2, energyY, energyZ, creativeGenerator})
+	type block = fixtureBlock
+	blocks := ebfFixtureBlocks(cornerX, cornerY, cornerZ, energyX, energyY, energyZ)
 
 	for i, p := range blocks {
 		if err := c.PlaceBlockAndWait(cs, playerID, p.x, p.y, p.z, p.id,
@@ -255,7 +189,7 @@ func TestGateway_EBFProcessesIronDust(t *testing.T) {
 	if created.MbType() != 1 {
 		t.Fatalf("EBF pattern: got %d, want 1", created.MbType())
 	}
-	if id, _, _, err := cs.GetBlock(energyX, energyY, energyZ, 3*time.Second); err != nil || id != energyHatch {
+	if id, _, _, err := cs.GetBlock(energyX, energyY, energyZ, 3*time.Second); err != nil || id != canonicalEnergy {
 		t.Fatalf("energy hatch authoritative state: id=%d err=%v", id, err)
 	}
 
@@ -282,6 +216,8 @@ func TestGateway_EBFProcessesIronDust(t *testing.T) {
 	seenProgress := false
 	seenEU := false
 	seenOutput := false
+	maxProgress := float32(0)
+	maxEnergy := uint32(0)
 	for time.Now().Before(deadline) && !seenOutput {
 		msgType, data, err := c.ReadCtrl(500 * time.Millisecond)
 		if err != nil || msgType != testutil.MsgBlockEntityUpdate {
@@ -297,13 +233,23 @@ func TestGateway_EBFProcessesIronDust(t *testing.T) {
 		}
 		seenProgress = seenProgress || update.Progress() > 0
 		seenEU = seenEU || update.Energy() > 0
+		if update.Progress() > maxProgress {
+			maxProgress = update.Progress()
+		}
+		if update.Energy() > maxEnergy {
+			maxEnergy = update.Energy()
+		}
 		for i := 0; i < update.OutputItemsLength(); i++ {
 			var item Protocol.ItemStack
-			if update.OutputItems(&item, i) && item.ItemId() == ironIngot && item.Count() >= 2 {
-				seenOutput = true
+			if update.OutputItems(&item, i) {
+				t.Logf("EBF output item %d: id=%d count=%d", i, item.ItemId(), item.Count())
+				if item.ItemId() == ironIngot && item.Count() >= 2 {
+					seenOutput = true
+				}
 			}
 		}
 	}
+	t.Logf("EBF poll done: maxProgress=%.3f maxEnergy=%d seenEU=%v seenOutput=%v", maxProgress, maxEnergy, seenEU, seenOutput)
 	if !seenEU {
 		t.Fatal("EBF did not expose EU state from physical energy hatch")
 	}

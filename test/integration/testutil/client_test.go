@@ -25,6 +25,94 @@ func TestBuildSetBlockActionWithOptionsCarriesRequestID(t *testing.T) {
 	}
 }
 
+// TestBuildPlaceBlockActionCarriesHeldItem pins the placement contract: the
+// server claims a placement only when held_item != 0
+// (PlaceBlockHandler::canHandle, PlaceBlockHandler.cpp:14-18), and the
+// production client always writes the equipped item (NetClient.cpp:689-706).
+// A builder that silently dropped held_item would make every placement test
+// fail with a confusing REJECTED instead of an obvious encode error.
+func TestBuildPlaceBlockActionCarriesHeldItem(t *testing.T) {
+	const blockID uint16 = 0xE000
+	action := Protocol.GetRootAsSetBlockAction(
+		BuildPlaceBlockAction(1, 2, 3, 4, 0, blockID), 0)
+	if action.HeldItem() != blockID {
+		t.Fatalf("held_item = %d, want %d", action.HeldItem(), blockID)
+	}
+	if action.NewBlockId() != blockID {
+		t.Fatalf("new_block_id = %d, want %d", action.NewBlockId(), blockID)
+	}
+	if action.Action() != Protocol.PlayerActionTypeRIGHT_MOUSE_CLICK {
+		t.Fatalf("action = %v, want RIGHT_MOUSE_CLICK", action.Action())
+	}
+	// Face 0 (DOWN) is what makes the server's --y land on the intended cell.
+	if action.Face() != 0 {
+		t.Fatalf("face = %d, want 0 (DOWN)", action.Face())
+	}
+
+	withOpts := Protocol.GetRootAsSetBlockAction(
+		BuildPlaceBlockActionWithOptions(1, 2, 3, 4, 0, blockID,
+			SetBlockActionOptions{RequestID: 55, Face: 2}), 0)
+	if withOpts.RequestId() != 55 || withOpts.Face() != 2 {
+		t.Fatalf("options not encoded: request=%d face=%d", withOpts.RequestId(), withOpts.Face())
+	}
+	// held_item is always the placed block, never whatever the caller passed.
+	if withOpts.HeldItem() != blockID {
+		t.Fatalf("held_item = %d, want %d", withOpts.HeldItem(), blockID)
+	}
+}
+
+// TestBuildSetBlockActionIsEmptyHand documents the deliberate difference: the
+// no-options builder produces an empty hand, which the server rejects. Tests
+// that mean to place a block must use BuildPlaceBlockAction.
+func TestBuildSetBlockActionIsEmptyHand(t *testing.T) {
+	action := Protocol.GetRootAsSetBlockAction(BuildSetBlockAction(1, 2, 3, 4, 0, 7), 0)
+	if action.HeldItem() != 0 {
+		t.Fatalf("held_item = %d, want 0 (empty hand)", action.HeldItem())
+	}
+	if action.NewBlockId() != 7 {
+		t.Fatalf("new_block_id = %d, want 7", action.NewBlockId())
+	}
+}
+
+func TestInventoryItemCountSumsAcrossSlots(t *testing.T) {
+	data := buildTestInventoryUpdate(1, []testSlot{
+		{itemID: 100, count: 12},
+		{itemID: 22530, count: 4},
+		{itemID: 22530, count: 3},
+	})
+	if got := InventoryItemCount(data, 22530); got != 7 {
+		t.Fatalf("InventoryItemCount = %d, want 7", got)
+	}
+	if got := InventoryItemCount(data, 999); got != 0 {
+		t.Fatalf("InventoryItemCount for an absent item = %d, want 0", got)
+	}
+	// A zero-length payload has no root table; the helper must not panic.
+	if got := InventoryItemCount(nil, 22530); got != 0 {
+		t.Fatalf("InventoryItemCount(nil) = %d, want 0", got)
+	}
+	if got := InventoryItemCount([]byte{}, 22530); got != 0 {
+		t.Fatalf("InventoryItemCount(empty) = %d, want 0", got)
+	}
+}
+
+func TestFirstSlotWithItemFindsRealSlot(t *testing.T) {
+	data := buildTestInventoryUpdate(1, []testSlot{
+		{itemID: 100, count: 1},
+		{itemID: 0, count: 0},
+		{itemID: 22530, count: 4},
+		{itemID: 22530, count: 2},
+	})
+	if got := FirstSlotWithItem(data, 22530); got != 2 {
+		t.Fatalf("FirstSlotWithItem = %d, want 2", got)
+	}
+	if got := FirstSlotWithItem(data, 777); got != -1 {
+		t.Fatalf("FirstSlotWithItem for an absent item = %d, want -1", got)
+	}
+	if got := FirstSlotWithItem(nil, 22530); got != -1 {
+		t.Fatalf("FirstSlotWithItem(nil) = %d, want -1", got)
+	}
+}
+
 type testSlot struct {
 	itemID uint16
 	count  byte

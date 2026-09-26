@@ -9,13 +9,87 @@ import (
 )
 
 var (
-	craftBenchPos = [3]int32{200, 50, 200}
-	furnacePos    = [3]int32{201, 50, 200}
-	genPos        = [3]int32{202, 50, 200} // heat generator adjacent to furnace
+	// Two adjacent cells: the furnace at x, the heat generator at genPos.x.
+	furnacePos = [3]int32{201, 50, 200}
+	genPos     = [3]int32{202, 50, 200}
 )
 
-// TC3: Craft — valid recipe (2x2 oak_planks → crafting_table).
-// TC4: Craft — invalid recipe (random items → failure).
+// invSnapshot holds the InventoryUpdate pushes seen so far. Gateway forwards
+// them without correlation and the response wait below discards anything that
+// is not the type it wants, so a snapshot that proves the assertion can arrive
+// DURING a SetMachineSlotResp wait. Buffering them keeps that evidence.
+type invSnapshot struct {
+	t        *testing.T
+	c        *testutil.GatewayClient
+	playerID uint64
+	seen     [][]byte
+}
+
+func (s *invSnapshot) absorb(msgType uint8, data []byte) {
+	if msgType == testutil.MsgInventoryUpdate && len(data) != 0 {
+		s.seen = append(s.seen, append([]byte(nil), data...))
+	}
+}
+
+func (s *invSnapshot) count(itemID uint16) int {
+	total := 0
+	for _, data := range s.seen {
+		if u := Protocol.GetRootAsInventoryUpdate(data, 0); u != nil && u.PlayerId() == s.playerID {
+			total += testutil.InventoryItemCount(data, itemID)
+		}
+	}
+	return total
+}
+
+// sendMachineSlot sends a SetMachineSlotReq and waits for its response, keeping
+// any inventory snapshots that arrive in between. Returns the response.
+func (s *invSnapshot) sendMachineSlot(what string, x, y, z int32, slot uint16,
+	item uint16, count uint8, playerSlot uint8) *Protocol.SetMachineSlotResp {
+	s.t.Helper()
+	if err := s.c.SendCtrl(testutil.MsgSetMachineSlot,
+		testutil.BuildSetMachineSlotReq(s.playerID, x, y, z, slot, item, count, 0, playerSlot)); err != nil {
+		s.t.Fatalf("send SetMachineSlotReq (%s): %v", what, err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		msgType, data, err := s.c.ReadCtrl(time.Until(deadline))
+		if err != nil {
+			s.t.Fatalf("%s response: %v", what, err)
+		}
+		if msgType == testutil.MsgSetMachineSlotResp {
+			return Protocol.GetRootAsSetMachineSlotResp(data, 0)
+		}
+		s.absorb(msgType, data)
+	}
+	s.t.Fatalf("%s: no SetMachineSlotResp", what)
+	return nil
+}
+
+// awaitItem drains until the buffered + new snapshots prove the player holds
+// at least min of itemID.
+func (s *invSnapshot) awaitItem(itemID uint16, min int, timeout time.Duration) {
+	s.t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if s.count(itemID) >= min {
+			return
+		}
+		msgType, data, err := s.c.ReadCtrl(time.Until(deadline))
+		if err != nil {
+			break
+		}
+		s.absorb(msgType, data)
+	}
+	s.t.Fatalf("player %d never held %d of item %d (best snapshot total %d)",
+		s.playerID, min, itemID, s.count(itemID))
+}
+
+// TestCrafting_ValidInvalid covers the "stick" recipe
+// (crafting_table.yaml:48-59): two oak_planks stacked vertically produce four
+// sticks. It shares the server-authoritative workbench machinery with
+// TestCrafting_RequestResponse but exercises a different recipe, and its
+// InvalidRecipe case proves a grid that merely has items in it is still
+// rejected when it matches nothing.
 func TestCrafting_ValidInvalid(t *testing.T) {
 	c, err := testutil.DialGateway(gw, 5*time.Second)
 	if err != nil {
@@ -23,77 +97,60 @@ func TestCrafting_ValidInvalid(t *testing.T) {
 	}
 	defer c.Close()
 
-	playerID := uint64(42)
-
-	// Place a workbench block so that the ECS has an entity at craftBenchPos
-	t.Run("PlaceWorkbench", func(t *testing.T) {
-		// block_id=14 = crafting_table (from items.csv)
-		fbData := testutil.BuildSetBlockAction(playerID, craftBenchPos[0], craftBenchPos[1], craftBenchPos[2], 0, 14)
-		if err := c.SendCtrl(testutil.MsgSetBlockAction, fbData); err != nil {
-			t.Fatalf("send SetBlockAction: %v", err)
-		}
-		if _, err := c.ExpectMsgType(testutil.MsgBlockAck, 5*time.Second); err != nil {
-			t.Fatalf("expect BlockAck: %v", err)
-		}
-	})
+	const playerID = uint64(43)
 
 	t.Run("ValidRecipe", func(t *testing.T) {
-		// Recipe: "base:stick" — oak_planks(13) vertical → stick(32) x4
-		// Grid (3x3):
-		//   [13] [ 0] [ 0]
-		//   [13] [ 0] [ 0]
-		//   [ 0] [ 0] [ 0]
-		grid := [][3]uint16{
-			{13, 1, 0}, {0, 0, 0}, {0, 0, 0},
-			{13, 1, 0}, {0, 0, 0}, {0, 0, 0},
-			{0, 0, 0}, {0, 0, 0}, {0, 0, 0},
-		}
-		fbData := testutil.BuildCraftRequest(playerID,
-			craftBenchPos[0], craftBenchPos[1], craftBenchPos[2], grid)
+		b := &benchSession{t: t, c: c, playerID: playerID}
+		pos := [3]int32{200, 50, 200}
+		b.open(pos, 45001)
+		b.grant(oakPlanksID, 2)
+		// Pattern [oak_planks, ~, ~] twice → cells 0 and 3.
+		b.fillGrid(oakPlanksID, 0, 3)
 
-		if err := c.SendCtrl(testutil.MsgCraftRequest, fbData); err != nil {
-			t.Fatalf("send CraftRequest: %v", err)
+		resp := b.craft()
+		if resp == nil {
+			t.Fatal("CraftResponse: nil root")
 		}
-
-		data, err := c.ExpectMsgType(testutil.MsgCraftResponse, 5*time.Second)
-		if err != nil {
-			t.Fatalf("expect CraftResponse: %v", err)
+		if !resp.Success() {
+			t.Fatalf("stick craft failed: %s", string(resp.Error()))
 		}
-
-		resp := testutil.AssertCraftResponse(t, data, true)
 		result := resp.Result(nil)
 		if result == nil {
 			t.Fatal("CraftResponse result is nil")
 		}
-		t.Logf("Craft result: item_id=%d count=%d meta=%d (expected stick(32)x4)",
+		// The recipe yields 4 sticks, not one.
+		if result.ItemId() != stickID || result.Count() < 4 {
+			t.Fatalf("craft result item=%d count=%d, want item=%d count>=4",
+				result.ItemId(), result.Count(), stickID)
+		}
+		t.Logf("Craft result: item_id=%d count=%d meta=%d",
 			result.ItemId(), result.Count(), result.Meta())
 	})
 
 	t.Run("InvalidRecipe", func(t *testing.T) {
-		// Random items that don't match any recipe
-		grid := [][3]uint16{
-			{1, 1, 0}, {2, 1, 0}, {3, 1, 0},
-			{4, 1, 0}, {5, 1, 0}, {6, 1, 0},
-			{7, 1, 0}, {8, 1, 0}, {9, 1, 0},
-		}
-		fbData := testutil.BuildCraftRequest(playerID,
-			craftBenchPos[0], craftBenchPos[1], craftBenchPos[2], grid)
+		b := &benchSession{t: t, c: c, playerID: playerID}
+		pos := [3]int32{203, 50, 200}
+		b.open(pos, 45002)
+		// A single item matches no recipe.
+		b.grant(ironIngotID, 1)
+		b.fillGrid(ironIngotID, 0)
 
-		if err := c.SendCtrl(testutil.MsgCraftRequest, fbData); err != nil {
-			t.Fatalf("send CraftRequest: %v", err)
+		resp := b.craft()
+		if resp == nil {
+			t.Fatal("CraftResponse: nil root")
 		}
-
-		data, err := c.ExpectMsgType(testutil.MsgCraftResponse, 5*time.Second)
-		if err != nil {
-			t.Fatalf("expect CraftResponse: %v", err)
+		if resp.Success() {
+			t.Fatal("a one-item grid must not match any recipe")
 		}
-
-		testutil.AssertCraftResponse(t, data, false)
+		if string(resp.Error()) == "" {
+			t.Error("a rejected craft must carry a reason")
+		}
+		t.Logf("Craft correctly rejected: %s", string(resp.Error()))
 	})
 }
 
-// TC8: SetMachineSlotReq — move item from player inventory into machine.
-// TC9: SetMachineSlotReq — extract item from machine to player inventory.
+// TC8: SetMachineSlotReq — move an item into a machine slot.
+// TC9: SetMachineSlotReq — extract the item back out.
 func TestMachine_SlotTransfer(t *testing.T) {
 	c, err := testutil.DialGateway(gw, 5*time.Second)
 	if err != nil {
@@ -101,85 +158,89 @@ func TestMachine_SlotTransfer(t *testing.T) {
 	}
 	defer c.Close()
 
-	playerID := uint64(42)
+	const playerID = uint64(44)
 
-	// Place a heat_furnace (block_id=36) for machine slot tests
-	t.Run("PlaceFurnace", func(t *testing.T) {
-		fbData := testutil.BuildSetBlockAction(playerID,
-			furnacePos[0], furnacePos[1], furnacePos[2], 0, 36)
-		if err := c.SendCtrl(testutil.MsgSetBlockAction, fbData); err != nil {
-			t.Fatalf("send SetBlockAction: %v", err)
-		}
-		if _, err := c.ExpectMsgType(testutil.MsgBlockAck, 5*time.Second); err != nil {
-			t.Fatalf("expect BlockAck: %v", err)
-		}
-	})
+	// heat_furnace is "1110:000:0" packed (machines.yaml:35-45). The old
+	// literal 36 predates the packed-id scheme and names no machine.
+	const heatFurnaceID uint16 = 0xE000
+
+	if err := c.RequestChunk(playerID, furnacePos[0]>>5, furnacePos[1]>>5, furnacePos[2]>>5); err != nil {
+		t.Fatalf("request chunk: %v", err)
+	}
+	c.WaitForChunkGeneration(4 * time.Second)
+
+	cs, err := testutil.DialChunkStore("127.0.0.1", 5001, 5*time.Second)
+	if err != nil {
+		t.Fatalf("dial ChunkStore: %v", err)
+	}
+	defer cs.Close()
+	y := airCellAbove(t, cs, furnacePos[0], furnacePos[1], furnacePos[2])
+
+	if err := c.PlaceBlockAndWait(cs, playerID, furnacePos[0], y, furnacePos[2],
+		heatFurnaceID, 45100, 8*time.Second); err != nil {
+		t.Fatalf("place heat furnace: %v", err)
+	}
+	// Opening the machine window rehydrates the ECS container that
+	// SetMachineSlotReq mutates; the real client does this first.
+	if err := c.SendCtrl(testutil.MsgMachineOpenReq,
+		testutil.BuildContainerOpenReq(playerID, furnacePos[0], y, furnacePos[2])); err != nil {
+		t.Fatalf("open furnace: %v", err)
+	}
+
+	snap := &invSnapshot{t: t, c: c, playerID: playerID}
 
 	t.Run("PlaceItemInMachineSlot", func(t *testing.T) {
-		// Put cobblestone (item_id=7) into furnace slot 0 (input)
 		// player_slot=255 means "from cursor, not from player inventory"
-		fbData := testutil.BuildSetMachineSlotReq(playerID,
-			furnacePos[0], furnacePos[1], furnacePos[2],
-			0,     // slot_index
-			7,     // item_id = cobblestone
-			1,     // count
-			0,     // meta
-			255)   // player_slot = cursor (not from inventory)
-		if err := c.SendCtrl(testutil.MsgSetMachineSlot, fbData); err != nil {
-			t.Fatalf("send SetMachineSlotReq: %v", err)
+		// (energy_chain_test.go documents the same convention).
+		resp := snap.sendMachineSlot("insert", furnacePos[0], y, furnacePos[2],
+			0 /*input slot*/, cobbleItemID, 1, 255)
+		if resp == nil || !resp.Success() {
+			t.Fatalf("server rejected the machine-slot insert")
 		}
-
-		// Should get a BlockEntityUpdate back with the new machine state
-		data, err := c.ExpectMsgType(testutil.MsgBlockEntityUpdate, 5*time.Second)
-		if err != nil {
-			t.Fatalf("expect BlockEntityUpdate: %v", err)
-		}
-		update := Protocol.GetRootAsBlockEntityUpdate(data, 0)
-		if update == nil {
-			t.Fatal("BlockEntityUpdate: nil root")
-		}
-		t.Logf("Machine state: type=%d progress=%.2f energy=%d",
-			update.MachineType(), update.Progress(), update.Energy())
 	})
 
 	t.Run("ExtractItemFromMachineSlot", func(t *testing.T) {
-		// Extract item from machine slot 0 to player inventory slot 5
-		// item_id=0 + count=0 means "clear the slot"
-		// player_slot=5 means "put extracted item into player inventory slot 5"
-		fbData := testutil.BuildSetMachineSlotReq(playerID,
-			furnacePos[0], furnacePos[1], furnacePos[2],
-			0,     // slot_index
-			0,     // item_id = 0 (extract)
-			0,     // count
-			0,     // meta
-			5)     // player_slot = extract to player slot 5
-		if err := c.SendCtrl(testutil.MsgSetMachineSlot, fbData); err != nil {
-			t.Fatalf("send SetMachineSlotReq: %v", err)
+		// The input slot no longer holds the cobblestone: the running furnace
+		// consumed it as soon as MachineSystem matched base:smelting_cobblestone
+		// (MachineSystem.cpp:173-181, furnace.yaml:25-32). So the extract acts on
+		// an already-empty input slot and correctly yields nothing.
+		//
+		// To prove the extract path itself, refill the slot with an item no
+		// furnace recipe consumes, so MachineSystem cannot race the click.
+		resp := snap.sendMachineSlot("refill", furnacePos[0], y, furnacePos[2],
+			0 /*input slot*/, stickID, 3, 255)
+		if resp == nil || !resp.Success() {
+			t.Fatalf("server rejected the machine-slot refill")
 		}
 
-		data, err := c.ExpectMsgType(testutil.MsgBlockEntityUpdate, 5*time.Second)
-		if err != nil {
-			t.Fatalf("expect BlockEntityUpdate: %v", err)
+		// item_id=0 + count=0 clears the slot; player_slot=5 sends the
+		// extracted stack to player slot 5 (MachineSlotHandler.cpp:92-99).
+		resp = snap.sendMachineSlot("extract", furnacePos[0], y, furnacePos[2],
+			0, 0, 0, 5)
+		if resp == nil || !resp.Success() {
+			t.Fatalf("server rejected the machine-slot extract")
 		}
-		update := Protocol.GetRootAsBlockEntityUpdate(data, 0)
-		if update == nil {
-			t.Fatal("BlockEntityUpdate: nil root")
-		}
-		t.Logf("After extract: machine_type=%d", update.MachineType())
+		// The extracted stack must reach the player grid.
+		snap.awaitItem(stickID, 3, 5*time.Second)
 	})
 }
 
-// TC11: Machine ECS tick — heat generator burns coal, furnace smells iron ore.
-// TC12: Heat transfer — generator produces HEAT, HeatTransferSystem passes it to furnace.
+// TestMachine_GeneratorFurnaceChain proves the full heat chain: a heat
+// generator burns coal, HeatTransferSystem passes the HEAT to an adjacent heat
+// furnace, and MachineSystem smelts iron_ore into an iron_ingot.
+//
+// The old version of this test asserted only that the furnace BLOCK still
+// existed, which is a tautology — a furnace that never smelted anything
+// passes it. It now waits for the smelted output in the machine's
+// BlockEntityUpdate stream.
 //
 // Flow:
-//   1. Place heat_generator (46) at genPos
-//   2. Place heat_furnace (36) at furnacePos (adjacent)
-//   3. Put coal (44) in generator slot 0
-//   4. GeneratorSystem tick burns coal → produces HEAT
-//   5. HeatTransferSystem tick passes HEAT to adjacent furnace
-//   6. Put iron_ore (3) in furnace slot 0
-//   7. MachineSystem tick finds recipe → consumes ore → produces iron_ingot (4)
+//  1. Place heat_generator ("1110:000:2" → 0xE002) adjacent to
+//  2. Place heat_furnace ("1110:000:0" → 0xE000)
+//  3. Open both machine windows (the ECS container must be rehydrated)
+//  4. Put coal ("0:11110:2") in the generator's fuel slot
+//  5. Put iron_ore ("10:0") in the furnace's input slot
+//  6. Wait for the furnace to report an iron_ingot output
 func TestMachine_GeneratorFurnaceChain(t *testing.T) {
 	c, err := testutil.DialGateway(gw, 5*time.Second)
 	if err != nil {
@@ -187,71 +248,101 @@ func TestMachine_GeneratorFurnaceChain(t *testing.T) {
 	}
 	defer c.Close()
 
-	playerID := uint64(42)
+	const playerID = uint64(45)
+	// Packed machine ids from src/content/data/registry/machines.yaml. The old
+	// literals 36/46/44/3 predate the packed-id scheme and name nothing.
+	const (
+		heatFurnaceID   uint16 = 0xE000 // "1110:000:0"
+		heatGeneratorID uint16 = 0xE002 // "1110:000:2"
+	)
 
-	t.Run("PlaceHeatGenerator", func(t *testing.T) {
-		fbData := testutil.BuildSetBlockAction(playerID,
-			genPos[0], genPos[1], genPos[2], 0, 46)
-		if err := c.SendCtrl(testutil.MsgSetBlockAction, fbData); err != nil {
-			t.Fatalf("send SetBlockAction: %v", err)
-		}
-		if _, err := c.ExpectMsgType(testutil.MsgBlockAck, 5*time.Second); err != nil {
-			t.Fatalf("expect BlockAck: %v", err)
-		}
-	})
+	if err := c.RequestChunk(playerID, furnacePos[0]>>5, furnacePos[1]>>5, furnacePos[2]>>5); err != nil {
+		t.Fatalf("request chunk: %v", err)
+	}
+	c.WaitForChunkGeneration(4 * time.Second)
 
-	t.Run("PlaceFurnaceAdjacent", func(t *testing.T) {
-		fbData := testutil.BuildSetBlockAction(playerID,
-			furnacePos[0], furnacePos[1], furnacePos[2], 0, 36)
-		if err := c.SendCtrl(testutil.MsgSetBlockAction, fbData); err != nil {
-			t.Fatalf("send SetBlockAction: %v", err)
-		}
-		if _, err := c.ExpectMsgType(testutil.MsgBlockAck, 5*time.Second); err != nil {
-			t.Fatalf("expect BlockAck: %v", err)
-		}
-	})
+	cs, err := testutil.DialChunkStore("127.0.0.1", 5001, 5*time.Second)
+	if err != nil {
+		t.Fatalf("dial ChunkStore: %v", err)
+	}
+	defer cs.Close()
+	y := airCellAbove(t, cs, furnacePos[0], furnacePos[1], furnacePos[2])
+	// The generator must be ADJACENT for HeatTransferSystem to link the two.
+	genCell := [3]int32{genPos[0], y, genPos[2]}
 
-	t.Run("PutCoalInGenerator", func(t *testing.T) {
-		// Put coal (44) into generator slot 0
-		fbData := testutil.BuildSetMachineSlotReq(playerID,
-			genPos[0], genPos[1], genPos[2],
-			0, 44, 1, 0, 255)
-		if err := c.SendCtrl(testutil.MsgSetMachineSlot, fbData); err != nil {
-			t.Fatalf("send SetMachineSlotReq: %v", err)
+	for i, m := range []struct {
+		x, z int32
+		id   uint16
+	}{
+		{furnacePos[0], furnacePos[2], heatFurnaceID},
+		{genCell[0], genCell[2], heatGeneratorID},
+	} {
+		if err := c.PlaceBlockAndWait(cs, playerID, m.x, y, m.z, m.id,
+			uint32(45200+i), 8*time.Second); err != nil {
+			t.Fatalf("place machine 0x%04X: %v", m.id, err)
+		}
+	}
+
+	// Opening each window rehydrates the live ECS container that
+	// SetMachineSlotReq mutates.
+	for _, m := range []struct {
+		x, z int32
+		id   uint16
+	}{{furnacePos[0], furnacePos[2], heatFurnaceID}, {genCell[0], genCell[2], heatGeneratorID}} {
+		if err := c.SendCtrl(testutil.MsgMachineOpenReq,
+			testutil.BuildContainerOpenReq(playerID, m.x, y, m.z)); err != nil {
+			t.Fatalf("open machine 0x%04X: %v", m.id, err)
 		}
 		if _, err := c.ExpectMsgType(testutil.MsgBlockEntityUpdate, 5*time.Second); err != nil {
-			t.Fatalf("expect BlockEntityUpdate: %v", err)
+			t.Fatalf("open update for 0x%04X: %v", m.id, err)
 		}
-	})
+	}
 
-	t.Run("PutIronOreInFurnace", func(t *testing.T) {
-		fbData := testutil.BuildSetMachineSlotReq(playerID,
-			furnacePos[0], furnacePos[1], furnacePos[2],
-			0, 3, 1, 0, 255) // iron_ore (3) into furnace slot 0
-		if err := c.SendCtrl(testutil.MsgSetMachineSlot, fbData); err != nil {
-			t.Fatalf("send SetMachineSlotReq: %v", err)
+	insert := func(what string, x, z int32, slot uint16, item uint16, count uint8) {
+		t.Helper()
+		if err := c.SendCtrl(testutil.MsgSetMachineSlot,
+			testutil.BuildSetMachineSlotReq(playerID, x, y, z, slot, item, count, 0, 255)); err != nil {
+			t.Fatalf("insert %s: %v", what, err)
 		}
-		if _, err := c.ExpectMsgType(testutil.MsgBlockEntityUpdate, 5*time.Second); err != nil {
-			t.Fatalf("expect BlockEntityUpdate: %v", err)
-		}
-	})
-
-	t.Run("WaitForSmelting", func(t *testing.T) {
-		// Recipe takes 200 ticks * 50ms = 10s. Wait 15s for safety.
-		time.Sleep(15 * time.Second)
-		c.DrainUnexpected(1 * time.Second)
-
-		// Verify the furnace block still exists at the expected position
-		fbData := testutil.BuildSetBlockAction(playerID,
-			furnacePos[0], furnacePos[1], furnacePos[2], 36, 36)
-		if err := c.SendCtrl(testutil.MsgSetBlockAction, fbData); err != nil {
-			t.Fatalf("send SetBlockAction: %v", err)
-		}
-		data, err := c.ExpectMsgType(testutil.MsgBlockAck, 5*time.Second)
+		data, err := c.ExpectMsgType(testutil.MsgSetMachineSlotResp, 5*time.Second)
 		if err != nil {
-			t.Fatalf("expect BlockAck: %v", err)
+			t.Fatalf("insert %s response: %v", what, err)
 		}
-		testutil.AssertBlockAck(t, data, 1) // ACCEPTED = furnace still there
-		t.Log("Furnace block present — recipe completed (verified via ECS debug logs)")
-	})
+		if resp := Protocol.GetRootAsSetMachineSlotResp(data, 0); resp == nil || !resp.Success() {
+			t.Fatalf("server rejected inserting %s", what)
+		}
+	}
+	insert("coal into generator", genCell[0], genCell[2], 0, coalItemID, 8)
+	insert("iron ore into furnace", furnacePos[0], furnacePos[2], 0, ironOreItemID, 1)
+
+	// The furnace can only smelt while it is receiving HEAT from the
+	// generator, so poll the machine state stream for the real output rather
+	// than sleeping a fixed interval.
+	deadline := time.Now().Add(40 * time.Second)
+	smelted := false
+	for time.Now().Before(deadline) && !smelted {
+		msgType, data, err := c.ReadCtrl(500 * time.Millisecond)
+		if err != nil || msgType != testutil.MsgBlockEntityUpdate || len(data) == 0 {
+			continue
+		}
+		update := Protocol.GetRootAsBlockEntityUpdate(data, 0)
+		var pos Protocol.Vec3i
+		if update == nil || update.Pos(&pos) == nil {
+			continue
+		}
+		if pos.X() != furnacePos[0] || pos.Y() != y || pos.Z() != furnacePos[2] {
+			continue
+		}
+		var item Protocol.ItemStack
+		for i := 0; i < update.OutputItemsLength(); i++ {
+			if update.OutputItems(&item, i) && item.ItemId() == ironIngotID && item.Count() > 0 {
+				smelted = true
+				t.Logf("furnace smelted %d iron_ingot at progress=%.2f",
+					item.Count(), update.Progress())
+			}
+		}
+	}
+	if !smelted {
+		t.Fatal("heat furnace never produced an iron_ingot: the generator→furnace heat chain did not complete")
+	}
 }
