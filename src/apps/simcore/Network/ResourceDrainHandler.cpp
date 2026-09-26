@@ -92,17 +92,71 @@ void ResourceDrainHandler::handlePortRegister(const std::vector<std::uint8_t>& d
         }
         if (existing.owner_id != port.owner_id ||
             existing.resource_kind != port.resource_kind) {
-            spdlog::warn("ResourceDrainHandler: port {} re-registered by different (owner, kind): "
-                         "old=({},{}) new=({},{})",
-                         port.port_id, existing.owner_id,
-                         static_cast<int>(existing.resource_kind), port.owner_id,
-                         static_cast<int>(port.resource_kind));
+            // Two ports fighting over one port_id re-register on every
+            // handshake, so a per-occurrence warning here is an unbounded
+            // spew (measured 205 lines/s). Report each conflicting identity
+            // once and stay silent for its repeats until the port's state
+            // changes underneath it.
+            if (shouldWarnConflict(port)) {
+                spdlog::warn("ResourceDrainHandler: port {} re-registered by different (owner, kind): "
+                             "old=({},{}) new=({},{})",
+                             port.port_id, existing.owner_id,
+                             static_cast<int>(existing.resource_kind), port.owner_id,
+                             static_cast<int>(port.resource_kind));
+            }
+        } else {
+            // Same identity, newer epoch: the port is being replaced cleanly.
+            // Earlier conflicts about this port_id are stale now.
+            forgetPortConflicts(port.port_id);
         }
     }
     ports_[port.port_id] = port;
     spdlog::debug("ResourceDrainHandler: registered port {} owner={} kind={} role={} epoch={} rate={} cap={}",
                   port.port_id, port.owner_id, static_cast<int>(port.resource_kind),
                   static_cast<int>(port.role), port.epoch, port.rate, port.capacity);
+}
+
+bool ResourceDrainHandler::shouldWarnConflict(const gtnh::common::ResourcePort& incoming) {
+    // Key on the full wire registration key of the incoming identity: the same
+    // hostile pair repeating forever collapses to one entry and one warning,
+    // while a genuinely new (owner, kind) collision is still reported.
+    const gtnh::common::ResourcePortRegistrationKey key = incoming.registrationKey();
+    if (!conflict_warned_.insert(key).second) {
+        return false; // already reported this exact identity
+    }
+    conflict_warn_order_.push_back(key);
+    // Backstop only: entries are normally dropped again by
+    // forgetPortConflicts/forgetOwnerConflicts when the port leaves the
+    // registry, so this bound is not reached by honest traffic. A peer that
+    // keeps inventing identities on one port would otherwise grow this set
+    // without bound, so drop the oldest identity instead.
+    while (conflict_warn_order_.size() > kConflictWarnMaxEntries) {
+        conflict_warned_.erase(conflict_warn_order_.front());
+        conflict_warn_order_.pop_front();
+    }
+    return true;
+}
+
+void ResourceDrainHandler::forgetPortConflicts(gtnh::common::PortId port_id) {
+    for (auto it = conflict_warn_order_.begin(); it != conflict_warn_order_.end();) {
+        if (it->port_id == port_id) {
+            conflict_warned_.erase(*it);
+            it = conflict_warn_order_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void ResourceDrainHandler::forgetOwnerConflicts(std::uint64_t owner_id) {
+    for (auto it = conflict_warn_order_.begin(); it != conflict_warn_order_.end();) {
+        if (it->owner_id == owner_id) {
+            conflict_warned_.erase(*it);
+            it = conflict_warn_order_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 void ResourceDrainHandler::handlePortRemove(const std::vector<std::uint8_t>& data) {
@@ -120,6 +174,9 @@ void ResourceDrainHandler::handlePortRemove(const std::vector<std::uint8_t>& dat
         return; // not an exact match — keep the port
     }
     ports_.erase(it);
+    // The port left the registry: a later re-registration of this port_id is
+    // new information, so its conflict suppression must not outlive it.
+    forgetPortConflicts(key.port_id);
     for (auto rit = replay_.begin(); rit != replay_.end();) {
         if (rit->second.response.port_id == key.port_id) {
             rit = replay_.erase(rit);
@@ -286,6 +343,7 @@ void ResourceDrainHandler::removeOwnerPorts(std::uint64_t owner_id) {
     }
     if (!removed_any) return;
 
+    forgetOwnerConflicts(owner_id);
     for (auto rit = replay_.begin(); rit != replay_.end();) {
         if (rit->second.owner_id == owner_id) {
             rit = replay_.erase(rit);

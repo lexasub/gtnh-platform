@@ -12,8 +12,11 @@
 #include <apps/pipe_network/PipeConsumeTransactions.h>
 
 #include <entt/entt.hpp>
+#include <spdlog/sinks/base_sink.h>
+#include <spdlog/spdlog.h>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -746,6 +749,191 @@ void test_drain_capacity_boundaries_exact_fill() {
     CHECK(fluid.isEmpty(), "isEmpty boundary holds");
 }
 
+// -- log-suppression: conflicting re-registration must not spew ---------------
+
+// Counting sink: records the level of every log record that reaches the
+// spdlog registry, so the number of emitted WARNs can be asserted directly
+// instead of scraping text. spdlog::sinks::base_sink already holds its mutex
+// around sink_it_, so neither the sink callback nor count() may re-lock it.
+class LevelCountingSink : public spdlog::sinks::base_sink<std::mutex> {
+public:
+    std::size_t count(spdlog::level::level_enum level) {
+        const auto it = counts_.find(static_cast<int>(level));
+        return it == counts_.end() ? 0 : it->second;
+    }
+    void reset() { counts_.clear(); }
+
+protected:
+    void sink_it_(const spdlog::details::log_msg& msg) override {
+        ++counts_[static_cast<int>(msg.level)];
+    }
+    void flush_() override {}
+
+private:
+    std::unordered_map<int, std::size_t> counts_;
+};
+
+// RAII: swap in a fresh counting sink as the default logger, then restore the
+// previous one and drop the temp logger so the rest of the suite is unaffected.
+struct ScopedLevelCounter {
+    std::shared_ptr<spdlog::logger> counting;
+    std::shared_ptr<spdlog::logger> previous;
+    spdlog::level::level_enum previous_level;
+
+    explicit ScopedLevelCounter(spdlog::level::level_enum threshold = spdlog::level::trace)
+        : previous(spdlog::default_logger()), previous_level(previous->level()) {
+        counting = std::make_shared<spdlog::logger>(
+            "rdh-count", std::make_shared<LevelCountingSink>());
+        spdlog::set_default_logger(counting);
+        spdlog::set_level(threshold);
+    }
+    ~ScopedLevelCounter() {
+        spdlog::set_default_logger(previous);
+        spdlog::set_level(previous_level);
+        spdlog::drop(counting->name());
+    }
+    std::size_t warns() const {
+        return static_cast<LevelCountingSink*>(counting->sinks().back().get())
+            ->count(spdlog::level::warn);
+    }
+};
+
+// The production defect: two ports continuously re-registering into each other
+// with different (owner, kind) produced one spdlog::warn per occurrence
+// (measured 205 lines/s), so the log grew without bound. The warning must be
+// emitted once per conflicting identity, not once per occurrence.
+void test_conflicting_re_registration_warns_once() {
+    DrainFixture fx;
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+    const auto payload_a = serializePortRegister(
+        makeFluidPort(257, owner, PortRole::SOURCE, 0, 1000), kSteamId);
+    // Same port_id, different owner and kind: the exact conflicting pair
+    // observed in production (ports 257/258 thrashing against each other).
+    const auto payload_b = serializePortRegister(
+        makeFluidPort(257, owner + 1, PortRole::SOURCE, 0, 1000), kWaterId);
+    const auto payload_c = serializePortRegister(
+        makeFluidPort(257, owner + 2, PortRole::SINK, 0, 1000), kWaterId);
+
+    {
+        ScopedLevelCounter counter;
+        // Warm-up: establish the port, then flip the identity back and forth.
+        fx.handler->handlePortRegister(payload_a);
+        const std::size_t after_first = counter.warns();
+        CHECK_EQ(after_first, std::size_t(0), "first registration is not a conflict");
+
+        fx.handler->handlePortRegister(payload_b);
+        CHECK_EQ(counter.warns(), std::size_t(1), "first conflict warns exactly once");
+
+        // Sustained conflict: bounded, not proportional to the call count.
+        constexpr int kRounds = 2000;
+        for (int i = 0; i < kRounds; ++i) {
+            fx.handler->handlePortRegister(payload_a);
+            fx.handler->handlePortRegister(payload_b);
+        }
+        CHECK_EQ(counter.warns(), std::size_t(2),
+                 "repeated identical conflict stays bounded (one per identity)");
+
+        // A third distinct identity is a NEW conflict and must still be seen.
+        fx.handler->handlePortRegister(payload_c);
+        CHECK_EQ(counter.warns(), std::size_t(3), "a distinct conflicting identity warns");
+
+        // Growth check: the count must not scale with rounds.
+        const std::size_t warns = counter.warns();
+        CHECK(warns < static_cast<std::size_t>(kRounds / 10),
+              "warn count is bounded, not proportional to call count");
+        printf("    %d rounds x2 registrations -> %zu WARN records (%.4f per call)\n",
+               kRounds, warns, static_cast<double>(warns) / (2.0 * kRounds));
+    }
+}
+
+// Suppression state must not outlive the port: after the port is deregistered
+// the same conflict is new information and must warn again.
+void test_conflict_suppression_cleared_on_deregister() {
+    DrainFixture fx;
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+    const auto payload_a = serializePortRegister(
+        makeFluidPort(258, owner, PortRole::SOURCE, 0, 1000), kSteamId);
+    const auto payload_b = serializePortRegister(
+        makeFluidPort(258, owner + 1, PortRole::SOURCE, 0, 1000), kWaterId);
+
+    ScopedLevelCounter counter;
+    fx.handler->handlePortRegister(payload_a);
+    fx.handler->handlePortRegister(payload_b);
+    CHECK_EQ(counter.warns(), std::size_t(1), "first conflict warns once");
+    // Alternate the two identities. The last registered is payload_b, so the
+    // loop must open with payload_a: every call is then a genuine conflict,
+    // never the idempotent early-return.
+    for (int i = 0; i < 100; ++i) {
+        fx.handler->handlePortRegister(payload_a);
+        fx.handler->handlePortRegister(payload_b);
+    }
+    CHECK_EQ(counter.warns(), std::size_t(2),
+             "repeats suppressed while the port lives (one per identity)");
+
+    // Deregister the port: the suppression entry for it must be dropped, so the
+    // next occurrence of the same conflict warns again.
+    fx.handler->handlePortRemove(
+        serializePortRemove(owner + 1, ResourceKind::FLUID, 258, 1));
+    for (int i = 0; i < 100; ++i) {
+        fx.handler->handlePortRegister(payload_a);
+        fx.handler->handlePortRegister(payload_b);
+    }
+    CHECK_EQ(counter.warns(), std::size_t(4),
+             "deregistration re-arms both identities, and only once each");
+    CHECK(counter.warns() <= 4,
+          "suppression does not accumulate across the port's lifetime");
+    printf("    202 conflicts over one port lifetime -> %zu WARN records\n",
+           counter.warns());
+}
+
+// A well-behaved client that only ever sends the SAME (owner, kind, port,
+// epoch) must never warn at all — the idempotent path stays silent.
+void test_idempotent_re_registration_never_warns() {
+    DrainFixture fx;
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+    const auto payload = serializePortRegister(
+        makeFluidPort(259, owner, PortRole::SOURCE, 0, 1000), kSteamId);
+
+    ScopedLevelCounter counter;
+    for (int i = 0; i < 5000; ++i) {
+        fx.handler->handlePortRegister(payload);
+    }
+    CHECK_EQ(counter.warns(), std::size_t(0), "idempotent re-registration is silent");
+    printf("    5000 idempotent re-registrations -> %zu WARN records\n", counter.warns());
+}
+
+// The literal production incident: TWO port_ids (257 and 258) each thrashing
+// against a conflicting identity on every handshake, which is what produced
+// the interleaved 205 lines/s spew. One warning per port, then silence.
+void test_two_ports_thrashing_stays_bounded() {
+    DrainFixture fx;
+    const auto owner = static_cast<std::uint64_t>(fx.machine);
+    const auto p257_a = serializePortRegister(
+        makeFluidPort(257, owner, PortRole::SOURCE, 0, 1000), kSteamId);
+    const auto p257_b = serializePortRegister(
+        makeFluidPort(257, owner + 1, PortRole::SOURCE, 0, 1000), kWaterId);
+    const auto p258_a = serializePortRegister(
+        makeFluidPort(258, owner, PortRole::SINK, 0, 1000), kSteamId);
+    const auto p258_b = serializePortRegister(
+        makeFluidPort(258, owner + 1, PortRole::SINK, 0, 1000), kWaterId);
+
+    ScopedLevelCounter counter;
+    // Establish both ports, then alternate identities on each, many times.
+    fx.handler->handlePortRegister(p257_a);
+    fx.handler->handlePortRegister(p258_a);
+    for (int i = 0; i < 5000; ++i) {
+        fx.handler->handlePortRegister(p257_b);
+        fx.handler->handlePortRegister(p258_b);
+        fx.handler->handlePortRegister(p257_a);
+        fx.handler->handlePortRegister(p258_a);
+    }
+    // 20000 registrations across two fighting ports: 4 identities, 4 warnings.
+    CHECK_EQ(counter.warns(), std::size_t(4),
+             "two thrashing ports warn once per identity, not per occurrence");
+    printf("    20000 registrations over ports 257/258 -> %zu WARN records\n",
+           counter.warns());
+}
+
 } // namespace
 
 void test_resource_drain() {
@@ -785,4 +973,12 @@ void test_resource_drain() {
     test_drain_mixed_fluids_excluded();
     printf("  TEST: drain_capacity_boundaries_exact_fill\n");
     test_drain_capacity_boundaries_exact_fill();
+    printf("  TEST: conflicting_re_registration_warns_once\n");
+    test_conflicting_re_registration_warns_once();
+    printf("  TEST: conflict_suppression_cleared_on_deregister\n");
+    test_conflict_suppression_cleared_on_deregister();
+    printf("  TEST: idempotent_re_registration_never_warns\n");
+    test_idempotent_re_registration_never_warns();
+    printf("  TEST: two_ports_thrashing_stays_bounded\n");
+    test_two_ports_thrashing_stays_bounded();
 }

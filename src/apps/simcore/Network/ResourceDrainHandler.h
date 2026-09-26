@@ -17,7 +17,9 @@
 //
 // Single-threaded: handle*() runs on the simcore main queue and
 // removeOwnerPorts() is invoked from SimulationEngine callbacks on the same
-// thread; no locking is required (and none is done).
+// thread; no locking is required (and none is done). The conflict-warning
+// suppression set below is part of that same self-owned state: it carries no
+// mutex for the same reason ports_ does not.
 
 #include <common/ResourcePort.h>
 #include <common/ResourcePortClient.h>
@@ -29,6 +31,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace simcore {
@@ -59,6 +62,15 @@ public:
   void removeOwnerPorts(std::uint64_t owner_id);
 
   static constexpr std::size_t kReplayCacheMaxEntries = 4096;
+  // Upper bound on remembered (port, owner, kind) conflict identities. The set
+  // is normally near-empty — it only gains an entry while a port is registered
+  // and the entry is dropped the moment that port is deregistered, successfully
+  // re-registered, or removed with its owner, so it tracks ports_ rather than
+  // total history. The cap is a backstop for a hostile peer that keeps
+  // colliding distinct identities on a single port: past the cap the oldest
+  // entry is forgotten, which can re-enable at most one extra warning per
+  // eviction instead of growing memory without bound.
+  static constexpr std::size_t kConflictWarnMaxEntries = 1024;
 
 private:
   struct ReplayEntry {
@@ -68,6 +80,16 @@ private:
 
   void cacheResponse(std::uint64_t request_id, const ReplayEntry& entry);
   void publishResponse(const gtnh::common::ResourceTransferResponse& response);
+  // Warn once per conflicting (port_id, owner, kind) identity; repeats of an
+  // already-warned identity are dropped. Self-owned state, so it inherits the
+  // single-threaded contract of the rest of the handler.
+  bool shouldWarnConflict(const gtnh::common::ResourcePort& incoming);
+  // Forget every remembered conflict of `port_id` — called when the port leaves
+  // the registry or a re-registration lands cleanly, so the next conflict on a
+  // reused port_id is reported again.
+  void forgetPortConflicts(gtnh::common::PortId port_id);
+  // Forget every remembered conflict owned by `owner_id`.
+  void forgetOwnerConflicts(std::uint64_t owner_id);
   // Drain against the machine buffer; returns accepted amount (>= 0).
   std::int32_t drainMachineBuffer(const gtnh::common::ResourcePort& port,
                                   const gtnh::common::ResourceTransferRequest& request);
@@ -86,6 +108,13 @@ private:
   std::unordered_map<gtnh::common::PortId, gtnh::common::ResourcePort> ports_;
   std::unordered_map<std::uint64_t, ReplayEntry> replay_;
   std::deque<std::uint64_t> replay_order_;
+  // Conflicting re-registrations already reported, keyed by the wire
+  // registration key of the *incoming* port. Two ports fighting over one
+  // port_id (measured 205 warn/s) each land one entry and then go silent, so
+  // the log volume is bounded by distinct identities, not by occurrences.
+  // Insertion-ordered by conflict_warn_order_ so the cap can evict the oldest.
+  std::unordered_set<gtnh::common::ResourcePortRegistrationKey> conflict_warned_;
+  std::deque<gtnh::common::ResourcePortRegistrationKey> conflict_warn_order_;
 };
 
 } // namespace simcore
