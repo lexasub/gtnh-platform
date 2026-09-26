@@ -37,7 +37,7 @@
 // matrix says ADVENTURE and SPECTATOR cannot break or place at all.
 // ============================================================================
 //
-// Verified: `grep -rn "GameMode\|getGameMode\|CanBreak\|CanPlace\|CREATIVE"
+// Verified: `grep -rn "GameMode\|getGameMode\|CanBreak\|CanPlace\|CREATIVE"`
 // src/game/actions/` returns NOTHING. PlayerInventoryStore::getGameMode()
 // exists and SimCoreMessageHandler.cpp:334 sets it from the GameModeChange
 // frame, but no action handler ever READS it. So:
@@ -55,6 +55,29 @@
 // skips the gate breaks the world. The tests below pin the REAL behavior
 // (no gate) rather than the spec's, because the tests must describe the code.
 //
+// ── PARTLY FIXED (gp-t71g): the PLACE half now gates on the mode ──────────
+//
+// gp-t71g closed the placement half. PlaceBlockHandler::canHandle() now
+// requires GameModePerm::CanPlace, read from the player's own stored mode via
+// PlayerInventoryStore::getGameMode() — the same header-only matrix the client
+// consults, not a second copy of the table, because two spellings of one
+// permission set are two things that drift. The refusal happens BEFORE
+// runBlockCas(), so a rejected placement issues no CAS, publishes no
+// block-changed event, never fires the block-placed hook and — the point of
+// the ordering — never reaches the inventory decrement. The test that pinned
+// the defect green is flipped: what used to be
+// test_PlaceBlockHandler_lets_adventure_and_spectator_place (asserting
+// placed == 2, "the server does not gate on mode") is now
+// test_PlaceBlockHandler_refuses_adventure_and_spectator, with
+// test_PlaceBlockHandler_refuses_an_undefined_game_mode covering the 252 byte
+// values the enum does not name.
+//
+// STILL OPEN, deliberately: the BREAK half.
+// test_BreakBlockHandler_ignores_the_player_game_mode below still records a
+// break succeeding in all four modes, because BreakBlockHandler::canHandle is
+// still `action_type == LEFT_MOUSE_CLICK` and nothing else. That is the
+// accurate description of that path and gp-t71g is scoped to placement. The
+// CREATIVE-is-free half of FINDING A is gp-t51b, not this fix.
 // ============================================================================
 // FINDING B (gp-n80c): THERE IS NO "UNBREAKABLE BLOCK" CONCEPT SERVER-SIDE.
 // ============================================================================
@@ -152,6 +175,7 @@
 #include <game/actions/handTool/ElectricDrillHandler.h>
 #include <game/actions/handTool/ToolActionHandler.h>
 #include <game/actions/handlers/MachineInteractHandler.h>
+#include <game/actions/handlers/PlaceBlockHandler.h>
 #include <game/machines/ItemEnergyStorage.h>
 #include <game/quests/QuestData.h>
 #include <game/quests/QuestGraph.h>
@@ -167,6 +191,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -957,15 +982,32 @@ void test_PlaceBlockHandler_a_lost_race_consumes_nothing() {
   }
 }
 
-// FINDING A, place side: CREATIVE is supposed to place at NO inventory cost
-// (spec: "no inventory slot SHALL be consumed"). The handler decrements
-// unconditionally, so a creative player is charged exactly like survival.
+// gp-t51b (P2, SEPARATE ISSUE — deliberately not fixed here): CREATIVE is
+// supposed to place at NO inventory cost (spec: "no inventory slot SHALL be
+// consumed"). The handler decrements unconditionally, so a creative player is
+// charged exactly like survival. gp-t71g fixes the FORBIDDEN-mode half, not
+// this one, and this test is scoped to stay that way.
+//
+// NARROWED by gp-t71g, and the narrowing is the point: this test used to carry
+// four rows and asserted that ADVENTURE and SPECTATOR are ALSO charged, with
+// the message "though it cannot place at all". Those two rows are no longer
+// reachable — PlaceBlockHandler now declines a forbidden mode outright, so
+// there is no charge to observe and no placement to charge it for. Keeping
+// them would have meant asserting a value produced by a code path the gate now
+// makes unreachable, which is a test that can only ever pass by being wrong.
+//
+// So the CREATIVE over-charge — the actual subject of gp-t51b — is asserted
+// here over the two modes that CAN place, and the forbidden-mode refusal is
+// asserted where it belongs, in
+// test_PlaceBlockHandler_refuses_adventure_and_spectator.
 void test_PlaceBlockHandler_charges_creative_the_same_as_survival() {
   DropsGuard drops(nullptr);
   TransformsGuard transforms(nullptr);
-  struct Row { uint8_t mode; const char* label; int spec_cost; };
+  // Only the modes that reach the charge at all. ADVENTURE and SPECTATOR are
+  // absent because gp-t71g's gate means they never get there.
+  struct Row { uint8_t mode; const char* label; };
   const Row rows[] = {
-      {0, "SURVIVAL", 1}, {1, "CREATIVE", 0}, {2, "ADVENTURE", 0}, {3, "SPECTATOR", 0},
+      {0, "SURVIVAL"}, {1, "CREATIVE"},
   };
   std::vector<int> charged;
   for (const auto& r : rows) {
@@ -979,35 +1021,287 @@ void test_PlaceBlockHandler_charges_creative_the_same_as_survival() {
     f.flush();
     charged.push_back(5 - f.totalInInventory(kCobbleStoneId));
   }
-  CHECK_EQ(charged.size(), size_t(4), "all four modes were exercised");
-  if (charged.size() == 4) {
+  CHECK_EQ(charged.size(), size_t(2), "both placeable modes were exercised");
+  if (charged.size() == 2) {
     CHECK_EQ(charged[0], 1, "SURVIVAL pays one block, as the spec requires");
     CHECK_EQ(charged[1], 1,
-             "CREATIVE also pays one block — the spec says it should be free");
-    CHECK_EQ(charged[2], 1, "ADVENTURE is charged too, though it cannot place at all");
-    CHECK_EQ(charged[3], 1, "SPECTATOR is charged too, though it cannot place at all");
+             "CREATIVE also pays one block — the spec says it should be free "
+             "(gp-t51b)");
   }
 }
 
-// FINDING A, place side, negative: nothing stops an ADVENTURE or SPECTATOR
-// player from placing at all. This is the counterpart to the break row.
-void test_PlaceBlockHandler_lets_adventure_and_spectator_place() {
+// gp-t71g, place side, negative: an ADVENTURE or SPECTATOR player SHALL NOT be
+// able to place at all. This test used to be named
+// test_PlaceBlockHandler_lets_adventure_and_spectator_place and asserted the
+// OPPOSITE — placed == 2, with the message "both forbidden modes placed a block
+// — the server does not gate on mode" — which pinned the defect GREEN. It is
+// flipped here to the behaviour the spec requires
+// (openspec/changes/add-interaction-mode-gating/specs/player-interaction/spec.md:
+// "Adventure and spectator cannot interact ... no break or place action SHALL be
+// sent"; the server half is the authoritative one, because PlaceBlockHandler is
+// what mutates the world for ANY client, not just the shipped one).
+//
+// The refusal must be a REFUSAL, not a silent no-op: the frame is still claimed
+// by the dispatcher, the player gets a REJECTED ack carrying the reason, and —
+// the part that matters most — NO inventory slot is touched. A check placed
+// after the decrement would satisfy "no block in the world" while still
+// destroying the player's item, so both are asserted below.
+//
+// Positive control: SURVIVAL and CREATIVE are adjacent permitted modes and must
+// still place. Without it this test would also pass if the gate refused EVERY
+// mode, which is a strictly worse bug than the one it fixes.
+void test_PlaceBlockHandler_refuses_adventure_and_spectator() {
   DropsGuard drops(nullptr);
   TransformsGuard transforms(nullptr);
-  int placed = 0;
-  for (uint8_t mode : {uint8_t(2), uint8_t(3)}) {
+
+  // The matrix itself first, so a failure below is unambiguously the gate and
+  // not a changed permission table. Checked through the matrix the handler
+  // actually calls, and through the matrix itself, so a divergence between
+  // the two would fail here rather than silently pass.
+  CHECK(!GameModePerm::CanPlace(GameMode::ADVENTURE));
+  CHECK(!GameModePerm::CanPlace(GameMode::SPECTATOR));
+  CHECK(GameModePerm::CanPlace(GameMode::SURVIVAL));
+  CHECK(GameModePerm::CanPlace(GameMode::CREATIVE));
+  CHECK(!CanPlaceBlocksOnServer(static_cast<uint8_t>(GameMode::ADVENTURE)));
+  CHECK(!CanPlaceBlocksOnServer(static_cast<uint8_t>(GameMode::SPECTATOR)));
+  CHECK(CanPlaceBlocksOnServer(static_cast<uint8_t>(GameMode::SURVIVAL)));
+  CHECK(CanPlaceBlocksOnServer(static_cast<uint8_t>(GameMode::CREATIVE)));
+
+  struct Row { uint8_t mode; const char* label; bool allowed; };
+  const Row rows[] = {
+      {0, "SURVIVAL", true}, {1, "CREATIVE", true},
+      {2, "ADVENTURE", false}, {3, "SPECTATOR", false},
+  };
+  int placed_allowed = 0, placed_forbidden = 0, charged_forbidden = 0;
+  for (const auto& r : rows) {
     Fixture f;
-    f.setGameMode(mode);
+    f.setGameMode(r.mode);
     f.inv->giveItem(Fixture::kPlayerId, kCobbleStoneId, 3, -1);
+    const auto before = f.inv->getSlots(Fixture::kPlayerId);
     ActionContext ctx = f.make(Protocol::PlayerActionType_RIGHT_MOUSE_CLICK, 20, 20, 20,
                                kAirId, kCobbleStoneId, 1);
     ActionDispatcher d;
-    CHECK(d.dispatch(ctx), "a forbidden-mode placement is still claimed");
+    const bool claimed = d.dispatch(ctx);
     f.flush();
-    if (f.world->blockAt(20, 21, 20) == kCobbleStoneId) ++placed;
+
+    const bool placed_here = (f.world->blockAt(20, 21, 20) == kCobbleStoneId);
+    const int charged = 3 - f.totalInInventory(kCobbleStoneId);
+    if (r.allowed) {
+      if (placed_here) ++placed_allowed;
+      CHECK(claimed, "a permitted mode is still claimed by the dispatcher");
+      CHECK(placed_here, "a permitted mode still places the block");
+      CHECK_EQ(charged, 1, "a permitted mode still pays the block (see gp-t51b "
+                           "for the CREATIVE-is-free half)");
+      continue;
+    }
+    if (placed_here) ++placed_forbidden;
+    // THE ASSERTION: no world mutation from a mode the matrix denies.
+    CHECK(!placed_here,
+          "OBSERVED HARM: a mode with CanPlace == false wrote a block anyway");
+    // THE GATE ITSELF: the dispatcher must NOT claim a forbidden placement.
+    // Claiming it and doing nothing would suppress the facade's REJECTED ack
+    // (ActionDispatcher::dispatch ORs the handler results), so declining is
+    // what lets the refusal be reported at all.
+    CHECK(!claimed, "the dispatcher declines a forbidden-mode placement");
+    // THE ORDERING ASSERTION: rejected BEFORE the charge, so the refusal costs
+    // the player nothing. Byte-identical slots, not merely the same total.
+    const auto after = f.inv->getSlots(Fixture::kPlayerId);
+    if (charged != 0) ++charged_forbidden;
+    CHECK_EQ(charged, 0,
+             "a refused placement must not consume a block — the mode check has "
+             "to run BEFORE the inventory decrement");
+    bool identical = after.size() == before.size();
+    for (size_t i = 0; identical && i < before.size(); ++i) {
+      if (after[i].item_id != before[i].item_id ||
+          after[i].count != before[i].count || after[i].meta != before[i].meta) {
+        identical = false;
+      }
+    }
+    CHECK(identical, "every slot is byte-identical after a refused placement");
+    CHECK_EQ(f.pub->placed.size(), size_t(0),
+             "the block-placed hook never fires for a refused placement");
+    CHECK_EQ(f.pub->changed.size(), size_t(0),
+             "no block-changed event is published for a refused placement");
+    CHECK_EQ(f.world->casCallCount(), size_t(0),
+             "a refused placement issues no CAS at all");
   }
-  CHECK_EQ(placed, 2,
-           "both forbidden modes placed a block — the server does not gate on mode");
+  CHECK_EQ(placed_allowed, 2, "both permitted modes placed (positive control)");
+  CHECK_EQ(placed_forbidden, 0, "neither forbidden mode placed");
+  CHECK_EQ(charged_forbidden, 0, "neither forbidden mode was charged");
+}
+
+// The refusal has to be REPORTED, not just declined. A gate that silently drops
+// a forbidden placement is only half a fix: the client is left with an
+// unresolved optimistic action and no idea why, and the debounce in
+// World::IsBlockActionPending never clears. This drives the PRODUCTION facade
+// (SetBlockCASHandler, the same path SimCoreMessageHandler.cpp:243-245 takes)
+// and asserts the ack is REJECTED, carries a mode-specific reason rather than
+// the generic "nothing placeable in hand", and echoes the request id.
+//
+// The generic-reason half matters: telling a SPECTATOR who is visibly holding a
+// cobblestone that it has "nothing placeable in hand" is a false statement that
+// would send an operator looking at the client instead of at the mode. So the
+// positive and negative control are BOTH here — a permitted mode gets no mode
+// reason, and a frame that was never a placement still gets the old string.
+void test_SetBlockCASHandler_reports_a_mode_refusal_with_its_own_reason() {
+  DropsGuard drops(nullptr);
+  TransformsGuard transforms(nullptr);
+
+  struct Case { uint8_t mode; const char* label; bool expect_mode_reason; };
+  const Case cases[] = {
+      {3, "SPECTATOR", true},   // forbidden: must name the mode
+      {2, "ADVENTURE", true},   // forbidden: must name the mode
+      {0, "SURVIVAL", false},   // permitted: places, no rejection at all
+  };
+  for (const auto& c : cases) {
+    Fixture f;
+    f.setGameMode(c.mode);
+    f.inv->giveItem(Fixture::kPlayerId, kCobbleStoneId, 3, -1);
+    SetBlockCASHandler facade(
+        f.world, f.pub, f.engine, f.inv,
+        [&f](uint64_t pid, uint16_t item, uint8_t n, int32_t slot) {
+          f.pub->given.push_back({pid, item, n, slot});
+        },
+        [&f](uint64_t pid, int32_t x, int32_t y, int32_t z, uint16_t b) {
+          f.pub->drill_uses.push_back({pid, x, y, z, b});
+        },
+        [&f](uint64_t pid, int32_t x, int32_t y, int32_t z, uint16_t b) {
+          f.pub->placed.push_back({pid, x, y, z, b});
+        },
+        // Defer onto the fixture queue so the CAS completion is driven by hand,
+        // exactly as the dispatcher-level tests above do.
+        [&f](std::function<void()> fn) { f.main_queue_.push_back(std::move(fn)); });
+
+    // The production frame shape: build, finish, GetRoot, cast to void*.
+    std::vector<uint8_t> data;
+    {
+      flatbuffers::FlatBufferBuilder fbb;
+      Protocol::Vec3i pos(20, 20, 20);
+      const auto off = Protocol::CreateSetBlockAction(
+          fbb, Fixture::kPlayerId, Protocol::PlayerActionType_RIGHT_MOUSE_CLICK,
+          &pos, kAirId, kCobbleStoneId, Fixture::kRequestId, 1, kCobbleStoneId);
+      fbb.Finish(off);
+      data.assign(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+    }
+    facade.handle((void*)flatbuffers::GetRoot<Protocol::SetBlockAction>(data.data()));
+    f.flush();
+
+    if (!c.expect_mode_reason) {
+      // Positive control: a permitted mode is not rejected at all, so the mode
+      // reason cannot be firing indiscriminately.
+      bool any_rejected = false;
+      for (const auto& a : f.pub->acks) {
+        if (a.status == uint8_t(Protocol::BlockAckStatus_REJECTED)) any_rejected = true;
+      }
+      CHECK(!any_rejected, c.label);
+      continue;
+    }
+    const AckRecord* rej = nullptr;
+    for (const auto& a : f.pub->acks) {
+      if (a.status == uint8_t(Protocol::BlockAckStatus_REJECTED)) rej = &a;
+    }
+    CHECK(rej != nullptr, "a forbidden mode is answered with a REJECTED ack");
+    if (rej) {
+      CHECK(rej->reason.find("game mode") != std::string::npos,
+            "the REJECTED ack names the game mode, not 'nothing placeable in hand'");
+      CHECK(rej->reason.find("nothing placeable") == std::string::npos,
+            "and does NOT claim the player has nothing placeable in hand — they "
+            "do, and the frame said so");
+      CHECK_EQ(rej->request_id, Fixture::kRequestId,
+               "the ack echoes the request id so the client can resolve it");
+    }
+    CHECK_EQ(f.totalInInventory(kCobbleStoneId), 3, "and nothing was charged");
+  }
+}
+
+// A frame that was never a placement must keep the generic reason, so the
+// mode-specific string cannot leak into unrelated rejections. Empty hand: the
+// shape check fails before the mode is even consulted, so even a SPECTATOR
+// holding nothing gets the old wording rather than a mode accusation.
+void test_TheModeReasonNeverLeaksOntoANonPlacementFrame() {
+  DropsGuard drops(nullptr);
+  TransformsGuard transforms(nullptr);
+  Fixture f;
+  f.setGameMode(3);  // SPECTATOR — forbidden, but holding NOTHING
+  SetBlockCASHandler facade(
+      f.world, f.pub, f.engine, f.inv,
+      [&f](uint64_t, uint16_t, uint8_t, int32_t) {},
+      [&f](uint64_t, int32_t, int32_t, int32_t, uint16_t) {},
+      [&f](uint64_t pid, int32_t x, int32_t y, int32_t z, uint16_t b) {
+        f.pub->placed.push_back({pid, x, y, z, b});
+      },
+      [&f](std::function<void()> fn) { f.main_queue_.push_back(std::move(fn)); });
+
+  std::vector<uint8_t> data;
+  {
+    flatbuffers::FlatBufferBuilder fbb;
+    Protocol::Vec3i pos(2, 2, 2);
+    const auto off = Protocol::CreateSetBlockAction(
+        fbb, Fixture::kPlayerId, Protocol::PlayerActionType_RIGHT_MOUSE_CLICK,
+        &pos, kStoneId, 0 /* held_item: nothing in hand */, Fixture::kRequestId, 0, 0);
+    fbb.Finish(off);
+    data.assign(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());
+  }
+  facade.handle((void*)flatbuffers::GetRoot<Protocol::SetBlockAction>(data.data()));
+  f.flush();
+
+  const AckRecord* rej = nullptr;
+  for (const auto& a : f.pub->acks) {
+    if (a.status == uint8_t(Protocol::BlockAckStatus_REJECTED)) rej = &a;
+  }
+  CHECK(rej != nullptr, "an empty-handed right click is still rejected");
+  if (rej) {
+    CHECK(rej->reason.find("nothing placeable in hand") != std::string::npos,
+          "it keeps the generic reason — the mode was never the cause");
+    CHECK(rej->reason.find("game mode") == std::string::npos,
+          "and the mode-specific reason did not leak onto it");
+  }
+}
+
+// An undefined mode byte must fail CLOSED on the server too. GameMode arrives
+// off the wire as a bare uint8 (`player.gamemode.change`,
+// src/protocol/core.fbs:25) and SimCoreMessageHandler.cpp:330 casts it to
+// uint8_t and stores it without validating. A deny-list here would admit every
+// value the enum does not name — the gp-ul16 lesson, on the authoritative half.
+void test_PlaceBlockHandler_refuses_an_undefined_game_mode() {
+  DropsGuard drops(nullptr);
+  TransformsGuard transforms(nullptr);
+  for (uint8_t raw : {uint8_t{4}, uint8_t{9}, uint8_t{200}, uint8_t{255}}) {
+    CHECK(!CanPlaceBlocksOnServer(raw),
+          "an undefined mode cannot place — the server gate fails closed");
+
+    Fixture f;
+    f.setGameMode(raw);
+    f.inv->giveItem(Fixture::kPlayerId, kCobbleStoneId, 3, -1);
+    ActionContext ctx = f.make(Protocol::PlayerActionType_RIGHT_MOUSE_CLICK, 30, 30, 30,
+                               kAirId, kCobbleStoneId, 1);
+    ActionDispatcher d;
+    // The dispatcher DECLINES it: claiming a frame and doing nothing would
+    // suppress the facade's REJECTED ack, so "fails closed" has to mean
+    // "not claimed" rather than "claimed but inert".
+    CHECK(!d.dispatch(ctx), "the dispatcher declines an undefined-mode placement");
+    f.flush();
+    CHECK_EQ(f.world->blockAt(30, 31, 30), uint16_t(0),
+             "an undefined mode places nothing");
+    CHECK_EQ(f.totalInInventory(kCobbleStoneId), 3,
+             "an undefined mode is charged nothing");
+    CHECK_EQ(f.world->casCallCount(), size_t(0),
+             "an undefined mode issues no CAS");
+  }
+  // Positive control for the whole sweep: the gate refuses undefined values
+  // WITHOUT becoming a blanket refusal, so SURVIVAL still places after it.
+  {
+    Fixture f;
+    f.setGameMode(0);
+    f.inv->giveItem(Fixture::kPlayerId, kCobbleStoneId, 3, -1);
+    ActionContext ctx = f.make(Protocol::PlayerActionType_RIGHT_MOUSE_CLICK, 40, 40, 40,
+                               kAirId, kCobbleStoneId, 1);
+    ActionDispatcher d;
+    CHECK(d.dispatch(ctx), "SURVIVAL still places after the undefined sweep");
+    f.flush();
+    CHECK_EQ(f.world->blockAt(40, 41, 40), kCobbleStoneId,
+             "and the block really lands — the gate is not refusing everyone");
+  }
 }
 
 // Placing consumes the FIRST matching stack, and only ONE of them, even with
@@ -2752,7 +3046,10 @@ int main(int argc, char** argv) {
   TEST(PlaceBlockHandler_acks_before_the_cas_lands);
   TEST(PlaceBlockHandler_a_lost_race_consumes_nothing);
   TEST(PlaceBlockHandler_charges_creative_the_same_as_survival);
-  TEST(PlaceBlockHandler_lets_adventure_and_spectator_place);
+  TEST(PlaceBlockHandler_refuses_adventure_and_spectator);
+  TEST(SetBlockCASHandler_reports_a_mode_refusal_with_its_own_reason);
+  TEST(TheModeReasonNeverLeaksOntoANonPlacementFrame);
+  TEST(PlaceBlockHandler_refuses_an_undefined_game_mode);
   TEST(PlaceBlockHandler_consumes_one_from_the_first_matching_stack);
   TEST(PlaceBlockHandler_writes_the_world_even_with_an_empty_inventory);
   TEST(PlaceBlockHandler_applies_the_transform_table_to_id_and_meta);

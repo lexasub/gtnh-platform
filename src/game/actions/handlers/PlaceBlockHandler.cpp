@@ -11,10 +11,49 @@
 
 namespace simcore {
 
-bool PlaceBlockHandler::canHandle(const ActionContext& ctx) const {
+namespace {
+
+// The player's mode as THIS server has it, or the inventory store's own
+// default for an unknown player when no store is attached. Read in exactly
+// one place so canHandle() and RefusalReasonForMode() cannot disagree about
+// what the mode was — a disagreement would let a frame be described as both
+// placeable and refused.
+uint8_t storedModeOf(const ActionContext& ctx) {
+  return ctx.inventoryStore_ ? ctx.inventoryStore_->getGameMode(ctx.player_id)
+                             : 0;  // store's own default for an unknown player
+}
+
+// The non-mode half of canHandle, factored out because RefusalReasonForMode
+// has to reproduce it in order to decide whether the mode is even the reason
+// this frame went unhandled. A frame that failed one of these is not a
+// placement at all, and reporting a mode for it would be nonsense — e.g.
+// "you may not place in SPECTATOR" for a frame that was a right-click on a
+// furnace the machine handler already claimed.
+bool isPlacementShape(const ActionContext& ctx) {
   return ctx.action_type == Protocol::PlayerActionType_RIGHT_MOUSE_CLICK &&
          ctx.held_item != 0 && !isMiningTool(ctx.held_item) &&
          ctx.held_item != ITEM_WRENCH;
+}
+
+} // namespace
+
+const char* PlaceBlockHandler::RefusalReasonForMode(const ActionContext& ctx) {
+  if (!isPlacementShape(ctx)) return nullptr;
+  if (CanPlaceBlocksOnServer(storedModeOf(ctx))) return nullptr;
+  return "game mode may not place blocks";
+}
+
+bool PlaceBlockHandler::canHandle(const ActionContext& ctx) const {
+  // The shape checks first and the mode LAST, deliberately (gp-t71g).
+  //
+  // The shape checks are pure and cannot fail for a reason a log reader would
+  // find interesting, while the mode is per-player server state. Running the
+  // shape first means a frame that was never a placement is not rejected AS a
+  // placement — the dispatcher must keep falling through to
+  // MachineInteractHandler / ChestInteractHandler for a right-click on a
+  // machine, and this gate must not shadow that.
+  if (!isPlacementShape(ctx)) return false;
+  return CanPlaceBlocksOnServer(storedModeOf(ctx));
 }
 
 void PlaceBlockHandler::handle(const ActionContext& ctx) const {

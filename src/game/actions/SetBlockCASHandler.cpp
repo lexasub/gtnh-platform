@@ -49,10 +49,20 @@ void SetBlockCASHandler::handle(const Protocol::SetBlockAction* action) {
                ctx.player_id, static_cast<int>(ctx.action_type), ctx.x,
                ctx.y, ctx.z);
   if (ctx.publisher_) {
+    // A frame can go unhandled for reasons that are not all the same, and the
+    // client is owed the truth. PlaceBlockHandler declined this one because
+    // the player's game mode may not place blocks (gp-t71g) — it does not claim
+    // the frame precisely so that this ack still goes out, and reporting
+    // "nothing placeable in hand" to a SPECTATOR who is holding a block would
+    // be false and would point an operator at the client instead of the mode.
+    // RefusalReasonForMode returns nullptr for every other cause, including a
+    // frame an earlier handler already claimed, so the generic reason below is
+    // still used for exactly the case it was written for.
+    const char* reason = PlaceBlockHandler::RefusalReasonForMode(ctx);
+    if (reason == nullptr) reason = "nothing placeable in hand";
     ctx.publisher_->publishBlockAck(Protocol::BlockAckStatus_REJECTED, ctx.x,
                                     ctx.y, ctx.z, ctx.expected_block_id, 0,
-                                    "nothing placeable in hand",
-                                    ctx.request_id, ctx.action_type);
+                                    reason, ctx.request_id, ctx.action_type);
   }
 }
 

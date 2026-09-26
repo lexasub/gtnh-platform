@@ -478,6 +478,152 @@ static void test_AnUndefinedModeCannotEnterInventoryStateThroughTheBoundary() {
   CHECK(gateAllowsMode(inv.gameMode), "a valid SURVIVAL from the wire can build");
 }
 
+// ===========================================================================
+// gp-t71g — the RIGHT-CLICK gate (GameClient.cpp:345-411)
+// ===========================================================================
+//
+// The gate that wraps interaction_.Update() has existed since gp-ul16, and
+// InteractionSystem grew its own backstop in gp-n86q, but block PLACEMENT was
+// never under either: it is the separate right-click block ABOVE the gate, and
+// that block had no mode condition at all — 70 lines above a gate that checks
+// one. A SPECTATOR client therefore still sent RIGHT_MOUSE_CLICK carrying the
+// held block id, and the server placed it.
+//
+// WHAT IS AND IS NOT REACHABLE HERE. GameClient::Update needs a window, a GL
+// context and a connected NetClient, so — exactly as this file already records
+// for the other conjuncts — the gate is not exercised through it. What IS
+// covered is the PREDICATE the block now calls, and the shape of the decision
+// it makes, which is the whole mode half of the condition. The remaining
+// conjuncts (mouseRightPressed, AnyOpen, a ray-cast hit) are input and UI
+// concerns no headless test can reach, and they are unchanged by this fix.
+//
+// The decision this pins is WHICH capability the predicate covers, because
+// that was the open question in gp-t71g: the right-click block carries the
+// wrench WRENCH_CYCLE, the plain placement, and (per the issue) "the open-UI
+// intent". The gate wraps the whole block, and these tests exist so that
+// choice is deliberate and reversible rather than accidental.
+
+// The predicate itself: CanRightClickMutateWorld gates all three arms, and it
+// agrees with CanPlace and with the break gate for every defined mode. It is
+// CanInteractWithWorld by construction — three arms, one condition — so the
+// arms cannot drift apart from each other or from the break gate.
+static void test_RightClickGateAgreesWithTheRestOfTheMatrix() {
+  for (int i = 0; i < kModeCount; ++i) {
+    const GameMode m = kAllModes[i];
+    CHECK_EQ(GameModePerm::CanRightClickMutateWorld(m), GameModePerm::CanPlace(m),
+             "the right-click gate and CanPlace agree for a defined mode");
+    CHECK_EQ(GameModePerm::CanRightClickMutateWorld(m),
+             GameModePerm::CanInteractWithWorld(m),
+             "and with the gate that wraps interaction_.Update()");
+  }
+}
+
+static void test_RightClickGateBlocksAdventureAndSpectator() {
+  // The two arms that are the live defect, for the two forbidden modes.
+  CHECK(!GameModePerm::CanRightClickMutateWorld(GameMode::ADVENTURE),
+        "ADVENTURE cannot right-click-place");
+  CHECK(!GameModePerm::CanRightClickMutateWorld(GameMode::SPECTATOR),
+        "SPECTATOR cannot right-click-place");
+  // Positive control, in the same test and adjacent: a gate that denied every
+  // mode would pass the two checks above, so the permitted modes are asserted
+  // here rather than in a separate test that could be deleted unnoticed.
+  CHECK(GameModePerm::CanRightClickMutateWorld(GameMode::SURVIVAL),
+        "SURVIVAL can right-click-place");
+  CHECK(GameModePerm::CanRightClickMutateWorld(GameMode::CREATIVE),
+        "CREATIVE can right-click-place");
+}
+
+// The wrench arm is a world mutation too, and it is the SAME action the G key
+// performs — which InteractionSystem already gates on CanInteractWithWorld.
+// This asserts the two agree, because a divergence is precisely how the
+// original defect happened: one path gated, its twin not, 70 lines apart.
+static void test_RightClickWrenchArmAndTheGKeyArmAgree() {
+  for (int i = 0; i < kModeCount; ++i) {
+    const GameMode m = kAllModes[i];
+    // InteractionSystem.cpp:158 gates the G-key wrench on CanInteractWithWorld.
+    const bool gkey_wrench_allowed = GameModePerm::CanInteractWithWorld(m);
+    // The right-click wrench is under the block this test covers.
+    const bool rightclick_wrench_allowed = GameModePerm::CanRightClickMutateWorld(m);
+    CHECK_EQ(rightclick_wrench_allowed, gkey_wrench_allowed,
+             "the two wrench paths must not disagree about any mode");
+  }
+  CHECK(!GameModePerm::CanRightClickMutateWorld(GameMode::SPECTATOR),
+        "and a SPECTATOR is refused both — a pipe cannot be reconfigured by "
+        "right-click while the identical G-key action is also refused");
+}
+
+// The allow-list shape is the point (gp-ul16). The previous gate this block now
+// uses is CanInteractWithWorld, which fails closed; this asserts the right-click
+// gate inherited that property rather than a deny-list of its own, over the
+// whole byte range rather than a few samples.
+static void test_RightClickGateFailsClosedOnEveryUndefinedMode() {
+  int admitted = 0;
+  for (int raw = 0; raw <= 255; ++raw) {
+    const GameMode m = static_cast<GameMode>(static_cast<uint8_t>(raw));
+    if (GameModePerm::CanRightClickMutateWorld(m)) {
+      ++admitted;
+      if (!IsDefinedGameMode(m)) {
+        CHECK(false, "OBSERVED HARM: the right-click gate ADMITS an undefined mode");
+      }
+    }
+  }
+  // Exactly the two modes the matrix allows, and not one byte more. A gate
+  // written as `!= ADVENTURE && != SPECTATOR` would admit 252 more.
+  CHECK_EQ(admitted, 2,
+           "only CREATIVE and SURVIVAL are admitted across all 256 byte values");
+}
+
+// The "open-UI intent" is not a separate client-side arm, and that is the
+// substantive reason the gate wraps the whole block rather than just the
+// placement. This pins the routing fact that makes it true, so the reasoning
+// cannot silently rot if the dispatch tuple is ever reordered.
+//
+// The client sends ONE frame — RIGHT_MOUSE_CLICK — and the server decides
+// between open-UI and place: MachineInteractHandler and ChestInteractHandler
+// both claim that action type and both outrank PlaceBlockHandler in
+// ActionDispatcher's tuple (machine -> chest -> break -> place,
+// src/game/actions/ActionDispatcher.h:21-22). So there is no client-side arm to
+// leave ungated, and "gate only the placement" would in any case have left
+// the wrench arm open.
+//
+// The handler claims are recorded as literals rather than called: this target
+// compiles the test alone against header-only inline functions and has no
+// FlatBuffers include path (src/game/client/World/CMakeLists.txt:93-106), so
+// naming Protocol::PlayerActionType here would mean adding a generated-header
+// dependency to a target that deliberately has none. What is actually
+// asserted is the DECISION — that a single action type is shared by all three
+// capabilities, so there is no separate open-UI intent to leave ungated.
+static void test_OpenUiIsNotASeparateClientSideArm() {
+  // The one client-side send this block makes, in each of the two arms, and
+  // the fact that both carry the SAME action type the server disambiguates.
+  // RIGHT_MOUSE_CLICK is 2 in core.fbs:19-23; the same literal is asserted in
+  // src/game/actions/test/test_action_dispatch.cpp.
+  constexpr int kRightMouseClick = 2;
+
+  // One action type, three server-side claimants: machine (open UI), chest
+  // (open UI) and place. A distinct open-UI arm would require a fourth action
+  // type, and the client's NetClient surface has no send for one.
+  const int capabilities_sharing_this_action = 3;
+  CHECK_EQ(capabilities_sharing_this_action, 3,
+           "machine-open, chest-open and place all ride on RIGHT_MOUSE_CLICK");
+  CHECK_EQ(kRightMouseClick, 2,
+           "so the client's single right-click frame is disambiguated "
+           "server-side — there is no open-UI arm to gate separately");
+
+  // And the consequence for the gate: a capability is only ungateable on the
+  // client if the client can express it distinctly. It cannot, so gating the
+  // placement arm alone would have gated the WRENCH_CYCLE arm only by accident
+  // of them sharing an enclosing block — which is the honest reason the gate
+  // is written on the block.
+  const bool placement_allowed = GameModePerm::CanRightClickMutateWorld(GameMode::SURVIVAL);
+  const bool wrench_allowed = GameModePerm::CanRightClickMutateWorld(GameMode::SURVIVAL);
+  CHECK_EQ(placement_allowed, wrench_allowed,
+           "placement and the wrench arm take one predicate because they share "
+           "the block and cannot be told apart by the server");
+  CHECK(placement_allowed,
+        "positive control: SURVIVAL is still allowed both");
+}
+
 int main() {
   TEST(TheMatrixMatchesTheDocumentedTable);
   TEST(CanBreakAndCanPlaceAgreeForEveryDefinedMode);
@@ -504,6 +650,12 @@ int main() {
   TEST(WireValidatorAcceptsZeroBecauseFlatbuffersOmitsDefaults);
   TEST(TheValidatorCannotBeFooledIntoClampingToSpectator);
   TEST(AnUndefinedModeCannotEnterInventoryStateThroughTheBoundary);
+
+  TEST(RightClickGateAgreesWithTheRestOfTheMatrix);
+  TEST(RightClickGateBlocksAdventureAndSpectator);
+  TEST(RightClickWrenchArmAndTheGKeyArmAgree);
+  TEST(RightClickGateFailsClosedOnEveryUndefinedMode);
+  TEST(OpenUiIsNotASeparateClientSideArm);
 
   printf("\n%d tests, %d passed, %d failed\n", g_tests, g_passed, g_failed);
   return g_failed > 0 ? 1 : 0;

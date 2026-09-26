@@ -348,8 +348,63 @@ void GameClient::Update(float dt) {
     // Holding a wrench over a pipe/cable toggles that connection instead:
     // right-clicking a face marker disconnects/reconnects exactly that side
     // (same server action as the G-key "wrench_cycle", with the clicked face).
+    //
+    // ── The game-mode gate, and why it wraps the WHOLE block (gp-t71g) ─────
+    // This block was the one world-mutating path in the client with NO mode
+    // condition at all, 70 lines above a gate that does check one. The block
+    // looks like it carries three things, so "gate it all or just the
+    // placement arm?" is a real decision. Reading each arm settled it:
+    //
+    //   (1) the wrench WRENCH_CYCLE, via SendToolAction — a genuine world
+    //       mutation. It rewrites a pipe/cable connection, and the matrix has
+    //       no "canTool" column, so CanInteractWithWorld is the honest
+    //       predicate. It is the SAME action the G-key path in
+    //       InteractionSystem performs, and that path is already gated on
+    //       CanInteractWithWorld (InteractionSystem.cpp:150-158). Gating only
+    //       the placement arm would leave a SPECTATOR able to reconfigure
+    //       pipes by right-click while the identical action on the G key is
+    //       refused — the exact asymmetry this issue was filed about, rebuilt
+    //       one arm over.
+    //
+    //   (2) plain placement, via SendBlockAction(RIGHT_MOUSE_CLICK) — the
+    //       live defect. Definitely gated.
+    //
+    //   (3) "the open-UI intent" — which the issue assumed was a separate arm
+    //       a spectator should keep, on the grounds that opening a machine
+    //       read-only "is not a world mutation". IT IS NOT A SEPARATE ARM:
+    //       there is no client-side open-UI send at all. The client sends (2)
+    //       and the SERVER decides open-UI vs place — MachineInteractHandler
+    //       and ChestInteractHandler both claim RIGHT_MOUSE_CLICK and outrank
+    //       PlaceBlockHandler in the dispatch tuple. And the premise that
+    //       opening a window is read-only does not hold here: MachineOpenHandler
+    //       registers a ContainerSession, after which InventoryActionHandler
+    //       applies container clicks to the LIVE ECS InventoryContainer and
+    //       persists to EntityStateStore, with no mode check anywhere in that
+    //       chain. A spectator who can open a machine window can move items out
+    //       of it.
+    //
+    // So all three capabilities are world mutations, all three are denied by
+    // exactly the same two modes, and they take the same predicate. The gate is
+    // one condition rather than three so there is nothing to keep in sync.
+    //
+    // This is the CLIENT half only, and it is defence in depth rather than the
+    // fix: the server gate in PlaceBlockHandler is the authoritative one, since
+    // it is what actually mutates the world for any client. Its REJECTED ack
+    // is what ends the client's 100 ms pending-action sweep for the cell.
+    //
+    // The predicate is GameModePerm::CanRightClickMutateWorld, which is an
+    // allow-list: an undefined mode — reachable, because game_mode is an
+    // unchecked uint8 off the wire (gp-ul16) — fails CLOSED rather than being
+    // admitted the way the old deny-list admitted all 252 such values.
+    const bool rightClickAllowed =
+        GameModePerm::CanRightClickMutateWorld(invState_.gameMode);
+    if (!rightClickAllowed) {
+        spdlog::debug("[RightClick] mode={} may not mutate the world — ignoring",
+                      static_cast<int>(invState_.gameMode));
+    }
     bool rightClickHandled = false;
-    if (inputMgr_.State().mouseRightPressed && !uiMgr_.AnyOpen()) {
+    if (inputMgr_.State().mouseRightPressed && !uiMgr_.AnyOpen() &&
+        rightClickAllowed) {
         BlockPos target = interaction_.RaycastTarget(camera_);
         if (target.x != std::numeric_limits<int32_t>::max() &&
             world_.GetBlockAt(target) != 0) {
@@ -421,6 +476,17 @@ void GameClient::Update(float dt) {
     // uint8 off the wire (gp-ul16) — so a server sending game_mode = 9 put
     // the client in a state where the gate allowed world interaction that
     // the permission matrix forbids. Allow-listing fails closed.
+    //
+    // gp-t71g added the right-click gate above, and the issue asked that this
+    // one not be re-enabled by it. It cannot be: this conjunct is
+    // CanInteractWithWorld, evaluated independently, and the right-click gate
+    // only ever LEAVES rightClickHandled false (a refused right-click does not
+    // claim anything). `!rightClickHandled` true is therefore the PERMISSIVE
+    // direction of that flag, and the mode conjunct still has to pass. Both
+    // gates deny the same two modes, so in practice the two conditions agree;
+    // they are kept as separate conditions because they deny for different
+    // reasons (this one is about the break + G-key wrench; the one above is
+    // about the right-click arm) and a future divergence must not be silent.
     if (!uiMgr_.AnyOpen()
         && GameModePerm::CanInteractWithWorld(invState_.gameMode)
         && !rightClickHandled) {
