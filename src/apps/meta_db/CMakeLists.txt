@@ -52,3 +52,19 @@ add_custom_command(
 add_custom_target(metadbd_target ALL
     DEPENDS metadbd
 )
+
+# gp-7uy: the Go unit tests were never registered with ctest, so `ctest` ran
+# zero MetaDB tests while the Go suite only ran via a manual `go test`. These
+# tests are hermetic — every one uses t.TempDir() and opens no real data
+# directory — so they are safe to run as part of the normal suite.
+if(BUILD_TESTING)
+    find_program(GO_EXECUTABLE go)
+    if(GO_EXECUTABLE)
+        add_test(NAME metadb_go_test
+                 COMMAND ${GO_EXECUTABLE} test -count=1 ./...
+                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+        set_tests_properties(metadb_go_test PROPERTIES TIMEOUT 600)
+    else()
+        message(STATUS "metadb: go not found, skipping metadb_go_test")
+    endif()
+endif()

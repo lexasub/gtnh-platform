@@ -260,4 +260,8 @@ if(BUILD_TESTING)
         asio::asio
         chunkd_storage
     )
+    # gp-8e7: this target was built but never registered, so ctest never ran
+    # it. Every case uses a mkdtemp LMDB directory and removes it afterwards.
+    add_test(NAME chunk_dirty_test COMMAND chunk_dirty_test)
+    set_tests_properties(chunk_dirty_test PROPERTIES TIMEOUT 300)
 endif()
