@@ -348,6 +348,62 @@ if(BUILD_TESTING)
     add_dependencies(gameclient_service_health_store_test game_client_fbs)
     add_test(NAME gameclient_service_health_store_test COMMAND gameclient_service_health_store_test)
 
+    # Client-side recipe/item mirror tests (gp-koye): ServerRecipeDB's cache of
+    # server-sourced recipes and ClientItemRegistry's independent parse of the
+    # SAME items.csv the server parses. The drift test at the end is the point —
+    # it drives both parsers over the real data file and compares them.
+    #
+    # Sources are compiled in directly rather than linking gameclientd, which
+    # would drag in main() plus the whole bgfx/render graph. NetClient.cpp is
+    # needed because ServerRecipeDB holds a NetClient* and calls its Send*
+    # methods; a default-constructed NetClient with no control connection makes
+    # every one of those return immediately, so NO socket is opened and nothing
+    # is ever written. Same pattern as gameclient_interaction_system_test.
+    #
+    # Harness is the project's CHECK/TEST macros; GoogleTest is deliberately NOT
+    # used (absent from conanfile.txt, CI installs no libgtest-dev, CI Release
+    # builds with -Werror — a find_package(GTest QUIET) guard would silently
+    # unregister the test on CI).
+    add_executable(gameclient_recipe_mirrors_test
+        tests/test_recipe_mirrors.cpp
+        ${CMAKE_SOURCE_DIR}/src/game/client/Crafting/ServerRecipeDB.cpp
+        ${CMAKE_SOURCE_DIR}/src/game/client/Crafting/ClientItemRegistry.cpp
+        Network/NetClient.cpp
+        World/ChunkView.cpp
+        World/ChunkStorage.cpp
+    )
+    target_compile_definitions(gameclient_recipe_mirrors_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/src/content/data"
+    )
+    target_include_directories(gameclient_recipe_mirrors_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/game_client
+        ${CMAKE_SOURCE_DIR}/src/game/client
+        ${CMAKE_SOURCE_DIR}/src/game/client/Common
+        ${CMAKE_SOURCE_DIR}/src/apps/chunk_store
+        ${CMAKE_SOURCE_DIR}/src/engine/net/include
+        ${CMAKE_SOURCE_DIR}/src/game/recipes
+        ${CMAKE_CURRENT_SOURCE_DIR}/game_client_fbs
+        ${CMAKE_SOURCE_DIR}/src/game/recipes/generated
+    )
+    target_link_libraries(gameclient_recipe_mirrors_test PRIVATE
+        chunkd_codec
+        gtnh_game_recipes
+        gtnh-net
+        flatbuffers::flatbuffers
+        glm::glm
+        spdlog::spdlog
+        nlohmann_json::nlohmann_json
+        glfw
+        TBB::tbb
+    )
+    # yaml-cpp and SQLite3 come transitively: gtnh_game_recipes links both
+    # PUBLIC, so they are not repeated here (and yaml-cpp::yaml-cpp is not
+    # necessarily a visible imported target from this directory scope).
+    add_dependencies(gameclient_recipe_mirrors_test game_client_fbs)
+    add_test(NAME gameclient_recipe_mirrors_test
+             COMMAND gameclient_recipe_mirrors_test)
+
     # InteractionSystem + PlayerController unit tests (gp-05vj). The test
     # target lives with the sources it covers
     # (src/game/client/World/CMakeLists.txt) but must be declared HERE, after
@@ -355,4 +411,60 @@ if(BUILD_TESTING)
     # targets. Appended — do not restructure the block above.
     add_subdirectory(${CMAKE_SOURCE_DIR}/src/game/client/World
                      ${CMAKE_CURRENT_BINARY_DIR}/client_world_tests)
+
+    # Pipe fluid overlay logic (openspec add-pipe-fluid-overlay). The test was
+    # written against this header but never registered, so it had never been
+    # compiled. Sources are compiled in directly rather than linking
+    # gameclientd (which drags in main() plus the whole bgfx/render graph);
+    # PipeFluidOverlay.h itself is header-only.
+    #
+    # PipeMeshBuilder.cpp supplies detectConnections — the same call the chunk
+    # mesh builder uses, so the mask assertions cannot drift from the mesh
+    # path. It needs no other translation unit: MeshData is a header-only
+    # struct and the only renderlib symbol it touches is a UVRect literal.
+    # Both stores are compiled in because the overlay reads them through
+    # const FindAt while the test drives Enqueue/ApplyPending to populate them.
+    add_executable(gameclient_pipe_fluid_overlay_test
+        tests/PipeFluidOverlay_test.cpp
+        Render/PipeMeshBuilder.cpp
+        Network/ResourceBufferStateStore.cpp
+        Network/PipeContentsStateStore.cpp
+        ${CMAKE_SOURCE_DIR}/src/game/client/Crafting/ClientItemRegistry.cpp
+    )
+    target_compile_definitions(gameclient_pipe_fluid_overlay_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/src/content/data"
+    )
+    target_include_directories(gameclient_pipe_fluid_overlay_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/game/client
+        ${CMAKE_SOURCE_DIR}/src/game/client/Common
+        ${CMAKE_SOURCE_DIR}/src/apps/game_client
+        ${CMAKE_CURRENT_SOURCE_DIR}/game_client_fbs
+    )
+    target_link_libraries(gameclient_pipe_fluid_overlay_test PRIVATE
+        flatbuffers::flatbuffers
+        glm::glm
+        spdlog::spdlog
+    )
+    add_dependencies(gameclient_pipe_fluid_overlay_test game_client_fbs)
+    add_test(NAME gameclient_pipe_fluid_overlay_test
+             COMMAND gameclient_pipe_fluid_overlay_test)
+
+    # Client-side ItemRegistry parse of the real items.csv. Same reasoning as
+    # the overlay test above: one target, one file, no GoogleTest (the project
+    # harness is the CHECK/TEST macros in the test file itself).
+    add_executable(gameclient_item_registry_test
+        tests/test_item_registry.cpp
+        ${CMAKE_SOURCE_DIR}/src/game/client/Crafting/ClientItemRegistry.cpp
+    )
+    target_compile_definitions(gameclient_item_registry_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/src/content/data"
+    )
+    target_include_directories(gameclient_item_registry_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/game/client
+        ${CMAKE_SOURCE_DIR}/src/apps/game_client
+    )
+    add_test(NAME gameclient_item_registry_test
+             COMMAND gameclient_item_registry_test)
 endif()
