@@ -99,6 +99,14 @@ void CraftRequestHandler::doCraft(uint64_t playerId, int32_t x, int32_t y, int32
     }
 
     // Deduct consumed items from player inventory.
+    //
+    // A stack's identity is (item_id, metadata): a damaged tool, a filled
+    // container and its pristine counterpart share an item_id but are
+    // different items. Match BOTH and clear BOTH on exhaustion, exactly as
+    // RecipeManager::consumeInputs does (RecipeManager.cpp:213-220). Matching
+    // on item_id alone charges the player for whichever variant happens to
+    // sit in the lowest slot — destroying the wrong stack and leaving the
+    // player short of the one the workbench actually consumed.
     {
         auto inv = inventoryStore_->getSlots(playerId);
         for (size_t i = 0; i < 9 && i < originalGrid.size(); ++i) {
@@ -110,11 +118,14 @@ void CraftRequestHandler::doCraft(uint64_t playerId, int32_t x, int32_t y, int32
             int remaining = consumedCount;
             for (auto& slot : inv) {
                 if (remaining <= 0) break;
-                if (slot.item_id == orig.item_id) {
+                if (slot.item_id == orig.item_id && slot.meta == orig.metadata) {
                     int deduct = (remaining < static_cast<int>(slot.count)) ? remaining : static_cast<int>(slot.count);
                     slot.count -= static_cast<uint8_t>(deduct);
                     remaining -= deduct;
-                    if (slot.count == 0) slot.item_id = 0;
+                    if (slot.count == 0) {
+                        slot.item_id = 0;
+                        slot.meta = 0;
+                    }
                 }
             }
         }

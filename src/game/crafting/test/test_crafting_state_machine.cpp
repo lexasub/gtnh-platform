@@ -51,15 +51,21 @@
 //      UI open keeps showing the stale grid. Pinned by
 //      test_removeGridState_does_not_notify_the_client.
 //
-// Two more found by this file, also pinned and also NOT fixed here:
+// Two more found by this file:
 //
-//   3. CraftRequestHandler::doCraft matches inventory slots by item_id ALONE
-//      when charging the consumed inputs, ignoring the slot's metadata, so a
-//      meta-bearing item can debit the wrong variant. Filed as gp-0ce5.
+//   3. CraftRequestHandler::doCraft matched inventory slots by item_id ALONE
+//      when charging the consumed inputs, ignoring the slot's metadata, and
+//      cleared only item_id (never metadata) on an emptied slot, so a
+//      meta-bearing item could debit the WRONG variant of that item id. That
+//      defect (gp-0ce5) is FIXED in CraftRequestHandler.cpp by this file's
+//      test test_craft_debits_the_matching_metadata_variant; the slot match
+//      now requires item_id AND metadata, and an emptied slot clears both,
+//      mirroring RecipeManager::consumeInputs (RecipeManager.cpp:213).
 //   4. RecipeCompletedHandler applies a result to whichever of several
 //      co-located MachineComponents the entt view yields first, and that one
 //      is the later-created entity, not necessarily the right one. The
 //      replacement is destructive (inv.slots.clear()). Filed as gp-5wms.
+//      NOT fixed here.
 //
 // Uses the PROJECT's own harness (src/engine/net/test/test.h convention,
 // mirrored by src/game/machines/test/test_explosion_system.cpp and
@@ -179,6 +185,10 @@ static constexpr uint64_t kPlayer = 42;
 static const uint16_t kPlanks = ItemId::pack("0:10:00:0");      // oak_planks
 static const uint16_t kCobble = ItemId::pack("0:0:2");          // cobblestone
 static const uint16_t kStick = ItemId::pack("0:11110:0");      // stick
+// oak_log, the single input of the real `oak_log_to_planks` recipe. A
+// distinct item_id from kPlanks, so the 4-plank RESULT of that recipe cannot
+// stack onto any oak_log slot and perturb the assertions below.
+static const uint16_t kOakLog = ItemId::pack("0:10:11:2");      // oak_log
 
 // One shared io_context so EntityStateStoreClient has something to bind to.
 // It is never run, never polled, and the client is never Connect()ed.
@@ -767,6 +777,125 @@ static void test_repeated_crafts_consume_the_grid_each_time() {
 }
 
 // ===========================================================================
+// 2b. CraftRequestHandler — the inventory deduction matches on metadata
+// ===========================================================================
+
+// gp-0ce5. doCraft() must charge the player for exactly the variant of an
+// item that the workbench actually consumed.
+//
+// The real `oak_log_to_planks` recipe has the single-cell pattern
+// [oak_log, ~, ~] whose cell metadata is 0 (parseYamlRecipe always builds
+// pattern cells as {item_id, 1, 0}, RecipeManager.cpp:680), and
+// Recipe::matches rejects a grid cell whose metadata differs. So the bench can
+// only ever hold a META-0 oak_log — while the player may well be carrying a
+// damaged oak_log (meta 5) in a lower inventory slot.
+//
+// Before the fix, CraftRequestHandler.cpp:113 compared only
+// `slot.item_id == orig.item_id`, so the charge walked the inventory from slot
+// 0 and debited the damaged log — the wrong item entirely — and line 117
+// cleared only item_id, leaving orphaned metadata on the now-empty slot.
+//
+// Slots 2..39 are pre-filled with cobblestone and slot 2 holds a PARTIAL
+// oak_planks stack. The 4-plank result therefore stacks onto slot 2 in
+// giveItem()'s first pass instead of refilling the slot the deduction just
+// emptied. That is what makes both halves of the defect observable at once:
+// the freed slot survives as an empty slot, so orphaned metadata on it is
+// visible, and WHICH stack was emptied is visible.
+static void test_craft_debits_the_matching_metadata_variant() {
+  auto recipes = recipesWithCraftingTable();
+  Fixture f;
+  f.craftHandler = std::make_unique<simulation_core::CraftRequestHandler>(
+      f.router, recipes, f.inventory, nullptr, f.workbench, &f.mainQueue,
+      f.publisher);
+
+  auto slots = std::array<simcore::PersistSlot, simcore::kInventorySlots>{};
+  slots[0] = {kOakLog, 1, 5};  // damaged log — a DIFFERENT variant of oak_log
+  slots[1] = {kOakLog, 1, 0};  // pristine log — the variant the bench consumed
+  slots[2] = {kPlanks, 3, 0};  // partial result stack: absorbs the 4-plank grant
+  for (int i = 3; i < simcore::kInventorySlots; ++i) {
+    slots[static_cast<size_t>(i)] = {kCobble, 1, 0};
+  }
+  f.inventory->setSlots(kPlayer, slots);
+
+  // Bench: one oak_log, meta 0 — the only shape oak_log_to_planks matches.
+  std::vector<ItemStack> logGrid(9, ItemStack{0, 0, 0});
+  logGrid[0] = {kOakLog, 1, 0};
+  f.workbench->setGridState(21, 21, 21, logGrid);
+
+  f.craftHandler->handle(buildCraftRequest(kPlayer, 21, 21, 21));
+  f.mainQueue.drain();
+
+  CHECK_EQ(f.publisher->grids.size(), size_t(1),
+           "the meta-0 oak_log matched oak_log_to_planks, so the craft ran");
+
+  const auto inv = f.inventory->getSlots(kPlayer);
+
+  // The meta-5 log is a different item and must not have been touched.
+  CHECK_EQ(int(inv[0].item_id), int(kOakLog),
+           "the damaged (meta 5) oak_log was NOT debited: the deduction must "
+           "match item_id AND metadata, so a differing metadata is a "
+           "different item and is not chargeable");
+  CHECK_EQ(int(inv[0].count), 1, "the damaged log keeps its count of 1");
+  CHECK_EQ(int(inv[0].meta), 5, "the damaged log keeps its metadata of 5");
+
+  // The pristine log is the variant the bench actually consumed.
+  CHECK_EQ(int(inv[1].item_id), 0,
+           "the meta-0 oak_log — the variant the recipe consumed — was the "
+           "one debited to empty");
+  CHECK_EQ(int(inv[1].count), 0, "the debited stack is empty");
+
+  // The emptied slot must be fully cleared, not left advertising stale
+  // metadata: RecipeManager::consumeInputs (RecipeManager.cpp:217-220) clears
+  // item_id AND metadata, and an empty slot still carrying meta is published
+  // to the client and persisted to MetaDB as a phantom item.
+  bool anyEmptySlotWithMeta = false;
+  int emptySlotIndex = -1;
+  for (int i = 0; i < simcore::kInventorySlots; ++i) {
+    const auto& s = inv[static_cast<size_t>(i)];
+    if (s.item_id == 0 && (s.meta != 0 || s.count != 0)) {
+      anyEmptySlotWithMeta = true;
+      emptySlotIndex = i;
+    }
+  }
+  CHECK(!anyEmptySlotWithMeta,
+        "an emptied slot clears BOTH item_id and metadata; no empty slot is "
+        "left advertising orphaned metadata or a stale count");
+  if (anyEmptySlotWithMeta) {
+    printf("       (orphaned state on slot %d: item_id=%u count=%u meta=%u)\n",
+           emptySlotIndex, inv[static_cast<size_t>(emptySlotIndex)].item_id,
+           inv[static_cast<size_t>(emptySlotIndex)].count,
+           inv[static_cast<size_t>(emptySlotIndex)].meta);
+  }
+
+  // Net effect: exactly one oak_log left the inventory, and the total is
+  // right under either (buggy or fixed) matching — only WHICH stack is
+  // observable. So assert the identity of the survivor, not just the total.
+  int logsTotal = 0;
+  for (const auto& s : inv) {
+    if (s.item_id == kOakLog) logsTotal += s.count;
+  }
+  CHECK_EQ(logsTotal, 1, "one oak_log was consumed in total");
+  CHECK_EQ(int(inv[0].item_id), int(kOakLog),
+           "the SURVIVOR is the damaged log: the pristine one is the one the "
+           "craft legitimately charged for");
+
+  // The bench cell is consumed, and the 4-plank result stacked onto the
+  // pre-existing partial stack rather than refilling the freed slot — which
+  // is what left the debited slot observable as an empty slot above.
+  const auto after = cachedGrid(*f.workbench, 21, 21, 21);
+  CHECK_EQ(after.size(), size_t(9), "the workbench grid keeps its 9 slots");
+  CHECK_EQ(int(after[0].item_id), 0, "the consumed grid cell is empty");
+  CHECK_EQ(int(inv[2].item_id), int(kPlanks),
+           "the result stacked onto the existing oak_planks stack");
+  CHECK_EQ(int(inv[2].count), 7, "3 pre-existing planks plus the 4 granted");
+  int planks = 0;
+  for (const auto& s : inv) {
+    if (s.item_id == kPlanks) planks += s.count;
+  }
+  CHECK_EQ(planks, 7, "the result appears exactly once, stacked on slot 2");
+}
+
+// ===========================================================================
 // 3. RecipeCompletedHandler — machine-side result application
 // ===========================================================================
 
@@ -996,6 +1125,9 @@ int main(int argc, char** argv) {
   TEST(craft_without_a_workbench_manager_is_a_noop);
   TEST(craft_of_a_multi_item_recipe_deducts_each_input);
   TEST(repeated_crafts_consume_the_grid_each_time);
+
+  printf("--- CraftRequestHandler: metadata-aware deduction ---\n");
+  TEST(craft_debits_the_matching_metadata_variant);
 
   printf("--- RecipeCompletedHandler ---\n");
   TEST(recipe_completed_replaces_the_machine_inventory);
