@@ -22,6 +22,7 @@
 #include "Network/SimCoreMessageHandler.h"
 #include "Network/ResourceDrainHandler.h"
 #include "Network/CraftReservationClient.h"
+#include <common/FlatBuffersVerify.h>
 #include <common/ResourcePortClient.h>
 #include <engine/registry/Registry.h>
 #include <engine/sim/SimulationEngine.h>
@@ -437,7 +438,19 @@ int main(int argc, char* argv[]) {
     simulationEngine->onMultiblockSave =
         [entityStateClient](uint64_t controller_id, const std::vector<uint8_t>& state) {
             if (state.empty()) return;
-            auto fb = flatbuffers::GetRoot<Protocol::MultiblockState>(state.data());
+            // gp-wyvv: verified before GetRoot. The old `auto fb = GetRoot<...>`
+            // could not have been null-checked usefully - GetRoot manufactures a
+            // Table* from any bytes at all - so fb->anchor_x() was the first
+            // dereference of attacker-controlled offsets. A null here means the
+            // multiblock state we were asked to persist is not a valid
+            // FlatBuffer, so there is nothing to save.
+            const auto* fb = gtnh::wire::VerifyAndGetRoot<Protocol::MultiblockState>(
+                state.data(), state.size());
+            if (!fb) {
+                spdlog::warn("multiblock #{}: state is not a valid FlatBuffer, not saving",
+                             controller_id);
+                return;
+            }
             entityStateClient->SaveEntityState(0, fb->anchor_x(), fb->anchor_y(),
                                                fb->anchor_z(), 4, state,
                                                [](bool) {});

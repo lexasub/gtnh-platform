@@ -1,5 +1,6 @@
 #include "CableExplosionHandler.h"
 #include "pipe_network_generated.h"
+#include <common/FlatBuffersVerify.h>
 #include <flatbuffers/flatbuffers.h>
 #include <spdlog/spdlog.h>
 
@@ -10,8 +11,14 @@ CableExplosionHandler::CableExplosionHandler(std::shared_ptr<IoUringChunkClient>
 {}
 
 void CableExplosionHandler::handle(const std::vector<uint8_t>& data) {
-    auto* event = flatbuffers::GetRoot<Protocol::CableExplodedEvent>(data.data());
-    if (!event || !event->pos()) return;
+    const auto* event = gtnh::wire::VerifyAndGetRoot<Protocol::CableExplodedEvent>(
+        data.data(), data.size());
+    if (!event) {
+        spdlog::warn("[CableExplosion] invalid CableExplodedEvent ({} bytes)",
+                     data.size());
+        return;
+    }
+    if (!event->pos()) return;
 
     int32_t x = event->pos()->x();
     int32_t y = event->pos()->y();

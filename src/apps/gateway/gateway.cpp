@@ -6,6 +6,7 @@
 #include "service_health_generated.h"
 #include "quest_generated.h"
 #include "recipe_generated.h"
+#include "common/FlatBuffersVerify.h"
 #include "common/ResourceBufferStateCodec.h"
 
 #include <gtnh/net/frame.h>
@@ -476,7 +477,7 @@ else if (topic == "player.machine.slot.response")
     else if (topic == "player.tool.action.response")
         send_to_client_ctrl_raw(GatewayMsg::kToolActionResp, payload, plen);
     else if (topic == "player.position.load") {
-        auto pos = flatbuffers::GetRoot<Protocol::PlayerLeft>(payload);
+        auto pos = gtnh::wire::VerifyAndGetRoot<Protocol::PlayerLeft>(payload, plen);
         if (pos) {
             std::lock_guard<std::mutex> lock(client_state_mutex_);
             last_x_ = pos->x(); last_y_ = pos->y(); last_z_ = pos->z();

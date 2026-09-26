@@ -12,6 +12,7 @@
 #include "cache.h"
 #include "Client/MessageRouterClient.h"
 #include "Client/ChunkStoreClient.h"
+#include <common/FlatBuffersVerify.h>
 #include "core_generated.h"
 #include "entity_state_store_generated.h"
 
@@ -187,9 +188,11 @@ int main(int argc, char* argv[]) {
     routerClient->SetServiceName("entitystated");
     routerClient->OnMessage([&](const std::string& topic, const std::vector<uint8_t>& data) {
         if (topic == "entity.state.get") {
-            auto req = flatbuffers::GetRoot<Protocol::GetEntityStateReq>(data.data());
+            auto req = gtnh::wire::VerifyAndGetRoot<Protocol::GetEntityStateReq>(
+                data.data(), data.size());
             if (!req) {
-                spdlog::warn("Invalid GetEntityStateReq received");
+                spdlog::warn("Invalid GetEntityStateReq received ({} bytes)",
+                             data.size());
                 return;
             }
 
@@ -212,9 +215,11 @@ int main(int argc, char* argv[]) {
                     std::vector<uint8_t>(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize()));
             }
         } else if (topic == "entity.state.set") {
-            auto req = flatbuffers::GetRoot<Protocol::SetEntityStateReq>(data.data());
+            auto req = gtnh::wire::VerifyAndGetRoot<Protocol::SetEntityStateReq>(
+                data.data(), data.size());
             if (!req) {
-                spdlog::warn("Invalid SetEntityStateReq received");
+                spdlog::warn("Invalid SetEntityStateReq received ({} bytes)",
+                             data.size());
                 return;
             }
 

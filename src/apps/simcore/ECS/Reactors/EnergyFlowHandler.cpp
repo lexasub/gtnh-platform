@@ -1,4 +1,5 @@
 #include "EnergyFlowHandler.h"
+#include <common/FlatBuffersVerify.h>
 #include <engine/sim/components/EnergyStorage.h>
 #include <engine/sim/components/BatteryBufferComponent.h>
 #include <engine/sim/components/MachineComponent.h>
@@ -14,8 +15,13 @@ EnergyFlowHandler::EnergyFlowHandler(entt::registry& reg,
 {}
 
 void EnergyFlowHandler::handle(const std::vector<uint8_t>& data) {
-    auto* flow = flatbuffers::GetRoot<Protocol::EnergyFlowEvent>(data.data());
-    if (!flow || !flow->pos()) return;
+    const auto* flow = gtnh::wire::VerifyAndGetRoot<Protocol::EnergyFlowEvent>(
+        data.data(), data.size());
+    if (!flow) {
+        spdlog::warn("[PipeEnergy] invalid EnergyFlowEvent ({} bytes)", data.size());
+        return;
+    }
+    if (!flow->pos()) return;
 
     uint64_t from_node = flow->from_node_id();
     int32_t amount = flow->amount();

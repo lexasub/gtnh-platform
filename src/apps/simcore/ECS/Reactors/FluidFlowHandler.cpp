@@ -1,4 +1,5 @@
 #include "FluidFlowHandler.h"
+#include <common/FlatBuffersVerify.h>
 #include <engine/sim/components/MachineComponent.h>
 #include <engine/sim/components/FluidStorage.h>
 #include "core_generated.h"
@@ -19,8 +20,13 @@ FluidFlowHandler::FluidFlowHandler(entt::registry& reg,
 {}
 
 void FluidFlowHandler::handle(const std::vector<uint8_t>& data) {
-    auto* flow = flatbuffers::GetRoot<Protocol::FluidFlowEvent>(data.data());
-    if (!flow || !flow->pos()) return;
+    const auto* flow = gtnh::wire::VerifyAndGetRoot<Protocol::FluidFlowEvent>(
+        data.data(), data.size());
+    if (!flow) {
+        spdlog::warn("[SimCore] invalid FluidFlowEvent ({} bytes)", data.size());
+        return;
+    }
+    if (!flow->pos()) return;
 
     int32_t x = flow->pos()->x();
     int32_t y = flow->pos()->y();

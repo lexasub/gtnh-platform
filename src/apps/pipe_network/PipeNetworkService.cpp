@@ -1,5 +1,6 @@
 #include "PipeNetworkService.h"
 #include "Client/MessageRouterClient.h"
+#include <common/FlatBuffersVerify.h>
 #include <common/ResourcePortClient.h>
 #include <core_generated.h>
 #include <pipe_network_generated.h>
@@ -50,8 +51,12 @@ void handleCheckTemplate(
     const CheckBridge& br,
     flatbuffers::Offset<RespT> (*createResp)(::flatbuffers::FlatBufferBuilder&, int32_t, int32_t))
 {
-    auto* req = flatbuffers::GetRoot<ReqT>(data.data());
-    if (!req || !req->pos()) return;
+    auto* req = gtnh::wire::VerifyAndGetRoot<ReqT>(data.data(), data.size());
+    if (!req) {
+        spdlog::warn("[PipeNet] invalid check request ({} bytes)", data.size());
+        return;
+    }
+    if (!req->pos()) return;
 
     auto pit = br.protocol_to_mgr.find(req->node_id());
     if (pit == br.protocol_to_mgr.end()) {
@@ -861,8 +866,13 @@ void PipeNetworkService::handlePipeContentsRequest(const std::vector<uint8_t>& d
 }
 
 void PipeNetworkService::handleNodeUpdate(const std::vector<uint8_t>& data) {
-    auto* update = flatbuffers::GetRoot<Protocol::EnergyNodeUpdate>(data.data());
-    if (!update || !update->pos()) return;
+    auto* update = gtnh::wire::VerifyAndGetRoot<Protocol::EnergyNodeUpdate>(
+        data.data(), data.size());
+    if (!update) {
+        spdlog::warn("[PipeNet] invalid EnergyNodeUpdate ({} bytes)", data.size());
+        return;
+    }
+    if (!update->pos()) return;
 
     uint64_t protocol_id = update->node_id();
     int32_t x = update->pos()->x();
@@ -951,8 +961,13 @@ void PipeNetworkService::handleCheckRequest(const std::vector<uint8_t>& data) {
 }
 
 void PipeNetworkService::handleConsumeRequest(const std::vector<uint8_t>& data) {
-    auto* req = flatbuffers::GetRoot<Protocol::EnergyConsumeReq>(data.data());
-    if (!req || !req->pos()) return;
+    auto* req = gtnh::wire::VerifyAndGetRoot<Protocol::EnergyConsumeReq>(
+        data.data(), data.size());
+    if (!req) {
+        spdlog::warn("[PipeNet] invalid EnergyConsumeReq ({} bytes)", data.size());
+        return;
+    }
+    if (!req->pos()) return;
     auto pit = protocol_to_mgr_.find(req->node_id());
     if (pit == protocol_to_mgr_.end()) {
         flatbuffers::FlatBufferBuilder fbb;
@@ -1007,8 +1022,13 @@ void PipeNetworkService::handleConsumeRequest(const std::vector<uint8_t>& data) 
 }
 
 void PipeNetworkService::handleFluidNodeUpdate(const std::vector<uint8_t>& data) {
-    auto* update = flatbuffers::GetRoot<Protocol::FluidNodeUpdate>(data.data());
-    if (!update || !update->pos()) return;
+    auto* update = gtnh::wire::VerifyAndGetRoot<Protocol::FluidNodeUpdate>(
+        data.data(), data.size());
+    if (!update) {
+        spdlog::warn("[PipeNet] invalid FluidNodeUpdate ({} bytes)", data.size());
+        return;
+    }
+    if (!update->pos()) return;
 
     uint64_t protocol_id = update->node_id();
     int32_t x = update->pos()->x();
@@ -1085,8 +1105,13 @@ void PipeNetworkService::handleFluidCheckRequest(const std::vector<uint8_t>& dat
 }
 
 void PipeNetworkService::handleFluidConsumeRequest(const std::vector<uint8_t>& data) {
-    auto* req = flatbuffers::GetRoot<Protocol::FluidConsumeReq>(data.data());
-    if (!req || !req->pos()) {
+    auto* req = gtnh::wire::VerifyAndGetRoot<Protocol::FluidConsumeReq>(
+        data.data(), data.size());
+    if (!req) {
+        spdlog::warn("[PipeNet] invalid FluidConsumeReq ({} bytes)", data.size());
+        return;
+    }
+    if (!req->pos()) {
         spdlog::warn("[PipeNet] invalid FluidConsumeReq");
         return;
     }
@@ -1434,8 +1459,13 @@ void PipeNetworkService::publishFluidFlowTelemetry(const PendingConsume& pending
 }
 
 void PipeNetworkService::handleItemNodeUpdate(const std::vector<uint8_t>& data) {
-    auto* update = flatbuffers::GetRoot<Protocol::ItemNodeUpdate>(data.data());
-    if (!update || !update->pos()) return;
+    auto* update = gtnh::wire::VerifyAndGetRoot<Protocol::ItemNodeUpdate>(
+        data.data(), data.size());
+    if (!update) {
+        spdlog::warn("[PipeNet] invalid ItemNodeUpdate ({} bytes)", data.size());
+        return;
+    }
+    if (!update->pos()) return;
 
     uint64_t protocol_id = update->node_id();
     int32_t x = update->pos()->x();
@@ -1500,8 +1530,13 @@ void PipeNetworkService::handleItemNodeUpdate(const std::vector<uint8_t>& data) 
 }
 
 void PipeNetworkService::handleItemTransferRequest(const std::vector<uint8_t>& data) {
-    auto* req = flatbuffers::GetRoot<Protocol::ItemTransferReq>(data.data());
-    if (!req || !req->pos()) return;
+    auto* req = gtnh::wire::VerifyAndGetRoot<Protocol::ItemTransferReq>(
+        data.data(), data.size());
+    if (!req) {
+        spdlog::warn("[PipeNet] invalid ItemTransferReq ({} bytes)", data.size());
+        return;
+    }
+    if (!req->pos()) return;
 
     auto pit = protocol_to_mgr_.find(req->node_id());
     if (pit == protocol_to_mgr_.end()) {

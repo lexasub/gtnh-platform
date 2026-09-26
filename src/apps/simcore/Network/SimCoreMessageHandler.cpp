@@ -1,5 +1,6 @@
 #include "Network/SimCoreMessageHandler.h"
 #include "Common/MainThreadQueue.h"
+#include <common/FlatBuffersVerify.h>
 #include "Network/RouterEventPublisher.h"
 #include "Network/PipeEnergyClient.h"
 #include "Network/FluidClient.h"
@@ -248,8 +249,13 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
             } else if (topic == "world.blocks.changed") {
                 chunkHandler.handle(data);
             } else if (topic == "energy.consume.response") {
-                auto* resp = flatbuffers::GetRoot<Protocol::EnergyConsumeResp>(data.data());
-                if (!resp) return;
+                auto* resp = gtnh::wire::VerifyAndGetRoot<Protocol::EnergyConsumeResp>(
+                    data.data(), data.size());
+                if (!resp) {
+                    spdlog::warn("[simcore] invalid EnergyConsumeResp ({} bytes)",
+                                 data.size());
+                    return;
+                }
                 auto consumed = resp->consumed();
                 auto remaining = resp->remaining();
                 const auto node_id = resp->node_id();
@@ -266,14 +272,24 @@ void SimCoreMessageHandler::wireOnMessage(WorldContainerInventory& worldContaine
             }
 
             if (topic == "fluid.consume.response") {
-                auto* resp = flatbuffers::GetRoot<Protocol::FluidConsumeResp>(data.data());
-                if (!resp) return;
+                auto* resp = gtnh::wire::VerifyAndGetRoot<Protocol::FluidConsumeResp>(
+                    data.data(), data.size());
+                if (!resp) {
+                    spdlog::warn("[simcore] invalid FluidConsumeResp ({} bytes)",
+                                 data.size());
+                    return;
+                }
                 if (steamTurbine) steamTurbine->onFluidConsumeResponse(resp->consumed());
                 if (machineSystem) machineSystem->onFluidConsumeResponse(resp->consumed());
 
             } else if (topic == "item.transfer.response") {
-                auto* resp = flatbuffers::GetRoot<Protocol::ItemTransferResp>(data.data());
-                if (!resp) return;
+                auto* resp = gtnh::wire::VerifyAndGetRoot<Protocol::ItemTransferResp>(
+                    data.data(), data.size());
+                if (!resp) {
+                    spdlog::warn("[simcore] invalid ItemTransferResp ({} bytes)",
+                                 data.size());
+                    return;
+                }
                 spdlog::debug("ItemTransferResp: transferred={} remaining={}",
                               resp->transferred(), resp->remaining());
 

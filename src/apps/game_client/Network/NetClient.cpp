@@ -11,6 +11,7 @@
 #include <gtnh/net/io_uring_connection.h>
 #include <gtnh/net/tcp_connector.h>
 
+#include <common/FlatBuffersVerify.h>
 #include <spdlog/spdlog.h>
 #include <flatbuffers/verifier.h>
 #include <cstring>
@@ -471,8 +472,13 @@ void NetClient::OnMessage(uint8_t msg_type,
                 onQuestUpdate_(msg_type, data);
             return;
         case GatewayMsg::kGameModeChange: {
-            auto* change = flatbuffers::GetRoot<Protocol::GameModeChange>(payload);
-            if (change && onGameModeChange_) {
+            auto* change = gtnh::wire::VerifyAndGetRoot<Protocol::GameModeChange>(
+                payload, plen);
+            if (!change) {
+                spdlog::warn("NetClient: invalid GameModeChange buffer");
+                break;
+            }
+            if (onGameModeChange_) {
                 onGameModeChange_(change->new_mode());
             }
             break;

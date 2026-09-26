@@ -1,4 +1,5 @@
 #include "ItemFlowHandler.h"
+#include <common/FlatBuffersVerify.h>
 #include <engine/sim/components/Position.h>
 #include <engine/sim/components/MachineComponent.h>
 #include <engine/sim/components/InventoryContainer.h>
@@ -24,8 +25,13 @@ ItemFlowHandler::ItemFlowHandler(entt::registry& reg,
 {}
 
 void ItemFlowHandler::handle(const std::vector<uint8_t>& data) {
-    auto* flow = flatbuffers::GetRoot<Protocol::ItemFlowEvent>(data.data());
-    if (!flow || !flow->pos()) return;
+    const auto* flow = gtnh::wire::VerifyAndGetRoot<Protocol::ItemFlowEvent>(
+        data.data(), data.size());
+    if (!flow) {
+        spdlog::warn("[SimCore] invalid ItemFlowEvent ({} bytes)", data.size());
+        return;
+    }
+    if (!flow->pos()) return;
 
     int32_t x = flow->pos()->x();
     int32_t y = flow->pos()->y();

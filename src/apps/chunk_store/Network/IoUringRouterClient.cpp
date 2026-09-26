@@ -2,6 +2,7 @@
 
 #include "core_generated.h"
 #include "../Storage/ChunkStore.h"
+#include <common/FlatBuffersVerify.h>
 #include <engine/registry/coords/Coords.h>
 #include <spdlog/spdlog.h>
 
@@ -42,8 +43,14 @@ void IoUringRouterClient::onPublish(
         return;
 
     // "chunk.requests" publishes PlayerAction (CHUNK_REQUEST) FlatBuffers.
-    auto *action = flatbuffers::GetRoot<Protocol::PlayerAction>(data->data());
-    if (!action || !action->pos())
+    auto *action = gtnh::wire::VerifyAndGetRoot<Protocol::PlayerAction>(
+        data->data(), data->size());
+    if (!action) {
+        spdlog::warn("IoUringRouterClient: invalid PlayerAction ({} bytes)",
+                     data->size());
+        return;
+    }
+    if (!action->pos())
         return;
     if (action->action() != Protocol::PlayerActionType_CHUNK_REQUEST)
         return;
