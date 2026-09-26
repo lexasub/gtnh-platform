@@ -347,4 +347,12 @@ if(BUILD_TESTING)
     )
     add_dependencies(gameclient_service_health_store_test game_client_fbs)
     add_test(NAME gameclient_service_health_store_test COMMAND gameclient_service_health_store_test)
+
+    # InteractionSystem + PlayerController unit tests (gp-05vj). The test
+    # target lives with the sources it covers
+    # (src/game/client/World/CMakeLists.txt) but must be declared HERE, after
+    # game_client_fbs and FBS_GEN_DIR exist and after the renderlib/gameclient
+    # targets. Appended — do not restructure the block above.
+    add_subdirectory(${CMAKE_SOURCE_DIR}/src/game/client/World
+                     ${CMAKE_CURRENT_BINARY_DIR}/client_world_tests)
 endif()
