@@ -12,16 +12,15 @@ ChestStateManager::ChestStateManager(
     std::shared_ptr<EntityStateStoreClient> essClient, int32_t dimension)
     : essClient_(std::move(essClient)), dimension_(dimension) {}
 
-uint64_t ChestStateManager::posKey(int32_t x, int32_t y, int32_t z) {
-  return (static_cast<uint64_t>(static_cast<uint32_t>(x)) << 32) ^
-         (static_cast<uint64_t>(static_cast<uint32_t>(y)) << 16) ^
-         static_cast<uint64_t>(static_cast<uint32_t>(z));
+ChestStateManager::PosKey ChestStateManager::posKey(int32_t x, int32_t y,
+                                                      int32_t z) {
+  return PosKey{x, y, z};
 }
 
 void ChestStateManager::loadSlots(int32_t x, int32_t y, int32_t z,
                                   LoadCallback cb,
                                   uint16_t entity_type) {
-  uint64_t key = posKey(x, y, z);
+  const auto key = posKey(x, y, z);
   auto it = cache_.find(key);
   if (it != cache_.end()) {
     cb(it->second);

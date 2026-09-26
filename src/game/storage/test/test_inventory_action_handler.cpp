@@ -1131,19 +1131,20 @@ static void test_handle_applies_synchronously() {
 }
 
 // The workbench grid is a THIRD positional cache behind the same handler, and
-// it has the same hand-rolled-key class of defect as ChestStateManager — with
-// a different truncation. Its posKey (WorkbenchStateManager.cpp:15-19) is
+// it had the same hand-rolled-key class of defect as ChestStateManager. Its
+// posKey (WorkbenchStateManager.cpp:15-19) was
 //
 //   (x << 0) | (y << 32) | ((uint16_t)z << 48)
 //
-// so z is truncated to 16 bits: |z| >= 65536 wraps. Two workbenches 65536
-// blocks apart in z collide onto one grid entry, so a player would see (and
-// overwrite) the other one's crafting grid.
+// which both truncated z to 16 bits AND overlapped z (bits 48-63) with y
+// (bits 32-63), so (5,64,0) and (5,64,65536) shared one grid entry and a
+// player saw and overwrote the other one's crafting grid.
 //
-// Reported here, NOT fixed: the fix is a production change in
-// src/game/crafting/, which is outside this issue's scope. The test asserts
-// the observed collision so it cannot be reintroduced silently.
-static void test_workbench_state_manager_poskey_truncates_z_to_16_bits() {
+// Fixed in production code (gp-mhiv): the key is now the full (x,y,z) triple.
+// This test asserts the FIXED behaviour — each workbench holds its own grid —
+// and is the cross-handler regression guard, since the same key backs the
+// InventoryActionHandler's workbench path.
+static void test_workbench_state_manager_keys_positions_independently() {
   simulation_core::WorkbenchStateManager wb(nullptr, /*dimension=*/0);
 
   const std::vector<RecipeManager::ItemStack> gridA = {
@@ -1161,37 +1162,63 @@ static void test_workbench_state_manager_poskey_truncates_z_to_16_bits() {
     CHECK_EQ(i_(read_back[0].item_id), 1111, "and holds the item that was set");
   }
 
-  // z = 65536 truncates to uint16_t 0, colliding with the z = 0 workbench.
+  // The colliding partner: 65536 blocks out in z. Under the old key this
+  // overwrote the z=0 workbench's grid.
   wb.setGridState(/*x=*/5, /*y=*/64, /*z=*/65536, gridB);
-  std::vector<RecipeManager::ItemStack> aliased;
+  std::vector<RecipeManager::ItemStack> at_origin;
+  std::vector<RecipeManager::ItemStack> at_high_z;
   wb.getGridState(/*x=*/5, /*y=*/64, /*z=*/0,
                   [&](const std::vector<RecipeManager::ItemStack>& g) {
-                    aliased = g;
+                    at_origin = g;
+                  });
+  wb.getGridState(/*x=*/5, /*y=*/64, /*z=*/65536,
+                  [&](const std::vector<RecipeManager::ItemStack>& g) {
+                    at_high_z = g;
                   });
 
-  CHECK(!aliased.empty(),
-        "SIMILAR-KEY DEFECT REPORTED: workbench (5,64,0) and workbench "
-        "(5,64,65536) share one grid entry — posKey truncates z to 16 bits, "
-        "the same class of defect as ChestStateManager::posKey, NOT fixed here");
-  if (!aliased.empty()) {
-    CHECK_EQ(i_(aliased[0].item_id), 2222,
-             "SIMILAR-KEY DEFECT REPORTED: the workbench at z=0 now reads the "
-             "OTHER workbench's grid, so a player sees and overwrites it");
+  CHECK_EQ(i_(at_origin.size()), 3, "the z=0 workbench still has its own grid");
+  if (!at_origin.empty()) {
+    CHECK_EQ(i_(at_origin[0].item_id), 1111,
+             "and it is grid A, not the 65536-blocks-away workbench's grid");
+  }
+  CHECK_EQ(i_(at_high_z.size()), 3, "the z=65536 workbench has a grid too");
+  if (!at_high_z.empty()) {
+    CHECK_EQ(i_(at_high_z[0].item_id), 2222, "namely grid B");
   }
 
-  // Two workbenches at ordinary neighbouring positions must still be
-  // independent, so the reported defect is the 16-bit truncation and not a
-  // wholesale failure of the key. A FRESH manager is used: the collision above
-  // deliberately overwrote the z=0 entry, and 100+65536 truncates to 100 as
-  // well, so reusing this one would conflate the two effects.
+  // The y/z OVERLAP, which a fix that only widened z would still leave: z's
+  // bit 0 landed on y's bit 16, so (5,64,1) and (5,65600,1) collided too.
+  // A FRESH manager, so this is not conflated with the entries above.
   simulation_core::WorkbenchStateManager fresh(nullptr, /*dimension=*/0);
-  fresh.setGridState(5, 64, 100, gridA);
-  fresh.setGridState(5, 64, 101, gridB);
+  fresh.setGridState(5, 64, 1, gridA);
+  fresh.setGridState(5, 65600, 1, gridB);
+  std::vector<RecipeManager::ItemStack> lowY, highY;
+  fresh.getGridState(5, 64, 1, [&](const std::vector<RecipeManager::ItemStack>& g) {
+    lowY = g;
+  });
+  fresh.getGridState(5, 65600, 1,
+                     [&](const std::vector<RecipeManager::ItemStack>& g) {
+                       highY = g;
+                     });
+  CHECK_EQ(i_(lowY.size()), 3, "the y=64 workbench keeps its own grid");
+  if (!lowY.empty()) {
+    CHECK_EQ(i_(lowY[0].item_id), 1111, "namely grid A");
+  }
+  CHECK_EQ(i_(highY.size()), 3, "the y=65600 workbench has its own too");
+  if (!highY.empty()) {
+    CHECK_EQ(i_(highY[0].item_id), 2222, "namely grid B");
+  }
+
+  // Ordinary neighbouring workbenches stay independent, so the fixes above did
+  // not break the ordinary path.
+  simulation_core::WorkbenchStateManager near(nullptr, /*dimension=*/0);
+  near.setGridState(5, 64, 100, gridA);
+  near.setGridState(5, 64, 101, gridB);
   std::vector<RecipeManager::ItemStack> near100, near101;
-  fresh.getGridState(5, 64, 100, [&](const std::vector<RecipeManager::ItemStack>& g) {
+  near.getGridState(5, 64, 100, [&](const std::vector<RecipeManager::ItemStack>& g) {
     near100 = g;
   });
-  fresh.getGridState(5, 64, 101, [&](const std::vector<RecipeManager::ItemStack>& g) {
+  near.getGridState(5, 64, 101, [&](const std::vector<RecipeManager::ItemStack>& g) {
     near101 = g;
   });
   CHECK_EQ(i_(near100.size()), 3, "the z=100 workbench has its own grid");
@@ -1242,8 +1269,8 @@ int main() {
   TEST(handler_is_reachable_through_the_topic_handler_interface);
   TEST(handle_applies_synchronously);
 
-  // Reported defect in a sibling storage class (not fixed here)
-  TEST(workbench_state_manager_poskey_truncates_z_to_16_bits);
+  // Sibling storage class (defect fixed in production; behaviour asserted here)
+  TEST(workbench_state_manager_keys_positions_independently);
 
   printf("\n=== Results: %d checks, %d passed, %d failed ===\n", g_tests,
          g_passed, g_failed);

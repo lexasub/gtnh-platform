@@ -32,14 +32,24 @@
 //     dropped when the router is disconnected, so the payload is unobservable
 //     without a live MessageRouter. Only the early-return paths are asserted.
 //
-// Two defects are PINNED as observed behaviour, not blessed. Both are marked
-// PRODUCTION DEFECT in their test comments; they are the reason those tests
-// assert the wrong-looking thing. Neither is fixed here — this file only
-// reports them.
+// One defect is PINNED as observed behaviour, not blessed. It is marked
+// PRODUCTION DEFECT in its test comments; it is the reason that test asserts
+// the wrong-looking thing. It is NOT fixed by this file — this file only
+// reports it.
 //
-//   1. posKey() truncates: (0,0,0) and (0,1,65536) share one cache entry.
-//   2. entity_type is not part of the cache key, so a chest blob and a machine
-//      blob at the same position share one entry.
+//   1. entity_type is not part of the cache key, so a chest blob and a machine
+//      blob at the same position share one entry. (Tracked as the remaining
+//      half of gp-5t4d; the position-collision half of that issue is fixed
+//      here, see below.)
+//
+// One defect WAS fixed by this file, in the same change that fixed gp-5t4d's
+// position collision:
+//
+//   * posKey() used to pack (x << 32) ^ (y << 16) ^ z, which OVERLAPPED the y
+//     and z fields (bit 16 of y landed on bit 0 of z). (0,0,0) and (0,1,65536)
+//     shared one cache entry, so opening the second chest showed the first
+//     one's items. The key is now the full (x,y,z) triple; the tests below
+//     assert the FIXED behaviour.
 //
 // Uses the PROJECT's own harness (src/engine/net/test/test.h convention,
 // mirrored by src/game/world/test/BlockTransforms_test.cpp and
@@ -616,21 +626,20 @@ static void test_ChestStateManager_negative_coordinates_key_independently() {
   CHECK_EQ(i_(b.size()), 2, "chest at (-2,64,-1)");
 }
 
-// PRODUCTION DEFECT (not blessed): posKey() shifts y by only 16 bits and XORs
-// the full 32-bit z on top, so the y and z contributions overlap.
+// (gp-5t4d) posKey() once packed (x << 32) ^ (y << 16) ^ z, which OVERLAPPED
+// the y and z fields: y was shifted only 16 bits and z was XORed in with no
+// shift at all, so bit 16 of y landed on bit 0 of z. Two legal positions
+// therefore shared ONE cache entry:
 //
 //   posKey(0,0,0)      == 0
 //   posKey(0,1,65536)  == (1 << 16) ^ 65536 == 0
 //
-// Both are legal Minecraft coordinates (the world border is ±30,000,000, and
-// y=1 is inside the build range), so two chests 65536 blocks apart in z and one
-// apart in y share ONE cache entry. Opening the second chest shows the first
-// one's contents.
-//
-// This asserts the observed collision so it cannot regress silently; the fix
-// (a wider y field, or a real pair/hash key) is a production change and is out
-// of scope for this issue.
-static void test_ChestStateManager_posKey_aliases_two_legal_positions() {
+// Both are legal world positions, so opening the second chest showed the first
+// one's items. It is a user-visible corruption, not a theoretical one, so the
+// test below asserts the FIXED behaviour through the manager's public API:
+// save at one position, load at the colliding position, and require that the
+// second position is EMPTY rather than showing the first chest's items.
+static void test_ChestStateManager_colliding_positions_do_not_share_a_cache_entry() {
   OfflineEss ess;
   simcore::ChestStateManager mgr(ess.client, 0);
   mgr.saveSlots(/*x=*/0, /*y=*/0, /*z=*/0, chestContents(31337, 1, 1));
@@ -639,12 +648,116 @@ static void test_ChestStateManager_posKey_aliases_two_legal_positions() {
   mgr.loadSlots(/*x=*/0, /*y=*/1, /*z=*/65536,
                 [&](const std::vector<simcore::PersistSlot>& s) { aliased = s; });
 
-  CHECK(!aliased.empty(),
-        "PRODUCTION DEFECT: chest (0,0,0) and chest (0,1,65536) share one "
-        "cache entry, so the second shows the first one's item");
-  if (!aliased.empty()) {
-    CHECK_EQ(i_(aliased[0].item_id), 31337,
-             "PRODUCTION DEFECT: the leaked item is the other chest's");
+  CHECK_EQ(i_(aliased.size()), 0,
+           "chest (0,1,65536) is NOT chest (0,0,0): opening it must show its "
+           "own (empty) contents, never the other chest's items");
+}
+
+// The same overlap, one block apart in y against 65536 blocks in z — the pair
+// the issue report names. Kept as its own case so the two directions of the
+// overlap (which x/y/z combination) cannot be papered over by one fix that
+// only handles the origin.
+static void test_ChestStateManager_y_and_z_fields_do_not_overlap() {
+  OfflineEss ess;
+  simcore::ChestStateManager mgr(ess.client, 0);
+  mgr.saveSlots(/*x=*/10, /*y=*/64, /*z=*/100, chestContents(4242, 7, 3));
+
+  // One block up in y, and 65536 + 100 blocks further out in z.
+  std::vector<simcore::PersistSlot> neighbour;
+  mgr.loadSlots(/*x=*/10, /*y=*/65, /*z=*/65636,
+                [&](const std::vector<simcore::PersistSlot>& s) { neighbour = s; });
+
+  CHECK_EQ(i_(neighbour.size()), 0,
+           "a chest one block above and 65536 blocks away is a different "
+           "chest, not the same cache entry");
+
+  // And the original position must still read back its own contents.
+  std::vector<simcore::PersistSlot> own;
+  mgr.loadSlots(/*x=*/10, /*y=*/64, /*z=*/100,
+                [&](const std::vector<simcore::PersistSlot>& s) { own = s; });
+  CHECK_EQ(i_(own.size()), 3, "the original chest still holds its contents");
+  if (!own.empty()) {
+    CHECK_EQ(i_(own[0].item_id), 4242, "and they are its OWN items");
+  }
+}
+
+// A regression sweep rather than a single pair: a long run of positions one
+// block apart in y (each 65536 further out in z) must all key independently.
+// The old key mapped that whole run onto ONE entry, so the very first save
+// would be visible at every one of them. This catches a partial fix that only
+// handles the specific pair above.
+static void test_ChestStateManager_a_run_of_65536_z_steps_keys_independently() {
+  OfflineEss ess;
+  simcore::ChestStateManager mgr(ess.client, 0);
+  mgr.saveSlots(/*x=*/3, /*y=*/0, /*z=*/0, chestContents(9001, 1, /*filled=*/1));
+
+  for (int32_t k = 1; k <= 8; ++k) {
+    const int32_t z = k * 65536;
+    std::vector<simcore::PersistSlot> out;
+    mgr.loadSlots(/*x=*/3, /*y=*/k, /*z=*/z,
+                  [&](const std::vector<simcore::PersistSlot>& s) { out = s; });
+    CHECK_EQ(i_(out.size()), 0,
+             "each (0+k, 65536*k) position is its own cache entry");
+  }
+}
+
+// The structural property that makes all of the above true: the key is the
+// full 3-tuple, so a one-block step along ANY axis always yields a different
+// key. A packed key that merely widens one field still fails this if it leaves
+// any two axes sharing bits.
+static void test_ChestStateManager_one_block_step_on_any_axis_is_a_new_key() {
+  OfflineEss ess;
+  simcore::ChestStateManager mgr(ess.client, 0);
+  const int32_t base[3] = {7, 64, -20};
+
+  // A distinct item per step, so a bleed is visible as a wrong item, not just
+  // a wrong size.
+  for (int axis = 0; axis < 3; ++axis) {
+    for (int32_t step : {int32_t{1}, int32_t{-1}}) {
+      int32_t p[3] = {base[0], base[1], base[2]};
+      p[axis] += step;
+      mgr.saveSlots(base[0], base[1], base[2],
+                    chestContents(static_cast<uint16_t>(100 + axis * 2 + step + 2),
+                                  5, 4));
+      std::vector<simcore::PersistSlot> out;
+      mgr.loadSlots(p[0], p[1], p[2],
+                    [&](const std::vector<simcore::PersistSlot>& s) { out = s; });
+      CHECK_EQ(i_(out.size()), 0,
+               "a one-block step along an axis is a different chest");
+      mgr.clearSlots(base[0], base[1], base[2]);
+    }
+  }
+}
+
+// clearSlots() on one of a colliding pair must not empty the other. Under the
+// old key the two shared an entry, so breaking one chest silently emptied the
+// other 65536 blocks away — items destroyed by a block break.
+static void test_ChestStateManager_clear_of_a_colliding_position_spares_the_other() {
+  OfflineEss ess;
+  simcore::ChestStateManager mgr(ess.client, 0);
+  mgr.saveSlots(/*x=*/0, /*y=*/0, /*z=*/0, chestContents(5151, 3, 2));
+  mgr.saveSlots(/*x=*/0, /*y=*/1, /*z=*/65536, chestContents(6262, 4, 5));
+
+  // Both were saved; each must still hold its OWN contents, not the other's.
+  std::vector<simcore::PersistSlot> a, b;
+  mgr.loadSlots(0, 0, 0, [&](const std::vector<simcore::PersistSlot>& s) { a = s; });
+  mgr.loadSlots(0, 1, 65536, [&](const std::vector<simcore::PersistSlot>& s) { b = s; });
+  CHECK_EQ(i_(a.size()), 2,
+           "the second save did not overwrite the first chest's entry");
+  if (!a.empty()) CHECK_EQ(i_(a[0].item_id), 5151, "and it keeps its own item");
+  CHECK_EQ(i_(b.size()), 5, "and the second chest holds its own 5 slots");
+  if (!b.empty()) CHECK_EQ(i_(b[0].item_id), 6262, "namely its own item");
+
+  mgr.clearSlots(/*x=*/0, /*y=*/0, /*z=*/0);
+
+  std::vector<simcore::PersistSlot> survivor;
+  mgr.loadSlots(/*x=*/0, /*y=*/1, /*z=*/65536,
+                [&](const std::vector<simcore::PersistSlot>& s) { survivor = s; });
+  CHECK_EQ(i_(survivor.size()), 5,
+           "breaking the chest at (0,0,0) must not empty the chest 65536 "
+           "blocks away — that destroyed the player's items");
+  if (!survivor.empty()) {
+    CHECK_EQ(i_(survivor[0].item_id), 6262, "which keeps its own items");
   }
 }
 
@@ -1166,7 +1279,11 @@ int main() {
   TEST(ChestStateManager_clear_leaves_neighbouring_chests_alone);
   TEST(ChestStateManager_neighbouring_chests_are_independent);
   TEST(ChestStateManager_negative_coordinates_key_independently);
-  TEST(ChestStateManager_posKey_aliases_two_legal_positions);
+  TEST(ChestStateManager_colliding_positions_do_not_share_a_cache_entry);
+  TEST(ChestStateManager_y_and_z_fields_do_not_overlap);
+  TEST(ChestStateManager_a_run_of_65536_z_steps_keys_independently);
+  TEST(ChestStateManager_one_block_step_on_any_axis_is_a_new_key);
+  TEST(ChestStateManager_clear_of_a_colliding_position_spares_the_other);
   TEST(ChestStateManager_cache_key_ignores_entity_type);
   TEST(ChestStateManager_cache_is_per_instance);
   TEST(ChestStateManager_cache_ignores_dimension);

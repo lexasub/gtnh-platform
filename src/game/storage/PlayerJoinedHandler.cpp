@@ -12,7 +12,21 @@ PlayerJoinedHandler::PlayerJoinedHandler(std::shared_ptr<PlayerInventoryStore> i
     : inventoryStore_(std::move(inv)), router_(std::move(router)),
       questManager_(std::move(questManager)) {}
 void PlayerJoinedHandler::handle(const std::vector<uint8_t>& data) {
+    // gp-ajvg: see InventoryLoadHandler::handle for the full account. "player.
+    // joined" is likewise a router-subscribed topic (main.cpp / subscribeAll),
+    // so any publisher can deliver a zero-length or truncated payload; the
+    // Verifier-less GetRoot() below handed the join bootstrap a Table whose
+    // first accessor dereferenced nullptr for an empty vector. Verify BEFORE
+    // the buffer pointer is read — same R1/R2 rejection as
+    // InventoryActionHandler.cpp:31-34.
+    flatbuffers::Verifier v(data.data(), data.size());
+    if (!v.VerifyBuffer<Protocol::PlayerJoined>(nullptr)) {
+        spdlog::warn("[SimCore] PlayerJoined: invalid PlayerJoined buffer ({} bytes) — dropped",
+                     data.size());
+        return;
+    }
     auto joined = flatbuffers::GetRoot<Protocol::PlayerJoined>(data.data());
+    if (!joined) return;
     uint64_t pid = joined->player_id();
     spdlog::info("[SimCore] Player joined: id={}", pid);
     inventoryStore_->initPlayer(pid);

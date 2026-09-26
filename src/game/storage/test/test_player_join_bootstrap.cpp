@@ -46,6 +46,9 @@
 #include <string>
 #include <vector>
 
+#include <sys/wait.h>
+#include <unistd.h>
+
 #include <flatbuffers/flatbuffers.h>
 #include <asio.hpp>
 
@@ -228,6 +231,82 @@ std::vector<uint8_t> inventoryLoadPayload(uint64_t pid, const Slots& slots,
 // A structurally valid InventoryUpdate with an EMPTY slot vector.
 std::vector<uint8_t> emptyInventoryLoadPayload(uint64_t pid) {
   return inventoryLoadPayload(pid, Slots{}, 0);
+}
+
+// ---------------------------------------------------------------------------
+// gp-ajvg — the crash-isolation harness
+// ---------------------------------------------------------------------------
+// The gp-ajvg crash (GetRoot with no Verifier on a null pointer) cannot be
+// asserted in-process: calling handle({}) segfaults the whole binary before a
+// single check can run. So the empty/truncated/garbage calls run in a forked
+// CHILD, and the PARENT asserts only on the child's exit status:
+//
+//     crashed (SIGSEGV/SIGBUS/SIGABRT)  -> the regression is still present
+//     exited 0                           -> the payload was rejected cleanly
+//
+// This is fully deterministic: the fixture creates no thread, no socket and no
+// timer, so fork() copies a single-threaded process and the child runs the
+// handler to completion. The child is given its OWN store and handler, so a
+// crash cannot corrupt the parent's observable state. `_exit()` is used rather
+// than exit() so the child's spdlog/atexit teardown cannot itself abort and be
+// misread as a handler failure.
+constexpr int kChildOk = 0;
+
+struct ChildOutcome {
+  bool exited = false;      // the child terminated normally (not on a signal)
+  bool signalled = false;   // the child died on a signal -- a CRASH
+  int signal_number = 0;    // which signal, when signalled
+  int exit_code = -1;       // its exit status, when exited
+};
+
+// The child's offline router, created on first use. Constructed and NEVER
+// Connect()ed, so Publish()/PublishRaw() short-circuit and no socket or
+// thread is ever created — which is also what makes fork() safe here.
+std::shared_ptr<simcore::IoUringRouterClient>& childRouter() {
+  static std::shared_ptr<simcore::IoUringRouterClient> r =
+      std::make_shared<simcore::IoUringRouterClient>();
+  return r;
+}
+
+// The child body receives a store by reference: the harness constructs one
+// per child, so a crash in the handler can never corrupt the parent's
+// observable state.
+using ChildBody = void (*)(simcore::PlayerInventoryStore&);
+
+ChildOutcome runInChild(ChildBody body) {
+  std::fflush(stdout);
+  const pid_t pid = fork();
+  if (pid < 0) {
+    // fork() failing is an environment fault, not a verdict about the handler,
+    // so report the benign outcome rather than a false regression.
+    ChildOutcome o;
+    o.exited = true;
+    o.exit_code = kChildOk;
+    return o;
+  }
+  if (pid == 0) {
+    // The child gets its OWN store, so a crash cannot corrupt the parent's
+    // observable state.
+    simcore::PlayerInventoryStore store;
+    body(store);
+    _exit(kChildOk);
+  }
+  int status = 0;
+  if (waitpid(pid, &status, 0) != pid) {
+    ChildOutcome o;
+    o.exited = true;
+    o.exit_code = kChildOk;
+    return o;
+  }
+  ChildOutcome o;
+  if (WIFEXITED(status)) {
+    o.exited = true;
+    o.exit_code = WEXITSTATUS(status);
+  } else if (WIFSIGNALED(status)) {
+    o.signalled = true;
+    o.signal_number = WTERMSIG(status);
+  }
+  return o;
 }
 
 // The rig: an offline router plus (optionally) a recording quest publisher.
@@ -450,22 +529,21 @@ static void test_both_handlers_are_reachable_through_ITopicHandler() {
   // A malformed buffer is what a dropped or truncated publish looks like. The
   // load must leave state intact.
   //
-  // NOT ASSERTED HERE, DELIBERATELY: the empty-buffer case CRASHES. Both
-  // handlers call flatbuffers::GetRoot on the raw pointer with no size check
-  // and no Verifier, so data.data() is nullptr for an empty vector and the
-  // first field read dereferences it:
+  // FIXED (gp-ajvg). This comment used to record an UNASSERTED crash: both
+  // handlers called flatbuffers::GetRoot on the raw pointer with no size check
+  // and no Verifier, so for a zero-length payload data.data() was nullptr and
+  // the first field read dereferenced it:
   //     InventoryLoadHandler.cpp:10-11  GetRoot<InventoryUpdate> -> player_id()
   //     PlayerJoinedHandler.cpp:15-16   GetRoot<PlayerJoined>    -> player_id()
   // Confirmed by backtrace (frame #5 is the handler, #4 the generated
   // accessor, this=0x0 in every flatbuffers frame). A crash cannot be asserted
-  // in-process without taking the whole suite down, so the call is simply not
-  // made and the defect is filed as gp-qxbu-fix-1 with a regression test that
-  // the fix should add. Everything else in these two 22/32-line handlers is
-  // pinned below.
+  // in-process without taking the whole suite down, so the empty-buffer call is
+  // NOT made here either; it is made in a forked child by the
+  // test_gp_ajvg_* cases below, which assert the handler survived.
   //
   // The scale: "player.joined" and "player.inventory.load" are both subscribed
   // router topics (main.cpp:589, messageHandler.subscribeAll()), so a
-  // zero-length or truncated publish from any peer takes down the whole SimCore
+  // zero-length or truncated publish from any peer took down the whole SimCore
   // daemon, not just one player's join.
   CHECK(sameSlots(store.getSlots(kPlayer), afterLoad),
         "state is intact after the valid load");
@@ -603,6 +681,261 @@ static void test_zero_player_id_is_handled_without_crashing() {
   CHECK(occupiedSlots(store.getSlots(0)) == 1, "and the loaded item survives");
 }
 
+// ===========================================================================
+// gp-ajvg — a malformed or empty payload must be REJECTED, never read
+// ===========================================================================
+//
+// Both "player.inventory.load" and "player.joined" are router-subscribed
+// topics, so any publisher on the bus can deliver a zero-length or truncated
+// payload to either handler. Before the fix both called
+// flatbuffers::GetRoot on the raw pointer with no size check and no Verifier:
+//
+//   InventoryLoadHandler.cpp:10-11  GetRoot<InventoryUpdate> -> player_id()
+//   PlayerJoinedHandler.cpp:15-16   GetRoot<PlayerJoined>    -> player_id()
+//
+// For an empty std::vector, data.data() is nullptr, so the first accessor
+// dereferenced null and took the whole SimCore daemon with it. Confirmed by
+// gdb (ReadScalar<int>(p=0x0) <- Table::GetVTable(this=0x0) <-
+// PlayerJoinedHandler::handle) — which is also why the calls below run in a
+// forked child: a crash cannot be asserted in-process, and this is the standard
+// way to assert "did not crash" from inside a test binary.
+//
+// The parent asserts only on the child's exit status, which is a stable,
+// deterministic property — no wall clock, no sleep, no timeout race.
+
+// The child bodies. Each takes a store by reference (the harness's own
+// instance), builds the handler over the never-connected router, and feeds it
+// one hostile payload. If the handler crashes the child dies by signal; if it
+// rejects the payload the child exits 0.
+
+// THE regression: a zero-length publish.
+static void childLoadEmpty(simcore::PlayerInventoryStore& store) {
+  simcore::InventoryLoadHandler h(Rig::borrow(store), childRouter());
+  h.handle({});
+}
+
+static void childJoinEmpty(simcore::PlayerInventoryStore& store) {
+  simcore::PlayerJoinedHandler h(Rig::borrow(store), childRouter(), nullptr);
+  h.handle({});
+}
+
+// Every truncation of a REAL payload. A partial FlatBuffer is the far more
+// likely wire event than a truly zero-length publish (a short read, a frame
+// split at a boundary, a publisher that wrote a header and died), and it is
+// also the case a Verifier catches that a bare size check would not.
+static void childLoadTruncated(simcore::PlayerInventoryStore& store) {
+  simcore::InventoryLoadHandler h(Rig::borrow(store), childRouter());
+  Slots saved{};
+  saved[0] = item(kItemA, 12);
+  saved[7] = item(kItemB, 3, 5);
+  const std::vector<uint8_t> real = inventoryLoadPayload(kPlayer, saved);
+  for (size_t cut = 0; cut < real.size(); ++cut)
+    h.handle(std::vector<uint8_t>(real.begin(), real.begin() + cut));
+}
+
+static void childJoinTruncated(simcore::PlayerInventoryStore& store) {
+  simcore::PlayerJoinedHandler h(Rig::borrow(store), childRouter(), nullptr);
+  const std::vector<uint8_t> real = joinedPayload(kPlayer);
+  for (size_t cut = 0; cut < real.size(); ++cut)
+    h.handle(std::vector<uint8_t>(real.begin(), real.begin() + cut));
+}
+
+// Garbage that is structurally incapable of being either payload. Without a
+// Verifier the handler would walk a fabricated vtable and read nonsense
+// offsets; with one, all of these are rejected before the first field read.
+static void childLoadGarbage(simcore::PlayerInventoryStore& store) {
+  simcore::InventoryLoadHandler h(Rig::borrow(store), childRouter());
+  const std::vector<std::vector<uint8_t>> garbage = {
+      {},                            // empty
+      {0},                           // one byte
+      {0, 0, 0, 0},                  // root offset 0
+      {0, 0, 0, 1},                  // root offset past the end
+      {0xff, 0xff, 0xff, 0xff},      // offsets into the void
+      {0x2a, 0x00},                  // nonsense
+      std::vector<uint8_t>(4096, 0),  // large all-zero
+      std::vector<uint8_t>(4096, 0x7f),
+  };
+  for (const auto& g : garbage) h.handle(g);
+}
+
+static void childJoinGarbage(simcore::PlayerInventoryStore& store) {
+  simcore::PlayerJoinedHandler h(Rig::borrow(store), childRouter(), nullptr);
+  const std::vector<std::vector<uint8_t>> garbage = {
+      {},
+      {0},
+      {0, 0, 0, 0},
+      {0, 0, 0, 1},
+      {0xff, 0xff, 0xff, 0xff},
+      {0x2a, 0x00},
+      std::vector<uint8_t>(4096, 0),
+      std::vector<uint8_t>(4096, 0x7f),
+  };
+  for (const auto& g : garbage) h.handle(g);
+}
+
+// The child, after surviving all the garbage, must still handle a VALID
+// payload. This proves the guard rejects rather than wedges: a handler that
+// somehow latched a bad state would fail here.
+static void childLoadGarbageThenValid(simcore::PlayerInventoryStore& store) {
+  simcore::InventoryLoadHandler h(Rig::borrow(store), childRouter());
+  for (const auto& g : std::vector<std::vector<uint8_t>>{{}, {0}, {0, 0, 0, 0},
+                                                        {0xff, 0xff, 0xff, 0xff}})
+    h.handle(g);
+  Slots saved{};
+  saved[0] = item(kItemA, 5);
+  h.handle(inventoryLoadPayload(kPlayer, saved));
+  if (totalOf(store.getSlots(kPlayer), kItemA) != 5) _exit(2);
+  _exit(kChildOk);
+}
+
+static void childJoinGarbageThenValid(simcore::PlayerInventoryStore& store) {
+  simcore::PlayerJoinedHandler h(Rig::borrow(store), childRouter(), nullptr);
+  for (const auto& g : std::vector<std::vector<uint8_t>>{{}, {0}, {0, 0, 0, 0},
+                                                        {0xff, 0xff, 0xff, 0xff}})
+    h.handle(g);
+  h.handle(joinedPayload(kOtherPlayer));
+  if (occupiedSlots(store.getSlots(kOtherPlayer)) != 0) _exit(2);
+  _exit(kChildOk);
+}
+
+// A helper so a child's verdict reads the same way in every case: the child
+// either returned cleanly (rejected the payload) or died on a signal (crash).
+// Reported as one test_check with a formatted message rather than through the
+// CHECK macro, because the message depends on the runtime signal number.
+static void assertNoCrash(const char* what, ChildOutcome o) {
+  if (o.signalled) {
+    char expr[256];
+    snprintf(expr, sizeof(expr),
+             "gp-ajvg: %s handler survived a malformed payload (died on signal %d)",
+             what, o.signal_number);
+    test_check(false, __FILE__, __LINE__, expr,
+               "a zero-length, truncated or garbage publish must be REJECTED, "
+               "not read: the pre-fix Verifier-less GetRoot null-dereferenced "
+               "and took the whole SimCore daemon down");
+    return;
+  }
+  char expr[256];
+  snprintf(expr, sizeof(expr),
+           "gp-ajvg: %s handler exited cleanly (exit %d, wanted %d)", what,
+           o.exit_code, kChildOk);
+  test_check(o.exited && o.exit_code == kChildOk, __FILE__, __LINE__, expr,
+             "the handler rejected the malformed payload and returned normally");
+}
+
+// gp-ajvg, case 1: a zero-length publish to either topic must not crash.
+static void test_gp_ajvg_an_empty_publish_does_not_crash_either_handler() {
+  assertNoCrash("player.inventory.load", runInChild(&childLoadEmpty));
+  assertNoCrash("player.joined", runInChild(&childJoinEmpty));
+}
+
+// gp-ajvg, case 2: every truncation of a real payload must be rejected.
+static void test_gp_ajvg_every_truncation_of_a_real_payload_is_rejected() {
+  assertNoCrash("player.inventory.load (truncated)", runInChild(&childLoadTruncated));
+  assertNoCrash("player.joined (truncated)", runInChild(&childJoinTruncated));
+}
+
+// gp-ajvg, case 3: structurally impossible buffers must be rejected too.
+static void test_gp_ajvg_structurally_impossible_buffers_are_rejected() {
+  assertNoCrash("player.inventory.load (garbage)", runInChild(&childLoadGarbage));
+  assertNoCrash("player.joined (garbage)", runInChild(&childJoinGarbage));
+}
+
+// gp-ajvg, case 4: the guard rejects, it does not wedge — a valid payload
+// still works immediately after a batch of garbage.
+static void test_gp_ajvg_a_valid_payload_still_works_after_garbage() {
+  const ChildOutcome load = runInChild(&childLoadGarbageThenValid);
+  assertNoCrash("player.inventory.load (garbage then valid)", load);
+  const ChildOutcome join = runInChild(&childJoinGarbageThenValid);
+  assertNoCrash("player.joined (garbage then valid)", join);
+}
+
+// gp-ajvg, case 5: the STATE half — the store is left completely unchanged by
+// every malformed buffer, not merely "the crash did not happen". A non-empty
+// garbage buffer that verified-then-parsed would overwrite a real player's
+// inventory with a fabricated save, which is the data-corruption half of the
+// same bug. Uses the same full-snapshot before/after discipline as
+// test_inventory_action_handler.cpp: every one of the 40 slots, not just the
+// one that would have been expected to change.
+//
+// It runs in a child like the others — pre-fix, feeding these buffers in
+// process would segfault the test binary itself and the suite would never print
+// its summary. The child owns the store, so it does the snapshot comparison
+// itself and encodes the verdict in the exit code:
+//
+//   exit 0 -> every malformed buffer left the store byte-identical
+//   exit 3 -> a malformed buffer DID change committed state
+//   signal -> the handler crashed (case 1-4's verdict)
+static void childMalformedLeavesStoreUnchanged(simcore::PlayerInventoryStore& store) {
+  auto storePtr = Rig::borrow(store);
+  simcore::InventoryLoadHandler loadHandler(storePtr, childRouter());
+  simcore::PlayerJoinedHandler joinHandler(storePtr, childRouter(), nullptr);
+
+  // A real, distinctive save the malformed payloads must not disturb: every
+  // slot holds a unique item, so a bleed between any two is visible.
+  Slots saved{};
+  for (int k = 0; k < simcore::kInventorySlots; ++k)
+    saved[static_cast<size_t>(k)] =
+        item(static_cast<uint16_t>(1000 + k), static_cast<uint8_t>(1 + (k % 60)),
+             static_cast<uint16_t>(k));
+  loadHandler.handle(inventoryLoadPayload(kPlayer, saved));
+  joinHandler.handle(joinedPayload(kPlayer));
+  const Slots before_load = store.getSlots(kPlayer);
+  if (occupiedSlots(before_load) != 40) _exit(3);
+
+  // Build a real payload, then feed every prefix of it plus the garbage shapes
+  // the inventory_action_handler suite already enumerates.
+  const std::vector<uint8_t> real = inventoryLoadPayload(kOtherPlayer, saved);
+  for (size_t cut = 0; cut < real.size(); ++cut)
+    loadHandler.handle(std::vector<uint8_t>(real.begin(), real.begin() + cut));
+  const std::vector<uint8_t> realJoined = joinedPayload(kOtherPlayer);
+  for (size_t cut = 0; cut < realJoined.size(); ++cut)
+    joinHandler.handle(std::vector<uint8_t>(realJoined.begin(), realJoined.begin() + cut));
+
+  const std::vector<std::vector<uint8_t>> garbage = {
+      {}, {0}, {0, 0, 0, 0}, {0, 0, 0, 1}, {0xff, 0xff, 0xff, 0xff}, {0x2a, 0x00},
+      std::vector<uint8_t>(4096, 0), std::vector<uint8_t>(1024, 0x7f),
+  };
+  for (const auto& g : garbage) {
+    loadHandler.handle(g);
+    joinHandler.handle(g);
+  }
+
+  // The load snapshot must be byte-identical, and a rejected join must not
+  // have created a phantom player entry (initPlayer is the join's first side
+  // effect, so a garbage buffer that reached it would be observable here).
+  if (!sameSlots(store.getSlots(kPlayer), before_load)) _exit(3);
+  if (occupiedSlots(store.getSlots(kOtherPlayer)) != 0) _exit(3);
+
+  // And the handlers are still functional: a real payload after the whole
+  // battery still applies, and it does not disturb the other player.
+  Slots fresh{};
+  fresh[0] = item(kItemC, 11, 2);
+  loadHandler.handle(inventoryLoadPayload(kOtherPlayer, fresh, 1));
+  if (i_(store.getSlots(kOtherPlayer)[0].count) != 11) _exit(3);
+  if (!sameSlots(store.getSlots(kPlayer), before_load)) _exit(3);
+  _exit(kChildOk);
+}
+
+static void test_gp_ajvg_malformed_payloads_leave_the_store_completely_unchanged() {
+  const ChildOutcome o = runInChild(&childMalformedLeavesStoreUnchanged);
+  char expr[256];
+  if (o.signalled) {
+    snprintf(expr, sizeof(expr),
+             "gp-ajvg: state snapshot after a malformed payload (died on signal %d)",
+             o.signal_number);
+    test_check(false, __FILE__, __LINE__, expr,
+               "the handler must reject the buffer, not read it");
+    return;
+  }
+  snprintf(expr, sizeof(expr),
+           "gp-ajvg: state snapshot after a malformed payload (exit %d, wanted %d)",
+           o.exit_code, kChildOk);
+  test_check(o.exited && o.exit_code == kChildOk, __FILE__, __LINE__, expr,
+             "a malformed buffer changed committed state (child exit 3): either "
+             "a truncated/garbage buffer was parsed into a fabricated save, or a "
+             "rejected join created a phantom player entry");
+}
+
 int main(int argc, char** argv) {
   (void)argc;
   (void)argv;
@@ -620,6 +953,13 @@ int main(int argc, char** argv) {
   TEST(a_second_players_load_does_not_disturb_the_first);
   TEST(a_reload_replaces_the_previous_save_rather_than_merging);
   TEST(zero_player_id_is_handled_without_crashing);
+
+  // gp-ajvg: a malformed or empty publish must be rejected, never read.
+  TEST(gp_ajvg_an_empty_publish_does_not_crash_either_handler);
+  TEST(gp_ajvg_every_truncation_of_a_real_payload_is_rejected);
+  TEST(gp_ajvg_structurally_impossible_buffers_are_rejected);
+  TEST(gp_ajvg_a_valid_payload_still_works_after_garbage);
+  TEST(gp_ajvg_malformed_payloads_leave_the_store_completely_unchanged);
 
   printf("\n=== Results: %d checks, %d passed, %d failed ===\n", g_tests,
          g_passed, g_failed);

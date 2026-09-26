@@ -27,7 +27,8 @@
 //      are both retained and both block forever — also observed behaviour,
 //   9. BuildQuestEraMap drops EXCHANGE quests (repeatable market quests never
 //      complete, so counting them would make an era permanently uncompletable),
-//      and IsEraComplete skips ids absent from the era map.
+//      and IsEraComplete walks the ERA's quest set -- a quest of the era that is
+//      absent from the player's progress counts as NOT completed (gp-kjfh).
 //
 // The fixtures are deterministic (no clock, no randomness, no network) and the
 // order-insensitive queries (NewlyAvailable/GetUnlocked walk an unordered_map)
@@ -705,21 +706,89 @@ static void test_QuestGraph_IsEraComplete_ignores_other_eras_and_unknowns() {
                          {3, quest::QuestStatus::COMPLETED}};
     CHECK(qg.IsEraComplete(quest::Era::VAGRANT, vagrantLate, eraMap),
           "completing another era's quest does not gate VAGRANT");
-    // An era with no quest in the era map is vacuously complete: the loop skips
-    // ids absent from questEraMap and nothing is left to fail on.
-    CHECK(qg.IsEraComplete(quest::Era::EXPERT, p, eraMap),
-          "an era with no quests is vacuously complete");
-    // A quest present in progress but missing from the era map is skipped too
-    // (QuestGraph.cpp:58-59), so it can never block an era.
+    // A quest present in progress but missing from the era map is skipped, so
+    // it can never block an era. (It is not part of the era's quest set, so
+    // there is nothing for it to satisfy.)
     const Progress withStranger{{1, quest::QuestStatus::COMPLETED},
                                 {2, quest::QuestStatus::COMPLETED},
                                 {3, quest::QuestStatus::LOCKED},
                                 {9999, quest::QuestStatus::LOCKED}};
     CHECK(qg.IsEraComplete(quest::Era::VAGRANT, withStranger, eraMap),
           "an id absent from the era map does not gate its era");
-    // An empty era map makes every era vacuously complete.
+
+    // -----------------------------------------------------------------------
+    // gp-kjfh: the era's quest set must be FULLY present AND COMPLETED.
+    //
+    // FLIPPED ASSERTIONS. The two checks below used to read:
+    //
+    //   CHECK(qg.IsEraComplete(EXPERT,   p, eraMap), "an era with no quests is
+    //         vacuously complete");
+    //   CHECK(qg.IsEraComplete(VAGRANT,  p, {}),    "an empty era map reports
+    //         every era complete");
+    //
+    // Both are still TRUE, but for a different and now explicit reason, and
+    // their old justifications described the BUG. The old implementation
+    // iterated the PLAYER's map and only failed on quests it happened to find
+    // there, so a partially-seeded state read as complete. The contract is
+    // now the same one LockedByPrereqs already documents at QuestGraph.h:31-33
+    // ("Prereqs absent from `current` are treated as not completed"): the loop
+    // walks questEraMap -- the era's own quest set, which BuildQuestEraMap
+    // derives from every loaded quest rather than from any player -- and a
+    // quest of the era that is missing from the player's progress is NOT
+    // completed.
+    //
+    // An era with no quests at all is still complete under the new contract:
+    // the loop over questEraMap has nothing of this era to fail on. That is the
+    // same rule CanComplete applies to a prerequisite-free quest, and it is
+    // what makes an era the dataset does not define behave as "nothing to do"
+    // rather than "impossible". The cases that distinguish the two semantics
+    // are the partially-seeded ones right after these.
+    // -----------------------------------------------------------------------
+    CHECK(qg.IsEraComplete(quest::Era::EXPERT, p, eraMap),
+          "an era with NO quests of its own is still complete: the era's quest "
+          "set is empty, so there is nothing left to fail on");
     CHECK(qg.IsEraComplete(quest::Era::VAGRANT, p, {}),
-          "an empty era map reports every era complete");
+          "an EMPTY era map is still vacuously complete: it declares no quests "
+          "for any era, so no era has an outstanding quest");
+
+    // -- The cases that actually pin gp-kjfh --------------------------------
+    // VAGRANT's quest set is {1, 2}. A state holding only quest 1 is exactly
+    // what a player who completes a quest BEFORE onPlayerJoined has seeded them
+    // (QuestManager.cpp:182-186 seeds the single detected quest and nothing
+    // else), and it is the state that used to read as "era complete".
+    const Progress onlyFirst{{1, quest::QuestStatus::COMPLETED}};
+    CHECK(!qg.IsEraComplete(quest::Era::VAGRANT, onlyFirst, eraMap),
+          "gp-kjfh: an era whose second quest is ABSENT from progress is not "
+          "complete (a partially-seeded state must not read as complete)");
+    CHECK(!qg.IsEraComplete(quest::Era::VAGRANT, {}, eraMap),
+          "gp-kjfh: an empty player state completes no era that has quests");
+    CHECK(!qg.IsEraComplete(quest::Era::APPRENTICE, {}, eraMap),
+          "gp-kjfh: likewise for every other era with quests");
+
+    // Present but not COMPLETED is equally not-complete — the absence and the
+    // non-completion must not be conflated into one path.
+    const Progress secondLocked{{1, quest::QuestStatus::COMPLETED},
+                                {2, quest::QuestStatus::LOCKED}};
+    CHECK(!qg.IsEraComplete(quest::Era::VAGRANT, secondLocked, eraMap),
+          "gp-kjfh: a quest present but LOCKED blocks the era, as before");
+    const Progress secondAvailable{{1, quest::QuestStatus::COMPLETED},
+                                   {2, quest::QuestStatus::AVAILABLE}};
+    CHECK(!qg.IsEraComplete(quest::Era::VAGRANT, secondAvailable, eraMap),
+          "gp-kjfh: and so does an AVAILABLE one");
+
+    // The mirror of the first case: the LAST quest of the era is the missing
+    // one. Both orders must behave identically, so the predicate cannot be
+    // quietly order-dependent.
+    const Progress onlySecond{{2, quest::QuestStatus::COMPLETED}};
+    CHECK(!qg.IsEraComplete(quest::Era::VAGRANT, onlySecond, eraMap),
+          "gp-kjfh: the missing quest's position in the era does not matter");
+
+    // Completion is reached only when the whole set is present and COMPLETED.
+    const Progress bothCompleted{{1, quest::QuestStatus::COMPLETED},
+                                 {2, quest::QuestStatus::COMPLETED}};
+    CHECK(qg.IsEraComplete(quest::Era::VAGRANT, bothCompleted, eraMap),
+          "gp-kjfh: the era completes when every one of its quests is present "
+          "and COMPLETED -- the genuine completion still publishes");
 }
 
 static void test_QuestData_BuildQuestEraMap_excludes_EXCHANGE_quests() {

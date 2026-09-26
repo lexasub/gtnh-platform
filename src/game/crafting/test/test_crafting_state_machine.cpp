@@ -37,19 +37,23 @@
 //   * QuestManager gets null QuestData/QuestGraph, which makes
 //     checkCraftCompletion() a logged no-op — the craft still completes.
 //
-// Two defects are PINNED as observed behaviour, not blessed. Both are marked
-// PRODUCTION DEFECT in their test comments. Neither is fixed by this file.
+// One defect is PINNED as observed behaviour, not blessed. It is marked
+// PRODUCTION DEFECT in its test comment. It is NOT fixed by this file.
 //
-//   1. posKey() truncates z to 16 bits AND leaves y in the high 32 bits with
-//      x. WorkbenchStateManager::posKey packs
-//      (x << 0) | (y << 32) | ((uint16_t)z << 48). Two distinct positions can
-//      therefore collide in the cache. See
-//      test_posKey_z_is_truncated_to_16_bits. Filed as gp-mhiv.
-//   2. removeGridState() does NOT publish anything and does not tell the
+//   1. removeGridState() does NOT publish anything and does not tell the
 //      player their workbench view is gone; it clears the cache and (when
 //      connected) saves an empty blob. A client that still has the workbench
 //      UI open keeps showing the stale grid. Pinned by
 //      test_removeGridState_does_not_notify_the_client.
+//
+// One defect WAS fixed by this file, in the same change that fixed gp-mhiv:
+//
+//   * posKey() used to pack (x << 0) | (y << 32) | ((uint16_t)z << 48), which
+//     both truncated z to 16 bits AND overlapped z (bits 48-63) with y (bits
+//     32-63), so (0,0,0) and (0,0,65536) — and (5,64,1) and (5,65600,1) —
+//     shared one cache entry. A player opening one workbench saw, and
+//     overwrote, the other's crafting grid. The key is now the full (x,y,z)
+//     triple; the tests below assert the FIXED behaviour.
 //
 // Two more found by this file:
 //
@@ -288,6 +292,15 @@ static std::vector<ItemStack> cachedGrid(simulation_core::WorkbenchStateManager&
   return out;
 }
 
+// The per-slot count of the first cell, or -1 when the grid is empty. The
+// keying tests below read slot 0 of a grid that a COLLIDING key has emptied
+// out from under them, so indexing [0] blindly would trip the debug-mode
+// vector bounds assertion and abort the whole suite instead of reporting a
+// failed check. A miss is reported as -1, which no count can equal.
+static int firstCount(const std::vector<ItemStack>& g) {
+  return g.empty() ? -1 : int(g[0].count);
+}
+
 // ===========================================================================
 // 1. WorkbenchStateManager — the grid cache
 // ===========================================================================
@@ -378,25 +391,89 @@ static void test_positions_are_keyed_independently() {
   CHECK_EQ(int(cachedGrid(wm, -50, -64, -200)[0].count), 3, "the negative key is untouched too");
 }
 
-// PRODUCTION DEFECT 1: posKey truncates z to 16 bits.
-static void test_posKey_z_is_truncated_to_16_bits() {
+// (gp-mhiv) posKey() used to pack (x << 0) | (y << 32) | ((uint16_t)z << 48).
+// Two separate faults in one expression: z was truncated to 16 bits, AND the
+// 16-bit z field sat at bits 48-63 where y's 32-bit field also lives (bits
+// 32-63), so z overlapped y. Consequences, both reachable from real blocks:
+//
+//   (5,64,0)     == (5,64,65536)      // z truncated by 65536
+//   (5,64,1)     == (5,65600,1)      // z's bit 0 XORs y's bit 16
+//   (0,0,0)      == (0,0,65536)
+//
+// A player opens the workbench at (5,64,0) and sees (and overwrites) the grid
+// of the one 65536 blocks away. The test asserts the FIXED behaviour: each
+// position holds its own grid.
+static void test_posKey_does_not_alias_positions_65536_apart_in_z() {
   asio::io_context io;
   simulation_core::WorkbenchStateManager wm(
       std::make_shared<simcore::EntityStateStoreClient>(io), 0);
 
-  // z and z+65536 are 65_536 blocks apart — one full world height apart in any
-  // sane coordinate system — yet posKey() shifts a uint16_t of z, so they
-  // collide in the cache and the two workbenches share one grid.
   wm.setGridState(0, 0, 0, plank2x2Grid(1));
   wm.setGridState(0, 0, 65536, plank2x2Grid(9));
 
-  const auto first = cachedGrid(wm, 0, 0, 0);
-  const auto second = cachedGrid(wm, 0, 0, 65536);
-  CHECK_EQ(int(first[0].count), 9,
-           "PRODUCTION DEFECT: (0,0,0) and (0,0,65536) share one cache entry — "
-           "posKey() truncates z to 16 bits, so writing the high-z workbench "
-           "overwrote the low-z one");
-  CHECK_EQ(int(second[0].count), 9, "both positions read back the same grid");
+  CHECK_EQ(firstCount(cachedGrid(wm, 0, 0, 0)), 1,
+           "(0,0,0) keeps its own grid — posKey no longer truncates z to 16 bits");
+  CHECK_EQ(firstCount(cachedGrid(wm, 0, 0, 65536)), 9,
+           "and (0,0,65536) keeps the other one");
+}
+
+// The y/z OVERLAP, independent of the 65536 truncation: z's bit 0 was XORed
+// onto y's bit 16, so (5,64,1) and (5,65600,1) collided. A fix that only
+// widened z to 32 bits but left it at bit 48 would still collide here, so this
+// case must be asserted separately from the truncation case above.
+static void test_posKey_z_field_does_not_overlap_y() {
+  asio::io_context io;
+  simulation_core::WorkbenchStateManager wm(
+      std::make_shared<simcore::EntityStateStoreClient>(io), 0);
+
+  wm.setGridState(5, 64, 1, plank2x2Grid(1));
+  wm.setGridState(5, 65600, 1, plank2x2Grid(9));
+
+  CHECK_EQ(firstCount(cachedGrid(wm, 5, 64, 1)), 1,
+           "the workbench 65536 blocks up in y keeps its own grid — the z "
+           "field no longer overlaps y");
+  CHECK_EQ(firstCount(cachedGrid(wm, 5, 65600, 1)), 9,
+           "and the other one keeps the other grid");
+}
+
+// The structural property behind both fixes: one block along ANY axis is a
+// different cache entry. Sweeps a run of positions rather than sampling, so a
+// partial fix that only handles the two pairs above is caught.
+static void test_posKey_one_block_step_on_any_axis_is_a_new_key() {
+  asio::io_context io;
+  simulation_core::WorkbenchStateManager wm(
+      std::make_shared<simcore::EntityStateStoreClient>(io), 0);
+
+  for (int32_t k = 0; k <= 8; ++k) {
+    wm.setGridState(0, k, k * 65536, plank2x2Grid(1));
+  }
+  for (int32_t k = 0; k <= 8; ++k) {
+    CHECK_EQ(firstCount(cachedGrid(wm, 0, k, k * 65536)), 1,
+             "each (y=k, z=65536*k) position kept the grid written to it");
+  }
+  wm.setGridState(0, 0, 0, plank2x2Grid(4));
+  for (int32_t k = 1; k <= 8; ++k) {
+    CHECK_EQ(firstCount(cachedGrid(wm, 0, k, k * 65536)), 1,
+             "a rewrite at the origin does not disturb the others");
+  }
+}
+
+// removeGridState() on one position of a colliding pair must not erase the
+// other: under the old key breaking one workbench destroyed the other's grid
+// (and, in production, its items).
+static void test_removeGridState_of_a_colliding_position_spares_the_other() {
+  asio::io_context io;
+  simulation_core::WorkbenchStateManager wm(
+      std::make_shared<simcore::EntityStateStoreClient>(io), 0);
+
+  wm.setGridState(5, 64, 0, plank2x2Grid(1));
+  wm.setGridState(5, 64, 65536, plank2x2Grid(9));
+  wm.removeGridState(5, 64, 0);
+
+  CHECK_EQ(cachedGrid(wm, 5, 64, 0).size(), size_t(0), "the removed bench is gone");
+  CHECK_EQ(firstCount(cachedGrid(wm, 5, 64, 65536)), 9,
+           "breaking the bench at (5,64,0) must not empty the grid of the one "
+           "65536 blocks away");
 }
 
 static void test_setGridState_with_null_ess_client_is_safe() {
@@ -1109,7 +1186,10 @@ int main(int argc, char** argv) {
   TEST(getGridState_cache_miss_yields_an_empty_grid);
   TEST(setGridState_overwrites_a_previous_grid);
   TEST(positions_are_keyed_independently);
-  TEST(posKey_z_is_truncated_to_16_bits);
+  TEST(posKey_does_not_alias_positions_65536_apart_in_z);
+  TEST(posKey_z_field_does_not_overlap_y);
+  TEST(posKey_one_block_step_on_any_axis_is_a_new_key);
+  TEST(removeGridState_of_a_colliding_position_spares_the_other);
   TEST(setGridState_with_null_ess_client_is_safe);
   TEST(removeGridState_does_not_notify_the_client);
 

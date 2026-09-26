@@ -12,10 +12,9 @@ WorkbenchStateManager::WorkbenchStateManager(
 {
 }
 
-uint64_t WorkbenchStateManager::posKey(int32_t x, int32_t y, int32_t z) {
-    return (static_cast<uint64_t>(static_cast<uint32_t>(x)) << 0) |
-           (static_cast<uint64_t>(static_cast<uint32_t>(y)) << 32) |
-           (static_cast<uint64_t>(static_cast<uint16_t>(z)) << 48);
+WorkbenchStateManager::PosKey WorkbenchStateManager::posKey(int32_t x, int32_t y,
+                                                             int32_t z) {
+    return PosKey{x, y, z};
 }
 
 std::vector<uint8_t> WorkbenchStateManager::serializeGrid(
@@ -56,7 +55,7 @@ void WorkbenchStateManager::setGridState(
     int32_t x, int32_t y, int32_t z,
     const std::vector<RecipeManager::ItemStack>& grid)
 {
-    uint64_t key = posKey(x, y, z);
+    const auto key = posKey(x, y, z);
     grids_[key] = grid;
 
     if (essClient_ && essClient_->IsConnected()) {
@@ -76,7 +75,7 @@ void WorkbenchStateManager::setGridState(
 void WorkbenchStateManager::getGridState(
     int32_t x, int32_t y, int32_t z, LoadCallback callback)
 {
-    uint64_t key = posKey(x, y, z);
+    const auto key = posKey(x, y, z);
     auto it = grids_.find(key);
     if (it != grids_.end()) {
         callback(it->second);
@@ -101,7 +100,7 @@ void WorkbenchStateManager::getGridState(
 }
 
 void WorkbenchStateManager::removeGridState(int32_t x, int32_t y, int32_t z) {
-    uint64_t key = posKey(x, y, z);
+    const auto key = posKey(x, y, z);
     grids_.erase(key);
 
     if (essClient_ && essClient_->IsConnected()) {
