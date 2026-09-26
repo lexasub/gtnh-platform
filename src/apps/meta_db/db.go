@@ -120,7 +120,18 @@ func (m *MetaDB) initSchema() error {
 // Inventory CRUD
 // ---------------------------------------------------------------------------
 
-func (m *MetaDB) CreateInventory(playerID uint64, slots []Protocol.InventorySlot) error {
+// CreateInventory replaces the player's inventory with slots, in one
+// transaction.
+//
+// gp-3v5x: the parameter used to be []Protocol.InventorySlot, and the JSON
+// "logout" path produced that by serializing one FlatBuffer per slot and
+// re-parsing it — GetRootAsInventorySlot(builder.FinishedBytes(), off), i.e.
+// FinishedBytes() with no Finish(). That panics unconditionally
+// (flatbuffers/go builder.go:74-77 -> assertFinished, builder.go:424), so any
+// logout carrying a non-empty slot list killed the process. The generated
+// InventorySlot has only an unexported _tab, so a value struct is the correct
+// shape anyway: this function never serializes, it only reads two scalars.
+func (m *MetaDB) CreateInventory(playerID uint64, slots []SlotData) error {
 	tx, err := m.db.Begin()
 	if err != nil {
 		return err
@@ -141,7 +152,7 @@ func (m *MetaDB) CreateInventory(playerID uint64, slots []Protocol.InventorySlot
 	defer stmt.Close()
 
 	for _, slot := range slots {
-		if _, err = stmt.Exec(playerID, int(slot.ItemId()), int(slot.Count()), 0); err != nil {
+		if _, err = stmt.Exec(playerID, slot.Slot, int(slot.BlockID), int(slot.Count)); err != nil {
 			return err
 		}
 	}
@@ -355,6 +366,20 @@ type InventorySlot struct {
 	Count   int
 }
 
+// jsonFloat reads an integer-valued field out of a decoded JSON object.
+// encoding/json decodes every number as float64, so that is the only accepted
+// type; a missing key, a string, a bool or null yields float64(0) and the
+// comma-ok form reports it. gp-3v5x: the call sites used to do a bare
+// data["slot"].(float64), which panics on a malformed payload instead of
+// returning an error response.
+func jsonFloat(data map[string]interface{}, key string) (int, error) {
+	v, ok := data[key].(float64)
+	if !ok {
+		return 0, fmt.Errorf("field %q: expected a number, got %T", key, data[key])
+	}
+	return int(v), nil
+}
+
 // ---------------------------------------------------------------------------
 // JSON handler (legacy TCP API — used by old clients)
 // ---------------------------------------------------------------------------
@@ -391,31 +416,36 @@ func handleRequest(m *MetaDB, req Request) Response {
 			return Response{Success: false, Error: "invalid slots format"}
 		}
 
-		var slots []InventorySlot
+		var slots []SlotData
 		for _, s := range slotsData {
 			slotMap, ok := s.(map[string]interface{})
 			if !ok {
 				continue
 			}
-			slots = append(slots, InventorySlot{
-				Slot:    int(slotMap["slot"].(float64)),
-				BlockID: int(slotMap["block_id"].(float64)),
-				Count:   int(slotMap["count"].(float64)),
+			// gp-3v5x: these used to be asserted with a bare type switch
+			// (slotMap["slot"].(float64)), which panics on a malformed
+			// logout payload. The comma-ok form reports it as a bad request
+			// instead of unwinding the connection goroutine.
+			slot, ok1 := slotMap["slot"].(float64)
+			blockID, ok2 := slotMap["block_id"].(float64)
+			count, ok3 := slotMap["count"].(float64)
+			if !ok1 || !ok2 || !ok3 {
+				log.Printf("[INV] logout: dropping malformed slot entry %v", slotMap)
+				continue
+			}
+			slots = append(slots, SlotData{
+				Slot:    int(slot),
+				BlockID: uint16(blockID),
+				Count:   uint8(count),
 			})
 		}
 
-		protocolSlots := make([]Protocol.InventorySlot, len(slots))
-		for i, slot := range slots {
-			builder := flatbuffers.NewBuilder(0)
-			Protocol.InventorySlotStart(builder)
-			Protocol.InventorySlotAddItemId(builder, uint16(slot.BlockID))
-			Protocol.InventorySlotAddCount(builder, uint8(slot.Count))
-			Protocol.InventorySlotAddMeta(builder, 0)
-			slotOffset := Protocol.InventorySlotEnd(builder)
-			protocolSlots[i] = *Protocol.GetRootAsInventorySlot(builder.FinishedBytes(), slotOffset)
-		}
-
-		if err := m.CreateInventory(req.PlayerID, protocolSlots); err != nil {
+		// gp-3v5x: this used to build one FlatBuffer per slot and re-parse it
+		// with GetRootAsInventorySlot(builder.FinishedBytes(), off). Without a
+		// builder.Finish() that panics unconditionally, so any logout with a
+		// non-empty slot list crashed metadbd. CreateInventory persists plain
+		// values and never serialized, so the round-trip was pure overhead.
+		if err := m.CreateInventory(req.PlayerID, slots); err != nil {
 			return Response{Success: false, Error: err.Error()}
 		}
 
@@ -434,9 +464,13 @@ func handleRequest(m *MetaDB, req Request) Response {
 		if !ok {
 			return Response{Success: false, Error: "invalid data format"}
 		}
-		slot := int(data["slot"].(float64))
-		blockID := int(data["block_id"].(float64))
-		count := int(data["count"].(float64))
+		// gp-3v5x: bare type assertions here panicked on a malformed payload.
+		slot, err1 := jsonFloat(data, "slot")
+		blockID, err2 := jsonFloat(data, "block_id")
+		count, err3 := jsonFloat(data, "count")
+		if err1 != nil || err2 != nil || err3 != nil {
+			return Response{Success: false, Error: "invalid data format"}
+		}
 
 		if err := m.UpdateInventorySlot(req.PlayerID, slot, blockID, count); err != nil {
 			return Response{Success: false, Error: err.Error()}
@@ -448,7 +482,10 @@ func handleRequest(m *MetaDB, req Request) Response {
 		if !ok {
 			return Response{Success: false, Error: "invalid data format"}
 		}
-		slot := int(data["slot"].(float64))
+		slot, err := jsonFloat(data, "slot")
+		if err != nil {
+			return Response{Success: false, Error: "invalid data format"}
+		}
 
 		if err := m.DeleteInventorySlot(req.PlayerID, slot); err != nil {
 			return Response{Success: false, Error: err.Error()}
@@ -460,9 +497,12 @@ func handleRequest(m *MetaDB, req Request) Response {
 		if !ok {
 			return Response{Success: false, Error: "invalid data format"}
 		}
-		x := int(data["x"].(float64))
-		y := int(data["y"].(float64))
-		z := int(data["z"].(float64))
+		x, err1 := jsonFloat(data, "x")
+		y, err2 := jsonFloat(data, "y")
+		z, err3 := jsonFloat(data, "z")
+		if err1 != nil || err2 != nil || err3 != nil {
+			return Response{Success: false, Error: "invalid data format"}
+		}
 
 		if err := m.SavePlayerPosition(req.PlayerID, x, y, z); err != nil {
 			return Response{Success: false, Error: err.Error()}

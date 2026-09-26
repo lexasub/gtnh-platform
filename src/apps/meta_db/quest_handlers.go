@@ -17,9 +17,12 @@ func HandleQuestGet(topic string, payload []byte, m *MetaDB) {
 		return
 	}
 
-	req := Protocol.GetRootAsQuestProgressUpdate(payload, 0)
-	if req == nil {
-		log.Printf("[QUEST] HandleQuestGet: failed to parse QuestProgressUpdate")
+	// gp-3v5x: this replaced GetRootAsQuestProgressUpdate + `if req == nil`.
+	// GetRootAsX never returns nil, so that guard was dead code implying a
+	// validation that did not exist; the verifier is the real check.
+	req, err := fbVerifiedQuestProgressUpdate(payload)
+	if err != nil {
+		log.Printf("[QUEST] HandleQuestGet: failed to parse QuestProgressUpdate: %v", err)
 		return
 	}
 
@@ -73,9 +76,12 @@ func HandleQuestSet(topic string, payload []byte, m *MetaDB) {
 		return
 	}
 
-	req := Protocol.GetRootAsQuestProgressUpdate(payload, 0)
-	if req == nil {
-		log.Printf("[QUEST] HandleQuestSet: failed to parse QuestProgressUpdate")
+	// gp-3v5x: this replaced GetRootAsQuestProgressUpdate + `if req == nil`.
+	// GetRootAsX never returns nil, so that guard was dead code implying a
+	// validation that did not exist; the verifier is the real check.
+	req, err := fbVerifiedQuestProgressUpdate(payload)
+	if err != nil {
+		log.Printf("[QUEST] HandleQuestSet: failed to parse QuestProgressUpdate: %v", err)
 		return
 	}
 
@@ -95,8 +101,7 @@ func HandleQuestSet(topic string, payload []byte, m *MetaDB) {
 
 	log.Printf("[QUEST] HandleQuestSet: player=%d, %d quests to update", playerID, len(quests))
 
-	err := SetQuestProgressBatch(m.db, playerID, quests)
-	if err != nil {
+	if err := SetQuestProgressBatch(m.db, playerID, quests); err != nil {
 		log.Printf("[QUEST] HandleQuestSet: failed to update quest progress for player %d: %v", playerID, err)
 		return
 	}
@@ -139,9 +144,12 @@ func HandleQuestCompleted(topic string, payload []byte, m *MetaDB) {
 		return
 	}
 
-	completed := Protocol.GetRootAsQuestCompleted(payload, 0)
-	if completed == nil {
-		log.Printf("[QUEST] HandleQuestCompleted: failed to parse QuestCompleted")
+	// gp-3v5x: this replaced GetRootAsQuestCompleted + `if completed == nil`.
+	// GetRootAsX never returns nil, so that guard was dead code implying a
+	// validation that did not exist; the verifier is the real check.
+	completed, err := fbVerifiedQuestCompleted(payload)
+	if err != nil {
+		log.Printf("[QUEST] HandleQuestCompleted: failed to parse QuestCompleted: %v", err)
 		return
 	}
 
@@ -171,8 +179,7 @@ func HandleQuestCompleted(topic string, payload []byte, m *MetaDB) {
 		metadata = fmt.Sprintf("quest_id=%d,era=%d,section=%s", questID, questDef.Era, questDef.Section)
 	}
 
-	err := StorePlayerQuestReward(m.db, playerID, questID, rewardType, rewardItemID, rewardCount, rewardValue, 0, timestamp, metadata)
-	if err != nil {
+	if err := StorePlayerQuestReward(m.db, playerID, questID, rewardType, rewardItemID, rewardCount, rewardValue, 0, timestamp, metadata); err != nil {
 		log.Printf("[QUEST] HandleQuestCompleted: failed to store reward for player=%d quest=%d: %v", playerID, questID, err)
 	} else {
 		log.Printf("[QUEST] HandleQuestCompleted: reward stored successfully for player=%d quest=%d", playerID, questID)

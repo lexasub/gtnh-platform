@@ -16,9 +16,12 @@ import (
 // store cooldown, grant reward — all in a single SQLite transaction. The quest
 // never completes (repeatable market). Replies on quest.exchange.response.
 func HandleQuestExchangeRequest(topic string, payload []byte, m *MetaDB) {
-	req := Protocol.GetRootAsQuestExchangeRequest(payload, 0)
-	if req == nil {
-		log.Printf("[EXCHANGE] HandleQuestExchangeRequest: failed to parse QuestExchangeRequest")
+	// gp-3v5x: this replaced GetRootAsQuestExchangeRequest + `if req == nil`.
+	// GetRootAsX never returns nil, so that guard was dead code implying a
+	// validation that did not exist; the verifier is the real check.
+	req, err := fbVerifiedQuestExchangeRequest(payload)
+	if err != nil {
+		log.Printf("[EXCHANGE] HandleQuestExchangeRequest: failed to parse QuestExchangeRequest: %v", err)
 		return
 	}
 
@@ -203,9 +206,12 @@ func HandleQuestExchangeRequest(topic string, payload []byte, m *MetaDB) {
 // from the Gateway (wire 28). Returns the remaining cooldown in seconds
 // (0 = no cooldown) via quest.exchange.cooldown.response.
 func HandleQuestExchangeCooldownGet(topic string, payload []byte, m *MetaDB) {
-	req := Protocol.GetRootAsQuestExchangeCooldownGet(payload, 0)
-	if req == nil {
-		log.Printf("[EXCHANGE] HandleQuestExchangeCooldownGet: failed to parse QuestExchangeCooldownGet")
+	// gp-3v5x: this replaced GetRootAsQuestExchangeCooldownGet + `if req == nil`.
+	// GetRootAsX never returns nil, so that guard was dead code implying a
+	// validation that did not exist; the verifier is the real check.
+	req, err := fbVerifiedQuestExchangeCooldownGet(payload)
+	if err != nil {
+		log.Printf("[EXCHANGE] HandleQuestExchangeCooldownGet: failed to parse QuestExchangeCooldownGet: %v", err)
 		return
 	}
 
@@ -215,7 +221,7 @@ func HandleQuestExchangeCooldownGet(topic string, payload []byte, m *MetaDB) {
 
 	var remaining uint32
 	var expiresAt int64
-	err := m.db.QueryRow(
+	err = m.db.QueryRow(
 		"SELECT expires_at FROM quest_exchange_cooldowns WHERE player_id = ? AND quest_id = ?",
 		playerID, questID,
 	).Scan(&expiresAt)

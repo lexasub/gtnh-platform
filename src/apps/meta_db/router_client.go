@@ -229,10 +229,13 @@ func (rc *RouterClient) handlePublish(payload []byte) {
 		return
 	}
 
-	// Existing MetaDBFrame-based RPC topics
-	frame := Protocol.GetRootAsMetaDBFrame(fbData, 0)
-	if frame == nil {
-		log.Printf("[router] GetRootAsMetaDBFrame returned nil for topic=%s fb_len=%d", topic, len(fbData))
+	// Existing MetaDBFrame-based RPC topics.
+	// gp-3v5x: this replaced GetRootAsMetaDBFrame + `if frame == nil`. GetRootAsX
+	// never returns nil, so that guard was dead code; the verifier is the real
+	// check and the topic is dropped on a malformed buffer.
+	frame, err := fbVerifyFrame(fbData)
+	if err != nil {
+		log.Printf("[router] dropping malformed frame for topic=%s fb_len=%d: %v", topic, len(fbData), err)
 		return
 	}
 
@@ -373,7 +376,19 @@ func writeHeartbeat(conn net.Conn) error {
 // ---------------------------------------------------------------------------
 
 func handlePlayerJoined(data []byte, m *MetaDB) {
-	joined := Protocol.GetRootAsPlayerJoined(data, 0)
+	// gp-3v5x: this handler had NO guard at all — the unfixed Go counterpart of
+	// the C++ fix in src/game/storage/PlayerJoinedHandler.cpp:22-27.
+	// "player.joined" is a router-subscribed topic, so ANY publisher on the bus
+	// can deliver a zero-length or truncated payload. GetRootAsPlayerJoined
+	// never returns nil: 4 zero bytes parsed silently as
+	// PlayerJoined{player_id: 0}, and the code below then read player 0's
+	// inventory and position — a wrong-player read. Verify before the buffer
+	// is touched.
+	joined, err := fbVerifiedPlayerJoined(data)
+	if err != nil {
+		log.Printf("[router] player.joined: dropping malformed payload (%d bytes): %v", len(data), err)
+		return
+	}
 	playerID := joined.PlayerId()
 	log.Printf("[router] player.joined: id=%d", playerID)
 
@@ -402,11 +417,27 @@ func handlePlayerJoined(data []byte, m *MetaDB) {
 	left := Protocol.PlayerLeftEnd(builder)
 	builder.Finish(left)
 
+	// gp-3v5x: m.rc was dereferenced here with no nil check, unlike
+	// PublishInventoryTo (db.go) which guards `if m.rc == nil`. A nil
+	// RouterClient panicked at router_client.go:359 — a nil-deref in the same
+	// handler whose payload validation this change also hardens. Both of
+	// handlePlayerJoined's outbound paths now guard the same way.
+	if m.rc == nil {
+		log.Printf("[router] player.joined: no router client; skipping position publish for player %d", playerID)
+		return
+	}
 	m.rc.PublishRaw("player.position.load", builder.FinishedBytes())
 }
 
 func handlePlayerLeft(data []byte, m *MetaDB) {
-	left := Protocol.GetRootAsPlayerLeft(data, 0)
+	// gp-3v5x: no guard at all. A 4-zero-byte payload parsed silently as
+	// PlayerLeft{player_id: 0, 0, 0, 0} and SavePlayerPosition below then
+	// wrote a fabricated position over player 0's real saved position.
+	left, err := fbVerifiedPlayerLeft(data)
+	if err != nil {
+		log.Printf("[router] player.left: dropping malformed payload (%d bytes): %v", len(data), err)
+		return
+	}
 	playerID := left.PlayerId()
 	x := left.X()
 	y := left.Y()
