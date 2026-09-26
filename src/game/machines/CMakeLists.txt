@@ -247,4 +247,47 @@ if(BUILD_TESTING)
         flatbuffers::flatbuffers
     )
     add_test(NAME boiler_system_test COMMAND boiler_system_test)
+
+    # MachineSystem unit tests (gp-015h tick/state publication, gp-s9to
+    # machine-tag filtering and role dispatch) — the generic single-block
+    # machine loop, previously untested. Same harness and same isolated wiring
+    # as the EBF suite above: a synthetic recipe file, a non-null (empty)
+    # MachineRegistry, and null pipe/item/session/reservation clients, so no
+    # router, socket or wall clock is involved. The one non-null client is a
+    # FluidClient subclass whose two virtual overrides record calls and never
+    # reach the (never connected) router.
+    add_executable(machine_system_test
+        test/test_machine_system.cpp
+    )
+    target_include_directories(machine_system_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+    )
+    target_link_libraries(machine_system_test PRIVATE
+        # Same circular-static-archive situation as transformer_system_test:
+        # libsimcored.a holds the Network clients the machine systems call.
+        gtnh_game_machines
+        gtnh_engine_sim
+        gtnh_game_recipes
+        gtnh-net
+        simcored
+        gtnh_game_machines
+        gtnh_engine_sim
+        gtnh_game_recipes
+        gtnh-net
+        simcored
+        EnTT::EnTT
+        spdlog::spdlog
+        yaml-cpp::yaml-cpp
+        flatbuffers::flatbuffers
+        # MachineSystem.cpp:674 calls PublishFullInventory, which lives in
+        # gtnh_game_storage (ChestStateManager.cpp) and needs
+        # EntityStateStoreClient from libsimcored.a. gtnh_game_storage is pulled
+        # in transitively (via gtnh_game_actions) AFTER libsimcored on the link
+        # line, so those refs are still unresolved at the point ld scans it.
+        # One more rescan closes it.
+        gtnh_game_storage
+        simcored
+    )
+    add_test(NAME machine_system_test COMMAND machine_system_test)
 endif()
