@@ -46,3 +46,39 @@ target_link_libraries(gtnh_game_actions PRIVATE
     spdlog::spdlog
     asio::asio
 )
+
+# action_dispatch_test — the action dispatch seam (issue gp-0xml):
+# ActionDispatcher (the handler-priority tuple), ActionContext (the immutable
+# action snapshot) and PlayerActionDispatcher (the legacy PlayerAction switch).
+# Uses the project's own CHECK/TEST harness (src/engine/net/test/test.h, mirrored
+# by src/game/machines/test/test_explosion_system.cpp); the project has no
+# GoogleTest dependency and CI does not install libgtest-dev, so a
+# find_package(GTest) would make this test silently vanish from CI.
+#
+# Self-contained: every dependency is an in-process double (fake ChunkStore
+# repository, recording IEventPublisher, real SimulationEngine + MachineRegistry
+# loaded from the real machines.yaml). No sockets, no threads, no sleeps.
+if(BUILD_TESTING)
+    add_executable(action_dispatch_test
+        test/test_action_dispatch.cpp
+    )
+    target_compile_definitions(action_dispatch_test PRIVATE
+        MACHINES_YAML="${CMAKE_SOURCE_DIR}/src/content/data/registry/machines.yaml"
+    )
+    target_include_directories(action_dispatch_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+        ${CMAKE_BINARY_DIR}/src/apps/simcore/simcored_fbs
+    )
+    target_link_libraries(action_dispatch_test PRIVATE
+        gtnh_game_actions
+        gtnh_game_storage
+        gtnh_game_world
+        gtnh_engine_sim
+        EnTT::EnTT
+        flatbuffers::flatbuffers
+        spdlog::spdlog
+    )
+    add_dependencies(action_dispatch_test simcored_fbs)
+    add_test(NAME action_dispatch_test COMMAND action_dispatch_test)
+endif()
