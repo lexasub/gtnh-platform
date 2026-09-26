@@ -64,7 +64,15 @@ const MutableChunk* ChunkStore::GetChunk(ChunkCoord c) const {
 
     auto wire = lmdb_.readRawBytes(makeKey(c.x, c.y, c.z));
     if (!wire) {
-        // Not in LMDB either — return empty chunk (old behavior for new chunks).
+        // gp-wjmb: only a genuine miss means "new chunk". A read failure must
+        // NOT be answered with an empty chunk, because the caller cannot tell
+        // it from real new terrain and will write it back.
+        if (wire.error() == ReadError::Failed) {
+            spdlog::error("GetChunk({}, {}, {}): LMDB read failed — refusing to "
+                          "invent an empty chunk", c.x, c.y, c.z);
+            return nullptr;
+        }
+        // Not in LMDB — return empty chunk (old behavior for new chunks).
         MutableChunk* chunk = cache_.takeFromPool();
         if (!chunk) chunk = new MutableChunk();
         cache_.put(makeKey(c.x, c.y, c.z), chunk);
@@ -105,7 +113,13 @@ ChunkStore::CASResult ChunkStore::casBlock(int32_t x, int32_t y, int32_t z,
     return cas_.casBlock(x, y, z, expected_id, new_id, new_meta);
 }
 
-void ChunkStore::setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t meta) {
+// gp-wjmb: returns false when the chunk exists on disk but could not be READ.
+// The old void signature made the dangerous case unreportable: a read error
+// was read as "no chunk", so a fresh all-air chunk was built, cached, and
+// markDirtyed — and the next flush wrote it back over 192 KB of real terrain.
+// The decision here is that a failed read is a refusal, never a fallback: we
+// do not know what is in that chunk, so we must not write to it.
+bool ChunkStore::setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t meta) {
     int32_t cx = x >> 5;
     int32_t cy = y >> 5;
     int32_t cz = z >> 5;
@@ -117,6 +131,12 @@ void ChunkStore::setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t 
     MutableChunk* chunk = const_cast<MutableChunk*>(getCached(cx, cy, cz));
     if (!chunk) {
         auto wire = lmdb_.readRawBytes(key);
+        if (!wire && wire.error() == ReadError::Failed) [[unlikely]] {
+            spdlog::error("setBlock({}, {}, {}): LMDB read failed for chunk "
+                          "({}, {}, {}) — refusing to overwrite it with a "
+                          "partially built chunk", x, y, z, cx, cy, cz);
+            return false;
+        }
         MutableChunk local;
         if (wire) local.fromWire(wire->data(), wire->size());
         local.setBlock(lx, ly, lz, id);
@@ -133,7 +153,7 @@ void ChunkStore::setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t 
             encoder_.pending_lmdb_.erase(key);
         }
         markDirty(cx, cy, cz);
-        return;
+        return true;
     }
 
     chunk->setBlock(lx, ly, lz, id);
@@ -143,12 +163,14 @@ void ChunkStore::setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t 
         encoder_.pending_lmdb_.erase(key);
     }
     markDirty(cx, cy, cz);
+    return true;
 }
 
-void ChunkStore::SetBlock(ChunkCoord coord, BlockPos pos, uint16_t blockId,
+bool ChunkStore::SetBlock(ChunkCoord coord, BlockPos pos, uint16_t blockId,
                           uint8_t meta, uint32_t mbId) {
     (void)pos; (void)mbId;
-    setBlock(coord.x, coord.y, coord.z, blockId, meta);
+    // gp-wjmb: propagate the refusal so AsyncSetBlock can report it.
+    return setBlock(coord.x, coord.y, coord.z, blockId, meta);
 }
 
 bool ChunkStore::SaveChunk(const MutableChunk& chunk, ChunkCoord coord) {
@@ -181,8 +203,11 @@ void ChunkStore::AsyncSetBlock(ChunkCoord coord, BlockPos pos,
                           callback = std::move(callback)]() mutable {
         bool result = false;
         try {
-            SetBlock(coord, pos, blockId, meta, mbId);
-            result = true;
+            // gp-wjmb: keep SetBlock's existing coordinate semantics verbatim
+            // (it forwards coord.x/y/z, not coord*32+pos) and only take its
+            // return value, so a refused write — the chunk could not be read —
+            // reaches the client as a failed SetBlockResp instead of a success.
+            result = SetBlock(coord, pos, blockId, meta, mbId);
         } catch (...) {
             result = false;
         }
@@ -238,8 +263,19 @@ void ChunkStore::AsyncGetChunk(ChunkCoord coord, ChunkCallback callback) {
 
     asio::post(io_pool_, [this, coord, key, callback = std::move(callback)]() mutable {
         std::shared_ptr<std::vector<uint8_t>> palette;
+        auto wire = lmdb_.readRawBytes(key);
 
-        if (auto wire = lmdb_.readRawBytes(key)) {
+        if (!wire && wire.error() == ReadError::Failed) [[unlikely]] {
+            // gp-wjmb: the read failed. Do NOT fall through to worldgen — a
+            // fresh chunk generated over the top of one that already exists on
+            // disk would be written back and destroy it.
+            spdlog::error("AsyncGetChunk({}, {}, {}): LMDB read failed — not "
+                          "generating a replacement chunk", coord.x, coord.y, coord.z);
+            callback(nullptr);
+            return;
+        }
+
+        if (wire) {
             MutableChunk* chunk_ptr = cache_.takeFromPool();
             if (!chunk_ptr) chunk_ptr = new MutableChunk();
             if (!chunk_ptr->fromWire(wire->data(), wire->size())) {

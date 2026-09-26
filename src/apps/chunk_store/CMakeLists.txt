@@ -176,6 +176,76 @@ if(BUILD_TESTING)
     )
     add_test(NAME lmdb_commit_test COMMAND lmdb_commit_test)
 
+    # LMDB open-path test (gp-6nmw) — a failed mdb_env_open must be reported by
+    # the constructor, not leave a store that looks usable. Exercises a real
+    # unopenable path (missing parent dir) inside a forked child, because the
+    # pre-fix behaviour is a SIGSEGV inside LMDB rather than a clean false.
+    add_executable(lmdb_open_test
+        Storage/lmdb_open_test.cpp
+    )
+    add_dependencies(lmdb_open_test chunkd_fbs asio::asio)
+    target_compile_options(lmdb_open_test PRIVATE -mcx16)
+    target_link_libraries(lmdb_open_test PRIVATE
+        lmdb::lmdb
+        spdlog::spdlog
+        Threads::Threads
+        worldgeneratord
+        asio::asio
+        chunkd_storage
+    )
+    add_test(NAME lmdb_open_test COMMAND lmdb_open_test)
+
+    # LMDB batch-write test (gp-jzgr) — writeBatch must handle MDB_MAP_FULL
+    # with a grow+retry (as writeRaw already did), must not lose the whole
+    # batch when one entry does not fit, and must leave the caller's entries
+    # intact on failure so a caller cannot drop them.
+    add_executable(lmdb_batch_test
+        Storage/lmdb_batch_test.cpp
+    )
+    add_dependencies(lmdb_batch_test chunkd_fbs asio::asio)
+    target_compile_options(lmdb_batch_test PRIVATE -mcx16)
+    target_link_libraries(lmdb_batch_test PRIVATE
+        lmdb::lmdb
+        spdlog::spdlog
+        Threads::Threads
+        worldgeneratord
+        asio::asio
+        chunkd_storage
+    )
+    add_test(NAME lmdb_batch_test COMMAND lmdb_batch_test)
+
+    # ChunkStore read-failure test (gp-wjmb) — a read that cannot be performed
+    # must not be presented as "chunk absent". Induces a genuine LMDB read
+    # error (MDB_READERS_FULL) by holding the shared reader table full from a
+    # second env, and asserts the stored chunk is not overwritten.
+    add_executable(lmdb_read_test
+        Storage/lmdb_read_test.cpp
+    )
+    add_dependencies(lmdb_read_test chunkd_fbs asio::asio)
+    target_compile_options(lmdb_read_test PRIVATE -mcx16)
+    target_link_libraries(lmdb_read_test PRIVATE
+        lmdb::lmdb
+        spdlog::spdlog
+        Threads::Threads
+        worldgeneratord
+        asio::asio
+        chunkd_storage
+    )
+    add_test(NAME lmdb_read_test COMMAND lmdb_read_test)
+
+    # Daemon-startup contract test (gp-6nmw, second half) — drives the real
+    # chunkd binary and asserts an unopenable db is a startup failure, not a
+    # daemon that announces a listener over a dead store. Depends on `chunkd`
+    # and receives its path as argv[1].
+    add_executable(lmdb_daemon_start_test
+        Storage/lmdb_daemon_start_test.cpp
+    )
+    add_dependencies(lmdb_daemon_start_test chunkd chunkd_fbs asio::asio)
+    target_compile_options(lmdb_daemon_start_test PRIVATE -mcx16)
+    target_link_libraries(lmdb_daemon_start_test PRIVATE Threads::Threads)
+    add_test(NAME lmdb_daemon_start_test
+             COMMAND lmdb_daemon_start_test $<TARGET_FILE:chunkd>)
+
     # Dirty-chunk tracking test — real LMDB, real concurrency
     add_executable(chunk_dirty_test
         Storage/chunk_dirty_test.cpp

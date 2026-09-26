@@ -21,6 +21,17 @@ CASHandler::Result CASHandler::casBlock(int32_t x, int32_t y, int32_t z,
     MutableChunk* chunk = const_cast<MutableChunk*>(cache_.get(key));
     if (chunk == nullptr) {
         auto wire = lmdb_.readRawBytes(key);
+        if (!wire && wire.error() == ReadError::Failed) {
+            // gp-wjmb: a read error is not a CAS conflict. Reporting Conflict
+            // would tell the client its expected_id is wrong when in fact we
+            // simply could not read the chunk. Conflict is still the honest
+            // answer for a genuine miss (see below), so a caller cannot tell
+            // them apart at the CAS layer — the distinction is logged.
+            spdlog::error("CASHandler::casBlock: LMDB read failed for key {} — "
+                          "reporting a conflict, but this is an I/O failure, "
+                          "not a value mismatch", key);
+            return {Result::Conflict, 0, 0};
+        }
         if (!wire)
             return {Result::Conflict, 0, 0};
         MutableChunk local;
@@ -56,11 +67,24 @@ size_t CASHandler::flush() {
     if (pending_.empty()) return 0;
 
     size_t n_chunks = pending_.size();
+    // gp-wjmb: chunks whose read failed stay in pending_ so their CAS changes
+    // are not lost; only the entries that were actually handled are erased.
+    std::vector<int64_t> deferred;
+    deferred.reserve(n_chunks);
 
     // Read each chunk's current data from LMDB, apply CAS changes, re-encode, write.
     for (auto& [key, changes] : pending_) {
         auto wire = lmdb_.readRawBytes(key);
         if (!wire) {
+            // A read failure must not be logged as "not found" and silently
+            // skipped — the queued CAS changes are the only record of them.
+            if (wire.error() == ReadError::Failed) [[unlikely]] {
+                spdlog::error("CASHandler::flush: LMDB read failed for key {} — "
+                              "keeping {} queued change(s) for a later flush",
+                              key, changes.size());
+                deferred.push_back(key);
+                continue;
+            }
             spdlog::warn("CASHandler::flush: chunk key {} not found in LMDB, skipping", key);
             continue;
         }
@@ -79,11 +103,19 @@ size_t CASHandler::flush() {
         std::vector<uint8_t> encoded;
         mc.encodeToWire(encoded);
         if (!lmdb_.writeRaw(key, encoded.data(), encoded.size())) {
-            spdlog::error("CASHandler::flush: writeRaw failed for key {}", key);
+            // Same reasoning as a failed read: the changes are not on disk, so
+            // they must stay queued rather than being cleared.
+            spdlog::error("CASHandler::flush: writeRaw failed for key {} — "
+                          "keeping {} queued change(s) for a later flush",
+                          key, changes.size());
+            deferred.push_back(key);
         }
     }
-    pending_.clear();
-    return n_chunks;
+    // gp-wjmb: drop only the entries that were actually handled; anything that
+    // failed to read or to write stays queued for the next flush.
+    for (int64_t key : deferred)
+        pending_.erase(key);
+    return n_chunks - deferred.size();
 }
 
 void CASHandler::clear() {

@@ -60,6 +60,10 @@ public:
     mutable std::mutex encode_mutex_;
 private:
     void encodeLoop();
+    // gp-jzgr: drains the pending palette batch, keeping any entries LMDB could
+    // not write so they are retried instead of trimmed away.
+    void flushPalettes(
+        std::vector<std::pair<int64_t, std::shared_ptr<std::vector<uint8_t>>>>& palettes);
 
     ChunkCache* cache_ = nullptr;
     LmdbStore* lmdb_ = nullptr;
@@ -69,4 +73,6 @@ private:
     std::condition_variable encode_cv_;
     std::vector<std::thread> encode_threads_;
     std::atomic<bool> encode_running_{true};
+    // gp-jzgr: consecutive writeBatch failures, used only to damp the log.
+    int consecutiveBatchFailures_ = 0;
 };

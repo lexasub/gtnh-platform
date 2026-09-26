@@ -100,14 +100,43 @@ void EncodePipeline::encodeLoop() {
             }
         }
         if (!local_palettes.empty()) [[likely]] {
-            lmdb_->writeBatch(local_palettes);
-        }
-        if (size_t size = local_palettes.size(); size > 128) {
-            local_palettes.resize(std::max(size / 2, static_cast<size_t>(64))); // подрезаем в 2 раза, надеемся что следующий батч будет меньше
-            local_palettes.shrink_to_fit();
+            flushPalettes(local_palettes);
         }
     }
     if (!local_palettes.empty()) {
-        lmdb_->writeBatch(local_palettes);
+        flushPalettes(local_palettes);
+    }
+}
+
+// gp-jzgr: writeBatch persists what it can and returns the entries it could not
+// write back in `local_palettes`. The previous code threw the bool away and then
+// trimmed the vector in half, which is how a mapsize-full batch was deleted
+// with no log and no retry.
+//
+// Now a failure is retried on the next drain, which happens as soon as the
+// encode thread next falls idle (or on shutdown) — no sleep, no busy loop, and
+// no wall-clock dependency. If the map is still full then, growMapSize() has
+// already given up at the cap, so retrying is bounded by the arrival of new
+// work rather than by a spin. The backoff counter stops the log from becoming
+// the bottleneck: only the first few failures are logged at error level.
+void EncodePipeline::flushPalettes(
+    std::vector<std::pair<int64_t, std::shared_ptr<std::vector<uint8_t>>>>& palettes) {
+    constexpr int kMaxLoggedFailures = 3;
+    if (lmdb_->writeBatch(palettes)) [[likely]] {
+        consecutiveBatchFailures_ = 0;
+        return;
+    }
+    ++consecutiveBatchFailures_;
+    if (consecutiveBatchFailures_ <= kMaxLoggedFailures) {
+        spdlog::error("EncodePipeline: writeBatch failed ({} in a row) — {} chunks "
+                      "kept for retry, NOT dropped",
+                      consecutiveBatchFailures_, palettes.size());
+    } else if (consecutiveBatchFailures_ == kMaxLoggedFailures + 1) {
+        spdlog::error("EncodePipeline: writeBatch still failing; further failures "
+                      "will be logged at warn level only");
+    } else {
+        spdlog::warn("EncodePipeline: writeBatch failed again ({} in a row) — "
+                     "{} chunks still queued", consecutiveBatchFailures_,
+                     palettes.size());
     }
 }

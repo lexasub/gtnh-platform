@@ -43,6 +43,16 @@ int main(int argc, char* argv[]) {
 
     ChunkStore store(db_path, 2048, db_max_size_mb * 1024ULL * 1024ULL);
 
+    // gp-6nmw: an unopenable LMDB is a startup failure, not a runtime
+    // mystery. ChunkStore owns the LmdbStore; if the env did not open, every
+    // read and write would be refused, so refuse to serve instead.
+    if (!store.lmdb().isOpen()) {
+        spdlog::critical("ChunkStore database '{}' could not be opened — "
+                         "refusing to start (no chunk can be stored or read)",
+                         db_path);
+        return 1;
+    }
+
     // io_uring-based TCP service (replaces old Asio ChunkStoreService)
     IoUringChunkStoreService tcp_service(store);
     if (!tcp_service.listen(tcp_port)) {

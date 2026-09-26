@@ -34,7 +34,9 @@ public:
   uint32_t GetMultiblock(int32_t x, int32_t y, int32_t z) const;
 
   // setBlock — cache + modify + mark dirty. Does NOT persist immediately.
-  void setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t meta);
+  // gp-wjmb: returns false if the chunk exists on disk but could not be read;
+  // in that case nothing is written and the stored chunk is left untouched.
+  bool setBlock(int32_t x, int32_t y, int32_t z, uint16_t id, uint8_t meta);
 
   // casBlock — delegate to CASHandler. Returns status + actual values.
   using CASResult = CASHandler::Result;
@@ -42,9 +44,15 @@ public:
                        uint16_t expected_id, uint16_t new_id, uint8_t new_meta);
 
   // SetBlock — sync wrapper, posts to I/O pool internally.
-  void SetBlock(ChunkCoord coord, BlockPos pos, uint16_t blockId,
-                  uint8_t meta, uint32_t mbId);
+  // gp-wjmb: returns false if the write was refused (the chunk exists on disk
+  // but could not be read), so AsyncSetBlock can report it to the client.
+  bool SetBlock(ChunkCoord coord, BlockPos pos, uint16_t blockId,
+                uint8_t meta, uint32_t mbId);
   bool SaveChunk(const MutableChunk& chunk, ChunkCoord coord);
+
+  // gp-6nmw: exposes whether the underlying LMDB env actually opened, so the
+  // daemon can refuse to start instead of serving from an unusable store.
+  const LmdbStore& lmdb() const noexcept { return lmdb_; }
 
   // --- Asynchronous (callback-based) ---
   void AsyncGetChunk(ChunkCoord coord, ChunkCallback callback);
