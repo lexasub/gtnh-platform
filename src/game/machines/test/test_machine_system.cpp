@@ -102,11 +102,13 @@
 //      The direct branch is deliberately still guarded by `node_id != 0`, so
 //      this defect is untouched by the gp-frb2 fix.
 //   H. CONDITION STATE IS READ FROM THE FIRST MACHINE AT THOSE COORDINATES.
-//      RecipeManager.cpp:20-48 scans view<MachineComponent> and `break`s on the
-//      first position match, so a co-located machine supplies the energy/purity
-//      /tags that gate every machine at that (x,y,z). Same class as gp-5wms
-//      (RecipeCompletedHandler). Pinned by
-//      MachineSystem_conditions_come_from_the_first_machine_at_those_coords.
+//      RecipeManager.cpp:20-48 scanned view<MachineComponent> and `break`ed on
+//      the first position match, so a co-located machine supplied the
+//      energy/purity/tags that gate every machine at that (x,y,z). Fixed in
+//      gp-iv20: the ECS overload now takes the entity handle the caller already
+//      holds. Pinned by MachineSystem_conditions_come_from_the_machine_being_started
+//      and MachineSystem_each_colocated_machine_resolves_its_own_state.
+//      Same class as gp-5wms (RecipeCompletedHandler), which is still OPEN.
 //   I. THE OUTPUT RANGE IS NEVER ZERO-GUARDED. With no MachineRegistry entry
 //      slots_in falls back to 0, so a completed recipe deposits its product into
 //      the INPUT slot. Pinned by
@@ -506,8 +508,9 @@ struct Fixture {
         return reg.get<simcore::MachineComponent>(e);
     }
 
-    // A machine at a fresh x so every test has its own coordinates (condition
-    // evaluation looks machines up BY POSITION, see FINDING H).
+    // A machine at a fresh x so every test has its own coordinates (keeps the
+    // publish counters and per-machine assertions independent — see
+    // publishesForX).
     uint32_t freshX() { return next_x++; }
 
     // The production shape (SimulationEngine.cpp:218-259): one entity carrying
@@ -1870,38 +1873,77 @@ static void MachineSystem_string_typed_tag_values_are_never_compared() {
           "but no YAML-loaded recipe can ever carry one (FINDING E)");
 }
 
-// FINDING H.
-static void MachineSystem_conditions_come_from_the_first_machine_at_those_coords() {
-    // RecipeManager.cpp:20-48 scans view<MachineComponent> and `break`s on the
-    // first position match, so the state that gates every machine at a given
-    // (x,y,z) comes from ONE of them. Two machines share coordinates here: the
-    // decoy is created FIRST and the real machine second.
+// A recipe's conditions are evaluated against the machine that is STARTING it,
+// not against whichever machine the ECS scan happens to reach first at those
+// coordinates (gp-iv20). Two machines can share a block position — a co-located
+// machine is a real configuration — and the state that gates a start is that
+// machine's OWN energy.
+//
+// Both machines here hold inputs and both sit on the same block, so BOTH reach
+// the gate; only one of them actually satisfies it. The assertions are therefore
+// written to fail whichever entity the positional scan selects:
+//   scan lands on the fed machine  -> the starving one is wrongly admitted,
+//   scan lands on the starving one -> the fed one is wrongly blocked.
+// Either way exactly one assertion fails while the defect is present, so this
+// does not depend on EnTT's iteration order to be a valid RED.
+static void MachineSystem_conditions_come_from_the_machine_being_started() {
     auto f = makeFixture();
     const uint32_t x = f->freshX();
-    auto decoy = f->install(kBlockGated, x, EnergyType::ELECTRICITY, 0);
+    auto fed = f->install(kBlockGated, x, EnergyType::ELECTRICITY, kGateEnergyMin);
+    auto starving = f->install(kBlockGated, x, EnergyType::ELECTRICITY,
+                               kGateEnergyMin - 1);
+    // Both hold the recipe's input, so both are matched by findRecipeByInputs
+    // and both reach the condition gate.
+    f->inv(fed).slots[0] = {kIronDust, 1, 0};
+    f->inv(starving).slots[0] = {kIronDust, 1, 0};
+
+    f->tick();
+
+    CHECK_EQ_INT(f->progress(fed).recipe_id, std::string("unit_energy_gated"),
+                 "the machine holding kGateEnergyMin EU starts on its OWN state, "
+                 "not on the co-located machine's (gp-iv20)");
+    CHECK_EQ_INT(f->progress(starving).recipe_id, std::string(""),
+                 "and the machine 1 EU short of the gate does not start on its "
+                 "neighbour's buffer (gp-iv20)");
+}
+
+// The two co-located machines can also be identical in every gated respect, in
+// which case neither may be starved by the other's scan order: each resolves
+// its own state, so both start.
+static void MachineSystem_each_colocated_machine_resolves_its_own_state() {
+    auto f = makeFixture();
+    const uint32_t x = f->freshX();
+    auto a = f->install(kBlockGated, x, EnergyType::ELECTRICITY, kGateEnergyMin);
+    auto b = f->install(kBlockGated, x, EnergyType::ELECTRICITY, kGateEnergyMin);
+    f->inv(a).slots[0] = {kIronDust, 1, 0};
+    f->inv(b).slots[0] = {kIronDust, 1, 0};
+
+    f->tick();
+
+    CHECK_EQ_INT(f->progress(a).recipe_id, std::string("unit_energy_gated"),
+                 "the first co-located machine starts on its own state");
+    CHECK_EQ_INT(f->progress(b).recipe_id, std::string("unit_energy_gated"),
+                 "the second co-located machine starts on its own state too — "
+                 "neither is gated by the other's scan order");
+}
+
+// A machine with no inputs never reaches the gate at all, so it must stay idle
+// even when its co-located neighbour meets every condition. Pinned because it
+// is the shape the original bug report used, and it guards the fix against
+// "resolve the state" being implemented as "let a neighbour start this one".
+static void MachineSystem_a_colocated_machine_without_inputs_never_starts() {
+    auto f = makeFixture();
+    const uint32_t x = f->freshX();
+    auto empty_handed = f->install(kBlockGated, x, EnergyType::ELECTRICITY, 0);
     auto real = f->install(kBlockGated, x, EnergyType::ELECTRICITY, kGateEnergyMin);
     f->inv(real).slots[0] = {kIronDust, 1, 0};
 
     f->tick();
 
-    const bool dispatched = f->progress(real).recipe_id == "unit_energy_gated";
-    // Whichever way the scan lands, the important invariant is that the
-    // decoy's EMPTY buffer is what the condition saw: either the real machine
-    // was blocked (decoy scanned first) or the decoy itself was blocked too.
-    // Assert the observable, not an assumption about EnTT iteration order.
-    CHECK(f->progress(decoy).recipe_id.empty(),
-          "the co-located decoy never starts: it has no inputs AND, if the scan "
-          "picked it, the gate saw its empty buffer");
-    if (!dispatched) {
-        CHECK_EQ_INT(f->energy(real).current, kGateEnergyMin,
-                     "FINDING H: a co-located machine with an empty buffer "
-                     "supplies the condition state and blocks the real machine");
-    } else {
-        CHECK_EQ_INT(f->energy(decoy).current, 0,
-                     "FINDING H: the real machine's buffer was scanned, so the "
-                     "co-located decoy is gated by state it does not own");
-    }
-    (void)x;
+    CHECK_EQ_INT(f->progress(empty_handed).recipe_id, std::string(""),
+                 "a machine with no inputs never starts, whatever its neighbour holds");
+    CHECK_EQ_INT(f->energy(empty_handed).current, 0,
+                 "and its buffer is not charged by the neighbour's recipe");
 }
 
 // The two passes over the same view must not double-charge a machine.
@@ -2011,7 +2053,9 @@ int main(int argc, char** argv) {
     TEST(MachineSystem_machine_tags_cannot_gate_a_recipe);
     TEST(MachineSystem_untagged_machine_takes_the_documented_default);
     TEST(MachineSystem_string_typed_tag_values_are_never_compared);
-    TEST(MachineSystem_conditions_come_from_the_first_machine_at_those_coords);
+    TEST(MachineSystem_conditions_come_from_the_machine_being_started);
+    TEST(MachineSystem_each_colocated_machine_resolves_its_own_state);
+    TEST(MachineSystem_a_colocated_machine_without_inputs_never_starts);
 
     // Cleanup: the synthetic recipe file and the process-wide registry.
     for (const auto& path : tempFiles()) remove(path.c_str());

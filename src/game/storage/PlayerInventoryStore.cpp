@@ -92,8 +92,16 @@ bool PlayerInventoryStore::giveItem(uint64_t player_id, uint16_t item_id,
     if (target_slot >= 0 && target_slot < kInventorySlots) {
         auto& dst = slots[target_slot];
         if (dst.item_id == 0) {
-            dst = {item_id, static_cast<uint8_t>(remaining), 0};
-            remaining = 0;
+            // Clamp at kMaxStack exactly like the top-up branch below and the
+            // two free-slot passes: this branch used to copy the whole
+            // remaining count into one slot, so a wire ITEM_ACTION with a
+            // small (attacker-controlled) target_slot and count > 64 wrote a
+            // slot holding more than a stack (gp-w0b7). The leftover stays in
+            // `remaining` and flows into the same passes an untargeted grant
+            // uses.
+            uint8_t add = std::min(static_cast<uint8_t>(remaining), kMaxStack);
+            dst = {item_id, add, 0};
+            remaining -= add;
         } else if (dst.item_id == item_id && dst.count < kMaxStack) {
             uint8_t room = kMaxStack - dst.count;
             uint8_t add = std::min(static_cast<uint8_t>(remaining), room);

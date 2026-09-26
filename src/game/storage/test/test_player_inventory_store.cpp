@@ -29,12 +29,14 @@
 // Three behaviours below contradict what a reader would expect and are asserted
 // AS OBSERVED so a future fix shows up as a deliberate test change. Each names
 // the exact line and the beads issue filed against it:
-//   * a targeted grant larger than kMaxStack writes ONE over-full stack and
-//     returns success (PlayerInventoryStore.cpp:94-96, gp-obtt-fix-1),
 //   * a zero-count targeted grant creates a phantom occupied slot
 //     (PlayerInventoryStore.cpp:94-96, gp-obtt-fix-1),
 //   * setSlots / setSlotsAndCursor never emit the documented slot == 0xFFFF
 //     full-replace sentinel (PlayerInventoryStore.h:25,58, gp-obtt-fix-2).
+//
+// The first of the three (an unclamped target_slot branch) was fixed in
+// gp-w0b7 and is now asserted as correct behaviour in
+// test_a_targeted_grant_above_max_stack_spills_like_any_other below.
 //
 // DETERMINISM
 // -----------
@@ -458,26 +460,52 @@ static void test_an_out_of_range_target_slot_is_ignored_entirely() {
   CHECK_EQ(occupiedSlots(all), 3, "each out-of-range target was simply ignored");
 }
 
-// OBSERVED, NOT BLESSED: the target_slot fast path (PlayerInventoryStore.cpp:94-96)
-// writes the WHOLE grant into an empty target slot with no kMaxStack clamp, so a
-// targeted grant above 64 produces a single over-full stack and still reports
-// success. Every other path clamps at kMaxStack. Filed as gp-obtt-fix-1.
-static void test_a_targeted_grant_above_max_stack_writes_one_overfull_stack() {
+// The target_slot fast path (PlayerInventoryStore.cpp:92-96) clamps at
+// kMaxStack like every other path: a targeted grant above 64 fills the target
+// slot to 64 and spills the remainder into the free-slot passes, exactly as an
+// untargeted grant does (gp-w0b7). Before the fix the target branch copied the
+// WHOLE remaining count into one slot with no clamp, so a wire ITEM_ACTION with
+// a small target_slot and count > 64 created a slot holding more than a stack —
+// a count no other giveItem path can produce, and one that then moves, drops
+// and persists as an out-of-range stack.
+static void test_a_targeted_grant_above_max_stack_spills_like_any_other() {
   Rig r;
   r.store.initPlayer(kPlayer);
 
   const bool ok = r.store.giveItem(kPlayer, kItemA, 100, 5);
   const Slots s = r.store.getSlots(kPlayer);
 
-  CHECK(ok, "OBSERVED: an over-sized targeted grant still reports success");
-  CHECK_EQ(i_(s[5].item_id), i_(kItemA), "the items are in the target slot");
-  CHECK_EQ(i_(s[5].count), 100,
-           "OBSERVED: one stack of 100 — the target path does not clamp to kMaxStack");
-  CHECK(i_(s[5].count) > i_(kMaxStack),
-        "the stack is over-full, which no other giveItem path can produce");
-  CHECK(occupiedSlots(s) == 1, "the split passes never ran");
+  CHECK(ok, "a 100-item targeted grant is fully placed");
+  CHECK_EQ(i_(s[5].item_id), i_(kItemA), "the target slot holds the items");
+  CHECK_EQ(i_(s[5].count), 64,
+           "the target slot is filled to kMaxStack, not beyond it");
+  CHECK(i_(s[5].count) <= i_(kMaxStack),
+        "no slot in the inventory may exceed kMaxStack");
+  // The 36 leftover units flow into the free-slot pass, which scans upward
+  // from slot 0 and therefore takes slot 0 (the target slot is already full
+  // and skipped by the same-item top-up pass).
+  CHECK_EQ(i_(s[0].item_id), i_(kItemA), "the remainder took a free slot");
+  CHECK_EQ(i_(s[0].count), 36, "with the remaining 100 - 64 units");
+  CHECK(occupiedSlots(s) == 2, "exactly two slots were written");
   CHECK_EQ(totalOf(s, kItemA), 100,
-           "the total is still correct, so a caller summing counts is not misled");
+           "the total is unchanged, so a caller summing counts is not misled");
+}
+
+// The clamp must not depend on the target being slot 0: the wire-supplied
+// target_slot is attacker-controlled (PlayerActionDispatcher.cpp:24 passes
+// pa->pos()->x() straight through), so a small value must behave identically.
+static void test_a_targeted_grant_above_max_stack_is_clamped_at_slot_zero() {
+  Rig r;
+  r.store.initPlayer(kPlayer);
+
+  CHECK(r.store.giveItem(kPlayer, kItemA, 150, 0),
+        "a 150-item grant aimed at slot 0 is fully placed");
+  const Slots s = r.store.getSlots(kPlayer);
+  CHECK_EQ(i_(s[0].count), 64, "slot 0 is capped at kMaxStack");
+  CHECK_EQ(i_(s[1].count), 64, "the next stack is full too");
+  CHECK_EQ(i_(s[2].count), 22, "and the last carries the 150 - 128 remainder");
+  CHECK(occupiedSlots(s) == 3, "three stacks, none over-full");
+  CHECK_EQ(totalOf(s, kItemA), 150, "all 150 units are accounted for");
 }
 
 // OBSERVED, NOT BLESSED: the same branch with count 0 stores {item_id, 0} in a
@@ -958,7 +986,8 @@ int main(int argc, char** argv) {
   TEST(target_slot_occupies_an_empty_slot_and_ignores_earlier_room);
   TEST(target_slot_holding_another_item_is_never_overwritten);
   TEST(an_out_of_range_target_slot_is_ignored_entirely);
-  TEST(a_targeted_grant_above_max_stack_writes_one_overfull_stack);
+  TEST(a_targeted_grant_above_max_stack_spills_like_any_other);
+  TEST(a_targeted_grant_above_max_stack_is_clamped_at_slot_zero);
   TEST(a_zero_count_targeted_grant_creates_a_phantom_slot);
   TEST(a_grant_into_a_full_inventory_fails_without_corrupting_state);
   TEST(a_partial_grant_into_an_almost_full_inventory_succeeds_exactly);

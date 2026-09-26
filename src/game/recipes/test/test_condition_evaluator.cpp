@@ -343,12 +343,19 @@ static void test_inverted_temperature_range_matches_nothing() {
   CHECK(!evalTemp(400.0f, 300.0f, 300.0f), "value == max still below min");
 }
 
-static void test_nan_temperature_satisfies_the_range_gate() {
-  // FINDING: the gate is `t < min || t > max`. Every comparison against NaN is
-  // false, so a NaN temperature passes ANY range. Reported, not worked around.
+static void test_nan_temperature_is_rejected() {
+  // The gate is `t < min || t > max`, and every comparison against NaN is
+  // false, so an unguarded NaN temperature satisfies ANY range — including a
+  // zero-width one. An uninitialised or corrupt temperature therefore made the
+  // machine unconditionally runnable (gp-paja). A NaN reading is not evidence
+  // that the machine is in range, so it is rejected like an out-of-range one.
   const float nan = std::numeric_limits<float>::quiet_NaN();
-  CHECK(evalTemp(300.0f, 400.0f, nan), "NaN temperature is not rejected");
-  CHECK(evalTemp(0.0f, 0.0f, nan), "NaN temperature passes a zero-width range");
+  CHECK(!evalTemp(300.0f, 400.0f, nan), "a NaN temperature is rejected");
+  CHECK(!evalTemp(0.0f, 0.0f, nan), "a NaN temperature fails a zero-width range");
+  // The guard must not spill onto the neighbouring clauses: an in-range
+  // temperature on a machine whose OTHER state fields are NaN is a separate
+  // question, judged only by that field's own clause.
+  CHECK(evalTemp(300.0f, 400.0f, 350.0f), "an ordinary temperature still passes");
 }
 
 // ---------------------------------------------------------------------------
@@ -378,11 +385,14 @@ static void test_purity_is_not_clamped_to_the_unit_interval() {
   CHECK(!evalPurity(1.0f, -0.5f), "negative purity does not clear it");
 }
 
-static void test_nan_purity_satisfies_the_gate() {
-  // FINDING: same shape as the NaN temperature case — `purity < min` is false
-  // for NaN, so NaN satisfies any minimum. Reported, not worked around.
+static void test_nan_purity_is_rejected() {
+  // Same shape as the NaN temperature case: the gate is `purity < min`, which
+  // is false for NaN, so NaN satisfied any minimum (gp-paja). Rejected.
   const float nan = std::numeric_limits<float>::quiet_NaN();
-  CHECK(evalPurity(1.0f, nan), "NaN purity is not rejected");
+  CHECK(!evalPurity(1.0f, nan), "a NaN purity is rejected");
+  CHECK(!evalPurity(0.0f, nan), "a NaN purity fails even a zero minimum");
+  // And the well-formed cases are untouched.
+  CHECK(evalPurity(1.0f, 1.0f), "a purity equal to the minimum still passes");
 }
 
 // ---------------------------------------------------------------------------
@@ -595,18 +605,25 @@ static void test_float_tag_comparison_is_sign_agnostic() {
         "-0.002f is outside it");
 }
 
-static void test_nan_float_tag_matches_any_float_tag() {
-  // FINDING: the tolerance test is `abs(a - b) > 0.001f`, which is false for
-  // NaN, so a NaN on EITHER side matches any float tag. Reported, not worked
-  // around. Infinity is not NaN and is correctly rejected against a finite tag.
+static void test_nan_float_tag_matches_nothing() {
+  // The tolerance test is `abs(a - b) > 0.001f`, which is false for a NaN
+  // difference, so a NaN on EITHER side used to match any float tag (gp-paja):
+  // a recipe demanding fluid X was satisfied by a machine reporting NaN. A NaN
+  // on either side is now a non-match, because "unmeasurable" is not "equal".
+  // Infinity is not NaN and was already correctly rejected against a finite tag.
   const float nan = std::numeric_limits<float>::quiet_NaN();
   const float inf = std::numeric_limits<float>::infinity();
-  CHECK(evalSpecial({tagFloat(1, nan)}, {tagFloat(1, 1.5f)}),
-        "a NaN recipe float matches any machine float");
-  CHECK(evalSpecial({tagFloat(1, 1.5f)}, {tagFloat(1, nan)}),
-        "a NaN machine float matches any recipe float");
+  CHECK(!evalSpecial({tagFloat(1, nan)}, {tagFloat(1, 1.5f)}),
+        "a NaN recipe float matches no machine float");
+  CHECK(!evalSpecial({tagFloat(1, 1.5f)}, {tagFloat(1, nan)}),
+        "a NaN machine float matches no recipe float");
+  CHECK(!evalSpecial({tagFloat(1, nan)}, {tagFloat(1, nan)}),
+        "NaN never matches NaN either");
   CHECK(!evalSpecial({tagFloat(1, inf)}, {tagFloat(1, 1.5f)}),
-        "infinity is correctly rejected against a finite tag");
+        "infinity is still rejected against a finite tag");
+  // The tolerance itself is unchanged for finite values.
+  CHECK(evalSpecial({tagFloat(1, 1.0f)}, {tagFloat(1, 1.0005f)}),
+        "two finite floats within tolerance still match");
 }
 
 // ---------------------------------------------------------------------------
@@ -727,14 +744,14 @@ int main(int argc, char **argv) {
   TEST(temperature_above_max_fails);
   TEST(temperature_supports_negative_celsius);
   TEST(inverted_temperature_range_matches_nothing);
-  TEST(nan_temperature_satisfies_the_range_gate);
+  TEST(nan_temperature_is_rejected);
 
   TEST(purity_below_threshold_fails);
   TEST(purity_at_threshold_passes);
   TEST(purity_above_threshold_passes);
   TEST(purity_threshold_zero_accepts_zero_purity);
   TEST(purity_is_not_clamped_to_the_unit_interval);
-  TEST(nan_purity_satisfies_the_gate);
+  TEST(nan_purity_is_rejected);
 
   TEST(biome_list_membership_is_required);
   TEST(biome_outside_list_fails);
@@ -774,7 +791,7 @@ int main(int argc, char **argv) {
   TEST(float_tag_within_tolerance_passes);
   TEST(float_tag_beyond_tolerance_fails);
   TEST(float_tag_comparison_is_sign_agnostic);
-  TEST(nan_float_tag_matches_any_float_tag);
+  TEST(nan_float_tag_matches_nothing);
 
   TEST(matching_string_tag_passes);
   TEST(mismatched_string_tag_fails);

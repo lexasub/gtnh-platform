@@ -761,35 +761,78 @@ static void test_ChestStateManager_clear_of_a_colliding_position_spares_the_othe
   }
 }
 
-// PRODUCTION DEFECT (not blessed): the cache is keyed by position ALONE.
-// entity_type (3 for a chest, a machine_id for a machine) is passed straight
-// through to the ESS and is never part of the key, so two different entity
-// types at the same block position read and write ONE shared entry. The Entity
-// StateStore keys them separately; the in-process cache does not, so the two
-// layers disagree.
-//
-// Asserted so it cannot regress silently; widening the key is a production
-// change out of scope here.
-static void test_ChestStateManager_cache_key_ignores_entity_type() {
+// entity_type is part of the cache key, so a chest and a machine at the SAME
+// block position never share an entry. saveSlots/loadSlots already forward it to
+// EntityStateStore — the ESS key is (dim,x,y,z,entity_type) — so a cache keyed
+// only on position served one entity's slots for the other: opening a chest at
+// (7,70,7) returned a machine's 4 slots and the machine's save overwrote the
+// chest's (gp-py5s, the entity_type half of gp-5t4d).
+static void test_ChestStateManager_cache_key_includes_entity_type() {
   OfflineEss ess;
   simcore::ChestStateManager mgr(ess.client, 0);
-  mgr.saveSlots(7, 70, 7, chestContents(555, 6, 2), /*entity_type=*/3);
+  // Distinct sizes as well as distinct ids, so a cross-read is visible whether
+  // it lands on the wrong item or the wrong number of slots.
+  const auto chestSaved = chestContents(/*id=*/555, /*count=*/6, /*filled=*/2);
+  const auto machineSaved = chestContents(/*id=*/666, /*count=*/9, /*filled=*/4);
+  mgr.saveSlots(7, 70, 7, chestSaved, /*entity_type=*/3);
 
   // A machine at the same position, saved under its own machine_id.
-  mgr.saveSlots(7, 70, 7, chestContents(666, 9, 4), /*entity_type=*/42);
+  mgr.saveSlots(7, 70, 7, machineSaved, /*entity_type=*/42);
 
   std::vector<simcore::PersistSlot> asChest;
   mgr.loadSlots(7, 70, 7,
                 [&](const std::vector<simcore::PersistSlot>& s) { asChest = s; },
                 /*entity_type=*/3);
 
-  CHECK_EQ(i_(asChest.size()), 4,
-           "PRODUCTION DEFECT: the chest at (7,70,7) now reads back the "
-           "machine's 4 slots");
-  if (asChest.size() == 4) {
-    CHECK_EQ(i_(asChest[0].item_id), 666,
-             "PRODUCTION DEFECT: and the chest sees the machine's item");
-  }
+  CHECK(slotsEqual(asChest, chestSaved),
+        "the chest at (7,70,7) reads back its own slots, not the machine's");
+  CHECK_EQ(i_(asChest.size()), 2, "which are 2 slots, not the machine's 4");
+
+  // And the machine still reads back its own state, not the chest's.
+  std::vector<simcore::PersistSlot> asMachine;
+  mgr.loadSlots(7, 70, 7,
+                [&](const std::vector<simcore::PersistSlot>& s) { asMachine = s; },
+                /*entity_type=*/42);
+  CHECK(slotsEqual(asMachine, machineSaved),
+        "the machine at (7,70,7) reads back its own slots, not the chest's");
+  CHECK_EQ(i_(asMachine.size()), 4, "which are 4 slots, not the chest's 2");
+
+  // Clearing the chest must not empty the machine's entry: the store is keyed
+  // separately per entity_type, so destroying one block at that position cannot
+  // destroy the other's state either.
+  mgr.clearSlots(7, 70, 7, /*entity_type=*/3);
+
+  std::vector<simcore::PersistSlot> afterClear;
+  mgr.loadSlots(7, 70, 7,
+                [&](const std::vector<simcore::PersistSlot>& s) { afterClear = s; },
+                /*entity_type=*/42);
+  CHECK(slotsEqual(afterClear, machineSaved),
+        "clearing the chest leaves the machine's entry intact");
+
+  // And the chest itself is now empty while the machine is untouched — the two
+  // entries move independently in both directions.
+  std::vector<simcore::PersistSlot> clearedChest;
+  mgr.loadSlots(7, 70, 7,
+                [&](const std::vector<simcore::PersistSlot>& s) { clearedChest = s; },
+                /*entity_type=*/3);
+  CHECK_EQ(i_(clearedChest.size()), 0, "the cleared chest reads back empty");
+
+  // The default entity_type (kChestEntityType) is just another key value, so the
+  // default-argument call path a chest open actually takes must land on the
+  // chest's entry, not on a machine's.
+  const auto reSaved = chestContents(/*id=*/777, /*count=*/3, /*filled=*/1);
+  mgr.saveSlots(7, 70, 7, reSaved);
+  std::vector<simcore::PersistSlot> viaDefault;
+  mgr.loadSlots(7, 70, 7,
+                [&](const std::vector<simcore::PersistSlot>& s) { viaDefault = s; });
+  CHECK(slotsEqual(viaDefault, reSaved),
+        "the default-argument load is the chest entry, holding its own items");
+  std::vector<simcore::PersistSlot> machineStillThere;
+  mgr.loadSlots(7, 70, 7,
+                [&](const std::vector<simcore::PersistSlot>& s) { machineStillThere = s; },
+                /*entity_type=*/42);
+  CHECK(slotsEqual(machineStillThere, machineSaved),
+        "and the machine's entry is unaffected by the default-type save");
 }
 
 // The manager is a plain value: two instances over the same position do not
@@ -1284,7 +1327,7 @@ int main() {
   TEST(ChestStateManager_a_run_of_65536_z_steps_keys_independently);
   TEST(ChestStateManager_one_block_step_on_any_axis_is_a_new_key);
   TEST(ChestStateManager_clear_of_a_colliding_position_spares_the_other);
-  TEST(ChestStateManager_cache_key_ignores_entity_type);
+  TEST(ChestStateManager_cache_key_includes_entity_type);
   TEST(ChestStateManager_cache_is_per_instance);
   TEST(ChestStateManager_cache_ignores_dimension);
 

@@ -42,17 +42,24 @@ bool ConditionEvaluator::evaluate(const Recipe& recipe,
 
 bool ConditionEvaluator::checkEnvironment(const EnvironmentConditions& env,
                                          const MachineState& state) const {
-    // Check temperature
+    // Check temperature.
+    //
+    // A NaN temperature satisfies `t < min || t > max` because every comparison
+    // against NaN is false, so a corrupt or uninitialised reading made the
+    // machine unconditionally runnable (gp-paja). std::isnan rejects it
+    // explicitly: a NaN reading is not evidence that the machine is in range,
+    // so it is treated like an out-of-range one.
     if (env.temperature) {
-        if (state.temperature < env.temperature->min || 
+        if (std::isnan(state.temperature) ||
+            state.temperature < env.temperature->min ||
             state.temperature > env.temperature->max) {
             return false;
         }
     }
-    
-    // Check purity
+
+    // Check purity — same NaN hole as the temperature gate above.
     if (env.purity) {
-        if (state.purity < *env.purity) {
+        if (std::isnan(state.purity) || state.purity < *env.purity) {
             return false;
         }
     }
@@ -131,7 +138,14 @@ bool ConditionEvaluator::checkSpecial(const std::vector<SpecialCondition>& recip
                 }
                 break;
             case 1: // float
-                if (std::abs(recipeTag.float_value - machineTag.float_value) > 0.001f) {
+                // The tolerance test `abs(a - b) > 0.001f` is false when either
+                // side is NaN (the difference is NaN, and NaN > 0.001f is
+                // false), so NaN used to match ANY float tag (gp-paja). The
+                // isnan guard turns "unmeasurable" into a non-match, matching
+                // the behaviour infinity already had.
+                if (std::isnan(recipeTag.float_value) ||
+                    std::isnan(machineTag.float_value) ||
+                    std::abs(recipeTag.float_value - machineTag.float_value) > 0.001f) {
                     return false;
                 }
                 break;

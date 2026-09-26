@@ -179,8 +179,12 @@ void MachineSystem::tick(float /*dt*/) {
         auto* recipe = recipes_->findRecipeByInputs(machine.machine_id, inputItems);
 
         if (recipe) {
-            if (RecipeManager::evaluateConditions(recipe->id, reg_,
-                                             machine.x, machine.y, machine.z, *recipes_)) {
+            // Pass `ent`, not (machine.x, machine.y, machine.z): the condition
+            // gates must read THIS machine's own state. The positional overload
+            // takes the first machine at those coordinates, so a co-located
+            // machine could otherwise decide whether this one starts (gp-iv20).
+            if (RecipeManager::evaluateConditions(recipe->id, reg_, ent,
+                                                   *recipes_)) {
                 if (reservations_ && recipe->needsReservation()) {
                     // 4.2.2/4.3.2: reserve every requirement first; inputs
                     // are consumed and progress starts only on full

@@ -13,14 +13,15 @@ ChestStateManager::ChestStateManager(
     : essClient_(std::move(essClient)), dimension_(dimension) {}
 
 ChestStateManager::PosKey ChestStateManager::posKey(int32_t x, int32_t y,
-                                                      int32_t z) {
-  return PosKey{x, y, z};
+                                                      int32_t z,
+                                                      uint16_t entity_type) {
+  return PosKey{x, y, z, entity_type};
 }
 
 void ChestStateManager::loadSlots(int32_t x, int32_t y, int32_t z,
                                   LoadCallback cb,
                                   uint16_t entity_type) {
-  const auto key = posKey(x, y, z);
+  const auto key = posKey(x, y, z, entity_type);
   auto it = cache_.find(key);
   if (it != cache_.end()) {
     cb(it->second);
@@ -42,7 +43,7 @@ void ChestStateManager::loadSlots(int32_t x, int32_t y, int32_t z,
 void ChestStateManager::saveSlots(int32_t x, int32_t y, int32_t z,
                                   const std::vector<PersistSlot>& slots,
                                   uint16_t entity_type) {
-  cache_[posKey(x, y, z)] = slots;
+  cache_[posKey(x, y, z, entity_type)] = slots;
   if (!essClient_) return;
   auto blob = EncodeChestBlob(slots);
   essClient_->SaveEntityState(dimension_, x, y, z, entity_type, blob,
@@ -54,7 +55,7 @@ void ChestStateManager::saveSlots(int32_t x, int32_t y, int32_t z,
 
 void ChestStateManager::clearSlots(int32_t x, int32_t y, int32_t z,
                                    uint16_t entity_type) {
-  cache_.erase(posKey(x, y, z));
+  cache_.erase(posKey(x, y, z, entity_type));
   if (essClient_) {
     essClient_->SaveEntityState(dimension_, x, y, z, entity_type, {},
                                 [x, y, z](bool ok) {

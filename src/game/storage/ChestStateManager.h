@@ -40,7 +40,7 @@ public:
                   uint16_t entity_type = kChestEntityType);
 
 private:
-  // The cache key is the WHOLE block position, held as a struct.
+  // The cache key is the whole block position PLUS the entity type.
   //
   // It used to be a single uint64_t packed as (x << 32) ^ (y << 16) ^ z
   // (gp-5t4d), which OVERLAPPED the y and z fields — y was shifted only 16
@@ -54,17 +54,28 @@ private:
   // collide; only a real 3-tuple key is exact. The hash below only picks a
   // bucket — operator== separates any true hash collision, so the map itself
   // stays exact for every representable coordinate.
+  //
+  // entity_type joined the key for the same reason (gp-py5s): the cache has to
+  // agree with EntityStateStore, whose key is (dim, x, y, z, entity_type). A
+  // chest (3) and a machine (its own machine_id) can occupy the same block
+  // position — a chest inside a machine's footprint, or a machine placed in a
+  // chest position — and they are separate entities with separate persisted
+  // state. Keyed on position alone they shared one entry, so opening the chest
+  // returned the machine's slots and the machine's save overwrote the chest's.
   struct PosKey {
     int32_t x, y, z;
+    uint16_t entity_type;
     bool operator==(const PosKey& other) const {
-      return x == other.x && y == other.y && z == other.z;
+      return x == other.x && y == other.y && z == other.z &&
+             entity_type == other.entity_type;
     }
   };
 
   struct PosKeyHash {
     size_t operator()(const PosKey& k) const noexcept {
-      // FNV-1a over the three axes' 32-bit patterns, seeded so that (0,0,0)
-      // does not hash to 0. Cheap, allocation-free, and mixes every axis bit.
+      // FNV-1a over the three axes' 32-bit patterns plus the 16-bit entity
+      // type, seeded so that (0,0,0) does not hash to 0. Cheap, allocation-free,
+      // and mixes every field's bits.
       uint64_t h = 1469598103934665603ull;
       const uint32_t axes[3] = {static_cast<uint32_t>(k.x),
                                 static_cast<uint32_t>(k.y),
@@ -75,11 +86,15 @@ private:
           h *= 1099511628211ull;
         }
       }
+      for (int byte = 0; byte < 2; ++byte) {
+        h ^= static_cast<uint64_t>((k.entity_type >> (byte * 8)) & 0xFFu);
+        h *= 1099511628211ull;
+      }
       return static_cast<size_t>(h);
     }
   };
 
-  static PosKey posKey(int32_t x, int32_t y, int32_t z);
+  static PosKey posKey(int32_t x, int32_t y, int32_t z, uint16_t entity_type);
 
   std::unordered_map<PosKey, std::vector<PersistSlot>, PosKeyHash> cache_;
   std::shared_ptr<EntityStateStoreClient> essClient_;
