@@ -3,10 +3,10 @@
 // Covers src/game/mining/AdjacencyTransferSystem.cpp — the three-pass heat
 // pipeline: adjacent heat transfer, overheat detection, environment cooling.
 //
-// ============================ DEAD-VIEW FINDING =============================
-// Pass 2 (overheat detection) is DEAD AT RUNTIME. Its view is
+// ========================== PASS 2 GATE (gp-wjwr, now FIXED) ================
+// Pass 2 (overheat detection) used to be DEAD AT RUNTIME. Its view was
 //
-//     reg_.view<HeatIntakeComponent, MultiblockController>()   // line 118
+//     reg_.view<HeatIntakeComponent, MultiblockController>()   // old line 118
 //
 // but MultiblockController is never emplaced into ANY entt::registry in src/.
 // SimulationEngine keeps controllers in a plain container instead:
@@ -18,18 +18,30 @@
 // matches only test code. The block-entity creation path in
 // SimulationEngine::onBlockChanged (SimulationEngine.cpp:178-283) emplaces
 // Position, Block, MachineComponent, RecipeProgress, InventoryContainer,
-// EnergyStorage and HeatIntakeComponent — never MultiblockController.
-//
-// Consequence: pass 2 never iterates, so OverheatComponent is NEVER created
-// by this system, and therefore ExplosionSystem (which requires
-// OverheatComponent) can never fire either. The same defect exists in
+// EnergyStorage and HeatIntakeComponent — never MultiblockController. The
+// consequence was that pass 2 never iterated, so OverheatComponent was NEVER
+// created by this system, and therefore ExplosionSystem (which requires
+// OverheatComponent) could never fire either. The same defect existed in
 // ExplosionSystem.cpp:13 and CoolantSystem.h:22.
 //
-// The tests below pin the gate exactly as the code behaves it
-// (…overheat_pass_requires_multiblock_controller vs
-// …overheat_pass_fires_when_component_present) and show the pass-2 logic
-// itself is sound — only the wiring is missing. Fixing the wiring is a
-// separate issue and is deliberately NOT done here.
+// WHY THE GATE IS NOW `MachineComponent::mb_id != 0` AND NOT A NEW COMPONENT
+// Emplacing a MultiblockController component would create a SECOND source of
+// truth: EBFSystem / LCRSystem / LargeBoilerSystem all take
+// `std::unordered_map<uint64_t, MultiblockController>&` and mutate it in
+// place, SimulationEngine rewrites the hatches in place after registration
+// (SimulationEngine.cpp:325-362), and removeBlockFromController erases from
+// `it->second.blocks` (:57). An ECS mirror would be free to desync from all of
+// that. `MachineComponent::mb_id` is already maintained by the engine and has
+// no extra lifecycle to keep in sync:
+//   * set to the controller id on formation   (SimulationEngine.cpp:309)
+//   * refreshed on every block-change echo    (SimulationEngine.cpp:370)
+//   * removed WITH the MachineComponent when the controller is destroyed
+//     (destroyController, SimulationEngine.cpp:82)
+// and only the anchor block is ever a machine (member blocks are casing/coil),
+// so `mb_id != 0` is exactly "is a multiblock controller anchor".
+//
+// The tests below therefore build their subjects with a NONZERO mb_id, and
+// pin the single-block (mb_id == 0) case as a negative.
 //
 // ============================ PASS 1 SEMANTICS ==============================
 // View: reg_.view<MachineComponent, EnergyStorage, Position>()
@@ -79,7 +91,6 @@
 #include <engine/sim/components/EnergyStorage.h>
 #include <engine/sim/components/HeatIntakeComponent.h>
 #include <engine/sim/components/MachineComponent.h>
-#include <engine/sim/components/MultiblockController.h>
 #include <engine/sim/components/Position.h>
 #include <game/machines/HeatConstants.h>
 #include <game/machines/OverheatComponent.h>
@@ -114,7 +125,6 @@ using simcore::EnergyStorage;
 using simcore::EnergyType;
 using simcore::HeatIntakeComponent;
 using simcore::MachineComponent;
-using simcore::MultiblockController;
 using simcore::OverheatComponent;
 using simcore::OverheatState;
 using simcore::Position;
@@ -178,23 +188,25 @@ entt::entity makeMachine(entt::registry& reg, uint16_t machine_id, int32_t x, in
     return ent;
 }
 
-// A controller with no blocks, spelled out so the 6-arg constructor is
-// unambiguously selected over the defaulted one.
-MultiblockController makeController(uint64_t id, uint32_t x, uint32_t y, uint32_t z) {
-    return MultiblockController(id, x, y, z, 1, std::vector<uint32_t>{});
-}
+// A controller id. Since gp-wjwr the "is a multiblock controller" fact is
+// carried by MachineComponent::mb_id, which SimulationEngine sets to the
+// controller id when a multiblock forms (SimulationEngine.cpp:309) and clears
+// by removing the whole MachineComponent on teardown (destroyController, :82).
+constexpr uint32_t kControllerMbId = 1;
 
 // The exact component set SimulationEngine::onBlockChanged builds for a HEAT
-// machine (SimulationEngine.cpp:178-283) — note the ABSENCE of
-// MultiblockController, which is the whole finding.
+// machine (SimulationEngine.cpp:178-283), with `mb_id` defaulting to
+// kControllerMbId so the entity is a live multiblock anchor — the shape a
+// formed blast-furnace / large-boiler / LCR controller actually has.
 entt::entity makeProductionHeatMachine(entt::registry& reg, uint16_t machine_id, int32_t x,
                                        int32_t y, int32_t z, int32_t heat_stored,
-                                       int32_t heat_capacity = 1000) {
+                                       int32_t heat_capacity = 1000,
+                                       uint32_t mb_id = kControllerMbId) {
     auto ent = reg.create();
     reg.emplace<Position>(ent, static_cast<uint32_t>(x), static_cast<uint32_t>(y),
                           static_cast<uint32_t>(z));
     reg.emplace<Block>(ent, machine_id, 0, 0);
-    reg.emplace<MachineComponent>(ent, machine_id, 0, static_cast<uint32_t>(x),
+    reg.emplace<MachineComponent>(ent, machine_id, mb_id, static_cast<uint32_t>(x),
                                   static_cast<uint32_t>(y), static_cast<uint32_t>(z), 1);
     reg.emplace<EnergyStorage>(ent, 10000, heat_stored, 32, 32, 0, EnergyType::HEAT);
     HeatIntakeComponent hic;
@@ -759,53 +771,71 @@ static void test_AdjacencyTransferSystem_repeated_ticks_do_not_double_transfer()
 }
 
 // ---------------------------------------------------------------------------
-// Pass 2 — overheat detection, and the dead view
+// Pass 2 — overheat detection, and its multiblock gate
 // ---------------------------------------------------------------------------
 
-static void test_AdjacencyTransferSystem_overheat_pass_requires_multiblock_controller() {
+static void test_AdjacencyTransferSystem_overheat_pass_requires_a_controller_mb_id() {
     auto reg = makeRegistry();
     entt::registry ecs;
     simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
 
-    // A production-shaped HEAT machine at twice the critical ratio: exactly the
-    // component set SimulationEngine::onBlockChanged builds, i.e. WITHOUT
-    // MultiblockController. The overheat logic is fully primed — the view
-    // simply never matches. 30 ticks of pass-3 cooling (4 HU each) still leaves
-    // the ratio above 1.0, so the assertion below cannot pass by accident.
+    // A production-shaped HEAT machine at twice the critical ratio, but a
+    // SINGLE-BLOCK machine (mb_id == 0). The overheat logic is fully primed —
+    // only the multiblock gate keeps it out. 30 ticks of pass-3 cooling (4 HU
+    // each) still leaves the ratio above 1.0, so the assertion below cannot
+    // pass by accident.
     const int32_t stored0 = 2000;
-    auto furnace = makeProductionHeatMachine(ecs, kHeatFurnace, 5, 64, 5, stored0);
+    auto furnace = makeProductionHeatMachine(ecs, kHeatFurnace, 5, 64, 5, stored0,
+                                             1000, /*mb_id=*/0);
 
-    CHECK(!ecs.all_of<MultiblockController>(furnace),
-          "precondition: the production path never adds MultiblockController");
+    CHECK_EQ_I(static_cast<int64_t>(ecs.get<MachineComponent>(furnace).mb_id), 0,
+               "precondition: a single-block machine has no controller id");
     for (int tick = 0; tick < 30; ++tick) sys.tick(0.05f);
 
     CHECK(!ecs.all_of<OverheatComponent>(furnace),
-          "without MultiblockController the overheat view is empty and nothing is emplaced");
+          "a single-block machine is outside the gate and never gets OverheatComponent");
     CHECK(ecs.all_of<HeatIntakeComponent>(furnace), "the entity itself survives");
     CHECK(ecs.get<HeatIntakeComponent>(furnace).ratio() >=
               simcore::HeatConstants::OVERHEAT_CRITICAL_THRESHOLD,
-          "the ratio is still at CRITICAL after 30 ticks, so only the view gate is missing");
+          "the ratio is still at CRITICAL after 30 ticks, so only the gate is missing");
 }
 
-static void test_AdjacencyTransferSystem_overheat_pass_fires_when_component_present() {
+static void test_AdjacencyTransferSystem_overheat_pass_fires_for_a_controller() {
     auto reg = makeRegistry();
     entt::registry ecs;
     simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
 
-    // Identical to the previous test, plus the one component the view needs.
-    // This proves the pass-2 logic is correct and the runtime defect is purely
-    // the never-emplaced component.
+    // Identical to the previous test, but with a nonzero mb_id — the shape a
+    // formed multiblock controller anchor actually has in production. This is
+    // the same test that used to be IMPOSSIBLE to pass, because pass 2 keyed on
+    // a MultiblockController ECS component that no production path ever emplaced.
     auto furnace = makeProductionHeatMachine(ecs, kHeatFurnace, 5, 64, 5, 1000);
-    ecs.emplace<MultiblockController>(furnace, makeController(1, 5, 64, 5));
 
     sys.tick(0.05f);
 
-    CHECK(ecs.all_of<OverheatComponent>(furnace), "with MultiblockComponent the pass DOES run");
+    CHECK(ecs.all_of<OverheatComponent>(furnace),
+          "a multiblock controller anchor (mb_id != 0) DOES enter the pass-2 gate");
     if (ecs.all_of<OverheatComponent>(furnace)) {
         const auto& oh = ecs.get<OverheatComponent>(furnace);
         CHECK(oh.state == OverheatState::CRITICAL, "a ratio of 1.0 maps to CRITICAL");
         CHECK_EQ_I(oh.ticks_at_critical, 0, "a freshly emplaced component starts its counter at 0");
     }
+}
+
+static void test_AdjacencyTransferSystem_overheat_pass_skips_a_machine_with_no_machine_component() {
+    auto reg = makeRegistry();
+    entt::registry ecs;
+    simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
+
+    // HeatIntakeComponent alone (a bare heat store, no MachineComponent): the
+    // gate reads mb_id off MachineComponent, so this must be skipped rather
+    // than crash.
+    auto store = makeHeatStore(ecs, 5, 64, 5, 1000);
+
+    sys.tick(0.05f);
+
+    CHECK(!ecs.all_of<OverheatComponent>(store),
+          "an entity with no MachineComponent never enters the pass-2 gate");
 }
 
 static void test_AdjacencyTransferSystem_overheat_critical_and_warning_thresholds() {
@@ -829,8 +859,6 @@ static void test_AdjacencyTransferSystem_overheat_critical_and_warning_threshold
         entt::registry ecs;
         simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
         auto ent = makeProductionHeatMachine(ecs, kHeatFurnace, 5, 64, 5, c.stored);
-        ecs.emplace<MultiblockController>(ent, makeController(1, 5, 64, 5));
-
         sys.tick(0.05f);
 
         CHECK_EQ_I(ecs.all_of<simcore::OverheatComponent>(ent), c.expect_component,
@@ -848,7 +876,6 @@ static void test_AdjacencyTransferSystem_overheat_absent_below_warning_threshold
     simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
 
     auto ent = makeProductionHeatMachine(ecs, kHeatFurnace, 5, 64, 5, 100);
-    ecs.emplace<MultiblockController>(ent, makeController(1, 5, 64, 5));
 
     sys.tick(0.05f);
 
@@ -861,7 +888,6 @@ static void test_AdjacencyTransferSystem_overheat_is_removed_when_cooling() {
     simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
 
     auto ent = makeProductionHeatMachine(ecs, kHeatFurnace, 5, 64, 5, 1000); // CRITICAL
-    ecs.emplace<MultiblockController>(ent, makeController(1, 5, 64, 5));
     sys.tick(0.05f);
     CHECK(ecs.all_of<OverheatComponent>(ent), "precondition: the machine is overheated");
 
@@ -877,7 +903,6 @@ static void test_AdjacencyTransferSystem_overheat_update_preserves_critical_coun
     simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
 
     auto ent = makeProductionHeatMachine(ecs, kHeatFurnace, 5, 64, 5, 1000);
-    ecs.emplace<MultiblockController>(ent, makeController(1, 5, 64, 5));
     auto& oh = ecs.emplace<OverheatComponent>(ent);
     oh.state = OverheatState::CRITICAL;
     oh.ticks_at_critical = 7;
@@ -899,7 +924,6 @@ static void test_AdjacencyTransferSystem_overheat_re_arms_from_warning_to_critic
     simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
 
     auto ent = makeProductionHeatMachine(ecs, kHeatFurnace, 5, 64, 5, 950); // WARNING
-    ecs.emplace<MultiblockController>(ent, makeController(1, 5, 64, 5));
     sys.tick(0.05f);
     CHECK(ecs.get<OverheatComponent>(ent).state == OverheatState::WARNING, "precondition: WARNING");
 
@@ -910,9 +934,11 @@ static void test_AdjacencyTransferSystem_overheat_re_arms_from_warning_to_critic
           "WARNING escalates to CRITICAL in place");
 }
 
-static void test_AdjacencyTransferSystem_overheat_view_is_empty_for_real_ecs() {
-    // The finding stated as a runtime observation rather than a code reading:
-    // no entity built by the production path can ever enter the pass-2 view.
+static void test_AdjacencyTransferSystem_overheat_gate_is_live_for_a_populated_world() {
+    // The counterpart of the old "the pass-2 view is empty for real ECS" test,
+    // which asserted the gp-wjwr dead view as a runtime observation. That test
+    // is now inverted: the same production-shaped, fully populated world DOES
+    // enter the pass-2 gate, and the overheated machines get OverheatComponent.
     auto reg = makeRegistry();
     entt::registry ecs;
     simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
@@ -925,15 +951,14 @@ static void test_AdjacencyTransferSystem_overheat_view_is_empty_for_real_ecs() {
 
     sys.tick(0.05f);
 
-    size_t overheat_view = 0;
-    for (auto ent : ecs.view<HeatIntakeComponent, MultiblockController>()) {
-        static_cast<void>(ent);
-        ++overheat_view;
+    size_t gated = 0;
+    for (auto ent : ecs.view<HeatIntakeComponent, MachineComponent>()) {
+        if (ecs.get<MachineComponent>(ent).mb_id != 0) ++gated;
     }
-    CHECK_EQ_I(static_cast<int64_t>(overheat_view), 0,
-               "the pass-2 view is empty for a fully populated production-shaped world");
-    CHECK_EQ_I(static_cast<int64_t>(ecs.storage<OverheatComponent>().size()), 0,
-               "no OverheatComponent is ever created by this system");
+    CHECK_EQ_I(static_cast<int64_t>(gated), 16,
+               "every controller-shaped HEAT machine is inside the pass-2 gate");
+    CHECK_EQ_I(static_cast<int64_t>(ecs.storage<OverheatComponent>().size()), 16,
+               "and each one that is above the warning ratio gets an OverheatComponent");
 }
 
 // ---------------------------------------------------------------------------
@@ -1135,8 +1160,9 @@ static void test_AdjacencyTransferSystem_cooling_starves_the_furnace() {
     }
 
     CHECK_EQ_I(stored(ecs, furnace), 0, "heat in equals heat out: the furnace is pinned at zero");
-    CHECK(!ecs.all_of<MultiblockController>(furnace),
-          "precondition: still outside the overheat view");
+    CHECK_EQ_I(static_cast<int64_t>(ecs.get<MachineComponent>(furnace).mb_id), 0,
+               "precondition: a makeMachine() subject is a single-block machine, so it is "
+               "outside the overheat gate entirely");
     CHECK(!ecs.all_of<OverheatComponent>(furnace), "a zero-heat furnace never overheats");
 }
 
@@ -1173,14 +1199,15 @@ int main(int argc, char** argv) {
     TEST(AdjacencyTransferSystem_adjacent_source_and_sink_pair_drains_each_other);
     TEST(AdjacencyTransferSystem_dt_is_ignored);
     TEST(AdjacencyTransferSystem_repeated_ticks_do_not_double_transfer);
-    TEST(AdjacencyTransferSystem_overheat_pass_requires_multiblock_controller);
-    TEST(AdjacencyTransferSystem_overheat_pass_fires_when_component_present);
+    TEST(AdjacencyTransferSystem_overheat_pass_requires_a_controller_mb_id);
+    TEST(AdjacencyTransferSystem_overheat_pass_fires_for_a_controller);
+    TEST(AdjacencyTransferSystem_overheat_pass_skips_a_machine_with_no_machine_component);
     TEST(AdjacencyTransferSystem_overheat_critical_and_warning_thresholds);
     TEST(AdjacencyTransferSystem_overheat_absent_below_warning_threshold);
     TEST(AdjacencyTransferSystem_overheat_is_removed_when_cooling);
     TEST(AdjacencyTransferSystem_overheat_update_preserves_critical_counter);
     TEST(AdjacencyTransferSystem_overheat_re_arms_from_warning_to_critical);
-    TEST(AdjacencyTransferSystem_overheat_view_is_empty_for_real_ecs);
+    TEST(AdjacencyTransferSystem_overheat_gate_is_live_for_a_populated_world);
     TEST(AdjacencyTransferSystem_cooling_reduces_heat_stored);
     TEST(AdjacencyTransferSystem_cooling_clamps_to_stored_heat);
     TEST(AdjacencyTransferSystem_water_adjacent_cooling_is_tripled);

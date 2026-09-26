@@ -5,8 +5,8 @@
 #include <engine/sim/components/HeatIntakeComponent.h>
 #include <game/machines/OverheatComponent.h>
 #include <engine/sim/components/InventoryContainer.h>
+#include <engine/sim/components/MachineComponent.h>
 #include <engine/sim/components/Position.h>
-#include <engine/sim/components/MultiblockController.h>
 #include <engine/sim/components/EnergyStorage.h>
 #include <entt/entt.hpp>
 #include <spdlog/spdlog.h>
@@ -18,10 +18,30 @@ public:
   explicit CoolantSystem(entt::registry &reg) : reg_(reg) {}
 
   void tick(float /*dt*/) override {
+    // Candidate gate: HeatIntakeComponent + OverheatComponent +
+    // InventoryContainer + Position, and the entity must be a live multiblock
+    // controller (MachineComponent::mb_id != 0).
+    //
+    // This used to be a 5-type view keyed on a `MultiblockController` ECS
+    // component (gp-qgtc). That component is never emplaced in production:
+    // SimulationEngine owns controllers in a plain
+    // `std::unordered_map<uint64_t, MultiblockController> controllers_`
+    // (SimulationEngine.h:108), mutated in place by EBFSystem / LCRSystem /
+    // LargeBoilerSystem, so an ECS mirror would be a second source of truth
+    // free to desync. `mb_id` is the field the engine already maintains:
+    // set on formation (SimulationEngine.cpp:309), updated on every block
+    // echo (:370), and removed with the MachineComponent on teardown
+    // (destroyController, :82). Only the anchor is a machine — member blocks
+    // are casing/coil — so `mb_id != 0` is exactly "controller anchor".
     auto view = reg_.view<HeatIntakeComponent, OverheatComponent,
-                          InventoryContainer, Position, MultiblockController>();
+                          InventoryContainer, Position>();
 
     for (auto ent : view) {
+      if (const auto *machine = reg_.try_get<MachineComponent>(ent)) {
+        if (machine->mb_id == 0) continue;
+      } else {
+        continue;
+      }
       auto &hic = view.get<HeatIntakeComponent>(ent);
       auto &oh = view.get<OverheatComponent>(ent);
       auto &inventory = view.get<InventoryContainer>(ent);

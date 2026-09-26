@@ -3,7 +3,6 @@
 #include <engine/sim/components/HeatIntakeComponent.h>
 #include <game/machines/HeatSlowComponent.h>
 #include <engine/sim/components/MachineComponent.h>
-#include <engine/sim/components/MultiblockController.h>
 #include <game/machines/OverheatComponent.h>
 #include <engine/sim/components/Position.h>
 #include "game/machines/HeatConstants.h"
@@ -115,8 +114,24 @@ void AdjacencyTransferSystem::tick(float /*dt*/) {
     // Pass 2: Overheat detection
     // ═══════════════════════════════════════════════════════════════════
     {
-        auto oh_view = reg_.view<HeatIntakeComponent, MultiblockController>();
+        // The gate is `MachineComponent` with a nonzero mb_id — i.e. a live
+        // multiblock controller anchor. This used to be
+        // `view<HeatIntakeComponent, MultiblockController>()` (gp-wjwr), and
+        // that view could never match: a MultiblockController ECS component is
+        // never emplaced anywhere in production, because SimulationEngine owns
+        // controllers in a plain
+        // `std::unordered_map<uint64_t, MultiblockController> controllers_`
+        // (SimulationEngine.h:108) which EBFSystem / LCRSystem /
+        // LargeBoilerSystem mutate in place — an ECS mirror would be a second
+        // source of truth free to desync from it. MachineComponent::mb_id is
+        // the field the engine already keeps correct: set on formation
+        // (SimulationEngine.cpp:309), refreshed on every block echo (:370), and
+        // removed with the MachineComponent when the controller is destroyed
+        // (destroyController, :82). Member blocks (casing/coil) are not
+        // machines, so only the anchor can have mb_id != 0.
+        auto oh_view = reg_.view<HeatIntakeComponent, MachineComponent>();
         for (auto ent : oh_view) {
+            if (oh_view.get<MachineComponent>(ent).mb_id == 0) continue;
             auto& hic = oh_view.get<HeatIntakeComponent>(ent);
             float r = hic.ratio();
 

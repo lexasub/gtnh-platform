@@ -3,6 +3,7 @@
 #include <spdlog/spdlog.h>
 #include <cmath>
 #include <algorithm>
+#include <mutex>
 #include "content/content.h"
 
 namespace simcore {
@@ -205,12 +206,29 @@ int32_t DrillSystem::findToolSlot(const InventoryContainer& container) {
 // =========================================================================
 
 void DrillSystem::phaseSearch(entt::entity ent, DrillComponent& drill) {
-    auto it = pendingSearches_.find(ent);
-    int32_t pending = (it != pendingSearches_.end()) ? it->second : 0;
-    if (pending >= 2) return;
-
-    int32_t sent = pending;
+    // The in-flight request count is bumped BEFORE the request is issued, not
+    // after (gp-xotc). The old `pendingSearches_[ent] = sent;` ran after
+    // getBlock() had already returned, which pinned the counter at
+    // kMaxPerTick for the rest of the drill's life, so a drill issued exactly
+    // two block requests and then searched no further. Incrementing up front
+    // is also the only ordering that is correct for the PRODUCTION repository,
+    // which is asynchronous: ChunkStoreRepository forwards to
+    // IoUringChunkClient::GetBlock, whose reply is delivered from
+    // IoUringConnection's poll thread (io_uring_connection.cpp:123), i.e. after
+    // phaseSearch has returned. Each request owns exactly one increment and one
+    // matching decrement in onSearchBlockResult, so the counter reaches zero
+    // again once the replies land.
     constexpr int32_t kMaxPerTick = 2;
+
+    {
+        std::lock_guard<std::mutex> lock(pending_mutex_);
+        // find(), not operator[]: a drill that is merely AT the cap must not
+        // leave a fresh zero-valued entry behind on its way out.
+        auto it = pendingSearches_.find(ent);
+        if (it != pendingSearches_.end() && it->second >= kMaxPerTick) return;
+    }
+
+    int32_t sent = 0;
 
     while (sent < kMaxPerTick) {
         int32_t dx, dz;
@@ -221,6 +239,14 @@ void DrillSystem::phaseSearch(entt::entity ent, DrillComponent& drill) {
         if (dx == 0 && dy == 0 && dz == 0) {
             drill.searchIndex++;
             continue;
+        }
+
+        // Claim the slot before the request goes out, so a reply that lands on
+        // the io thread between the request and the increment cannot drive the
+        // count negative and strand the entry.
+        {
+            std::lock_guard<std::mutex> lock(pending_mutex_);
+            pendingSearches_[ent]++;
         }
 
         blockRepo_->getBlock(wx, wy, wz,
@@ -235,15 +261,16 @@ void DrillSystem::phaseSearch(entt::entity ent, DrillComponent& drill) {
             drill.searchLayer++;
         }
     }
-
-    pendingSearches_[ent] = sent;
 }
 
 void DrillSystem::onSearchBlockResult(entt::entity ent, int32_t wx, int32_t wy,
                                        int32_t wz, const BlockData& block) {
-    auto it = pendingSearches_.find(ent);
-    if (it != pendingSearches_.end()) {
-        if (--it->second <= 0) pendingSearches_.erase(it);
+    {
+        std::lock_guard<std::mutex> lock(pending_mutex_);
+        auto it = pendingSearches_.find(ent);
+        if (it != pendingSearches_.end()) {
+            if (--it->second <= 0) pendingSearches_.erase(it);
+        }
     }
 
     if (!reg_.valid(ent)) return;

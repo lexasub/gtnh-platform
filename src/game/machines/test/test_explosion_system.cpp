@@ -4,8 +4,21 @@
 // the block destruction it performs.
 //
 // The system view is:
-//     reg_.view<MachineComponent, Position, OverheatComponent, MultiblockController>()
-// An entity is therefore only a candidate if it carries ALL FOUR components.
+//     reg_.view<MachineComponent, Position, OverheatComponent>()
+// plus the gate `MachineComponent::mb_id != 0` — the entity must be a live
+// multiblock controller anchor. An entity is therefore a candidate only if it
+// carries ALL THREE components AND belongs to a multiblock.
+//
+// GATE HISTORY (gp-qgtc): the view used to be a 4-type view that also required
+// a `MultiblockController` ECS component, and that view was DEAD — no
+// production path ever emplaces such a component, because SimulationEngine owns
+// controllers in a plain `std::unordered_map<uint64_t, MultiblockController>`
+// (SimulationEngine.h:108) that EBFSystem / LCRSystem / LargeBoilerSystem
+// mutate in place. The gate now keys off `MachineComponent::mb_id`, which the
+// engine already sets on formation (SimulationEngine.cpp:309), refreshes on
+// every block echo (:370), and drops on teardown (destroyController, :82).
+// The tests below therefore build candidates with a NONZERO mb_id, and the
+// single-block (`mb_id == 0`) case is pinned as a negative.
 //
 // What the system actually does per tick, for each candidate:
 //   1. skips unless overheat.state == OverheatState::CRITICAL
@@ -29,7 +42,6 @@
 
 #include "Network/IEventPublisher.h"
 #include <engine/sim/components/MachineComponent.h>
-#include <engine/sim/components/MultiblockController.h>
 #include <engine/sim/components/Position.h>
 #include <game/machines/ExplosionSystem.h>
 #include <game/machines/HeatConstants.h>
@@ -102,32 +114,30 @@ struct MockEventPublisher : simcore::IEventPublisher {
 
 constexpr uint32_t kDelay = simcore::HeatConstants::EXPLOSION_DELAY_TICKS;
 
-// A controller with no blocks. Spelled out rather than `{}` so the 6-arg
-// MultiblockController constructor is unambiguously selected over the default one.
-static simcore::MultiblockController makeController(uint64_t id, uint32_t x, uint32_t y,
-                                                    uint32_t z, uint32_t pattern_id) {
-    return simcore::MultiblockController(id, x, y, z, pattern_id,
-                                         std::vector<uint32_t>{});
-}
+// A multiblock controller id. Since gp-qgtc the "is a controller" fact is
+// carried by MachineComponent::mb_id, which SimulationEngine sets to the
+// controller id when a multiblock forms (SimulationEngine.cpp:309) and clears
+// by removing the whole MachineComponent on teardown (destroyController, :82).
+// Only the anchor block is ever a machine — member blocks are casing/coil — so
+// `mb_id != 0` is exactly "multiblock controller anchor".
+constexpr uint32_t kControllerMbId = 42;
 
 // Builds a fully-formed candidate entity: the system will consider it.
 static entt::entity makeCandidate(entt::registry& reg, uint32_t x, uint32_t y, uint32_t z,
                                   simcore::OverheatState state, uint32_t ticks_at_critical) {
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, 1001, 0, x, y, z, 7);
+    reg.emplace<simcore::MachineComponent>(ent, 1001, kControllerMbId, x, y, z, 7);
     reg.emplace<simcore::Position>(ent, x, y, z);
     reg.emplace<simcore::OverheatComponent>(ent);
     auto& oh = reg.get<simcore::OverheatComponent>(ent);
     oh.state = state;
     oh.ticks_at_critical = ticks_at_critical;
-    reg.emplace<simcore::MultiblockController>(ent, makeController(42, x, y, z, 1));
     return ent;
 }
 
 static bool hasAllComponents(const entt::registry& reg, entt::entity ent) {
     return reg.valid(ent) && reg.all_of<simcore::MachineComponent, simcore::Position,
-                                       simcore::OverheatComponent,
-                                       simcore::MultiblockController>(ent);
+                                       simcore::OverheatComponent>(ent);
 }
 
 // ---------------------------------------------------------------------------
@@ -353,13 +363,13 @@ static void test_ExplosionSystem_dt_is_ignored() {
 // View membership: the 4-component gate
 // ---------------------------------------------------------------------------
 
-static void test_ExplosionSystem_missing_multiblock_controller_is_ignored() {
+static void test_ExplosionSystem_single_block_machine_is_ignored() {
     entt::registry reg;
     auto events = std::make_shared<MockEventPublisher>();
     simcore::ExplosionSystem sys(reg, events);
 
-    // Critical, fused, but WITHOUT MultiblockController — the 4-type view does
-    // not match, so the system must not see it at all.
+    // Critical and fused, but a SINGLE-BLOCK machine (mb_id == 0). Only
+    // multiblock controller anchors are candidates, so this must never blow up.
     auto ent = reg.create();
     reg.emplace<simcore::MachineComponent>(ent, 1001, 0, 9, 9, 9, 7);
     reg.emplace<simcore::Position>(ent, 9, 9, 9);
@@ -371,10 +381,30 @@ static void test_ExplosionSystem_missing_multiblock_controller_is_ignored() {
     for (uint32_t i = 0; i < kDelay + 10; ++i) sys.tick(0.05f);
 
     CHECK_EQ_INT(events->changed.size(), size_t(0),
-                 "entity without MultiblockController is outside the view");
-    CHECK(reg.valid(ent), "entity without MultiblockController is never destroyed");
+                 "a single-block machine (mb_id == 0) never explodes");
+    CHECK(reg.valid(ent), "single-block machine is never destroyed");
     CHECK_EQ_INT(reg.get<simcore::OverheatComponent>(ent).ticks_at_critical, kDelay,
-                 "out-of-view entity's counter is not advanced");
+                 "its counter is not advanced — it is outside the gate entirely");
+}
+
+static void test_ExplosionSystem_missing_machine_component_is_ignored() {
+    entt::registry reg;
+    auto events = std::make_shared<MockEventPublisher>();
+    simcore::ExplosionSystem sys(reg, events);
+
+    // Critical and fused, with a Position and an OverheatComponent but no
+    // MachineComponent: MachineComponent carries the mb_id gate, so without it
+    // the entity is not a candidate and must not be destroyed.
+    auto ent = reg.create();
+    reg.emplace<simcore::Position>(ent, 11, 11, 11);
+    reg.emplace<simcore::OverheatComponent>(ent);
+    reg.get<simcore::OverheatComponent>(ent).state = simcore::OverheatState::CRITICAL;
+    reg.get<simcore::OverheatComponent>(ent).ticks_at_critical = kDelay;
+
+    for (uint32_t i = 0; i < kDelay + 10; ++i) sys.tick(0.05f);
+
+    CHECK_EQ_INT(events->changed.size(), size_t(0), "no MachineComponent -> no explosion");
+    CHECK(reg.valid(ent), "entity without MachineComponent survives");
 }
 
 static void test_ExplosionSystem_missing_overheat_component_is_ignored() {
@@ -382,12 +412,12 @@ static void test_ExplosionSystem_missing_overheat_component_is_ignored() {
     auto events = std::make_shared<MockEventPublisher>();
     simcore::ExplosionSystem sys(reg, events);
 
-    // Has the other three components but no OverheatComponent: machine that was
-    // never heat-exposed. Must be ignored (and must not crash the view).
+    // Has MachineComponent (with a controller mb_id) and Position but no
+    // OverheatComponent: a machine that was never heat-exposed. Must be
+    // ignored (and must not crash the view).
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, 1001, 0, 12, 12, 12, 7);
+    reg.emplace<simcore::MachineComponent>(ent, 1001, kControllerMbId, 12, 12, 12, 7);
     reg.emplace<simcore::Position>(ent, 12, 12, 12);
-    reg.emplace<simcore::MultiblockController>(ent, makeController(43, 12, 12, 12, 1));
 
     sys.tick(0.05f);
 
@@ -403,11 +433,10 @@ static void test_ExplosionSystem_missing_position_is_ignored() {
     // No Position: the system has no coordinates to publish, and since Position
     // is part of the view the entity is not a candidate.
     auto ent = reg.create();
-    reg.emplace<simcore::MachineComponent>(ent, 1001, 0, 13, 13, 13, 7);
+    reg.emplace<simcore::MachineComponent>(ent, 1001, kControllerMbId, 13, 13, 13, 7);
     reg.emplace<simcore::OverheatComponent>(ent);
     reg.get<simcore::OverheatComponent>(ent).state = simcore::OverheatState::CRITICAL;
     reg.get<simcore::OverheatComponent>(ent).ticks_at_critical = kDelay;
-    reg.emplace<simcore::MultiblockController>(ent, makeController(44, 13, 13, 13, 1));
 
     sys.tick(0.05f);
 
@@ -415,7 +444,7 @@ static void test_ExplosionSystem_missing_position_is_ignored() {
     CHECK(reg.valid(ent), "machine without Position survives");
 }
 
-static void test_ExplosionSystem_destroy_clears_all_four_components() {
+static void test_ExplosionSystem_destroy_clears_all_three_components() {
     entt::registry reg;
     auto events = std::make_shared<MockEventPublisher>();
     simcore::ExplosionSystem sys(reg, events);
@@ -430,8 +459,6 @@ static void test_ExplosionSystem_destroy_clears_all_four_components() {
           "MachineComponent is gone after destruction");
     CHECK(!reg.all_of<simcore::OverheatComponent>(ent),
           "OverheatComponent is gone after destruction");
-    CHECK(!reg.all_of<simcore::MultiblockController>(ent),
-          "MultiblockController is gone after destruction");
 }
 
 // ---------------------------------------------------------------------------
@@ -515,10 +542,11 @@ int main(int argc, char** argv) {
     TEST(ExplosionSystem_only_the_expired_fuse_explodes);
     TEST(ExplosionSystem_multiple_simultaneous_explosions);
     TEST(ExplosionSystem_dt_is_ignored);
-    TEST(ExplosionSystem_missing_multiblock_controller_is_ignored);
+    TEST(ExplosionSystem_single_block_machine_is_ignored);
+    TEST(ExplosionSystem_missing_machine_component_is_ignored);
     TEST(ExplosionSystem_missing_overheat_component_is_ignored);
     TEST(ExplosionSystem_missing_position_is_ignored);
-    TEST(ExplosionSystem_destroy_clears_all_four_components);
+    TEST(ExplosionSystem_destroy_clears_all_three_components);
     TEST(ExplosionSystem_one_event_per_exploded_entity);
     TEST(ExplosionSystem_replaced_entity_can_explode_again);
     TEST(ExplosionSystem_warning_does_not_extend_the_critical_fuse);

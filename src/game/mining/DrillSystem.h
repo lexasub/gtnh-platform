@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <entt/entt.hpp>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 
 namespace simcore {
@@ -48,7 +49,12 @@ private:
   std::shared_ptr<IBlockRepository> blockRepo_;
   std::shared_ptr<IEventPublisher> events_;
   std::shared_ptr<PipeEnergyClient> pipeClient_;
+  // In-flight block searches per drill. Guarded by pending_mutex_ because the
+  // production repository is asynchronous: getBlock replies are delivered from
+  // IoUringConnection's poll thread, so onSearchBlockResult mutates this map
+  // concurrently with phaseSearch on the sim thread.
   std::unordered_map<entt::entity, int32_t> pendingSearches_;
+  std::mutex pending_mutex_;
 };
 
 } // namespace simcore
