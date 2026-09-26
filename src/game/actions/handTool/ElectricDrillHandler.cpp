@@ -68,6 +68,24 @@ DrillMineResult ElectricDrillHandler::mineBlock(
     int32_t energyCost = miningEnergyCost(tool_item_id, block_id);
     simulation_core::ItemStack toolStack{tool_item_id, 1, toolSlot.meta};
 
+    // Fail closed, with the refusal reason split from the out-of-charge one.
+    // All four shipped drill ids (items.csv:449-452, 1111:00:0..3) are absent
+    // from TOOL_ENERGY_DEFS, and no content file declares a drill capacity —
+    // items.csv has no energy column and machines.yaml has no drill rows — so
+    // the table is incomplete rather than the drill path being wrong. Until it
+    // is filled, such a tool has no energy model at all, which is a DIFFERENT
+    // diagnosis from "your battery is flat": the latter is what drives the
+    // client out-of-energy toast, so conflating them misreports the state.
+    // Checked here, in the energy phase, ahead of the charge check.
+    const auto def = TOOL_ENERGY_DEFS.find(tool_item_id);
+    if (def == TOOL_ENERGY_DEFS.end()) {
+        result.error = "no_energy_definition";
+        spdlog::warn("[Drill] {} tool {} has no ToolEnergyDef; refusing to mine "
+                     "(the energy table is incomplete for this item)",
+                     player_id, tool_item_id);
+        return result;
+    }
+
     if (!consumeToolEnergy(toolStack, energyCost)) {
         result.error = "no_energy";
         return result;
@@ -83,9 +101,15 @@ DrillMineResult ElectricDrillHandler::mineBlock(
     result.energy_remaining = remaining > 0 ? static_cast<uint32_t>(remaining) : 0;
     result.mined_block_id = block_id;
 
+    // find(), not at(): a capacity lookup must never be able to throw out of a
+    // handler that no caller catches. This mirrors ToolActionHandler.cpp:34/50.
+    // The `def` guard above has already proven the key exists, so this lookup
+    // is redundant by construction — that redundancy is the point, and the
+    // regression guard is the exhaustive no-id-throws test in
+    // test_block_actions.cpp.
     spdlog::info("[Drill] {} mined block {} at ({},{},{}) energy={}/{}",
                  player_id, block_id, x, y, z,
-                 toolStack.meta, TOOL_ENERGY_DEFS.at(tool_item_id).capacity);
+                 toolStack.meta, def->second.capacity);
     return result;
 }
 

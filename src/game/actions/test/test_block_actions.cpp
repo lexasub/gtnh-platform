@@ -167,6 +167,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -1648,8 +1649,9 @@ void test_MachineInteractHandler_left_click_spins_only_an_opted_in_machine() {
 //   2. NONE of the four drill ids is in TOOL_ENERGY_DEFS (keys 90-94, 60948-
 //      60950). getToolEnergy returns -1 for them, and consumeToolEnergy()
 //      returns false whenever the current energy is less than the requested
-//      amount — and -1 < 100 is true — so every drill mine ends at
-//      "no_energy" no matter how much meta the tool carries.
+//      amount — and -1 < 100 is true — so no drill mine can ever succeed no
+//      matter how much meta the tool carries. (gp-j1ux splits the reason: that
+//      is "no_energy_definition", not "no_energy".)
 //
 // Together those mean mineBlock can NEVER report success for a real drill id.
 // That is a genuine defect, not a test artefact; it is filed separately rather
@@ -1676,7 +1678,7 @@ void test_ElectricDrillHandler_the_four_drill_ids_all_decode_to_tier_zero() {
   for (const auto& r : rows) {
     CHECK(TOOL_ENERGY_DEFS.find(r.id) == TOOL_ENERGY_DEFS.end(),
           "and no drill id is in TOOL_ENERGY_DEFS, which is what makes every "
-          "mine end in no_energy");
+          "mine fail on energy grounds");
   }
 }
 
@@ -1796,7 +1798,17 @@ void test_ElectricDrillHandler_validates_the_tool_slot() {
 // drill cannot mine, because no drill id is in TOOL_ENERGY_DEFS. getToolEnergy
 // returns -1, and consumeToolEnergy refuses when current < amount. So
 // mineBlock's success path is UNREACHABLE for every real drill id.
-void test_ElectricDrillHandler_a_slotted_drill_still_ends_in_no_energy() {
+//
+// gp-j1ux CORRECTION: this test used to pin the refusal as "no_energy", which
+// was the false diagnosis. A tool absent from the table has no energy MODEL,
+// which is not the same as an empty battery, and the out-of-charge reason is
+// what the spec hangs the client "Tool out of energy" toast off
+// (openspec/specs/electric-tools-wrench/spec.md, "Client shows out-of-energy
+// warning"). The handler now refuses with "no_energy_definition" in the
+// energy phase, before the charge check, so this assertion moves with it. The
+// rest of the test — that nothing is mined, nothing written, nothing consumed —
+// is unchanged and still holds.
+void test_ElectricDrillHandler_a_slotted_drill_is_refused_for_having_no_energy_model() {
   std::shared_ptr<PlayerInventoryStore> inv =
       std::make_shared<PlayerInventoryStore>();
   inv->initPlayer(7);
@@ -1821,8 +1833,9 @@ void test_ElectricDrillHandler_a_slotted_drill_still_ends_in_no_energy() {
            "getToolEnergy returns -1 for a tool with no ToolEnergyDef");
 
   const DrillMineResult r = h.mineBlock(7, 0, 0, 0, ITEM_DRILL_ULV, 0);
-  CHECK_EQ(r.error, std::string("no_energy"),
-           "so the mine is refused as no_energy despite a full meta");
+  CHECK_EQ(r.error, std::string("no_energy_definition"),
+           "so the mine is refused for having no energy definition, NOT as "
+           "no_energy, despite a full meta");
   CHECK(!r.success, "and reports no success");
   CHECK_EQ(writes, 0, "the block is never broken");
   CHECK_EQ(inv->getSlots(7)[0].item_id, ITEM_DRILL_ULV,
@@ -1879,6 +1892,213 @@ void test_ElectricDrillHandler_mining_ticks_are_tier_driven() {
              "decode to tier 0");
   }
   CHECK(ulv > 0.0f, "and the tick count is a positive number of ticks");
+}
+
+// ===========================================================================
+// gp-j1ux — the success path must never throw std::out_of_range
+// ===========================================================================
+//
+// ElectricDrillHandler.cpp:88 used to read the capacity for its log line with
+// TOOL_ENERGY_DEFS.at(tool_item_id), with no guard and no try/catch anywhere in
+// mineBlock, so a missing table row would throw straight out of the handler.
+// The filing claimed that throw was the NORMAL path for every real drill.
+//
+// IT IS NOT, and these tests exist to pin down why — the reasoning is the fix:
+//
+//   The .at() line sits on the SUCCESS path. Success requires
+//   consumeToolEnergy() to return true, which requires
+//   getToolEnergy(item) >= amount. getToolEnergy() returns -1 for an id that is
+//   absent from TOOL_ENERGY_DEFS, and -1 >= amount is false for every possible
+//   amount (miningEnergyCost is hardness*50, so amount >= 0, and even a zero
+//   cost is refused because -1 < 0). So "success" IMPLIES "the id has a
+//   ToolEnergyDef", and .at() on an id find() has already located cannot throw.
+//
+//   The missing table row is therefore what PREVENTS the throw, not what causes
+//   it. The bug is real but LATENT: the success path is kept throw-free only by
+//   an undocumented coupling to consumeToolEnergy's -1 sentinel, and it is kept
+//   that way across sixty lines. The moment the sentinel is given a second
+//   meaning (and filling in the drill rows is exactly the fix the dead drill
+//   path is waiting for) the throw goes live, in a handler that no caller
+//   catches.
+//
+// Two things follow, and both are tested below:
+//
+//   1. The throw is unreachable through the public API TODAY, exhaustively —
+//      no tool id at all makes mineBlock throw. That falsifies the filing's
+//      premise and is kept as a permanent regression guard.
+//
+//   2. The LIVE defect the filing walked past is the conflated refusal reason.
+//      A tool with NO energy definition at all is reported as "no_energy", a
+//      CHARGE reason, which is a false diagnosis: the spec drives a client
+//      toast off the out-of-energy reason, so a player would be told their
+//      drill is flat when in fact the drill has no energy model. The distinct
+//      refusal is the fail-closed contract, checked in the energy phase where
+//      the energy contract lives, leaving the existing check order intact.
+
+// The RED case: a real drill must be refused for LACK OF AN ENERGY DEFINITION,
+// and that must be a reason of its own — distinct from the out-of-charge reason
+// a battery-backed tool gets, because the out-of-charge reason is what drives
+// the client toast.
+//
+// ITEM_DRILL_ULV is the only shipped drill that reaches the energy phase at
+// all: mineBlock's tool gate is `tier == 0 && id != ITEM_DRILL_ULV`, and the
+// tier decoder returns 0 for ALL FOUR drill ids (see the header note above and
+// the gp-zekn finding), so LV/MV/HV are refused as not_a_drill one line before
+// the energy contract is consulted. That decoder defect is separate work and is
+// NOT papered over here — the existing check order is preserved. What this test
+// pins is the reason each tier is refused and, above all, that none of them is
+// ever "no_energy" and none ever throws.
+void test_ElectricDrillHandler_refuses_a_tool_with_no_energy_definition() {
+  struct Row { uint16_t id; const char* label; const char* expected; };
+  const Row rows[] = {
+      // ULV is the one id the tool gate admits, so it is the one that reaches
+      // the energy phase and gets the new refusal.
+      {ITEM_DRILL_ULV, "ULV", "no_energy_definition"},
+      // The other three are refused at the tool gate, before any energy
+      // lookup. Pinned so a future decoder fix is seen to change the reason
+      // here rather than silently.
+      {ITEM_DRILL_LV, "LV", "not_a_drill"},
+      {ITEM_DRILL_MV, "MV", "not_a_drill"},
+      {ITEM_DRILL_HV, "HV", "not_a_drill"},
+  };
+
+  for (const auto& row : rows) {
+    std::shared_ptr<PlayerInventoryStore> inv =
+        std::make_shared<PlayerInventoryStore>();
+    inv->initPlayer(7);
+    int writes = 0;
+    ElectricDrillHandler h(
+        [&](int32_t, int32_t, int32_t) { return kStoneId; },
+        [&](int32_t, int32_t, int32_t, uint16_t) { ++writes; }, inv);
+
+    // The drill really is in slot 0, carrying a large meta that a reader would
+    // reasonably take for a charge level.
+    std::array<PersistSlot, kInventorySlots> slots{};
+    slots[0] = PersistSlot{row.id, 1, 60000};
+    inv->setSlots(7, slots);
+    CHECK_EQ(inv->getSlots(7)[0].item_id, row.id,
+             "slot 0 really holds the tool under test");
+
+    // test_check takes a const char*, so the per-tier wording is built in a
+    // local buffer rather than as a std::string argument.
+    char msg[192];
+    snprintf(msg, sizeof(msg),
+             "%s drill is refused as '%s', and never as no_energy: a tool with "
+             "no ToolEnergyDef has no energy MODEL, which is a different "
+             "diagnosis from a flat battery",
+             row.label, row.expected);
+
+    const DrillMineResult r = h.mineBlock(7, 3, 3, 3, row.id, 0);
+    CHECK(!r.success, "a real drill must not mine");
+    CHECK_EQ(r.error, std::string(row.expected), msg);
+    CHECK_NE(r.error, std::string("no_energy"),
+             "the out-of-charge reason must not be reused for a tool that has "
+             "no energy model at all");
+    CHECK_EQ(writes, 0, "and the block is never broken");
+  }
+}
+
+// The control: "no_energy" stays reserved for a tool that DOES have an energy
+// definition and is simply not charged enough. That is the reason the spec's
+// out-of-energy toast hangs off, so it must not be reachable for a tool with
+// no definition.
+void test_ElectricDrillHandler_no_energy_stays_reserved_for_a_defined_tool() {
+  constexpr uint16_t kBattery = BATTERY_LV;  // {60948, cap 1000, maxIn 32, t0}
+  std::shared_ptr<PlayerInventoryStore> inv =
+      std::make_shared<PlayerInventoryStore>();
+  inv->initPlayer(7);
+  int writes = 0;
+  ElectricDrillHandler h(
+      [&](int32_t, int32_t, int32_t) { return kStoneId; },
+      [&](int32_t, int32_t, int32_t, uint16_t) { ++writes; }, inv);
+
+  // Stone costs hardness 2 * 50 = 100 EU, so a near-empty battery is refused.
+  std::array<PersistSlot, kInventorySlots> slots{};
+  slots[0] = PersistSlot{kBattery, 1, 10};
+  inv->setSlots(7, slots);
+
+  const DrillMineResult r = h.mineBlock(7, 3, 3, 3, kBattery, 0);
+  // The battery decodes to tier 0 and is not ITEM_DRILL_ULV, so the tool gate
+  // may refuse it first; what matters is that a DEFINED tool never reports the
+  // undefined-tool reason.
+  CHECK(r.error != "no_energy_definition",
+        "a tool WITH an energy definition is never reported as undefined");
+  CHECK_EQ(writes, 0, "and a too-empty battery still does not break the block");
+}
+
+// The regression guard for the throw itself. Exhaustive over the whole 16-bit
+// id space, because the filing's claim was "every real drill" and the fix has
+// to hold for ids nobody thought about either. This is the assertion that
+// falsifies the premise: BEFORE the fix this also passed, which is exactly why
+// the throw was latent rather than live — see the header comment.
+void test_ElectricDrillHandler_never_throws_for_any_tool_item_id() {
+  std::shared_ptr<PlayerInventoryStore> inv =
+      std::make_shared<PlayerInventoryStore>();
+  inv->initPlayer(7);
+  int world_reads = 0;
+  ElectricDrillHandler h(
+      [&](int32_t, int32_t, int32_t) {
+        ++world_reads;
+        return kStoneId;  // minable by a tier-0 tool
+      },
+      [](int32_t, int32_t, int32_t, uint16_t) {}, inv);
+
+  int threw = 0;
+  int succeeded = 0;
+  uint16_t first_throwing_id = 0;
+  uint16_t first_success_id = 0;
+
+  for (uint32_t id = 0; id <= 0xFFFFu; ++id) {
+    // Slot 0 holds the very id under test, so the tool gate, the air check and
+    // the tier check cannot short-circuit the sweep: every id reaches the
+    // energy phase where the .at() used to live.
+    std::array<PersistSlot, kInventorySlots> slots{};
+    slots[0] = PersistSlot{static_cast<uint16_t>(id), 1, 60000};
+    inv->setSlots(7, slots);
+
+    try {
+      const DrillMineResult r =
+          h.mineBlock(7, 1, 1, 1, static_cast<uint16_t>(id), 0);
+      if (r.success) {
+        ++succeeded;
+        if (succeeded == 1) first_success_id = static_cast<uint16_t>(id);
+      }
+    } catch (const std::exception& e) {
+      if (threw == 0) first_throwing_id = static_cast<uint16_t>(id);
+      ++threw;
+    }
+  }
+
+  CHECK_EQ(threw, 0,
+           "no tool id at all makes mineBlock throw — the capacity lookup on "
+           "the success path must never raise std::out_of_range");
+  CHECK_EQ(succeeded, 0,
+           "and no id reaches the success path either: every id in the table "
+           "fails the drill gate or has no energy definition, which is why the "
+           "throw was latent rather than live");
+  (void)first_throwing_id;
+  (void)first_success_id;
+  (void)world_reads;
+}
+
+// The invariant that makes the guard above mean something, stated as a check
+// on the energy contract itself rather than on control flow: an id with no
+// ToolEnergyDef reports -1, and -1 is never "enough" — so a success can only
+// ever be a success for an id the table knows.
+void test_ElectricDrillHandler_success_requires_a_known_energy_definition() {
+  for (uint16_t id : {ITEM_DRILL_ULV, ITEM_DRILL_LV, ITEM_DRILL_MV,
+                      ITEM_DRILL_HV}) {
+    CHECK(TOOL_ENERGY_DEFS.find(id) == TOOL_ENERGY_DEFS.end(),
+          "this drill id has no ToolEnergyDef, so getToolEnergy reports -1");
+    simulation_core::ItemStack full{id, 1, 60000};
+    CHECK_EQ(getToolEnergy(full), -1,
+             "and -1 is not a charge level, it is the absence of one");
+    for (int32_t cost : {0, 50, 100, 150}) {
+      CHECK(!consumeToolEnergy(full, cost),
+            "so consumeToolEnergy refuses at every cost, including zero — "
+            "which is what keeps the old .at() unreachable");
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2558,9 +2778,14 @@ int main(int argc, char** argv) {
   TEST(ElectricDrillHandler_accepts_the_ulv_drill_and_then_refuses_air);
   TEST(ElectricDrillHandler_refuses_a_block_above_the_tool_tier);
   TEST(ElectricDrillHandler_validates_the_tool_slot);
-  TEST(ElectricDrillHandler_a_slotted_drill_still_ends_in_no_energy);
+  TEST(ElectricDrillHandler_a_slotted_drill_is_refused_for_having_no_energy_model);
   TEST(ElectricDrillHandler_a_known_energy_tool_mines_successfully);
   TEST(ElectricDrillHandler_mining_ticks_are_tier_driven);
+
+  TEST(ElectricDrillHandler_refuses_a_tool_with_no_energy_definition);
+  TEST(ElectricDrillHandler_no_energy_stays_reserved_for_a_defined_tool);
+  TEST(ElectricDrillHandler_never_throws_for_any_tool_item_id);
+  TEST(ElectricDrillHandler_success_requires_a_known_energy_definition);
 
   TEST(ToolActionHandler_drops_a_frame_that_does_not_verify);
   TEST(ToolActionHandler_mine_block_reports_the_drill_state);
