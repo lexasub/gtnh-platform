@@ -1,0 +1,178 @@
+// RotareGeneratorSystem unit tests (issue gp-kxj5).
+//
+// Covers src/game/machines/RotareGeneratorSystem.cpp — the click-to-spin
+// kinetic generator that emits ROTATION energy for a fixed number of ticks.
+//
+// VIEW LIVENESS (checked before writing these tests):
+//   reg_.view<MachineComponent, EnergyStorage, RotareState>()
+// MachineComponent and EnergyStorage ARE emplaced by SimulationEngine
+// (lines 219 / 259) for "1110:100:1" (rotare_generator), which machines.yaml
+// registers. RotareState is NOT emplaced anywhere in production code: it is
+// only ever created by RotareGeneratorSystem::activate(), and
+// `grep -rn 'activate(' src/` shows the only two hits are the declaration in
+// the header and the definition in the .cpp — nothing calls it. So even though
+// machines.yaml flags this block `interact_on_left: true` and the action
+// dispatcher routes left-clicks to an interact handler, no interact handler
+// ever reaches activate().
+//
+// FINDING: RotareGeneratorSystem is DEAD AT RUNTIME, and unlike
+// SteamTurbineSystem (whose SteamTurbineComponent is at least a dedicated
+// component a caller would attach) there is no code path that can create the
+// RotareState that satisfies the view. The spin the player pays fuel-adjacent
+// world state for never starts. The tests below exercise the real logic so the
+// gate is pinned if the wiring is ever added.
+//
+// SYSTEM CONTRACT:
+//   activate(ent): if a RotareState exists and is already spinning, return.
+//     Otherwise emplace_or_replace<RotareState>{spinning=true,
+//     remainingTicks=kSpinDurationTicks, energyPerTick=kEnergyPerTick}.
+//   tick(dt), for each entity in the view:
+//     0. skip unless machine_id == kRotareGeneratorBlockId
+//     1. skip unless state.spinning
+//     2. if remainingTicks <= 0: spinning = false; continue
+//     3. space = capacity - current; toAdd = min(energyPerTick, space)
+//     4. if toAdd <= 0: spinning = false; continue   (stop on a full buffer)
+//     5. current += toAdd; remainingTicks--
+//     6. publish the node, then publishBlockEntityUpdate with
+//        progress = remainingTicks / kSpinDurationTicks
+//     7. if remainingTicks <= 0: spinning = false
+//
+// FINDINGS BAKED INTO THESE TESTS (asserted as observed, never "fixed"):
+//   A. A FULL BUFFER COSTS THE WHOLE SPIN. The toAdd <= 0 branch sets
+//      spinning = false, so filling the ROTATION buffer mid-spin aborts it
+//      permanently rather than pausing. Pinned by
+//      test_RotareGeneratorSystem_full_buffer_aborts_the_spin.
+//   B. THE PARTIAL FILL TICK IS PAID FOR. A buffer with 10 EU of space and
+//      energyPerTick 32 adds 10 and still decrements remainingTicks, so the
+//      tick is spent without the full rate. Pinned by
+//      test_RotareGeneratorSystem_partial_fill_still_burns_a_tick.
+//   C. THE PROGRESS VALUE IS A SPIN REMAINING FRACTION, NOT COMPLETION.
+//      remainingTicks / kSpinDurationTicks runs 1.0 -> 0 and is published on
+//      the same field the other machine systems use for craft progress, so the
+//      client's progress bar runs backwards. Pinned by
+//      test_RotareGeneratorSystem_progress_runs_from_full_to_empty.
+#include <cstdio>
+#include <cstdint>
+#include <array>
+#include <memory>
+#include <vector>
+
+#include <entt/entt.hpp>
+
+#include <engine/registry/ItemId.h>
+#include <engine/sim/components/EnergyStorage.h>
+#include <engine/sim/components/MachineComponent.h>
+#include <game/machines/RotareGeneratorSystem.h>
+
+// Project-wide unit-test harness (src/engine/net/test/test.h) — the repo has no
+// GTest dependency, so this is the established convention for focused tests.
+#include <engine/net/test/test.h>
+
+#ifndef CHECK_EQ_INT
+#define CHECK_EQ_INT(a, b, ...) test_check((a) == (b), __FILE__, __LINE__, #a " == " #b, ##__VA_ARGS__)
+#endif
+
+int g_tests = 0, g_passed = 0, g_failed = 0;
+
+void test_check(bool cond, const char* file, int line, const char* expr, const char* msg) {
+    if (!cond) {
+        fprintf(stderr, "  FAIL [%s:%d] %s", file, line, expr);
+        if (msg) fprintf(stderr, " -- %s", msg);
+        fprintf(stderr, "\n");
+        ++g_failed;
+    } else {
+        ++g_passed;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Doubles
+// ---------------------------------------------------------------------------
+
+struct PublisherEvent {
+    int32_t x = 0, y = 0, z = 0;
+    uint16_t machine_id = 0;
+    float progress = 0.0f;
+    uint32_t energy = 0;
+    uint32_t energy_capacity = 0;
+    EnergyType energy_type = EnergyType::ELECTRICITY;
+};
+
+struct RecordingPublisher : simcore::IEventPublisher {
+    std::vector<PublisherEvent> updates;
+
+    void publishBlockAck(uint8_t, int32_t, int32_t, int32_t, uint16_t, uint8_t,
+                         const char*, uint32_t, uint8_t) override {}
+
+    void publishBlockDirective(uint8_t, uint16_t, int32_t, int32_t, int32_t,
+                               uint32_t, uint8_t) override {}
+
+    void publishBlockChangedEvent(int32_t, int32_t, int32_t, uint16_t, uint8_t,
+                                  uint32_t, uint64_t) override {}
+
+    void publishBlockEntityUpdate(int32_t x, int32_t y, int32_t z, uint16_t machine_type,
+                                  const std::vector<uint8_t>&, float progress,
+                                  uint32_t energy, EnergyType energy_type,
+                                  uint32_t energy_capacity, int, float,
+                                  const std::vector<HatchUpdateData>* = nullptr,
+                                  double = -1.0, double = -1.0) override {
+        updates.push_back({x, y, z, machine_type, progress, energy, energy_capacity,
+                           energy_type});
+    }
+
+    void publishMachineSlotResponse(int32_t, int32_t, int32_t, uint16_t, bool,
+                                    uint16_t, uint8_t, uint16_t,
+                                    const char*) override {}
+
+    void publishMachineConfigUpdatedEvent(int32_t, int32_t, int32_t,
+                                          const std::array<uint8_t, 6>&) override {}
+
+    void publishMultiblockCreated(uint64_t, int32_t, int32_t, int32_t, uint16_t) override {}
+    void publishMultiblockDestroyed(uint64_t) override {}
+
+    void publishGridUpdate(int32_t, int32_t, int32_t,
+                           const std::vector<RecipeManager::ItemStack>&) override {}
+};
+
+// ---------------------------------------------------------------------------
+// Fixture
+// ---------------------------------------------------------------------------
+
+// Null pipe client: RotareGeneratorSystem guards every publishNodeUpdate with
+// `if (pipeClient_)`, so the conversion path runs with no router or socket.
+struct Fixture {
+    entt::registry reg;
+    std::shared_ptr<RecordingPublisher> events =
+        std::make_shared<RecordingPublisher>();
+    simcore::RotareGeneratorSystem sys{reg, events, nullptr};
+};
+
+// machines.yaml rotare_generator: capacity 5000, max_output 64, tier 0.
+static constexpr uint16_t kRotareId = ItemId::pack("1110:100:1");
+static constexpr int32_t kCapacity = 5000;
+static constexpr int32_t kMaxOutput = 64;
+static constexpr int32_t kTier = 0;
+
+// A rotare_generator with an EnergyStorage matching machines.yaml. RotareState
+// is attached separately so each test controls the spin.
+static entt::entity makeRotare(entt::registry& reg, uint32_t x, uint32_t y, uint32_t z,
+                               int32_t current, int32_t capacity = kCapacity) {
+    auto ent = reg.create();
+    reg.emplace<simcore::MachineComponent>(ent, kRotareId, 0, x, y, z, 1);
+    reg.emplace<simcore::EnergyStorage>(ent, capacity, current, kMaxOutput, kMaxOutput,
+                                        kTier, simcore::EnergyType::ROTATION);
+    return ent;
+}
+
+static simcore::RotareState& state(entt::registry& reg, entt::entity ent) {
+    return reg.get<simcore::RotareState>(ent);
+}
+static simcore::EnergyStorage& energy(entt::registry& reg, entt::entity ent) {
+    return reg.get<simcore::EnergyStorage>(ent);
+}
+
+// ---------------------------------------------------------------------------
+// Constants, asserted by name
+// ---------------------------------------------------------------------------
+
+static v
