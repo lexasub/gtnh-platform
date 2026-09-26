@@ -157,6 +157,25 @@ if(BUILD_TESTING)
         chunkd_storage
     )
 
+    # LMDB commit-failure test (gp-q4aa) — a failed mdb_txn_commit must be
+    # reported to the caller, not swallowed. Uses the project CHECK/TEST macro
+    # harness; there is deliberately no find_package(GTest) guard, because a
+    # guarded test silently vanishes from CI instead of failing it.
+    add_executable(lmdb_commit_test
+        Storage/lmdb_commit_test.cpp
+    )
+    add_dependencies(lmdb_commit_test chunkd_fbs asio::asio)
+    target_compile_options(lmdb_commit_test PRIVATE -mcx16)
+    target_link_libraries(lmdb_commit_test PRIVATE
+        lmdb::lmdb
+        spdlog::spdlog
+        Threads::Threads
+        worldgeneratord
+        asio::asio
+        chunkd_storage
+    )
+    add_test(NAME lmdb_commit_test COMMAND lmdb_commit_test)
+
     # Dirty-chunk tracking test — real LMDB, real concurrency
     add_executable(chunk_dirty_test
         Storage/chunk_dirty_test.cpp

@@ -10,9 +10,18 @@
         return false; \
     }
 
-#define LMDB_TX_COMMIT() \
+// Commits the current write transaction and reports the outcome to the caller.
+// A failed commit means the write never reached disk, so it MUST be propagated:
+// falling through here reported success for a lost write, which made the flush
+// thread count an unsaved chunk as saved and handed the client a successful
+// SaveChunkResp. LMDB has already aborted the transaction on this path, so
+// there is nothing left to clean up. `op` names the caller's operation so the
+// log says which write is at risk.
+#define LMDB_TX_COMMIT(op) \
     if (int rc = mdb_txn_commit(txn); rc != 0) [[unlikely]] { \
-        spdlog::error("mdb_txn_commit failed: {}", mdb_strerror(rc)); \
+        spdlog::error("{}: mdb_txn_commit failed: {} — data NOT persisted", \
+                      (op), mdb_strerror(rc)); \
+        return false; \
     }
 
 constexpr uint64_t DEFAULT_MAP_SIZE = 4ULL * 1024 * 1024 * 1024;
@@ -110,7 +119,7 @@ bool LmdbStore::writeRaw(int64_t key, const uint8_t* data, size_t size) {
             return false;
         }
 
-        LMDB_TX_COMMIT();
+        LMDB_TX_COMMIT("writeRaw");
         return true;
     }
 
@@ -184,7 +193,7 @@ bool LmdbStore::writeBatch(
             return false;
         }
     }
-    LMDB_TX_COMMIT();
+    LMDB_TX_COMMIT("writeBatch");
     items.clear();
     return true;
 }
