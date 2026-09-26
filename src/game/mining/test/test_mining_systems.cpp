@@ -217,6 +217,7 @@ constexpr uint16_t kBatteryBufferLvId = ItemId::pack("1110:101:0");
 
 // Ore block ids from src/content/content.h.
 constexpr uint16_t kOreIron = content::kOreIron;
+constexpr uint16_t kOreGold = content::kOreGold;
 constexpr uint16_t kOreDiamond = content::kOreDiamond;
 constexpr uint16_t kStoneId = ItemId::pack("0:0:1");
 
@@ -601,6 +602,11 @@ static void test_DrillSystem_block_breaks_on_the_final_tick() {
     d.targetX = 1;
     d.targetY = 64;
     d.targetZ = 0;
+    // targetOreId is what the SEARCH recorded; in production only
+    // onSearchBlockResult can put the drill into MINING, and it always sets
+    // this. Tests that hand-build the MINING state must set it too, or they are
+    // describing a state the system can never reach (gp-7n7s).
+    d.targetOreId = kOreIron;
     d.miningTicksTotal = 4;
     d.miningProgress = 4;
 
@@ -874,6 +880,7 @@ static void test_DrillSystem_output_buffer_fills_and_blocks_at_the_cap() {
     auto &d = f.drill(ent);
     d.state = DrillState::MINING;
     d.targetX = 1;
+    d.targetOreId = kOreIron;  // an ore that DOES drop, so the slot is really spent
     d.miningTicksTotal = 1;
     d.miningProgress = 1;
     d.outputBuffer.assign(static_cast<size_t>(DrillComponent::kMaxOutputSize - 1),
@@ -991,9 +998,11 @@ static void test_DrillSystem_broken_block_resets_the_target_and_progress() {
     CHECK_EQ(f.drill(ent).targetX, 1, "the new target is the ore that was found");
 }
 
-static void test_DrillSystem_ore_without_a_drop_still_occupies_a_buffer_slot() {
-    // content::oreDropTable has no entry for redstone/lapis/diamond, and
-    // oreToDrop() returns 0 for them. The drop is appended anyway as item 0.
+// gp-7n7s FIXED. Redstone / lapis / diamond are in kOreBlocks (so the search
+// targets and mines them) but have NO entry in content::oreDropTable(), so
+// oreToDrop() returns 0 for them. The old code appended that 0 anyway, as a
+// silent item_id 0 entry that still consumed one of the 64 output slots.
+static void test_DrillSystem_ore_without_a_drop_occupies_no_buffer_slot() {
     DrillFixture f;
     auto ent = f.addDrill(0, 64, 0, 0);
     giveDrillTool(f.reg, ent, kDrillUlv, 1000);
@@ -1002,30 +1011,58 @@ static void test_DrillSystem_ore_without_a_drop_still_occupies_a_buffer_slot() {
     auto &d = f.drill(ent);
     d.state = DrillState::MINING;
     d.targetX = 1;
+    d.targetOreId = kOreDiamond;
     d.miningTicksTotal = 1;
     d.miningProgress = 1;
 
     f.sys->tick(kDt);
 
-    CHECK_EQ_I(f.drill(ent).outputBuffer.size(), 1,
-               "the block is still mined and consumes a buffer slot");
-    if (!f.drill(ent).outputBuffer.empty()) {
-        CHECK_EQ_I(f.drill(ent).outputBuffer[0].first, 0,
-                   "a drop-less ore contributes an item_id 0 entry");
-    }
+    CHECK_EQ_I(f.repo->cases.size(), 1,
+               "a drop-less ore is still MINED — the block leaves the world");
+    CHECK_EQ_I(f.drill(ent).outputBuffer.size(), 0,
+               "gp-7n7s: and it consumes no output slot, because the drop is 0");
+    CHECK_EQ_I(f.drill(ent).state, static_cast<int64_t>(DrillState::SEARCHING),
+               "a drop-less mine does not latch OUTPUT_FULL, so the drill resumes");
 }
 
-// The drop is derived from CASResult::block_id — the block the STORE reports it
-// found — not from the block the drill searched for. So the fake store has to
-// echo the ore id for a correct drop, which is what the real ChunkStore does
-// (IoUringChunkClient.cpp:128-130 replies with resp->actual_block_id()).
-static void test_DrillSystem_drop_comes_from_the_store_reply() {
-    // FINDING (gp-fcvf). `onMineComplete` calls oreToDrop(result.block_id) where
-    // result.block_id is the CAS REPLY, i.e. the id the store says was there.
-    // The drill never remembers which ore it targeted, so a store that reports
-    // air (0) yields a silent item_id 0 drop — which then counts against
-    // kMaxOutputSize and can wedge the drill into OUTPUT_FULL with 64 empty
-    // slots. Pinned both ways: correct store reply -> real drop, air -> empty.
+// The wedge this prevents, end to end. A drill mining drop-less ore used to
+// fill all 64 slots with item_id 0 and stop for good — a buffer the player
+// sees as full and cannot empty, because the drops do not exist.
+static void test_DrillSystem_drop_less_ore_can_never_wedge_the_output_buffer() {
+    DrillFixture f;
+    auto ent = f.addDrill(0, 64, 0, 0);
+    // 70 mines at tier 0 cost 70 * 10 = 700 EU, inside a full ULV drill (1000).
+    // 70 > kMaxOutputSize (64), which is the point: under the defect these 70
+    // mines would have filled all 64 slots with item_id 0 and stopped there.
+    giveDrillTool(f.reg, ent, kDrillUlv, 1000);
+
+    // Mine diamond 70 times. Each cycle: arm MINING on a diamond with a 1-tick
+    // timer, let the drill mine it, then the drop-less result returns it to
+    // SEARCHING.
+    for (int i = 0; i < 70; ++i) {
+        f.drill(ent).state = DrillState::MINING;
+        f.drill(ent).targetX = 1;
+        f.drill(ent).targetOreId = kOreDiamond;
+        f.drill(ent).miningTicksTotal = 1;
+        f.drill(ent).miningProgress = 1;
+        f.sys->tick(kDt);
+    }
+
+    CHECK_EQ_I(f.drill(ent).outputBuffer.size(), 0,
+               "gp-7n7s: 70 drop-less mines — more than the 64 slots — buffer nothing");
+    CHECK(!f.drill(ent).isOutputFull(), "so the buffer is never full");
+    CHECK_NE(static_cast<int64_t>(f.drill(ent).state),
+             static_cast<int64_t>(DrillState::OUTPUT_FULL),
+             "and the drill never latches OUTPUT_FULL");
+    CHECK_EQ_I(f.repo->cases.size(), 70, "every one of them really was mined");
+}
+
+// The drop is derived from the ore the drill TARGETED, so the store's reply no
+// longer decides it. The real ChunkStore replies with
+// resp->actual_block_id() (IoUringChunkClient.cpp:128), which is whatever was
+// in the cell at commit time — normally the ore, but NOT when another actor
+// broke the block between the search and the CAS.
+static void test_DrillSystem_drop_comes_from_the_targeted_ore() {
     DrillFixture good;
     auto e1 = good.addDrill(0, 64, 0, 0);
     giveDrillTool(good.reg, e1, kDrillUlv, 1000);
@@ -1034,15 +1071,19 @@ static void test_DrillSystem_drop_comes_from_the_store_reply() {
     good.drill(e1).targetX = 1;
     good.drill(e1).targetY = 64;
     good.drill(e1).targetZ = 0;
+    good.drill(e1).targetOreId = kOreIron;
     good.drill(e1).miningTicksTotal = 1;
     good.drill(e1).miningProgress = 1;
     good.sys->tick(kDt);
     CHECK_EQ_I(good.drill(e1).outputBuffer.size(), 1, "one drop is buffered");
     if (!good.drill(e1).outputBuffer.empty()) {
         CHECK_EQ(good.drill(e1).outputBuffer[0].first, ItemId::pack("0:110:1"),
-                 "a store that reports the iron ore yields an iron ingot");
+                 "an iron ore drops an iron ingot");
     }
 
+    // The defect case: the store commits and answers "there was air here",
+    // because something else broke the ore in between. gp-7n7s: the drop is
+    // still the ore the drill aimed at, and no phantom item_id 0 appears.
     DrillFixture air;
     auto e2 = air.addDrill(0, 64, 0, 0);
     giveDrillTool(air.reg, e2, kDrillUlv, 1000);
@@ -1051,15 +1092,108 @@ static void test_DrillSystem_drop_comes_from_the_store_reply() {
     air.drill(e2).targetX = 1;
     air.drill(e2).targetY = 64;
     air.drill(e2).targetZ = 0;
+    air.drill(e2).targetOreId = kOreIron;  // what the search found
     air.drill(e2).miningTicksTotal = 1;
     air.drill(e2).miningProgress = 1;
     air.sys->tick(kDt);
+
     CHECK_EQ_I(air.drill(e2).outputBuffer.size(), 1,
-               "an air reply STILL consumes a buffer slot");
+               "gp-7n7s: an air reply still yields exactly one real drop");
     if (!air.drill(e2).outputBuffer.empty()) {
-        CHECK_EQ_I(air.drill(e2).outputBuffer[0].first, 0,
-                   "and the drop is a silent item_id 0, not the searched ore");
+        CHECK_EQ(air.drill(e2).outputBuffer[0].first, ItemId::pack("0:110:1"),
+                 "gp-7n7s: and it is the TARGETED ore's drop, not item_id 0");
     }
+
+    // The other direction, and the only one that is a genuine no-op: a drop-less
+    // ore targeted at a store that happily reports it back.
+    DrillFixture barren;
+    auto e3 = barren.addDrill(0, 64, 0, 0);
+    giveDrillTool(barren.reg, e3, kDrillUlv, 1000);
+    barren.repo->set(1, 64, 0, kOreDiamond);
+    barren.drill(e3).state = DrillState::MINING;
+    barren.drill(e3).targetX = 1;
+    barren.drill(e3).targetOreId = kOreDiamond;
+    barren.drill(e3).miningTicksTotal = 1;
+    barren.drill(e3).miningProgress = 1;
+    barren.sys->tick(kDt);
+    CHECK_EQ_I(barren.drill(e3).outputBuffer.size(), 0,
+               "gp-7n7s: diamond drops nothing and buffers nothing");
+}
+
+// targetOreId is what the SEARCH records, and the drill must not carry a stale
+// one into an unrelated mine. A conflicted CAS abandons the target, so the
+// remembered ore goes with it; otherwise the next successful mine at those
+// coordinates would drop the previous target's ore.
+static void test_DrillSystem_a_conflict_clears_the_remembered_ore() {
+    DrillFixture f;
+    auto ent = f.addDrill(0, 64, 0, 0);
+    giveDrillTool(f.reg, ent, kDrillUlv, 1000);
+    f.repo->cas_status = 1;  // CONFLICT
+    f.repo->cas_fires = true;
+
+    auto &d = f.drill(ent);
+    d.state = DrillState::MINING;
+    d.targetX = 3;
+    d.targetY = 64;
+    d.targetZ = 3;
+    d.targetOreId = kOreIron;
+    d.miningTicksTotal = 1;
+    d.miningProgress = 1;
+
+    f.sys->tick(kDt);
+
+    CHECK_EQ_I(f.drill(ent).state, static_cast<int64_t>(DrillState::SEARCHING),
+               "precondition: a conflicted CAS returns the drill to SEARCHING");
+    CHECK_EQ_I(f.drill(ent).targetOreId, 0,
+               "gp-7n7s: and the abandoned target's ore id is cleared with it");
+
+    // A fresh find re-arms both the coordinates and the ore id together.
+    // Spiral index 3 is (0, +1) in layer 0, i.e. the cell beside the drill; the
+    // first tick probes indices 1 and 2 only, so drive the index there.
+    f.repo->cas_status = 0;
+    f.repo->clearRecording();
+    f.repo->set(0, 64, 1, kOreGold);
+    f.drill(ent).searchIndex = 3;
+    f.drill(ent).searchLayer = 0;
+    f.drill(ent).state = DrillState::SEARCHING;
+    f.sys->tick(kDt);
+
+    CHECK_EQ_I(f.drill(ent).targetOreId, kOreGold,
+               "gp-7n7s: finding new ore overwrites the remembered id");
+    CHECK_EQ_I(f.drill(ent).targetZ, 1, "and the new target is the cell it found");
+}
+
+// The search is the ONLY producer of the MINING state in production, so it is
+// the only place the drop source can come from. Pinned explicitly, so that a
+// future change which arms MINING from anywhere else has to decide what the
+// drop is.
+static void test_DrillSystem_the_search_records_the_ore_it_finds() {
+    DrillFixture f;
+    auto ent = f.addDrill(0, 64, 0, 0);
+    giveDrillTool(f.reg, ent, kDrillUlv, 1000);
+    // Spiral index 1 is (+1, 0) — the first cell layer 0 probes, since index 0 is
+    // the drill's own cell and is skipped.
+    f.repo->set(1, 64, 0, kOreGold);
+
+    f.sys->tick(kDt);
+
+    CHECK_EQ_I(f.drill(ent).state, static_cast<int64_t>(DrillState::MINING),
+               "the drill arms on the ore it found");
+    CHECK_EQ_I(f.drill(ent).targetOreId, kOreGold,
+               "gp-7n7s: and records its id at the same time as its coordinates");
+    CHECK_EQ_I(f.drill(ent).targetX, 1, "coordinates are recorded too");
+    CHECK_EQ_I(f.drill(ent).targetZ, 0, "coordinates are recorded too");
+}
+
+// A fresh component targets nothing, so it must claim no ore. Pinned because
+// targetOreId is what the drop is derived from, and a default of anything else
+// would hand a new drill a free drop.
+static void test_DrillSystem_a_fresh_drill_targets_no_ore() {
+    DrillFixture f;
+    auto ent = f.addDrill(0, 64, 0, 0);
+    CHECK_EQ_I(f.drill(ent).targetOreId, 0, "a default-constructed drill claims no ore");
+    f.drill(ent).reset();
+    CHECK_EQ_I(f.drill(ent).targetOreId, 0, "and reset() keeps it that way");
 }
 
 static void test_DrillSystem_non_ore_blocks_are_never_mined() {
@@ -1089,8 +1223,13 @@ static void test_DrillSystem_search_starts_from_idle_and_probes_two_cells() {
     CHECK_EQ_I(f.drill(ent).state, static_cast<int64_t>(DrillState::SEARCHING),
                "the first tick promotes IDLE to SEARCHING");
     CHECK_EQ_I(f.repo->gets.size(), 2, "at most kMaxPerTick = 2 blocks are queried per tick");
-    CHECK_EQ_I(f.drill(ent).searchIndex, 2,
-               "the search index advances once per issued request");
+    // gp-4v5i: the index advances once per spiral cell CONSIDERED, and index 0
+    // is now the drill's own cell, which the origin guard skips. So a tick from
+    // index 0 consumes three indices (0 skipped, 1 and 2 queried) to issue its
+    // two requests. The per-tick REQUEST rate is still exactly kMaxPerTick.
+    CHECK_EQ_I(f.drill(ent).searchIndex, 3,
+               "the search index advances once per issued request, plus the "
+               "skipped origin");
     CHECK_EQ_I(f.drill(ent).searchLayer, 0, "and the layer only changes at the wrap");
 }
 
@@ -1227,84 +1366,209 @@ static void test_DrillSystem_layer_offset_sequence() {
     }
 }
 
-static void test_DrillSystem_spiral_never_produces_the_origin() {
-    // FINDING (gp-fcvf). getSpiralOffset(n) never returns (0,0): the loop
-    // advances x/z BEFORE testing `count == n`, so the first cell it can return
-    // is already one step out. Measured sequence:
-    //
-    //   n=0 -> (+1,  0)      n=1 -> (+1, +1) DIAGONAL
-    //   n=2 -> ( 0, +1)      n=3 -> (-1, +1) DIAGONAL
-    //   n=4 -> (-1,  0)      n=5 -> (-1, -1) DIAGONAL
-    //   n=6 -> ( 0, -1)      n=7 -> (+1, -1) DIAGONAL
-    //
-    // Consequences: (a) the `dx == 0 && dy == 0 && dz == 0` guard at
-    // DrillSystem.cpp:221 is DEAD CODE — the branch is never taken; (b) the
-    // drill's OWN cell is never probed, so a drill sitting inside stone never
-    // mines the block it occupies; (c) every other cell in the search is
-    // diagonal, which is a far larger set than a 1-block-radius tube.
-    // The spiral is not a public API, so it is pinned through the only channel
-    // it has: the coordinates the repository is asked about.
-    for (int start = 0; start < 8; ++start) {
-        DrillFixture f;
-        auto ent = f.addDrill(0, 64, 0, 0);
-        giveDrillTool(f.reg, ent, kDrillUlv, 1000);
-        f.drill(ent).state = DrillState::SEARCHING;
-        f.drill(ent).searchIndex = start;
-        f.sys->tick(kDt);
-        CHECK_EQ_I(f.repo->gets.size(), 2,
-                   "kMaxPerTick = 2 requests per tick, so each start index is "
-                   "observed on its own system");
-        for (const auto &call : f.repo->gets) {
-            CHECK(!(call.x == 0 && call.y == 64 && call.z == 0),
-                  "the drill's own cell is never probed at any spiral index");
-        }
-    }
-}
-
-static void test_DrillSystem_second_probe_is_already_a_diagonal() {
-    // With searchIndex 0, the two requests of the first tick are (+1,0) and
-    // (+1,+1) — the SECOND one is already a diagonal neighbour. Pinned because
-    // a reader would reasonably assume a 4-neighbour spiral.
+// gp-4v5i FIXED. The spiral is a 4-connected square ring whose n=0 is the
+// drill's OWN cell.
+//
+// The old loop advanced x/z before testing `count == n`, so n=0 already
+// returned (+1, 0). That made three separate things wrong at once: the
+// `dx == 0 && dy == 0 && dz == 0` guard in phaseSearch was unreachable dead
+// code, the drill's own column was never a candidate, and half of every
+// four-cell ring was a corner, so a drill tunnelled in a zig-zag and could
+// skip the nearest ore straight ahead of it.
+//
+// The spiral itself is now:
+//   n=0 ( 0,  0)   n=4 (-1,  0)   n=8  ( 2, -1)
+//   n=1 (+1,  0)   n=5 (-1, -1)   n=9  ( 2,  0)
+//   n=2 (+1, +1)   n=6 ( 0, -1)
+//   n=3 ( 0, +1)   n=7 (+1, -1)
+//
+// getSpiralOffset is not a public API, so it is pinned through the only
+// channel it has: the coordinates the repository is asked about. Note the
+// observable sequence in LAYER 0 starts at n=1, because n=0 is the drill's own
+// cell and phaseSearch skips it before issuing a request — see
+// …the_origin_probe_is_never_issued.
+static void test_DrillSystem_the_spiral_starts_at_the_origin() {
+    // Layer 1 has no skipped cell, so the FULL spiral is observable there and
+    // its very first probe is the origin. This is the one place the raw
+    // getSpiralOffset(0) output can be observed directly.
     DrillFixture f;
     auto ent = f.addDrill(0, 64, 0, 0);
     giveDrillTool(f.reg, ent, kDrillUlv, 1000);
+    // Park the drill in layer 1 (dy = -1), where index 0 is not skipped. The
+    // state must be SEARCHING, because an IDLE tick resets searchLayer/index.
     f.drill(ent).state = DrillState::SEARCHING;
+    f.drill(ent).searchLayer = 1;
+    f.drill(ent).searchIndex = 0;
 
     f.sys->tick(kDt);
 
     CHECK_EQ_I(f.repo->gets.size(), 2, "two probes on the first search tick");
     if (f.repo->gets.size() == 2) {
-        CHECK_EQ(f.repo->gets[0].x, 1, "probe 0 is +X");
-        CHECK_EQ(f.repo->gets[0].z, 0, "probe 0 is +X, not +X+Z");
-        CHECK_EQ(f.repo->gets[1].x, 1, "probe 1 is +X");
-        CHECK_EQ(f.repo->gets[1].z, 1, "and also +Z: the second probe is a DIAGONAL");
+        CHECK_EQ(f.repo->gets[0].x, 0, "gp-4v5i: probe 0 is at the drill's own x");
+        CHECK_EQ(f.repo->gets[0].z, 0, "gp-4v5i: and its own z: the ORIGIN");
+        CHECK_EQ(f.repo->gets[0].y, 63, "in layer 1, so one block below the drill");
+        CHECK_EQ(f.repo->gets[1].x, 1, "probe 1 is the +X neighbour");
+        CHECK_EQ(f.repo->gets[1].z, 0, "gp-4v5i: one axis step from the origin");
     }
 }
 
-static void test_DrillSystem_below_the_drill_is_never_probed_in_layer_zero() {
-    // The block DIRECTLY below a drill is the single most valuable target, and
-    // layer 0 cannot reach it: the spiral never returns the origin, so the
-    // drill's own cell is skipped and the +Y probe is a diagonal (gp-4v5i).
-    // This is a property of getSpiralOffset, not of the search rate.
+// n=0 is the drill's own cell in layer 0, and phaseSearch skips it BEFORE
+// issuing a request. That guard was dead code while getSpiralOffset could not
+// produce (0,0); it is now live, and this is what it protects: the drill must
+// never try to mine the block it is standing in, and must not spend one of its
+// two per-tick requests asking about itself.
+static void test_DrillSystem_the_origin_probe_is_never_issued() {
+    DrillFixture f;
+    auto ent = f.addDrill(0, 64, 0, 0);
+    giveDrillTool(f.reg, ent, kDrillUlv, 1000);
+    // The drill's own cell is ORE, so if the guard did not skip the origin the
+    // drill would target itself.
+    f.repo->set(0, 64, 0, kOreIron);
+    f.repo->set(1, 64, 0, kOreIron);
+
+    f.sys->tick(kDt);
+
+    CHECK_EQ_I(f.repo->gets.size(), 2, "still exactly two requests, none wasted");
+    if (f.repo->gets.size() == 2) {
+        CHECK(!(f.repo->gets[0].x == 0 && f.repo->gets[0].y == 64 && f.repo->gets[0].z == 0),
+              "gp-4v5i: the drill's own cell is never even asked about in layer 0");
+        CHECK(!(f.repo->gets[1].x == 0 && f.repo->gets[1].y == 64 && f.repo->gets[1].z == 0),
+              "gp-4v5i: neither of the two probes is the drill's own cell");
+    }
+    CHECK_EQ_I(f.drill(ent).targetX, 1,
+               "gp-4v5i: so the drill targets the +X neighbour, never itself");
+    CHECK_EQ_I(f.drill(ent).state, static_cast<int64_t>(DrillState::MINING),
+               "and it is mining, not stuck");
+}
+
+// 4-connected means 4-connected: consecutive spiral cells differ by exactly one
+// axis move, never by a diagonal step. Pinned across a whole layer, because the
+// defect was a half-diagonal ring that a single spot check misses — the old
+// spiral took 220 diagonal steps in each 440-cell layer.
+static void test_DrillSystem_the_spiral_is_four_connected() {
+    // Walk one full layer, one probe per tick, and require every consecutive
+    // pair of probes to be a single axis move. Layer 1 is used so the walk
+    // starts at the origin and covers the whole spiral including n=0.
+    DrillFixture f;
+    auto ent = f.addDrill(500, 64, 500, 0);
+    giveDrillTool(f.reg, ent, kDrillUlv, 1000);
+    f.drill(ent).state = DrillState::SEARCHING;
+    f.drill(ent).searchLayer = 1;  // no skipped origin
+
+    int32_t px = 500, pz = 500;
+    bool first = true;
+    int32_t offStep = 0;
+    for (int i = 0; i < 440; ++i) {
+        f.drill(ent).searchIndex = i;
+        f.repo->clearRecording();
+        f.sys->tick(kDt);
+        if (f.repo->gets.empty()) continue;
+        const int32_t x = f.repo->gets.front().x;
+        const int32_t z = f.repo->gets.front().z;
+        if (!first) {
+            const int32_t step = std::abs(x - px) + std::abs(z - pz);
+            if (step != 1) ++offStep;
+        }
+        px = x; pz = z;
+        first = false;
+    }
+    CHECK(!first, "the walk actually produced probes to compare");
+    CHECK_EQ_I(offStep, 0,
+               "gp-4v5i: every consecutive spiral cell is one axis move — the "
+               "old spiral had 220 diagonal steps per layer");
+}
+
+// The ring order, pinned cell by cell. Under the old 8-diagonal spiral the
+// sequence was (+1,0), (+1,+1), (0,+1), ... — the very SECOND cell was already
+// a corner, so the drill met a corner before it met the wall beside it. Now
+// the origin comes first and the four face neighbours fall at n=1, 3, 5 and 7.
+static void test_DrillSystem_the_spiral_visits_the_four_walls_in_ring_order() {
+    DrillFixture f;
+    auto ent = f.addDrill(0, 64, 0, 0);
+    giveDrillTool(f.reg, ent, kDrillUlv, 1000);
+    f.drill(ent).state = DrillState::SEARCHING;
+    f.drill(ent).searchLayer = 1;  // no skipped origin, so n=0 is observable
+
+    // Collect the first 8 spiral cells, one per tick.
+    std::vector<std::pair<int32_t, int32_t>> seen;
+    for (int i = 0; i < 8; ++i) {
+        f.drill(ent).searchIndex = i;
+        f.repo->clearRecording();
+        f.sys->tick(kDt);
+        if (f.repo->gets.empty()) continue;
+        seen.push_back({f.repo->gets.front().x, f.repo->gets.front().z});
+    }
+    CHECK_EQ_I(static_cast<int64_t>(seen.size()), 8, "eight spiral cells observed");
+    if (seen.size() != 8) return;
+
+    // n=0 is the origin, and n=1..7 are the first ring of the 4-connected spiral.
+    const std::pair<int32_t, int32_t> kExpected[8] = {
+        {0, 0}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}
+    };
+    for (int i = 0; i < 8; ++i) {
+        CHECK_EQ(seen[i].first, kExpected[i].first, "spiral x matches at this index");
+        CHECK_EQ(seen[i].second, kExpected[i].second, "spiral z matches at this index");
+    }
+    // And the specific claim: the four FACE neighbours are at odd indices 1, 3,
+    // 5, 7 — no corner is reached before all four walls are.
+    CHECK_EQ(seen[1].second, 0, "gp-4v5i: n=1 is the +X wall, not a corner");
+    CHECK_EQ(seen[3].first, 0, "gp-4v5i: n=3 is the +Z wall");
+    CHECK_EQ(seen[5].first, -1, "gp-4v5i: n=5 is the -X wall");
+    CHECK_EQ(seen[7].first, 0, "gp-4v5i: n=7 is the -Z wall");
+}
+
+static void test_DrillSystem_the_block_directly_below_is_reachable() {
+    // The block DIRECTLY BELOW a drill is the single most valuable target, and it
+    // lives in layer 1 (dy = -1), not layer 0. Before gp-4v5i, spiral index 0 was
+    // one step out horizontally, so the drill's own COLUMN was never a candidate at
+    // any index — (0, 63, 0) was simply unreachable. The origin fix is what makes
+    // it reachable: layer 1's origin cell IS the block below, and the guard skips
+    // the origin only when dy == 0 as well.
     DrillFixture f;
     auto ent = f.addDrill(0, 64, 0, 0);
     giveDrillTool(f.reg, ent, kDrillUlv, TOOL_ENERGY_DEFS.at(kDrillUlv).capacity);
-    f.repo->set(0, 63, 0, kOreIron);   // directly below
-    f.repo->set(0, 65, 0, kOreIron);   // directly above
-    f.repo->set(1, 64, 0, kOreIron);   // +X
-    f.repo->set(0, 64, 1, kOreIron);   // +Z
+    f.drill(ent).state = DrillState::SEARCHING;
+    f.drill(ent).searchLayer = 1;  // dy = -1, whose origin is the block below
+    f.drill(ent).searchIndex = 0;
+    f.repo->set(0, 63, 0, kOreIron);  // directly below, and the only ore in range
 
-    f.sys->tick(kDt);
     for (int i = 0; i < 10; ++i) f.sys->tick(kDt);
 
-    const int32_t tx = f.drill(ent).targetX;
-    const int32_t ty = f.drill(ent).targetY;
-    const int32_t tz = f.drill(ent).targetZ;
-    CHECK(!((tx == 0 && ty == 63 && tz == 0) || (tx == 0 && ty == 65 && tz == 0)),
-          "neither the block below nor the block above is ever targeted in layer 0");
     CHECK_EQ_I(f.drill(ent).state, static_cast<int64_t>(DrillState::MINING),
-               "the +X neighbour IS found on the first tick, which is what proves "
-               "the search is working and not merely dead");
+               "gp-4v5i: the drill finds the ore directly beneath itself");
+    CHECK_EQ_I(f.drill(ent).targetX, 0, "targeted x is the drill's own x");
+    CHECK_EQ_I(f.drill(ent).targetY, 63, "targeted y is one block BELOW the drill");
+    CHECK_EQ_I(f.drill(ent).targetZ, 0, "targeted z is the drill's own z");
+    CHECK_EQ_I(f.drill(ent).searchLayer, 1,
+               "and it was found in layer 1, whose origin is the cell below");
+}
+
+static void test_DrillSystem_only_layer_zero_skips_the_origin() {
+    // Layer 0's skipped origin is the drill's OWN cell, which holds the drill and
+    // can never be ore, so skipping it loses nothing. Every other layer keeps its
+    // origin: layer 1's is the block below, layer 2's the block above. Pinned so a
+    // future "optimisation" that skips index 0 unconditionally cannot silently
+    // delete the block below the drill.
+    DrillFixture self;
+    auto e0 = self.addDrill(0, 64, 0, 0);
+    giveDrillTool(self.reg, e0, kDrillUlv, TOOL_ENERGY_DEFS.at(kDrillUlv).capacity);
+    self.repo->set(0, 64, 0, kOreIron);
+    for (int i = 0; i < 5; ++i) self.sys->tick(kDt);
+    CHECK_EQ_I(self.drill(e0).searchLayer, 0, "precondition: the search is in layer 0");
+    CHECK(!((self.drill(e0).targetX == 0 && self.drill(e0).targetY == 64 &&
+             self.drill(e0).targetZ == 0)),
+          "gp-4v5i: layer 0's origin is the drill's own cell and is never mined");
+
+    DrillFixture below;
+    auto e1 = below.addDrill(0, 64, 0, 0);
+    giveDrillTool(below.reg, e1, kDrillUlv, TOOL_ENERGY_DEFS.at(kDrillUlv).capacity);
+    below.drill(e1).state = DrillState::SEARCHING;
+    below.drill(e1).searchLayer = 1;  // dy = -1: index 0 is the block below
+    below.drill(e1).searchIndex = 0;
+    below.repo->set(0, 63, 0, kOreIron);
+    for (int i = 0; i < 5; ++i) below.sys->tick(kDt);
+    CHECK_EQ_I(below.drill(e1).targetY, 63,
+               "gp-4v5i: layer 1's origin is NOT skipped — it is the cell below");
 }
 
 static void test_DrillSystem_dt_is_ignored() {
@@ -1362,7 +1626,12 @@ static void test_DrillSystem_idle_resets_the_search_each_tick() {
 
     f.sys->tick(kDt);
 
-    CHECK_EQ_I(f.drill(ent).searchIndex, 2, "the search restarts from index 0 on the IDLE tick");
+    // gp-4v5i: the restart begins at index 0, which is the drill's own cell and
+    // is skipped, so the two requests come from indices 1 and 2 and the index
+    // lands on 3. The SEARCH still restarted from 0 — that is the claim here.
+    CHECK_EQ_I(f.drill(ent).searchIndex, 3,
+               "the search restarts from index 0 on the IDLE tick (0 is the "
+               "skipped origin, 1 and 2 are the two probes)");
     CHECK_EQ_I(f.drill(ent).searchLayer, 0, "and the layer is reset too");
     CHECK_EQ_I(f.drill(ent).state, static_cast<int64_t>(DrillState::SEARCHING),
                "the drill leaves IDLE after one tick");
@@ -1671,34 +1940,124 @@ static void test_BatteryBufferSystem_publish_inventory_packs_meta_little_endian(
 static void test_BatteryBufferSystem_full_buffer_requests_from_the_pipe_network() {
     // A full buffer requests nothing; a non-full one requests
     // min(space, maxInput). The pipe client is inert (unconnected router), so
-    // this is observed through the buffer state, which is only mutated by the
-    // response path.
-    // FINDING-adjacent. The pipe-network REQUEST block is gated on
-    // `buffer.stored < capacity`, but the CHARGING block above it is not:
-    // chargeSlot() is entered for every non-empty slot and is limited only by
-    // min(chargeRate, buffer.stored, ...). A buffer whose stored is negative (an
-    // underflowed drain from EnergyFlowHandler clamps at 0, but any other
-    // writer can make it negative) would therefore hand the tool a NEGATIVE
-    // amount. Pinned with the real ceiling instead: a full buffer is still
-    // charged by exactly chargeRate, because stored only enters as the
-    // min() term, never as a gate.
+    // this is observed through the request bookkeeping: onConsumeResponse
+    // reports a MISS (returns false) for a node with no outstanding request, so
+    // it doubles as a read-only probe for "did tick() ask the network?".
+    //
+    // gp-4pxm FIXED (partially — the issue's premise was wrong, see below).
+    //
+    // The issue claimed "a full or empty buffer does not charge" and asked for
+    // the charging loop to be gated on `stored < capacity`. That gate would
+    // DEADLOCK the machine: the request block is gated on the SAME condition,
+    // and charging the tools is the only thing that ever drains a buffer, so a
+    // buffer at capacity could neither charge a tool nor ask for EU, and would
+    // sit there charging nothing forever. A full buffer must keep charging.
+    //
+    // The one claim that does hold is about the ORDER, and it is a real defect:
+    // charging runs FIRST and unconditionally, so a buffer that was exactly
+    // full is debited to 39992 and only THEN does the request block see
+    // `stored < capacity` and ask the network for 8 more EU. The gate meant to
+    // express "full" never sees a full buffer. Pinned as observed below.
+    //
+    // onConsumeResponse reports a MISS (false) for a node with no outstanding
+    // request, so it doubles as a read-only probe for "did tick() ask?".
     BatteryFixture f;
     auto full = f.addBuffer(10, 64, 10, 40000, 40000, 1, 32, kLvChargeRate, 1);
     f.slots(full)[0] = InventorySlot{kDrillUlv, 1, 0};
     f.sys->tick(kDt);
     CHECK_EQ_I(f.slots(full)[0].meta, kLvChargeRate,
-               "a FULL buffer still charges the tool: chargeSlot has no "
-               "capacity gate of its own, only the min() clamp");
+               "a FULL buffer still charges its tool — that is the machine's purpose");
     CHECK_EQ_I(f.buf(full).stored, 40000 - kLvChargeRate,
-               "and the buffer is debited past its capacity");
-    CHECK_LT_I(f.buf(full).stored, 40000, "i.e. stored ends up below capacity anyway");
+               "and pays for it out of the EU it holds");
+    CHECK(f.sys->onConsumeResponse(static_cast<uint64_t>(full), 8, 0),
+           "which leaves it below capacity, so it is legitimately eligible to ask "
+           "for a refill in the same tick");
 
     BatteryFixture g;
-    auto partial = g.addBuffer(10, 64, 10, 40000, 0, 1, 32, kLvChargeRate, 1);
+    auto partial = g.addBuffer(10, 64, 10, 40000, 1000, 1, 32, kLvChargeRate, 1);
     g.slots(partial)[0] = InventorySlot{kDrillUlv, 1, 0};
     g.sys->tick(kDt);
-    CHECK_EQ_I(g.buf(partial).stored, 0, "an empty buffer is not magically filled by ticking");
-    CHECK_EQ_I(g.slots(partial)[0].meta, 0, "and it cannot charge a tool it has no EU for");
+    CHECK(g.sys->onConsumeResponse(static_cast<uint64_t>(partial), 8, 0),
+           "a non-full buffer has an outstanding request, so the response is a hit");
+    CHECK_EQ_I(g.buf(partial).stored, 1000 - kLvChargeRate + 8,
+               "and the charge it took and the charge it asked for are independent");
+
+    // The gate's intended case: a buffer that is full AND has nothing to charge
+    // stays full, and that is the only shape in which the request gate is seen.
+    BatteryFixture idle;
+    auto idleBuf = idle.addBuffer(10, 64, 10, 40000, 40000, 1, 32, kLvChargeRate, 1);
+    idle.sys->tick(kDt);
+    CHECK(!idle.sys->onConsumeResponse(static_cast<uint64_t>(idleBuf), 8, 0),
+           "a full buffer with an EMPTY inventory slot is asked for nothing: "
+           "stored < capacity is false");
+    CHECK_EQ_I(idle.buf(idleBuf).stored, 40000, "and it stays exactly full");
+
+    BatteryFixture h;
+    auto empty = h.addBuffer(10, 64, 10, 40000, 0, 1, 32, kLvChargeRate, 1);
+    h.slots(empty)[0] = InventorySlot{kDrillUlv, 1, 0};
+    h.sys->tick(kDt);
+    CHECK_EQ_I(h.buf(empty).stored, 0, "an empty buffer is not magically filled by ticking");
+    CHECK_EQ_I(h.slots(empty)[0].meta, 0, "and it cannot charge a tool it has no EU for");
+}
+
+// gp-4pxm FIXED. `stored` is debited by chargeSlot(), credited by
+// onConsumeResponse() and debited again by the discharge path
+// (EnergyFlowHandler), and nothing validated it. While stored stayed
+// non-negative the missing gate was invisible — min(chargeRate, stored, ...)
+// went negative and the `energyToTransfer <= 0` early-out caught it — but the
+// invalid level itself was carried into everything downstream of tick():
+//
+//   * the published energy is `static_cast<uint32_t>(buffer.stored)`, so -50
+//     reached the client as 4294967246 EU;
+//   * the request block sized its ask from `capacity - stored` = 40050, i.e.
+//     more than the buffer can ever hold;
+//   * the pipe-node update advertised the same wrapped value.
+//
+// So the defect is the absent validation, not a wrong charge amount, and the
+// charge level is now clamped where it is spent.
+static void test_BatteryBufferSystem_negative_stored_is_clamped_to_zero() {
+    BatteryFixture f;
+    auto ent = f.addBuffer(10, 64, 10, 40000, -50, 1, 32, kLvChargeRate, 1);
+    f.slots(ent)[0] = InventorySlot{kDrillUlv, 1, 0};
+    f.reg.emplace<MachineComponent>(ent, kBatteryBufferLvId, 0, 10, 64, 10, 1);
+
+    f.sys->tick(kDt);
+
+    CHECK_EQ_I(f.buf(ent).stored, 0,
+               "gp-4pxm: a negative charge level is clamped to zero before anything spends it");
+    CHECK_EQ_I(f.slots(ent)[0].meta, 0,
+               "and a buffer holding nothing cannot charge a tool");
+    CHECK_EQ_I(f.events->updates.size(), 1, "a machine buffer still publishes its state");
+    if (!f.events->updates.empty()) {
+        CHECK_EQ_I(f.events->updates.back().energy, 0,
+                   "gp-4pxm: the published energy is 0, not the unsigned wrap of -50");
+        CHECK_EQ_I(f.events->updates.back().energy_capacity, 40000,
+                   "and the capacity alongside it is the real one");
+    }
+    CHECK(f.sys->onConsumeResponse(static_cast<uint64_t>(ent), 10, 0),
+           "and it asks the network, with a request sized from the clamped level");
+    CHECK_EQ_I(f.buf(ent).stored, 10, "so a response credits normally afterwards");
+}
+
+// The mirror of the clamp above: a stored value ABOVE capacity is just as
+// invalid as a negative one, and onConsumeResponse already refuses to credit
+// past capacity — so a corrupt level must not be allowed to keep the buffer
+// above it either.
+static void test_BatteryBufferSystem_stored_above_capacity_is_clamped() {
+    BatteryFixture f;
+    auto ent = f.addBuffer(10, 64, 10, 40000, 40000 + 500, 1, 32, kLvChargeRate, 1);
+    f.slots(ent)[0] = InventorySlot{kDrillUlv, 1, 0};
+    f.reg.emplace<MachineComponent>(ent, kBatteryBufferLvId, 0, 10, 64, 10, 1);
+
+    f.sys->tick(kDt);
+
+    CHECK_EQ_I(f.buf(ent).stored, 40000 - kLvChargeRate,
+               "gp-4pxm: the overfull level is capped at capacity, then spent normally");
+    CHECK_EQ_I(f.slots(ent)[0].meta, kLvChargeRate, "and the tool is charged from the capped level");
+    if (!f.events->updates.empty()) {
+        CHECK_EQ_I(f.events->updates.back().energy, 40000 - kLvChargeRate,
+                   "so the published energy never exceeds the published capacity");
+    }
 }
 
 static void test_BatteryBufferSystem_consume_response_charges_the_matching_node() {
@@ -2358,8 +2717,12 @@ int main(int argc, char **argv) {
     TEST(DrillSystem_output_buffer_fills_and_blocks_at_the_cap);
     TEST(DrillSystem_output_full_releases_once_space_appears);
     TEST(DrillSystem_broken_block_resets_the_target_and_progress);
-    TEST(DrillSystem_ore_without_a_drop_still_occupies_a_buffer_slot);
-    TEST(DrillSystem_drop_comes_from_the_store_reply);
+    TEST(DrillSystem_ore_without_a_drop_occupies_no_buffer_slot);
+    TEST(DrillSystem_drop_less_ore_can_never_wedge_the_output_buffer);
+    TEST(DrillSystem_drop_comes_from_the_targeted_ore);
+    TEST(DrillSystem_a_conflict_clears_the_remembered_ore);
+    TEST(DrillSystem_the_search_records_the_ore_it_finds);
+    TEST(DrillSystem_a_fresh_drill_targets_no_ore);
     TEST(DrillSystem_non_ore_blocks_are_never_mined);
     TEST(DrillSystem_search_starts_from_idle_and_probes_two_cells);
     TEST(DrillSystem_search_counter_accumulates_and_releases);
@@ -2367,9 +2730,12 @@ int main(int argc, char **argv) {
     TEST(DrillSystem_search_sustains_its_rate_under_an_async_repository);
     TEST(DrillSystem_search_index_wraps_to_the_next_layer);
     TEST(DrillSystem_layer_offset_sequence);
-    TEST(DrillSystem_spiral_never_produces_the_origin);
-    TEST(DrillSystem_second_probe_is_already_a_diagonal);
-    TEST(DrillSystem_below_the_drill_is_never_probed_in_layer_zero);
+    TEST(DrillSystem_the_spiral_starts_at_the_origin);
+    TEST(DrillSystem_the_origin_probe_is_never_issued);
+    TEST(DrillSystem_the_spiral_is_four_connected);
+    TEST(DrillSystem_the_spiral_visits_the_four_walls_in_ring_order);
+    TEST(DrillSystem_the_block_directly_below_is_reachable);
+    TEST(DrillSystem_only_layer_zero_skips_the_origin);
     TEST(DrillSystem_dt_is_ignored);
     TEST(DrillSystem_search_results_arrive_in_the_same_tick_with_a_synchronous_repository);
     TEST(DrillSystem_idle_resets_the_search_each_tick);
@@ -2394,6 +2760,8 @@ int main(int argc, char **argv) {
     TEST(BatteryBufferSystem_publishes_nothing_without_a_machine_component);
     TEST(BatteryBufferSystem_publish_inventory_packs_meta_little_endian);
     TEST(BatteryBufferSystem_full_buffer_requests_from_the_pipe_network);
+    TEST(BatteryBufferSystem_negative_stored_is_clamped_to_zero);
+    TEST(BatteryBufferSystem_stored_above_capacity_is_clamped);
     TEST(BatteryBufferSystem_consume_response_charges_the_matching_node);
     TEST(BatteryBufferSystem_consume_response_clamps_to_capacity);
     TEST(BatteryBufferSystem_consume_response_rejects_zero_and_negative);

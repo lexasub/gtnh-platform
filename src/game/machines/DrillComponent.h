@@ -11,6 +11,11 @@ enum class DrillState { IDLE, SEARCHING, MINING, OUTPUT_FULL };
 struct DrillComponent {
   int32_t x, y, z, tier, energyPerTick, searchLayer, searchIndex, targetX,
       targetY, targetZ, miningProgress, miningTicksTotal;
+  // The ore id the search actually FOUND at (targetX, targetY, targetZ), kept
+  // so the mined drop is derived from what the drill aimed at rather than from
+  // the block store's compare-and-swap reply (gp-7n7s). Zero means "no ore is
+  // currently targeted", which is also what a freshly-built component holds.
+  uint16_t targetOreId;
   std::vector<std::pair<uint16_t, uint8_t>> outputBuffer;
   DrillState state;
 
@@ -18,13 +23,13 @@ struct DrillComponent {
   DrillComponent()
       : x(0), y(0), z(0), tier(0), energyPerTick(0), searchLayer(0),
         searchIndex(0), targetX(0), targetY(0), targetZ(0), miningProgress(0),
-        miningTicksTotal(0), outputBuffer(), state(DrillState::IDLE) {}
+        miningTicksTotal(0), targetOreId(0), outputBuffer(), state(DrillState::IDLE) {}
 
   // Full constructor
   DrillComponent(int32_t px, int32_t py, int32_t pz, int32_t t)
       : x(px), y(py), z(pz), tier(t), energyPerTick(0), searchLayer(0),
         searchIndex(0), targetX(0), targetY(0), targetZ(0), miningProgress(0),
-        miningTicksTotal(0), outputBuffer(), state(DrillState::IDLE) {
+        miningTicksTotal(0), targetOreId(0), outputBuffer(), state(DrillState::IDLE) {
     energyPerTick = calcEnergyPerTick(t);
   }
 
@@ -53,6 +58,7 @@ struct DrillComponent {
   void reset() {
     searchIndex = 0;
     targetX = targetY = targetZ = 0;
+    targetOreId = 0;
     miningProgress = 0;
     miningTicksTotal = 0;
     outputBuffer.clear();

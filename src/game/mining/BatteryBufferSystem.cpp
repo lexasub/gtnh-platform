@@ -15,9 +15,49 @@ void BatteryBufferSystem::tick(float /*dt*/) {
         auto& inv = view.get<InventoryContainer>(entity);
         auto& pos = view.get<Position>(entity);
 
-        for (uint8_t i = 0; i < buffer.numSlots && i < inv.slots.size(); i++) {
-            if (inv.slots[i].item_id != 0) {
-                chargeSlot(buffer, inv, i);
+        // gp-4pxm: validate the charge level HERE, once, before anything reads
+        // or spends it. `stored` has three writers in production — this
+        // system's own chargeSlot() debit, its onConsumeResponse() credit, and
+        // the discharge path in
+        // src/apps/simcore/ECS/Reactors/EnergyFlowHandler.cpp:35,46 — and each
+        // clamps on its own terms, so nothing guaranteed the invariant the rest
+        // of this function assumes. An out-of-range level did not merely make
+        // the charge wrong, it corrupted three separate consumers:
+        //
+        //   * the publish below casts to uint32_t, so -50 reached the client as
+        //     4294967246 EU;
+        //   * `capacity - stored` sized the request at 40050, more than the
+        //     buffer can hold;
+        //   * the pipe-node update advertised the same wrapped value.
+        //
+        // Note this is deliberately NOT the gate the issue proposed. Gating the
+        // charging loop on `stored < capacity` would deadlock the machine: the
+        // request block below is gated on the same condition and charging the
+        // tools is the only thing that ever drains a buffer, so a full buffer
+        // could neither charge nor ask, and would sit there forever. A full
+        // buffer must keep charging; that is the machine's entire purpose.
+        const int32_t cap = static_cast<int32_t>(buffer.capacity);
+        if (buffer.stored < 0) {
+            spdlog::warn("[BatteryBuffer] entity {} had a negative charge level "
+                         "({}); clamping to 0",
+                         static_cast<uint32_t>(entity), buffer.stored);
+            buffer.stored = 0;
+        } else if (buffer.stored > cap) {
+            spdlog::warn("[BatteryBuffer] entity {} held {} EU over its capacity "
+                         "({}); clamping",
+                         static_cast<uint32_t>(entity), buffer.stored, cap);
+            buffer.stored = cap;
+        }
+
+        // The empty case is the one the min() inside chargeSlot() used to
+        // catch as a side effect of the transfer being <= 0. It is a real gate
+        // in its own right: an empty buffer has no EU to give, whatever the
+        // tool or the rate say.
+        if (buffer.stored > 0) {
+            for (uint8_t i = 0; i < buffer.numSlots && i < inv.slots.size(); i++) {
+                if (inv.slots[i].item_id != 0) {
+                    chargeSlot(buffer, inv, i);
+                }
             }
         }
 

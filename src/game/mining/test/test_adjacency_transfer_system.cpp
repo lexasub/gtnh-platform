@@ -52,27 +52,51 @@
 //   * transfer = min(capacity - current, producer.current), taken from the six
 //     face neighbours in the fixed order +x, -x, +y, -y, +z, -z
 //
+// ========================= PASS 1 PROPAGATION (gp-c41q) ====================
+// THE DECISION: heat propagates the FULL LENGTH of a chain in ONE tick, and
+// does so INDEPENDENTLY of ECS creation order.
+//
+// The old pass iterated the sink loop in raw view order. EnTT yields that view
+// in REVERSE creation order, so whether a hop completed in a tick was decided
+// by which of two machines happened to be created last — an ECS bookkeeping
+// detail, not a game rule. A three-block chain needed two ticks; a four-block
+// chain three. The only reason a chain moved at all was that a relay already
+// warm when the tick began could donate its pre-existing charge; a COLD relay
+// is not in the producer snapshot at all, so a cold chain advanced exactly one
+// block per tick and the drill heat (furnace) sat cold while charge piled up in
+// the block in front of it.
+//
+// The fix orders the sink loop by DISTANCE FROM A PRODUCER rather than by
+// creation order, which is a relaxation sweep: a relay at distance k is
+// processed only after the producers at distance k-1 have refilled it, so it
+// can pass their heat on to the distance k+1 block in the same tick. The
+// nearest-source distance is computed with one BFS over the six-face adjacency
+// graph, seeded at every source holding heat, and the sweep walks it in
+// increasing distance with the view order as the tie-break (so two blocks at
+// the same distance still resolve deterministically).
+//
+// The BFS expands ONLY through a node that is a heat SOURCE, because pass 1
+// only ever moves heat out of such a node. A pure sink cannot relay.
+//
+// A sink with no adjacent heat source is unreachable by definition and is
+// skipped, exactly as before — the BFS gives it no finite distance, so there is
+// no behaviour change for an isolated sink.
+//
+// WHAT IS DELIBERATELY NOT CHANGED HERE (these are the issue's "related
+// findings", already pinned as observed behaviour by this suite, and each is a
+// separate design decision rather than a defect in the sweep):
+//   * maxInput / maxOutput are still not consulted (transfer_ignores_…);
+//   * adjacent source+sink pairs still ping-pong (…pair_drains_each_other);
+//   * co-located producers still shadow by position (…shadow_each_other);
+//   * pass 3 still force-overwrites EnergyStorage::current (…overwrites_…).
+//
 // Observed properties this suite pins (several are defects, asserted as-is):
 //   1. maxInput / maxOutput are IGNORED. A transfer is never rate-limited; the
 //      producer's entire content moves in one tick.
-//   2. Transfer is ONE HOP PER TICK, never "the full distance in one tick".
-//      EnTT yields this view in reverse creation order, so sinks are visited
-//      BEFORE the upstream sources that would refill them during the same
-//      pass. A cold relay is not in the producer index at all (current > 0 is
-//      required at snapshot time), and a warm relay is visited after the sink
-//      that would have consumed its charge. Either way a chain needs one tick
-//      per block. Pinned by …cold_relay_does_not_forward_in_one_tick,
-//      …warm_relay_also_needs_two_ticks and …sink_is_processed_before_its_source.
-//   3. Energy is conserved (producers are re-read through live pointers), but
-//      when a source+sink machine is adjacent to another source+sink machine
-//      the two drain each other and the charge ping-pongs forever, with the
-//      holder decided by view iteration order.
-//   4. producersByPos is keyed by position, so two producers at the same
-//      coordinate silently shadow each other — the FIRST-created one (last
-//      written into the map) survives.
-//   5. EnergyStorage::current is force-overwritten from heat_stored at the end
-//      of pass 3, with no capacity clamp, so any drift between the two fields
-//      is destroyed rather than reconciled.
+//   2. Transfer is FULL-CHAIN IN ONE TICK, in any creation order. Pinned by
+//      …chain_propagates_the_whole_distance_in_one_tick,
+//      …chain_order_does_not_change_how_far_heat_travels and
+//      …four_block_chain_reaches_the_sink_in_one_tick.
 //
 // The system never publishes any event: `events_` is stored in the constructor
 // and never used, so the tests pass an empty publisher.
@@ -538,19 +562,18 @@ static void test_AdjacencyTransferSystem_non_heat_energy_is_never_transferred() 
 }
 
 // ---------------------------------------------------------------------------
-// Pass 1 — chains
+// Pass 1 — chains (gp-c41q)
 // ---------------------------------------------------------------------------
 
-static void test_AdjacencyTransferSystem_cold_relay_does_not_forward_in_one_tick() {
+static void test_AdjacencyTransferSystem_chain_propagates_the_whole_distance_in_one_tick() {
     auto reg = makeRegistry();
     entt::registry ecs;
     simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
 
     // heat_generator (source) — relay (source+sink) — heat_furnace (sink).
-    // The issue asks for "a chain of three blocks forwards energy the full
-    // distance in one tick". Observed: it does NOT. Producers are snapshotted
-    // before any transfer (lines 38-46) and filtered on current > 0, so a cold
-    // relay is simply not in producersByPos.
+    // Before gp-c41q the chain advanced ONE BLOCK PER TICK, so the furnace saw
+    // nothing in tick 1 and the charge arrived in tick 2. Heat now traverses
+    // the whole chain in the tick it was produced.
     auto gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 1000);
     auto relay = makeMachine(ecs, kHeatRelay, 1, 0, 0, 10000, 0);
     auto furnace = makeMachine(ecs, kHeatFurnace, 2, 0, 0, 10000, 0);
@@ -558,46 +581,61 @@ static void test_AdjacencyTransferSystem_cold_relay_does_not_forward_in_one_tick
     sys.tick(0.05f);
 
     CHECK_EQ_I(stored(ecs, gen), 0, "the generator is drained in tick 1");
-    CHECK_EQ_I(stored(ecs, relay), 1000, "the relay absorbs the heat in tick 1");
-    CHECK_EQ_I(stored(ecs, furnace), 0, "heat advances at most ONE block per tick");
+    CHECK_EQ_I(stored(ecs, relay), 0,
+               "gp-c41q: the relay passes the charge on in the SAME tick it takes it");
+    CHECK_EQ_I(stored(ecs, furnace), 1000,
+               "gp-c41q: and the sink at the far end receives it in that same tick");
 }
 
-static void test_AdjacencyTransferSystem_chain_propagates_one_hop_per_tick() {
+// The defect was order-dependent, so the test that matters is the one that runs
+// the SAME layout in BOTH creation orders. Reverse view order used to decide
+// how far heat travelled; it must no longer do so.
+static void test_AdjacencyTransferSystem_chain_order_does_not_change_how_far_heat_travels() {
+    auto reg = makeRegistry();
+
+    // Order A: created downstream-first — the case that already worked, because
+    // the upstream source happened to be visited first.
+    {
+        entt::registry ecs;
+        simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
+        auto furnace = makeMachine(ecs, kHeatFurnace, 2, 0, 0, 10000, 0);
+        auto relay = makeMachine(ecs, kHeatRelay, 1, 0, 0, 10000, 0);
+        auto gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 1000);
+        sys.tick(0.05f);
+        CHECK_EQ_I(stored(ecs, furnace), 1000, "order A: the sink gets the whole charge");
+        CHECK_EQ_I(stored(ecs, relay), 0, "order A: the relay is left empty");
+        CHECK_EQ_I(stored(ecs, gen), 0, "order A: the generator is drained");
+    }
+
+    // Order B: created upstream-first — the case that used to need two ticks,
+    // because the view yielded (furnace, relay, gen) and the sink was visited
+    // before anything could reach it.
+    {
+        entt::registry ecs;
+        simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
+        auto gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 1000);
+        auto relay = makeMachine(ecs, kHeatRelay, 1, 0, 0, 10000, 0);
+        auto furnace = makeMachine(ecs, kHeatFurnace, 2, 0, 0, 10000, 0);
+        sys.tick(0.05f);
+        CHECK_EQ_I(stored(ecs, furnace), 1000,
+                   "gp-c41q: order B reaches the sink in one tick too — creation "
+                   "order no longer decides propagation");
+        CHECK_EQ_I(stored(ecs, relay), 0, "order B: the relay is left empty");
+        CHECK_EQ_I(stored(ecs, gen), 0, "order B: the generator is drained");
+    }
+}
+
+// A relay that already holds heat must not double-count: the sweep refills it
+// from upstream and then forwards everything it holds, once.
+static void test_AdjacencyTransferSystem_a_warm_relay_forwards_everything_in_one_tick() {
     auto reg = makeRegistry();
     entt::registry ecs;
     simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
 
-    auto gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 1000);
-    auto relay = makeMachine(ecs, kHeatRelay, 1, 0, 0, 10000, 0);
-    auto furnace = makeMachine(ecs, kHeatFurnace, 2, 0, 0, 10000, 0);
-
-    sys.tick(0.05f);
-    CHECK_EQ_I(stored(ecs, gen), 0, "after tick 1 the generator is empty");
-    CHECK_EQ_I(stored(ecs, relay), 1000, "after tick 1 the relay holds the charge");
-    CHECK_EQ_I(stored(ecs, furnace), 0, "after tick 1 the furnace has nothing");
-
-    sys.tick(0.05f);
-    CHECK_EQ_I(stored(ecs, gen), 0, "after tick 2 the generator is still empty");
-    CHECK_EQ_I(stored(ecs, relay), 0, "after tick 2 the relay has forwarded everything");
-    CHECK_EQ_I(stored(ecs, furnace), 1000, "after tick 2 the furnace has the full amount");
-
-    sys.tick(0.05f);
-    CHECK_EQ_I(stored(ecs, gen), 0, "after tick 3 the generator is still empty");
-    CHECK_EQ_I(stored(ecs, furnace), 1000, "the chain is stable once it has arrived");
-}
-
-static void test_AdjacencyTransferSystem_warm_relay_also_needs_two_ticks() {
-    auto reg = makeRegistry();
-    entt::registry ecs;
-    simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
-
-    // The issue asks for "a chain of three blocks forwards energy the full
-    // distance in one tick". Observed: it never does, not even when the relay
-    // starts the tick warm. EnTT iterates this view in reverse creation order
-    // (furnace, relay, gen), so the sink is processed BEFORE the source that
-    // refills the relay in the same tick. In tick 1 the furnace can only take
-    // the relay's pre-existing 500; the 1000 arriving from the generator lands
-    // afterwards and has to wait for tick 2.
+    // The relay starts with 500 of its own. Before gp-c41q tick 1 could only
+    // deliver the pre-existing 500 to the sink and the 1000 from the generator
+    // had to wait for tick 2; the sink ended tick 1 holding 1500 out of 1500
+    // across two ticks. Now the sink has all 1500 after one tick.
     auto gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 1000);
     auto relay = makeMachine(ecs, kHeatRelay, 1, 0, 0, 10000, 500);
     auto furnace = makeMachine(ecs, kHeatFurnace, 2, 0, 0, 10000, 0);
@@ -605,22 +643,151 @@ static void test_AdjacencyTransferSystem_warm_relay_also_needs_two_ticks() {
     sys.tick(0.05f);
 
     CHECK_EQ_I(stored(ecs, gen), 0, "the generator is fully drained in tick 1");
-    CHECK_EQ_I(stored(ecs, relay), 1000, "the relay absorbs the generator's charge");
-    CHECK_EQ_I(stored(ecs, furnace), 500,
-               "the furnace only takes the relay's PRE-EXISTING heat in tick 1");
+    CHECK_EQ_I(stored(ecs, relay), 0, "the relay ends empty");
+    CHECK_EQ_I(stored(ecs, furnace), 1500,
+               "gp-c41q: the sink holds all 1500 after ONE tick, not two");
+}
+
+static void test_AdjacencyTransferSystem_four_block_chain_reaches_the_sink_in_one_tick() {
+    auto reg = makeRegistry();
+    entt::registry ecs;
+    simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
+
+    auto gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 500);
+    auto r1 = makeMachine(ecs, kHeatRelay, 1, 0, 0, 10000, 0);
+    auto r2 = makeMachine(ecs, kHeatRelay, 2, 0, 0, 10000, 0);
+    auto furnace = makeMachine(ecs, kHeatFurnace, 3, 0, 0, 10000, 0);
 
     sys.tick(0.05f);
 
-    CHECK_EQ_I(stored(ecs, relay), 0, "in tick 2 the relay forwards everything it holds");
-    CHECK_EQ_I(stored(ecs, furnace), 1500, "the furnace finally has the whole charge");
+    CHECK_EQ_I(stored(ecs, furnace), 500,
+               "gp-c41q: three hops complete in one tick — the old sweep needed three");
+    CHECK_EQ_I(stored(ecs, gen) + stored(ecs, r1) + stored(ecs, r2), 0,
+               "and nothing is stranded upstream");
+}
+
+// The sweep is bounded by REACHABILITY, not by distance: a sink with no heat
+// source anywhere adjacent is never visited, exactly as before the fix. Pinned
+// so that "visit everything in BFS order" cannot be read as "visit everything".
+static void test_AdjacencyTransferSystem_an_unreachable_sink_is_still_skipped() {
+    auto reg = makeRegistry();
+    entt::registry ecs;
+    simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
+
+    // A source two blocks away from the sink, with a gap: the BFS never reaches
+    // the sink, so it is not in the sweep at all.
+    auto gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 1000);
+    auto furnace = makeMachine(ecs, kHeatFurnace, 2, 0, 0, 10000, 0);
+
+    sys.tick(0.05f);
+
+    CHECK_EQ_I(stored(ecs, furnace), 0, "a sink no source can reach is never visited");
+    CHECK_EQ_I(stored(ecs, gen), 1000, "and the source keeps all its heat");
+}
+// A PURE SINK cannot relay: pass 1 only ever moves heat out of a heat SOURCE,
+// so the BFS must not expand through a sink-only machine. Two furnaces in a row
+// are a sink, a gap, and then the real sink — the charge stops at the first.
+static void test_AdjacencyTransferSystem_a_pure_sink_does_not_relay() {
+    auto reg = makeRegistry();
+    entt::registry ecs;
+    simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
+
+    // gen(source) — furnace(sink) — furnace(sink). The middle furnace is a
+    // heat SINK and not a source (heat_furnace has energy_in HEAT, no
+    // energy_out), so it cannot pass its charge on.
+    auto gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 1000);
+    auto first = makeMachine(ecs, kHeatFurnace, 1, 0, 0, 10000, 0);
+    auto second = makeMachine(ecs, kHeatFurnace, 2, 0, 0, 10000, 0);
+
+    sys.tick(0.05f);
+
+    CHECK_EQ_I(stored(ecs, first), 1000, "the first sink takes the charge");
+    CHECK_EQ_I(stored(ecs, second), 0,
+               "gp-c41q: a pure sink does not relay — heat stops at the first one");
+    CHECK_EQ_I(stored(ecs, gen), 0, "and the source is drained");
+}
+
+// Determinism: two blocks at the SAME distance from a source are both visited
+// in the same tick, and the order between them must not depend on which one
+// entt happens to yield first. Both are filled; the split is decided by the
+// documented +x, -x, +y, -y, +z, -z neighbour scan order, not by creation order.
+static void test_AdjacencyTransferSystem_same_distance_sinks_both_fill_in_one_tick() {
+    auto reg = makeRegistry();
+
+    for (int createSinksFirst = 0; createSinksFirst < 2; ++createSinksFirst) {
+        entt::registry ecs;
+        simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
+        entt::entity east, south, gen;
+        if (createSinksFirst) {
+            east = makeMachine(ecs, kHeatFurnace, 1, 0, 0, 1000, 0);
+            south = makeMachine(ecs, kHeatFurnace, 0, 0, 1, 1000, 0);
+            gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 1000);
+        } else {
+            gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 1000);
+            east = makeMachine(ecs, kHeatFurnace, 1, 0, 0, 1000, 0);
+            south = makeMachine(ecs, kHeatFurnace, 0, 0, 1, 1000, 0);
+        }
+        sys.tick(0.05f);
+        CHECK_EQ_I(stored(ecs, east) + stored(ecs, south), 1000,
+                   "both sinks at distance 1 are filled in the same tick");
+        CHECK_EQ_I(stored(ecs, gen), 0,
+                   "and the single source is drained exactly once, never twice");
+    }
+}
+
+// The full four-block chain, ticked repeatedly, must be STABLE — the sweep must
+// not oscillate or double-transfer. Before gp-c41q the chain needed three ticks
+// to settle; now it is settled after the first and must stay settled.
+static void test_AdjacencyTransferSystem_a_settled_chain_does_not_oscillate() {
+    auto reg = makeRegistry();
+    entt::registry ecs;
+    simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
+
+    auto gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 500);
+    auto r1 = makeMachine(ecs, kHeatRelay, 1, 0, 0, 10000, 0);
+    auto r2 = makeMachine(ecs, kHeatRelay, 2, 0, 0, 10000, 0);
+    auto furnace = makeMachine(ecs, kHeatFurnace, 3, 0, 0, 10000, 0);
+
+    for (int tick = 0; tick < 5; ++tick) {
+        sys.tick(0.05f);
+        const int32_t total =
+            stored(ecs, gen) + stored(ecs, r1) + stored(ecs, r2) + stored(ecs, furnace);
+        CHECK_EQ_I(total, 500, "the chain conserves heat on every tick");
+        CHECK_EQ_I(stored(ecs, furnace), 500,
+                   "and the sink keeps the charge instead of the chain drifting");
+        CHECK_EQ_I(stored(ecs, r1) + stored(ecs, r2), 0, "no heat is stranded mid-chain");
+    }
+}
+
+// Energy is conserved no matter how long the chain is: the sweep moves heat,
+// it does not create it.
+static void test_AdjacencyTransferSystem_long_chain_conserves_energy() {
+    auto reg = makeRegistry();
+    entt::registry ecs;
+    simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
+
+    std::vector<entt::entity> chain;
+    auto gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 777);
+    chain.push_back(gen);
+    for (int i = 1; i < 8; ++i) {
+        chain.push_back(makeMachine(ecs, kHeatRelay, i, 0, 0, 10000, 0));
+    }
+    auto sink = makeMachine(ecs, kHeatFurnace, 8, 0, 0, 10000, 0);
+    chain.push_back(sink);
+
+    sys.tick(0.05f);
+
+    int32_t total = 0;
+    for (auto e : chain) total += stored(ecs, e);
+    CHECK_EQ_I(total, 777, "an eight-block chain conserves the charge exactly");
+    CHECK_EQ_I(stored(ecs, sink), 777, "and the sink at the end holds all of it");
 }
 
 // EnTT yields this view in REVERSE creation order (the last entity created is
-// visited first), and the pass-1 loop refetches every producer's live
-// EnergyStorage pointer. So whether a hop completes in one tick or two is
-// decided purely by which of the two machines was created last — an ECS
-// bookkeeping detail, not a game rule. These two tests pin both branches.
-
+// The view still yields reverse creation order — that is an EnTT property, and
+// the sweep now depends on it only as the TIE-BREAK between two blocks at the
+// same distance from a source, never to decide how far heat travels. Pinned so
+// the tie-break is documented rather than discovered.
 static void test_AdjacencyTransferSystem_view_yields_reverse_creation_order() {
     auto reg = makeRegistry();
     entt::registry ecs;
@@ -642,57 +809,56 @@ static void test_AdjacencyTransferSystem_view_yields_reverse_creation_order() {
     }
 }
 
-static void test_AdjacencyTransferSystem_hop_completes_in_one_tick_when_source_is_visited_first() {
+// The pair that used to disagree with itself. A warm source next to a sink
+// completed the hop in one tick when the source was created second, and needed
+// two when the sink was created second. gp-c41q removed the difference; this
+// runs both and requires them to agree.
+static void test_AdjacencyTransferSystem_a_single_hop_completes_in_one_tick_either_way() {
     auto reg = makeRegistry();
-    entt::registry ecs;
-    simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
 
-    // Sink created FIRST, source created SECOND. Reverse order puts the source
-    // first, so it refills... nothing: the source here is already warm and is
-    // simply drained into the sink during the same visit. One hop, one tick.
-    auto furnace = makeMachine(ecs, kHeatFurnace, 1, 0, 0, 10000, 0);
-    auto relay = makeMachine(ecs, kHeatRelay, 0, 0, 0, 10000, 300);
+    {
+        entt::registry ecs;
+        simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
+        auto furnace = makeMachine(ecs, kHeatFurnace, 1, 0, 0, 10000, 0);
+        auto relay = makeMachine(ecs, kHeatRelay, 0, 0, 0, 10000, 300);
+        sys.tick(0.05f);
+        CHECK_EQ_I(stored(ecs, relay), 0, "sink-first: the source is drained");
+        CHECK_EQ_I(stored(ecs, furnace), 300, "sink-first: the sink receives it");
+    }
 
-    sys.tick(0.05f);
-
-    CHECK_EQ_I(stored(ecs, relay), 0, "the warm source is fully drained");
-    CHECK_EQ_I(stored(ecs, furnace), 300, "the sink receives it in the SAME tick");
+    {
+        entt::registry ecs;
+        simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
+        auto relay = makeMachine(ecs, kHeatRelay, 0, 0, 0, 10000, 300);
+        auto furnace = makeMachine(ecs, kHeatFurnace, 1, 0, 0, 10000, 0);
+        sys.tick(0.05f);
+        CHECK_EQ_I(stored(ecs, relay), 0, "source-first: the source is drained");
+        CHECK_EQ_I(stored(ecs, furnace), 300,
+                   "gp-c41q: source-first now gives the SAME result — order no "
+                   "longer decides whether the hop completes");
+    }
 }
 
-static void test_AdjacencyTransferSystem_hop_needs_two_ticks_when_sink_is_visited_first() {
+// The cold-source three-block case that the old ordering stranded for a full
+// tick. Kept as its own test because it is the shape that actually occurs in
+// production: a generator feeding a fresh coil run.
+static void test_AdjacencyTransferSystem_a_cold_chain_reaches_the_sink_in_one_tick() {
     auto reg = makeRegistry();
     entt::registry ecs;
     simcore::AdjacencyTransferSystem sys(ecs, *reg, std::shared_ptr<simcore::IEventPublisher>());
 
-    // Same pair, same contents — only the creation order is swapped. Now the
-    // sink is visited first, while the source still holds only its starting
-    // charge, and the full hop cannot complete until the next tick. This is
-    // the same one-hop-per-tick limitation the cold-relay tests show, reached
-    // through view ordering instead of through the producer snapshot.
-    auto relay = makeMachine(ecs, kHeatRelay, 0, 0, 0, 10000, 300);
-    auto furnace = makeMachine(ecs, kHeatFurnace, 1, 0, 0, 10000, 0);
+    // gen — relay — furnace, all cold except the generator, created upstream
+    // first (the order that used to visit the sink before anything reached it).
+    auto gen = makeMachine(ecs, kHeatGenerator, 0, 0, 0, 10000, 1000);
+    auto relay = makeMachine(ecs, kHeatRelay, 1, 0, 0, 10000, 0);
+    auto furnace = makeMachine(ecs, kHeatFurnace, 2, 0, 0, 10000, 0);
 
     sys.tick(0.05f);
-    CHECK_EQ_I(stored(ecs, relay), 0, "the source is drained in tick 1");
-    CHECK_EQ_I(stored(ecs, furnace), 300,
-               "a pre-warm source still completes the hop in one tick — 300 is its whole charge");
 
-    // Now the same layout with a cold source, which is the case the ordering
-    // actually strands: the source is refilled by nothing, and the sink has
-    // already been visited.
-    entt::registry ecs2;
-    simcore::AdjacencyTransferSystem sys2(ecs2, *reg, std::shared_ptr<simcore::IEventPublisher>());
-    auto gen = makeMachine(ecs2, kHeatGenerator, 0, 0, 0, 10000, 1000);
-    auto relay2 = makeMachine(ecs2, kHeatRelay, 1, 0, 0, 10000, 0);
-    auto furnace2 = makeMachine(ecs2, kHeatFurnace, 2, 0, 0, 10000, 0);
-
-    sys2.tick(0.05f);
-    CHECK_EQ_I(stored(ecs2, gen), 0, "the generator is drained in tick 1");
-    CHECK_EQ_I(stored(ecs2, relay2), 1000, "the relay takes the charge in tick 1");
-    CHECK_EQ_I(stored(ecs2, furnace2), 0, "the sink was already visited this tick");
-
-    sys2.tick(0.05f);
-    CHECK_EQ_I(stored(ecs2, furnace2), 1000, "the charge arrives on tick 2");
+    CHECK_EQ_I(stored(ecs, gen), 0, "the generator is drained in tick 1");
+    CHECK_EQ_I(stored(ecs, relay), 0, "the relay forwards the same tick it is filled");
+    CHECK_EQ_I(stored(ecs, furnace), 1000,
+               "gp-c41q: the sink is no longer left waiting for a second tick");
 }
 
 static void test_AdjacencyTransferSystem_four_block_chain_conserves_energy() {
@@ -710,7 +876,7 @@ static void test_AdjacencyTransferSystem_four_block_chain_conserves_energy() {
         int32_t total = stored(ecs, gen) + stored(ecs, r1) + stored(ecs, r2) + stored(ecs, furnace);
         CHECK_EQ_I(total, 500, "pass 1 conserves heat across a four-block chain");
     }
-    CHECK_EQ_I(stored(ecs, furnace), 500, "the sink receives the whole charge after 3 ticks");
+    CHECK_EQ_I(stored(ecs, furnace), 500, "the sink receives the whole charge");
     CHECK_EQ_I(stored(ecs, gen) + stored(ecs, r1) + stored(ecs, r2), 0, "upstream is empty");
 }
 
@@ -1189,12 +1355,18 @@ int main(int argc, char** argv) {
     TEST(AdjacencyTransferSystem_transfer_works_without_heat_intake);
     TEST(AdjacencyTransferSystem_zero_heat_source_moves_nothing);
     TEST(AdjacencyTransferSystem_non_heat_energy_is_never_transferred);
-    TEST(AdjacencyTransferSystem_cold_relay_does_not_forward_in_one_tick);
-    TEST(AdjacencyTransferSystem_chain_propagates_one_hop_per_tick);
-    TEST(AdjacencyTransferSystem_warm_relay_also_needs_two_ticks);
+    TEST(AdjacencyTransferSystem_chain_propagates_the_whole_distance_in_one_tick);
+    TEST(AdjacencyTransferSystem_chain_order_does_not_change_how_far_heat_travels);
+    TEST(AdjacencyTransferSystem_a_warm_relay_forwards_everything_in_one_tick);
+    TEST(AdjacencyTransferSystem_four_block_chain_reaches_the_sink_in_one_tick);
+    TEST(AdjacencyTransferSystem_an_unreachable_sink_is_still_skipped);
+    TEST(AdjacencyTransferSystem_a_pure_sink_does_not_relay);
+    TEST(AdjacencyTransferSystem_same_distance_sinks_both_fill_in_one_tick);
+    TEST(AdjacencyTransferSystem_a_settled_chain_does_not_oscillate);
+    TEST(AdjacencyTransferSystem_long_chain_conserves_energy);
     TEST(AdjacencyTransferSystem_view_yields_reverse_creation_order);
-    TEST(AdjacencyTransferSystem_hop_completes_in_one_tick_when_source_is_visited_first);
-    TEST(AdjacencyTransferSystem_hop_needs_two_ticks_when_sink_is_visited_first);
+    TEST(AdjacencyTransferSystem_a_single_hop_completes_in_one_tick_either_way);
+    TEST(AdjacencyTransferSystem_a_cold_chain_reaches_the_sink_in_one_tick);
     TEST(AdjacencyTransferSystem_four_block_chain_conserves_energy);
     TEST(AdjacencyTransferSystem_adjacent_source_and_sink_pair_drains_each_other);
     TEST(AdjacencyTransferSystem_dt_is_ignored);

@@ -50,23 +50,47 @@ uint16_t DrillSystem::oreToDrop(uint16_t oreBlockId) {
     return it != table.end() ? it->second : 0;
 }
 
+// A 4-connected square spiral outward from the drill's own cell.
+//
+// gp-4v5i FIXED. The old loop advanced x/z BEFORE testing `count == n`, so
+// n=0 already returned (+1, 0): the origin was unreachable, the
+// `dx == 0 && dy == 0 && dz == 0` guard in phaseSearch was dead code, and the
+// "4-neighbour ring" was really 8-diagonal — half of every four-cell ring was
+// a corner, so the nearest ore straight ahead could be skipped and a drill
+// placed inside stone never mined the block it occupied.
+//
+// The neighbourhood is 4-connected, which is what makes the search a tunnel:
+// the drill digs ahead of itself and the four walls beside it, and every cell
+// the spiral yields is reachable from the previous one by a single axis move.
+// The fix is to advance a step and only then stop, so n=0 is the origin:
+//
+//   n=0 ( 0,  0)   n=4 (-1,  0)   n=8  ( 2, -1)
+//   n=1 (+1,  0)   n=5 (-1, -1)   n=9  ( 2,  0)
+//   n=2 (+1, +1)   n=6 ( 0, -1)
+//   n=3 ( 0, +1)   n=7 (+1, -1)
+//
+// Note the n=2 cell (+1, +1) is a CORNER, not a diagonal step: it is reached
+// from (+1, 0) by moving +Z and from (0, +1) by moving -X. Diagonal cells are
+// still covered — they are simply two moves rather than one — which is what a
+// 4-connected tunnel through stone does.
 void DrillSystem::getSpiralOffset(int32_t n, int32_t& dx, int32_t& dz) {
     const int32_t dirDx[] = {1, 0, -1, 0};
     const int32_t dirDz[] = {0, 1, 0, -1};
+    if (n <= 0) { dx = 0; dz = 0; return; }
+
     int32_t x = 0, z = 0;
     int32_t step = 1, dir = 0, count = 0;
-    while (count <= n) {
-        for (int32_t i = 0; i < 2 && count <= n; ++i) {
-            for (int32_t j = 0; j < step && count <= n; ++j) {
+    while (count < n) {
+        for (int32_t i = 0; i < 2 && count < n; ++i) {
+            for (int32_t j = 0; j < step && count < n; ++j) {
                 x += dirDx[dir]; z += dirDz[dir];
-                if (count == n) { dx = x; dz = z; return; }
                 ++count;
             }
             dir = (dir + 1) % 4;
         }
         ++step;
     }
-    dx = 0; dz = 0;
+    dx = x; dz = z;
 }
 
 // =========================================================================
@@ -281,6 +305,10 @@ void DrillSystem::onSearchBlockResult(entt::entity ent, int32_t wx, int32_t wy,
     drill->targetX = wx;
     drill->targetY = wy;
     drill->targetZ = wz;
+    // gp-7n7s: remember the ore that was FOUND, not the one the CAS will report
+    // back. The store's reply is a commitment about the cell at commit time, not
+    // about what the drill aimed at, and the two are allowed to differ.
+    drill->targetOreId = block.block_id;
     drill->miningTicksTotal = DrillComponent::calcMiningTicks(drill->tier);
     drill->miningProgress = drill->miningTicksTotal;
     drill->state = DrillState::MINING;
@@ -313,13 +341,46 @@ void DrillSystem::onMineComplete(entt::entity ent, const DrillComponent& drill,
 
     if (result.status != 0) {
         d->state = DrillState::SEARCHING;
+        // The target is abandoned, so the remembered ore id goes with it — a
+        // stale one would be used as a drop if the drill ever mined at these
+        // coordinates again.
+        d->targetOreId = 0;
         return;
     }
 
-    d->outputBuffer.emplace_back(oreToDrop(result.block_id), 1);
+    // gp-7n7s FIXED. The drop is derived from the ore the drill TARGETED, not
+    // from CASResult::block_id.
+    //
+    // result.block_id is the store's answer to "what was in that cell when I
+    // committed?", which is not a contract the drill can mine against:
+    //
+    //   * ChunkStore replies with resp->actual_block_id()
+    //     (src/apps/simcore/Network/clients/IoUringChunkClient.cpp:128), so
+    //     when another actor broke the block between the search and the CAS,
+    //     the reply carries the NEW id — often air (0). oreToDrop(0) is 0, and
+    //     that silent item_id 0 still consumed one of the 64 output slots;
+    //   * oreToDrop() is 0 for any ore absent from content::oreDropTable() —
+    //     redstone, lapis and diamond are mined and have no drop at all. Those
+    //     three permanently consumed an output slot each.
+    //
+    // Together those let a drill fill all 64 slots with item_id 0, latch into
+    // OUTPUT_FULL, and stop permanently — a buffer the player sees as full and
+    // can never empty, because the drops do not exist.
+    //
+    // A zero drop is now a no-op: the block is still removed from the world
+    // (the CAS already succeeded) and the drill returns to searching, but no
+    // phantom entry is buffered and no slot is spent on nothing.
+    const uint16_t drop = oreToDrop(d->targetOreId);
+    if (drop != 0) {
+        d->outputBuffer.emplace_back(drop, 1);
+    } else {
+        spdlog::debug("[Drill] ore {} has no drop; mined for nothing",
+                      d->targetOreId);
+    }
 
-    spdlog::debug("[Drill] mined block_id={} at ({},{},{})",
-                  result.block_id, drill.targetX, drill.targetY, drill.targetZ);
+    spdlog::debug("[Drill] mined block_id={} (targeted {}) at ({},{},{})",
+                  result.block_id, d->targetOreId, drill.targetX, drill.targetY,
+                  drill.targetZ);
 
     d->state = (d->outputBuffer.size() >= DrillComponent::kMaxOutputSize)
                ? DrillState::OUTPUT_FULL : DrillState::SEARCHING;
