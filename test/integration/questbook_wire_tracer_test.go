@@ -12,6 +12,16 @@ import (
 // client Ctrl frame 33 -> Gateway topic quest.book.open -> SimCore inventory
 // check -> QuestManager completion -> Gateway notifications.
 func TestQuestBookOpen_InventoryCompletion(t *testing.T) {
+	// TestMain starts one process-scoped cluster and every Ctrl connection is
+	// assigned player 1, so this tracer can prove its cause exactly once:
+	// quest state recorded on the first run suppresses the second run's
+	// completion notification and it would fail later with an unrelated read
+	// timeout. Claiming the run turns that into an explicit contract. The key
+	// is t.Name() so a rename cannot silently mint a second claim slot.
+	if err := testutil.ClaimSingleRun(t.Name()); err != nil {
+		t.Fatalf("repeat run: %v", err)
+	}
+
 	c, err := testutil.DialGateway(gw, 5*time.Second)
 	if err != nil {
 		t.Fatalf("dial Gateway: %v", err)
