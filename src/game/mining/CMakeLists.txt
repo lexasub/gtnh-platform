@@ -49,4 +49,45 @@ if(BUILD_TESTING)
         spdlog::spdlog
     )
     add_test(NAME adjacency_transfer_system_test COMMAND adjacency_transfer_system_test)
+
+    # mining_systems_test — DrillSystem, BatteryBufferSystem and
+    # CreativeGeneratorSystem (issues gp-fcvf / gp-lcuf / gp-ht7r), plus the
+    # server-side creative ITEM_ACTION inventory grant that CreativeGenerator
+    # does not own. Same harness as above: the project CHECK/TEST macros from
+    # src/engine/net/test/test.h, no GoogleTest anywhere in the build.
+    #
+    # DrillSystem needs content::oreDropTable / content::kOre* (gtnh_content)
+    # and the ItemEnergyStorage tool table; the grant half needs
+    # PlayerInventoryStore + PlayerActionDispatcher and the generated
+    # FlatBuffers headers (simcored_fbs).
+    add_executable(mining_systems_test
+        test/test_mining_systems.cpp
+        # PipeEnergyClient and IoUringRouterClient are compiled from source
+        # rather than linked from the simcored static lib, which would drag in
+        # main.cpp.o and a second main(). Same pattern as
+        # src/game/storage/CMakeLists.txt:chest_state_manager_test. Both are
+        # pure socket wrappers and the test drives them UNCONNECTED, so no
+        # thread, socket or network is ever created.
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore/Network/PipeEnergyClient.cpp
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore/Network/clients/IoUringRouterClient.cpp
+    )
+    target_include_directories(mining_systems_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+        ${CMAKE_BINARY_DIR}/src/apps/simcore/simcored_fbs
+    )
+    target_link_libraries(mining_systems_test PRIVATE
+        gtnh_game_mining
+        gtnh_game_actions
+        gtnh_game_storage
+        gtnh_content
+        gtnh_engine_sim
+        gtnh-net
+        EnTT::EnTT
+        flatbuffers::flatbuffers
+        asio::asio
+        spdlog::spdlog
+    )
+    add_dependencies(mining_systems_test simcored_fbs)
+    add_test(NAME mining_systems_test COMMAND mining_systems_test)
 endif()
