@@ -85,8 +85,9 @@ WrenchCycleResult WrenchHandler::cycleFace(uint64_t playerId, int32_t x, int32_t
     {
         flatbuffers::FlatBufferBuilder builder(128);
         std::vector<uint8_t> faces(machine.side_config, machine.side_config + 6);
+        Protocol::Vec3i pos(x, y, z); // required field — crash if nullptr
         auto config = Protocol::CreateMachineConfigUpdatedDirect(
-            builder, nullptr, machine.machine_id, 0, &faces, face, currentRole, newRole);
+            builder, &pos, machine.machine_id, 0, &faces, face, currentRole, newRole);
         builder.Finish(config);
         std::vector<uint8_t> eventData(builder.GetBufferPointer(),
                                         builder.GetBufferPointer() + builder.GetSize());
