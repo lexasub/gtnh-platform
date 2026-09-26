@@ -123,4 +123,61 @@ if(BUILD_TESTING)
     )
     add_dependencies(wrench_server_test simcored_fbs)
     add_test(NAME wrench_server_test COMMAND wrench_server_test)
+
+    # block_actions_test — the block WRITE seam: BreakBlockHandler (gp-n80c),
+    # PlaceBlockHandler (gp-we88) and the CAS primitive under both
+    # (CasRunner + SetBlockCASHandler, gp-rbcw).
+    #
+    # The committed action_dispatch_test already covers the ROUTING table and
+    # the multiblock break guard in both directions; this file deliberately
+    # covers only what that test cannot see — the drop table, the air case, the
+    # inventory-consumption edge cases, the postToMain indirection, the
+    # CONFLICT payload, and a genuinely concurrent CAS race.
+    #
+    # Same harness as its siblings: the project CHECK/TEST macros, no GoogleTest
+    # anywhere in the build (see the note at the top of this file).
+    #
+    # DROPS_CSV / TRANSFORMS_CSV are passed in so the tests can load the REAL
+    # data tables from disk rather than re-declaring them; a data change then
+    # shows up as a test diff instead of a silent divergence.
+    add_executable(block_actions_test
+        test/test_block_actions.cpp
+    )
+    target_compile_definitions(block_actions_test PRIVATE
+        MACHINES_YAML="${CMAKE_SOURCE_DIR}/src/content/data/registry/machines.yaml"
+        DROPS_CSV="${CMAKE_SOURCE_DIR}/src/content/data/registry/drops.csv"
+        TRANSFORMS_CSV="${CMAKE_SOURCE_DIR}/src/content/data/registry/transforms.csv"
+    )
+    target_include_directories(block_actions_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+        ${CMAKE_BINARY_DIR}/src/apps/simcore/simcored_fbs
+    )
+    # asio::asio is needed for EntityStateStoreClient.h (gp-juh2's
+    # MachineSlotHandler takes a shared_ptr to it), and gtnh-net for
+    # IoUringRouterClient.h. Both clients are compiled from source like
+    # wrench_server_test does, are never Connect()ed, and their Publish /
+    # SaveEntityState short-circuit when unconnected — so no socket, thread or
+    # network is created. The unconnected-router isolation is deliberate: the
+    # tests assert the ECS and publisher effects, which are the observable
+    # contract, not the wire.
+    target_link_libraries(block_actions_test PRIVATE
+        gtnh_game_actions
+        gtnh_game_storage
+        gtnh_game_world
+        gtnh_engine_sim
+        gtnh_engine_registry
+        gtnh_game_quests
+        gtnh-net
+        EnTT::EnTT
+        flatbuffers::flatbuffers
+        asio::asio
+        spdlog::spdlog
+    )
+    target_sources(block_actions_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore/Network/clients/EntityStateStoreClient.cpp
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore/Network/clients/IoUringRouterClient.cpp
+    )
+    add_dependencies(block_actions_test simcored_fbs)
+    add_test(NAME block_actions_test COMMAND block_actions_test)
 endif()
