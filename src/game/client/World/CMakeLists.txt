@@ -71,3 +71,41 @@ add_dependencies(gameclient_interaction_system_test game_client_fbs)
 add_test(NAME gameclient_interaction_system_test
          COMMAND gameclient_interaction_system_test)
 
+# gameclient_gamemode_gate_test — the game-mode interaction gate and the
+# GameModePerm matrix (beads gp-hf2y).
+#
+# gp-hf2y asks for the inline `gameMode != ADVENTURE && gameMode != SPECTATOR`
+# check in GameClient::Update to be extracted into a testable predicate. That
+# extraction edits production code this work item is not allowed to touch, so
+# the predicate is NOT extracted here; instead this test pins the behaviour the
+# extraction must preserve, and pins the one real defect it has to fix (the
+# inline check is a deny-list, so it ADMITS every mode the enum does not
+# define). The exact predicate to add is written out at the bottom of the test
+# file, with the line numbers it replaces.
+#
+# GameModePerm and InventoryState are header-only inline functions in
+# src/game/client/Common/Inventory.h, so this target compiles the test alone:
+# no production .cpp, no RenderLib, no bgfx, no GL context, no socket.
+# glm::glm is header-only and is linked only because Inventory.h transitively
+# includes game/client/Common/Types.h, which uses glm::vec3 for Ray/Frustum.
+# No GL context is created: nothing here calls into glm at runtime beyond the
+# type definitions the header needs.
+if(BUILD_TESTING)
+    add_executable(gameclient_gamemode_gate_test
+        test/GameModeGate_test.cpp
+    )
+
+    target_include_directories(gameclient_gamemode_gate_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/game/client
+        ${CMAKE_SOURCE_DIR}/src/game/client/Common
+    )
+
+    target_link_libraries(gameclient_gamemode_gate_test PRIVATE
+        glm::glm
+    )
+
+    add_test(NAME gameclient_gamemode_gate_test
+             COMMAND gameclient_gamemode_gate_test)
+endif()
+

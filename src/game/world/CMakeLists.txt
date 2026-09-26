@@ -70,3 +70,60 @@ if(BUILD_TESTING)
     )
     add_test(NAME chunk_event_test COMMAND chunk_event_test)
 endif()
+
+# block_drops_test — unit tests for BlockDrops.cpp, the CSV-driven
+# "broken X yields Y" rule table. Same harness and same rationale as
+# block_transforms_test above: the project has no GoogleTest dependency and CI
+# does not install it, so there is deliberately no find_package(GTest) guard
+# (a guarded test silently vanishes from CI instead of failing it). One test
+# pins the shipped src/content/data/registry/drops.csv, hence the
+# REGISTRY_DROPS_DIR define; every other test writes its own temp fixture.
+if(BUILD_TESTING)
+    add_executable(block_drops_test
+        test/BlockDrops_test.cpp
+    )
+    target_compile_definitions(block_drops_test PRIVATE
+        REGISTRY_DROPS_DIR="${CMAKE_SOURCE_DIR}/src/content/data/registry"
+    )
+    target_include_directories(block_drops_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(block_drops_test PRIVATE
+        gtnh_game_world
+    )
+    add_test(NAME block_drops_test COMMAND block_drops_test)
+endif()
+
+# world_container_inventory_test — unit tests for WorldContainerInventory.cpp
+# (container open/close/action, the flatbuffers blob round trip and the ECS
+# entity lifecycle). Same harness and same no-GoogleTest rationale as the
+# targets above.
+#
+# The class takes a std::shared_ptr to the CONCRETE, non-virtual
+# EntityStateStoreClient, so it cannot be injected with a double. This target
+# therefore compiles test/stub_entity_state_client.cpp, a link-time stub that
+# DEFINES the client members WorldContainerInventory.cpp calls and invokes the
+# callbacks synchronously — no socket, no io_context run, no thread, no
+# wall-clock waiting. Same pattern as src/game/storage/test/stub_chunk_client.cpp.
+# The real EntityStateStoreClient.cpp is deliberately NOT added here (it is
+# linked into simcored only, and adding it would be a duplicate symbol).
+if(BUILD_TESTING)
+    add_executable(world_container_inventory_test
+        test/WorldContainerInventory_test.cpp
+        test/stub_entity_state_client.cpp
+    )
+    target_include_directories(world_container_inventory_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+    )
+    target_link_libraries(world_container_inventory_test PRIVATE
+        gtnh_game_world
+        gtnh_engine_registry
+        EnTT::EnTT
+        flatbuffers::flatbuffers
+        spdlog::spdlog
+        asio::asio
+    )
+    add_dependencies(world_container_inventory_test simcored_fbs)
+    add_test(NAME world_container_inventory_test COMMAND world_container_inventory_test)
+endif()
