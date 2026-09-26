@@ -59,8 +59,45 @@ bool ItemRegistry::loadFromCSV(const std::string& csvPath) {
             continue;
         }
 
-        // Parse stack size (optional, default 64)
-        uint8_t stackSize = 64; //TODO - default for each subcategory is different
+        // Stack size comes from the `stack` column of items.csv; an EMPTY cell
+        // means "not specified", and the default below is the only value the
+        // data supports.
+        //
+        // gp-70j asked for a per-subcategory default and the data does not
+        // carry one. Over the 383 data rows of items.csv (comments/blanks
+        // excluded) the column is: 250 empty, 81 = 1, 47 = 64, 5 = 16 (the
+        // buckets), 1 = 0 (air). The populated values are coherent — 1 for
+        // tools and machine blocks, 16 for buckets, 64 for ordinary items —
+        // but the empty cells cut across those same subcategories: iron_pickaxe
+        // and bow are 1 while wooden_pickaxe and stone_pickaxe are empty;
+        // alloy_smelter_lv is 1 while heat_generator and rotare_generator are
+        // empty. So the column is a partially-filled field, not a subcategory
+        // rule, and item-subgroups.json (which the CSV header points at for
+        // the group layout) mentions "stack" zero times. No function of name
+        // prefix, id range or allocation pool reproduces the column, so a
+        // per-subcategory default here would be invented, not derived.
+        //
+        // The 64 that remains is the repo-wide invariant rather than a guess:
+        // it is the same constant in the client mirror
+        // (ClientItemRegistry.cpp:53, and its GetStackSize fallback at :94),
+        // and a single global 64 is what every inventory writer assumes —
+        // InventoryClick.h:34, PlayerInventoryStore.cpp:84,
+        // WorldContainerInventory.cpp:14, BreakBlockHandler.cpp:22. None of
+        // them consult this column, so a per-subcategory default would not
+        // change stacking behaviour; it would only make the registry disagree
+        // with the code that actually packs items.
+        //
+        // TO FINISH gp-70j: populate the empty `stack` cells in items.csv, or
+        // add a per-group limit to item-subgroups.json plus a lookup for it. The
+        // limits are known content facts, but they are absent for 250 of 383
+        // items and must not be guessed on their behalf.
+        //
+        // An explicit 0 in the cell is a real value, not a request for the
+        // default: the cell TEXT decides, which is the house rule
+        // BlockDrops.cpp:18-20 applies to an id cell, where the packed VALUE is
+        // ambiguous. The client mirror stores 0 the same way.
+        constexpr uint8_t kDefaultStackSize = 64;
+        uint8_t stackSize = kDefaultStackSize;
         if (!stackStr.empty()) {
             try {
                 stackSize = static_cast<uint8_t>(std::stoi(stackStr));
