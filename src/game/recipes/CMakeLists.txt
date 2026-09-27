@@ -103,4 +103,35 @@ if(BUILD_TESTING)
     )
     add_test(NAME recipe_manager_matching_test
              COMMAND recipe_manager_matching_test)
+
+    # content_reachability_test — gp-b2pl. The durable guard against content
+    # silently stranding subtrees: quest 74 was unpassable because
+    # transformer_lv_mv had no recipe, and nothing in the build said so.
+    #
+    # It reads the real content tree (recipes/, registry/items.csv, ores.json,
+    # drops.csv, quests/quest_requirements.json) through the real
+    # RecipeManager loader, so a recipe counts as accepted here exactly when the
+    # server accepts it. DATA_DIR is an absolute path injected by CMake, so
+    # nothing depends on the CWD. No GTest, same harness as the two targets
+    # above; see the test's header comment for the baseline policy.
+    add_executable(content_reachability_test
+        test/test_content_reachability.cpp
+    )
+    target_compile_definitions(content_reachability_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/src/content/data"
+    )
+    target_include_directories(content_reachability_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(content_reachability_test PRIVATE
+        gtnh_game_recipes
+        flatbuffers::flatbuffers
+        spdlog::spdlog
+        yaml-cpp::yaml-cpp
+        SQLite::SQLite3
+    )
+    add_test(NAME content_reachability_test
+             COMMAND content_reachability_test)
 endif()
