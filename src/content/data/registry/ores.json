@@ -1,4 +1,46 @@
 {
+  "_comment": [
+    "Ore vein definitions. Schema is read by OreConfig::load",
+    "(src/apps/world_generator/OreConfig.cpp:26-39): every entry needs",
+    "name, min_y, max_y, weight, primary, secondary, sporadic; density is",
+    "optional (default 0.5). Block ids are PACKED item ids verified against",
+    "src/content/data/registry/items.csv, NOT the constants in OreTypes.h",
+    "(that header stops at 10:10 and never defined 10:11-10:19).",
+    "",
+    "Placement rules the generator imposes on these values:",
+    "  * OreGenerator.cpp:13 picks a vein centre y uniformly from [5, 60],",
+    "    so a vein outside that range can never be selected. Every band below",
+    "    intersects [5, 60].",
+    "  * OreGenerator.cpp:36 selects only veins where min_y <= y <= max_y,",
+    "    weighted by `weight`.",
+    "  * OreGenerator.cpp:163-173 paints primary in the core, secondary in the",
+    "    wing, sporadic only where 3D noise > 0.5.",
+    "",
+    "Band rationale is derived from content already in the repo, not invented:",
+    "  * diamond_deep_vein is pre-existing and untouched.",
+    "  * iron_nickel_vein: secondary 10:3 -> 10:14. That slot held copper_ore",
+    "    (items.csv:268) despite the vein being named for nickel, while 10:14",
+    "    nickel_ore (items.csv:285) was named by no vein at all. Ids verified",
+    "    against items.csv, not against OreTypes.h.",
+    "  * copper_tin_vein: primary 10:0 -> 10:3. Same defect: the vein is named",
+    "    for copper but its core was iron_ore, and 10:3 copper_ore was placed",
+    "    ONLY by iron_nickel_vein's buggy slot. Fixing iron_nickel_vein alone",
+    "    therefore deletes copper from the world, so both slots are corrected",
+    "    together. iron still leads via iron_nickel_vein.",
+    "  * sulfur is a fluid-era reagent (chemical_reactor sulfuric acid),",
+    "    paired with the existing redstone band.",
+    "  * quartz is a low-banded gangue mineral, paired with the deep band.",
+    "  * electrum, uranium, platinum, iridium, osmium and chromium are all",
+    "    rare_materials era (quests.csv 101-113) and are placed mid/deep,",
+    "    away from the shallow copper/tin band.",
+    "  * lead, zinc, silver and nickel are common smelt ores and stay in the",
+    "    mid bands beside the iron vein.",
+    "",
+    "Every band is clamped to [5,60] because that is the range the generator",
+    "samples centre y from; the precise depth per ore is a tuning decision,",
+    "not a derived constant. tools/reachability_audit.py --veins enforces the",
+    "two hard invariants: every registered ore is placed, and no band is dead."
+  ],
   "veins": [
     {
       "name": "copper_tin_vein",
@@ -6,7 +48,7 @@
       "max_y": 80,
       "weight": 40,
       "density": 0.6,
-      "primary": "10:0",
+      "primary": "10:3",
       "secondary": "10:2",
       "sporadic": "10:1"
     },
@@ -17,7 +59,7 @@
       "weight": 30,
       "density": 0.7,
       "primary": "10:0",
-      "secondary": "10:3",
+      "secondary": "10:14",
       "sporadic": "10:6"
     },
     {
@@ -29,6 +71,76 @@
       "primary": "10:9",
       "secondary": "10:7",
       "sporadic": "10:8"
+    },
+    {
+      "name": "zinc_lead_vein",
+      "min_y": 15,
+      "max_y": 45,
+      "weight": 14,
+      "density": 0.55,
+      "primary": "10:19",
+      "secondary": "10:13",
+      "sporadic": "10:17"
+    },
+    {
+      "name": "sulfur_vein",
+      "min_y": 10,
+      "max_y": 35,
+      "weight": 10,
+      "density": 0.5,
+      "primary": "10:18",
+      "secondary": "10:19",
+      "sporadic": "10:4"
+    },
+    {
+      "name": "quartz_gangue_vein",
+      "min_y": 8,
+      "max_y": 30,
+      "weight": 12,
+      "density": 0.45,
+      "primary": "10:5",
+      "secondary": "10:12",
+      "sporadic": "10:7"
+    },
+    {
+      "name": "electrum_vein",
+      "min_y": 12,
+      "max_y": 32,
+      "weight": 6,
+      "density": 0.35,
+      "primary": "10:10",
+      "secondary": "10:1",
+      "sporadic": "10:17"
+    },
+    {
+      "name": "uranium_vein",
+      "min_y": 6,
+      "max_y": 24,
+      "weight": 5,
+      "density": 0.35,
+      "primary": "10:4",
+      "secondary": "10:6",
+      "sporadic": "10:10"
+    },
+    {
+      "name": "chromium_vein",
+      "min_y": 10,
+      "max_y": 28,
+      "weight": 6,
+      "density": 0.4,
+      "primary": "10:11",
+      "secondary": "10:15",
+      "sporadic": "10:16"
+    },
+    {
+      "name": "platinum_group_vein",
+      "min_y": 5,
+      "max_y": 18,
+      "weight": 4,
+      "density": 0.3,
+      "primary": "10:16",
+      "secondary": "10:12",
+      "sporadic": "10:15"
     }
   ]
 }
