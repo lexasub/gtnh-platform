@@ -22,7 +22,11 @@ from tools.editor_model import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ITEMS_CSV = REPO_ROOT / "data" / "registry" / "items.csv"
+# The real content root is src/content/data/ (AGENTS.md: the root data/ and
+# src/data/ trees are legacy/tooling only). This pointed at data/registry/,
+# which does not exist, so the two "real registry" tests were failing with
+# FileNotFoundError rather than testing anything (gp-a4k).
+ITEMS_CSV = REPO_ROOT / "src" / "content" / "data" / "registry" / "items.csv"
 
 
 class ItemRegistryMigrationTests(unittest.TestCase):
