@@ -714,8 +714,29 @@ recipes:
     max_tier: 32767
 
   # ── Transformers ──────────────────────────────────────────
+  # The chain has five rungs; each recipe wraps the same iron-core /
+  # redstone-core frame in the two conductor tiers it bridges. A rung's
+  # high-side cable appears 3x, its low-side cable 2x, four iron_ingot
+  # corners, one redstone core.
+  # LV↔MV: tin input side, copper output side, iron core.        (gp-b2pl)
   # MV↔HV: copper input side, gold output side, iron core.
   # HV↔EV: gold input side, aluminium output side, redstone core.
+
+  - name: transformer_lv_mv
+    pattern:
+      - [iron_ingot, cable_copper, iron_ingot]
+      - [cable_copper, redstone, cable_tin]
+      - [iron_ingot, cable_tin, iron_ingot]
+    inputs:
+      - { item: iron_ingot, count: 4 }
+      - { item: cable_copper, count: 3 }
+      - { item: cable_tin, count: 2 }
+      - { item: redstone, count: 1 }
+    outputs:
+      - { item: transformer_lv_mv, count: 1 }
+    duration: 200
+    min_tier: 0
+    max_tier: 32767
 
   - name: transformer_mv_hv
     pattern:
