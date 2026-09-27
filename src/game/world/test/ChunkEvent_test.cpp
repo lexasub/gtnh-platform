@@ -232,6 +232,42 @@ static void test_AnyFlatbufferWithAStructAtSlotFourIsAccepted() {
   CHECK_EQ(snapshot.getBlock(0, 0, 0), 0u);
 }
 
+// gp-mlcj: garbage off the wire must not become a coordinate.
+//
+// The test above, AnyFlatbufferWithAStructAtSlotFourIsAccepted, feeds a
+// well-formed ChunkData to a constructor that reads a BlockChangedEvent. That
+// still passes with a Verifier in place, and it is the honest limit of what
+// verification buys: flatbuffers verification is STRUCTURAL, not type-tagged,
+// so the wrong message type still verifies. Pinning that here means the gap is
+// documented rather than discovered later.
+//
+// What the Verifier does buy is refusal of bytes that are not a flatbuffer at
+// all. GetRoot never returns null - it manufactures a Table* from whatever it
+// is handed - so before gp-mlcj the first read of an attacker-controlled offset
+// was snapshot->pos() on the next line. These three cases are that, tested.
+static void test_GarbageBytesDoNotBecomeACoordinate() {
+  // 64 bytes of noise: enough to have a plausible-looking root offset.
+  const std::vector<uint8_t> noise(64, 0xAB);
+  const ChunkSnapshot a(noise.data(), noise.size());
+  CHECK_EQ(a.coord().x, 0);
+  CHECK_EQ(a.coord().y, 0);
+  CHECK_EQ(a.coord().z, 0);
+
+  // A truncated real buffer: the root offset is past the end.
+  flatbuffers::FlatBufferBuilder fbb(64);
+  Protocol::Vec3i coord(7, 8, 9);
+  const auto block_vec = fbb.CreateVector(std::vector<uint16_t>{11, 22, 33});
+  fbb.Finish(Protocol::CreateChunkData(fbb, &coord, block_vec, 0, 0));
+  const std::vector<uint8_t> full(fbb.GetBufferPointer(),
+                                   fbb.GetBufferPointer() + fbb.GetSize());
+  for (size_t cut : {size_t(1), size_t(4), full.size() / 2}) {
+    const ChunkSnapshot t(full.data(), cut);
+    CHECK_EQ(t.coord().x, 0);
+    CHECK_EQ(t.coord().y, 0);
+    CHECK_EQ(t.coord().z, 0);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // ChunkEventHandler: validation gate
 // ---------------------------------------------------------------------------
@@ -557,6 +593,7 @@ int main() {
   TEST(GettersReturnZeroAtCoordinateExtremes);
   TEST(ConstructionIsDeterministic);
   TEST(AnyFlatbufferWithAStructAtSlotFourIsAccepted);
+  TEST(GarbageBytesDoNotBecomeACoordinate);
   TEST(EmptyPayloadIsIgnored);
   TEST(InvalidBuffersAreIgnored);
   TEST(RejectionDoesNotPoisonLaterEvents);

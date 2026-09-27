@@ -4,6 +4,7 @@
 #include <apps/simcore/Common/xyz.h>
 #include <cstring>
 #include <flatbuffers/flatbuffers.h>
+#include <common/FlatBuffersVerify.h>
 
 namespace simcore {
 
@@ -11,7 +12,18 @@ namespace simcore {
         : data_(data, data + len)
     {
         // Разбираем flatbuffers сообщение
-        auto snapshot = flatbuffers::GetRoot<Protocol::BlockChangedEvent>(data_.data());
+        //
+        // Verified before GetRoot (gp-mlcj). This was the last of the ~20
+        // network-facing parse sites that had no Verifier, and it is the shape
+        // the others were: `auto snapshot = GetRoot<T>(...)` then an unguarded
+        // dereference, which reads as if it were checked. GetRoot never returns
+        // null - it manufactures a Table* from whatever bytes it is handed - so
+        // the first real read of an attacker-controlled offset was the field
+        // access on the next line. The existing null branch below is kept and
+        // now serves both cases: a failed verification and a missing table both
+        // leave coord_ at the zeroed default.
+        auto snapshot = gtnh::wire::VerifyAndGetRoot<Protocol::BlockChangedEvent>(
+            data_.data(), len);
         if (!snapshot) {
             // пустой снимок, координаты нулевые
             coord_ = {0,0,0};
