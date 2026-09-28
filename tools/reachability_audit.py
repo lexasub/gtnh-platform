@@ -280,6 +280,29 @@ def load_ore_blocks(path: str) -> list[str]:
     return out
 
 
+def load_fluid_ids() -> set[str]:
+    """Every packed block id registered in fluids.csv."""
+    path = os.path.join(REGISTRY, "fluids.csv")
+    if not os.path.exists(path):
+        return set()
+    ids: set[str] = set()
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in csv.reader(fh):
+            if not row:
+                continue
+            first = row[0].strip()
+            if not first or first.startswith("#") or first == "item_id":
+                continue
+            ids.add(first)
+    return ids
+
+
+# Fluids that some earlier rule wanted to treat as obtainable but that
+# drops.csv never actually yields. Reported so the number is visible instead of
+# silently inflating the reachable count.
+fluids_without_item_source: set[str] = set()
+
+
 def world_base(items_by_id):
     """Items obtainable with zero crafting, and the reason for each."""
     base: dict[str, str] = {}
@@ -312,6 +335,23 @@ def world_base(items_by_id):
     for ref in load_ore_blocks(os.path.join(REGISTRY, "ores.json")):
         if ref in items_by_id:
             base.setdefault(ref, "ores.json vein")
+
+    # fluids.csv -- a registered fluid is a BLOCK, not an inventory item.
+    #
+    # WorldGenerator.cpp:26 places BLOCK_WATER, which is why water used to be
+    # added to the base set. That was wrong for every fluid: a water block in
+    # the terrain is scenery, and there is no way to turn it into the item
+    # `water` that recipes require. drops.csv is the only block -> item bridge
+    # in the game, and it maps nothing to a fluid id.
+    #
+    # So a fluid counts as obtainable only when drops.csv actually yields it,
+    # which is what the drops.csv loop above already established. Reaching this
+    # point with a fluid in `base` means a recipe wants the block-as-item and
+    # the game cannot supply it.
+    for ref in load_fluid_ids():
+        if ref in base and ref in items_by_id:
+            del base[ref]
+            fluids_without_item_source.add(ref)
 
     return base
 
@@ -558,6 +598,15 @@ def main() -> int:
     print(f"recipes live          : {len(live)}   (rejected by runtime rules: {len(rejected)})")
     print(f"world base set        : {len(base)}")
     print(f"fixpoint rounds       : {rounds}")
+    if fluids_without_item_source:
+        names = sorted(
+            items_by_id[ref] for ref in fluids_without_item_source if ref in items_by_id
+        )
+        print()
+        print(f"  NOTE: {len(names)} fluid(s) are registered as items but the world never")
+        print("  yields them as inventory items (no drops.csv mapping):")
+        print("    " + ", ".join(names))
+        print("  A fluid BLOCK in the terrain is not a craftable ITEM.")
     print()
     print(f"CRAFTABLE             : {len(craftable)}")
     print(f"UNREACHABLE           : {len(unreachable)}")
