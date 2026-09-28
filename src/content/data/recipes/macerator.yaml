@@ -90,6 +90,16 @@ recipes:
   # yields aluminium dust AND titanium dust from the same ore. Both outputs are here
   # deliberately, so the bauxite vein is a genuine two-metal source rather than a
   # single-metal ore with an arbitrary name.
+  - name: gtnh:mac_nickel_ore
+    inputs:
+      - { item: nickel_ore, count: 1 }
+    outputs:
+      - { item: nickel_dust, count: 2 }
+    duration: 400
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
   - name: gtnh:mac_bauxite_ore
     inputs:
       - { item: bauxite_ore, count: 1 }
