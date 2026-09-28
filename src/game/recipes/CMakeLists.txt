@@ -134,4 +134,38 @@ if(BUILD_TESTING)
     )
     add_test(NAME content_reachability_test
              COMMAND content_reachability_test)
+
+    # recipe_item_resolution_test — gp-hmb0. A recipe naming an item the
+    # registry does not know used to load with item_id 0, and matches() then
+    # SKIPPED that requirement (`if (req.item_id == 0) continue;`), so the
+    # slot demanded nothing and the output was free.
+    #
+    # Note the trap this test exists to pin: `0:0:0,air` is a real row in
+    # registry/items.csv and packs to 0, so "id == 0" cannot mean "failed to
+    # resolve". The tests therefore assert the split explicitly — unresolved
+    # NAMES are rejected, while air / packed ids / no-item-key inputs /
+    # producer recipes with no outputs all keep loading exactly as before.
+    #
+    # Same CHECK/TEST harness and the same no-GTest rule as the targets above.
+    # Reads the real items.csv (DATA_DIR) because resolution IS the subject;
+    # recipe fixtures are mkstemp files, removed again.
+    add_executable(recipe_item_resolution_test
+        test/test_recipe_item_resolution.cpp
+    )
+    target_compile_definitions(recipe_item_resolution_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/src/content/data"
+    )
+    target_include_directories(recipe_item_resolution_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(recipe_item_resolution_test PRIVATE
+        gtnh_game_recipes
+        flatbuffers::flatbuffers
+        spdlog::spdlog
+        yaml-cpp::yaml-cpp
+        SQLite::SQLite3
+    )
+    add_test(NAME recipe_item_resolution_test
+             COMMAND recipe_item_resolution_test)
 endif()

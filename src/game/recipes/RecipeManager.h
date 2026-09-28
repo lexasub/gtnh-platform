@@ -175,6 +175,42 @@ private:
   /// flat numeric (all digits), else string name. Returns packed uint16_t.
   uint16_t resolveItemId(const std::string &itemStr) const;
 
+  /// gp-hmb0: how one `item:` scalar was resolved by resolveItemId.
+  ///
+  /// The three-way split exists because the packed id CANNOT express the
+  /// difference: id 0 is both the "unresolved" return value and the real id
+  /// of `air` (0:0:0 in registry/items.csv), so a caller testing `id == 0`
+  /// would have to guess. Note that only the NAME branch can fail —
+  /// a hierarchical or all-digits scalar is packed arithmetically and is
+  /// never looked up, exactly as before this change.
+  enum class ItemResolution : uint8_t {
+    Name,        // resolved through the registry (may legitimately be air/0)
+    Literal,     // hierarchical or flat-numeric scalar, packed arithmetically
+    Unresolved,  // a NAME that is not in the registry — rejected at load time
+  };
+
+  /// Resolve an `item:` scalar AND report whether it was found.
+  ///
+  /// This is the single entry point the YAML parsers use. The key point is
+  /// that the format detection is shared with resolveItemId (see
+  /// isNameForm), so a name is only ever sent to the registry, and only a
+  /// name can come back Unresolved. `outId` is the same value resolveItemId
+  /// would have returned, so numeric/packed ids are bit-for-bit unaffected.
+  ItemResolution resolveItemIdChecked(const std::string &itemStr,
+                                      uint16_t &outId) const;
+
+  /// True when the scalar is a NAME, i.e. the only form that requires a
+  /// registry lookup: no ':' and at least one non-digit character. This is
+  /// the exact classification resolveItemId performs, factored out so the
+  /// checked and unchecked paths cannot drift apart.
+  static bool isNameForm(const std::string &itemStr);
+
+  /// gp-hmb0: the first `item:` (or `replace:`) scalar in `node` that is a
+  /// NAME the item registry does not know, or "" when the node is clean.
+  /// The load-time rejection predicate: a non-empty return means the recipe
+  /// must be rejected, because the scalar would otherwise resolve to 0.
+  std::string firstUnresolvedItemName(const YAML::Node &node) const;
+
   // ── Helpers ──────────────────────────────────────────────────────
   std::vector<ItemStack>
   convertContainerItems(const Protocol::Container *container) const;

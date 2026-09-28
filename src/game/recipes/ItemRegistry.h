@@ -34,6 +34,19 @@ public:
   const ItemDefinition *getItem(uint16_t id) const;
   const ItemDefinition *getItemByName(const std::string &name) const;
 
+  /// True when `name` is a key in the registry's name table.
+  ///
+  /// gp-hmb0: `nameToId` returns 0 both for "no such item" and for the one
+  /// legitimate item whose id IS 0 — `0:0:0,air` in registry/items.csv. A
+  /// caller therefore cannot treat "result == 0" as "resolution failed"
+  /// without also rejecting `item: air`. This predicate is the actual
+  /// membership test; `nameToId` is the value lookup. Deliberately a
+  /// read-only addition: it does not change nameToId's signature or
+  /// behaviour, so every existing caller is unaffected.
+  [[nodiscard]] bool hasName(const std::string &name) const {
+    return itemsByName_.contains(name);
+  }
+
   uint16_t nameToId(const std::string &name) const;
   std::string idToName(uint16_t id) const;
   std::string idToHierarchical(uint16_t id) const;

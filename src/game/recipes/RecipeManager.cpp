@@ -156,6 +156,22 @@ bool Recipe::matches(const std::vector<ItemStack>& container_items) const {
     std::vector<bool> used(container_items.size(), false);
 
     for (const auto& req : inputs) {
+        // gp-hmb0: this skip is load-bearing and stays, but its meaning is now
+        // stated rather than implied. item_id == 0 is the "intentionally
+        // empty slot" encoding — an input node written without an `item:`
+        // key, a positional pattern cell that must be empty, or the literal
+        // `air`, which is the one registered item whose id IS 0
+        // (`0:0:0,air` in registry/items.csv). Those must keep matching, so
+        // the line cannot simply be deleted.
+        //
+        // What it is NOT is the loader's failure signal. A name that failed
+        // to resolve also arrived here as 0, which silently turned the
+        // requirement into "no ingredient needed" and let the craft succeed
+        // for free. That is closed upstream now: parseYamlRecipe rejects any
+        // recipe with an unresolved NAME (RecipeManager.cpp firstUnresolvedItemName),
+        // so a recipe that is in recipes_ can no longer reach this loop with
+        // a failed-to-resolve ingredient. The skip below therefore only ever
+        // sees the legitimate empty-slot encoding.
         if (req.item_id == 0) continue;
         bool found = false;
         for (size_t i = 0; i < container_items.size(); ++i) {
@@ -592,21 +608,69 @@ uint16_t RecipeManager::resolveItemName(const std::string& name) const {
 //   1. Hierarchical prefix:  contains ':'  -> ItemId::pack("0:0:13")
 //   2. Flat numeric:         all digits    -> ItemId::pack("13")   (backward compat)
 //   3. String name:          anything else -> ItemRegistry::nameToId
-uint16_t RecipeManager::resolveItemId(const std::string& itemStr) const {
-    if (itemStr.find(':') != std::string::npos)
-        return ItemId::pack(itemStr);
-
-    bool allDigits = !itemStr.empty();
+bool RecipeManager::isNameForm(const std::string& itemStr) {
+    if (itemStr.empty()) return false;
+    if (itemStr.find(':') != std::string::npos) return false;
     for (char c : itemStr) {
-        if (c < '0' || c > '9') {
-            allDigits = false;
-            break;
-        }
+        if (c < '0' || c > '9') return true;
     }
-    if (allDigits)
+    return false; // all digits — the flat-numeric form
+}
+
+uint16_t RecipeManager::resolveItemId(const std::string& itemStr) const {
+    if (!isNameForm(itemStr))
         return ItemId::pack(itemStr);
 
     return resolveItemName(itemStr);
+}
+
+// gp-hmb0: same value as resolveItemId, plus the membership answer the plain
+// id cannot carry. `outId` is exactly what resolveItemId returns, so the
+// Literal and Name paths are bit-for-bit what they were before; only the
+// Unresolved case is new information, and only a NAME can produce it.
+RecipeManager::ItemResolution
+RecipeManager::resolveItemIdChecked(const std::string& itemStr, uint16_t& outId) const {
+    if (!isNameForm(itemStr)) {
+        outId = ItemId::pack(itemStr);
+        return ItemResolution::Literal;
+    }
+
+    // hasName() — not `nameToId(...) == 0` — is the test that separates
+    // "unknown item" from "the item whose id is 0" (air, 0:0:0 in
+    // registry/items.csv). resolveItemName() is still the value lookup.
+    if (!ItemRegistry::instance().hasName(itemStr)) {
+        outId = 0;
+        return ItemResolution::Unresolved;
+    }
+
+    outId = resolveItemName(itemStr);
+    return ItemResolution::Name;
+}
+
+// gp-hmb0: return the first scalar in `node` that is a NAME the registry does
+// not know, or "" when the node is clean. Checks both resolution-bearing
+// keys of an input node.
+//
+// `replace:` is checked alongside `item:` because it feeds the same id space:
+// an unresolved `replace` silently becomes 0, which consumeInputs reads as
+// "no replacement" — so a `consume: false` bucket input would be consumed
+// anyway, the exact sibling of this bug. Output nodes have no `replace`, and
+// the lookup tolerates its absence, so one helper serves both sides.
+//
+// A node with no `item` at all is NOT reported: that is the "intentionally
+// empty slot" case the id-0 skip in matches() exists to support, and it is
+// exactly what must keep working.
+std::string RecipeManager::firstUnresolvedItemName(const YAML::Node& node) const {
+    if (!node.IsMap()) return {};
+    for (const char* key : {"item", "replace"}) {
+        const YAML::Node value = node[key];
+        if (!value || !value.IsScalar()) continue;
+        const std::string itemStr = value.as<std::string>();
+        if (!isNameForm(itemStr)) continue;  // packed / numeric — never a lookup
+        if (ItemRegistry::instance().hasName(itemStr)) continue; // resolved (maybe air/0)
+        return itemStr;
+    }
+    return {};
 }
 
 bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& defaultClass) {
@@ -664,6 +728,36 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
             }
         }
 
+        // gp-hmb0: a name that is not in the registry used to be pushed
+        // anyway with item_id 0, and Recipe::matches then skipped it
+        // (`if (req.item_id == 0) continue;`), so the recipe demanded nothing
+        // for that slot and crafted for free. The key-presence check above
+        // cannot catch that — it distinguishes "explicitly written" from
+        // "absent", not "resolved" from "failed to resolve". Reject here.
+        //
+        // Only NAME forms are rejected: a hierarchical ("0:0:13") or
+        // all-digits scalar is packed arithmetically and was never a lookup,
+        // so those recipes keep loading exactly as before. Same rule as the
+        // output side, and the same exemption for the generator/boiler class
+        // that skips the outputs block entirely.
+        {
+            const YAML::Node inputsNode = yaml["inputs"];
+            if (inputsNode && inputsNode.IsSequence()) {
+                for (size_t i = 0; i < inputsNode.size(); ++i) {
+                    const std::string bad = firstUnresolvedItemName(inputsNode[i]);
+                    if (!bad.empty()) {
+                        spdlog::error(
+                            "YAML recipe '{}': input {} names item '{}', which is not "
+                            "in the item registry — rejecting the recipe (an unresolved "
+                            "name would otherwise become id 0 and the requirement be "
+                            "skipped entirely, crafting for free)",
+                            recipe.id, i, bad);
+                        return false;
+                    }
+                }
+            }
+        }
+
         // Optional positional 3x3 pattern (crafting table). When present,
         // matching/crafting is positional instead of aggregate.
         // Accepted shapes: 3 rows of 3 cells, or a flat list of 9 cells.
@@ -672,13 +766,24 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
             auto pat = yaml["pattern"];
             recipe.has_pattern = true;
             size_t cell = 0;
+            // gp-hmb0: first pattern cell naming an unregistered item, if any.
+            std::string patternBadName;
             auto readCell = [&](const YAML::Node& n) {
                 if (cell >= 9) return;
                 std::string val;
                 if (n && !n.IsNull() && n.IsScalar()) val = n.as<std::string>("");
-                if (!val.empty())
+                if (!val.empty()) {
+                    // gp-hmb0: an unresolved name here packs to 0, and matches()
+                    // reads a 0 cell as "this cell must be EMPTY" — so a typo
+                    // would silently turn a required ingredient into a demand
+                    // for an empty slot. Same rule as inputs/outputs.
+                    if (isNameForm(val) && !ItemRegistry::instance().hasName(val)) {
+                        patternBadName = val;
+                        ++cell;
+                        return;
+                    }
                     recipe.pattern[cell] = {resolveItemId(val), 1, 0};
-                else
+                } else
                     recipe.pattern[cell] = {0, 0, 0};
                 ++cell;
             };
@@ -693,6 +798,14 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
                         }
                     }
                 }
+            }
+            if (!patternBadName.empty()) {
+                spdlog::error(
+                    "YAML recipe '{}': pattern cell names item '{}', which is not "
+                    "in the item registry — rejecting the recipe (it would pack to "
+                    "id 0 and matches() reads a 0 cell as 'must be empty')",
+                    recipe.id, patternBadName);
+                return false;
             }
         }
 
@@ -710,6 +823,23 @@ bool RecipeManager::parseYamlRecipe(const YAML::Node& yaml, const std::string& d
             if (recipe.outputs.empty()) {
                 spdlog::warn("YAML recipe '{}': empty outputs", recipe.id);
                 return false;
+            }
+
+            // gp-hmb0: the output side of the same hole. This block only ever
+            // proved that the SEQUENCE existed and was non-empty; a name that
+            // resolved to nothing still counted, and the id 0 then travelled
+            // to the client as a real stack (craft result) or was silently
+            // dropped by buildRecipeInfo. Same NAME-form-only rule as inputs,
+            // same exemption for packed/numeric ids.
+            for (size_t i = 0; i < outputs.size(); ++i) {
+                const std::string bad = firstUnresolvedItemName(outputs[i]);
+                if (!bad.empty()) {
+                    spdlog::error(
+                        "YAML recipe '{}': output {} names item '{}', which is "
+                        "not in the item registry — rejecting the recipe",
+                        recipe.id, i, bad);
+                    return false;
+                }
             }
         }
 
