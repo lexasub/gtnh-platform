@@ -11,7 +11,18 @@
     // back into a lie. Deleting an id whose content got fixed is exactly
     // right, and the ratchet tightens.
     //
-    // 143 entries at generation time.
+    // 144 entries at generation time.
+    //
+    // 64570 is `oil`, added when the recipe fluid port
+    // (RecipeTypes.h:52 FluidIOItem) became visible to this model. Nothing
+    // produces oil anywhere, yet gtnh:chemical_reactor_oil_crack consumes it
+    // through `fluid_inputs` to make ethylene, so the whole polymer chain hangs
+    // off a fluid the game cannot yield. It belongs in this snapshot as
+    // KNOWN DEBT, and it is not a silent widening: the strand is asserted by
+    // name, with its reasons, in test_oil_is_a_stranded_fluid_input_on_purpose,
+    // exactly as coolant is. When oil gets a real source that test fails and
+    // the entry gets deleted -- the ratchet tightening, not the guard being
+    // turned off.
     "5",
     "6",
     "9",
@@ -155,3 +166,4 @@
     "64517",
     "64518",
     "64519",
+    "64570",

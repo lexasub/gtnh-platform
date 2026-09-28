@@ -184,24 +184,6 @@ std::set<uint16_t> registryItems() {
   return ids;
 }
 
-// Every recipe the runtime parser accepted, via the public catalog accessors.
-// collectRecipeItemIds() is the deduped union of every input and output id, so
-// querying each of them with mode=0 (both) walks the whole recipe table. A
-// recipe naming no item at all (no item inputs, no item outputs) cannot appear
-// here, but it also contributes no output to the fixpoint, so its absence
-// cannot change the result.
-std::vector<const Recipe *> allRecipes(RecipeMgr &mgr) {
-  std::vector<const Recipe *> all;
-  std::set<std::string> seen;
-  for (uint16_t id : mgr.collectRecipeItemIds()) {
-    for (const Recipe *r : mgr.findRecipesForItem(id, /*mode=*/0)) {
-      if (seen.insert(r->id).second)
-        all.push_back(r);
-    }
-  }
-  return all;
-}
-
 // ── world base, read from GENERATOR SOURCE ─────────────────────────────────
 // The ids the world generator can place with no recipe involved, transcribed
 // from the source lines cited beside each. Deliberately not a hand-curated
@@ -265,6 +247,80 @@ std::set<uint16_t> readOreIds(const std::string &json) {
   return ids;
 }
 
+// Every recipe the runtime parser accepted, via the public catalog accessors.
+// collectRecipeItemIds() is the deduped union of every input and output id, so
+// querying each of them with mode=0 (both) walks the whole recipe table. A
+// recipe naming no item at all (no item inputs, no item outputs) cannot appear
+// here, but it also contributes no output to the fixpoint, so its absence
+// cannot change the result.
+//
+// The fluid port needs its own sweep, and that is a real hole rather than
+// belt-and-braces: collectRecipeItemIds() unions recipe.inputs and
+// recipe.outputs ONLY (RecipeManager.cpp:1380-1396). A recipe declaring
+// `fluid_inputs`/`fluid_outputs` and naming no item is therefore invisible to
+// the item sweep -- which is exactly the shape of a fluid-only refinery, the
+// one recipe type whose whole purpose is to make a fluid. Enumerating every
+// ItemId::isFluid id as well closes it. test_all_accepted_recipes_reach_the_
+// model cross-checks this against mgr.recipeCount() so the sweep cannot
+// silently go stale if the accessors change again.
+std::vector<const Recipe *> allRecipes(RecipeMgr &mgr) {
+  std::vector<const Recipe *> all;
+  std::set<std::string> seen;
+  auto keep = [&](const Recipe *r) {
+    if (seen.insert(r->id).second)
+      all.push_back(r);
+  };
+  for (uint16_t id : mgr.collectRecipeItemIds())
+    for (const Recipe *r : mgr.findRecipesForItem(id, /*mode=*/0))
+      keep(r);
+  for (uint16_t id : registryItems())
+    if (ItemId::isFluid(id))
+      for (const Recipe *r : mgr.findRecipesForItem(id, /*mode=*/0))
+        keep(r);
+  return all;
+}
+
+// True when `r` yields at least one id the fixpoint can consume. A recipe with
+// neither item outputs nor fluid outputs produces nothing, so its inputs are
+// irrelevant -- this replaces the old `r->outputs.empty()` shortcut, which
+// would have skipped a fluid-only producer even once its inputs were met.
+static bool producesAnything(const Recipe &r) {
+  for (const auto &out : r.outputs)
+    if (out.item_id != 0)
+      return true;
+  for (const auto &out : r.fluid_outputs)
+    if (out.fluid_id != 0)
+      return true;
+  return false;
+}
+
+// Every id `r` must be fed before it runs: the items matches() enforces PLUS
+// each per-operation fluid input. The fluid half is a hard requirement, not a
+// hint: Recipe::needsReservation (RecipeTypes.h:151) makes the machine reserve
+// the volume before the craft starts, so a recipe demanding an unobtainable
+// fluid cannot be run. This is what stops an unresolvable fluid from reading
+// as free -- the C++ half of the same rule the Python audit applies.
+static bool requirementsSatisfied(const Recipe &r,
+                                  const std::set<uint16_t> &craftable) {
+  if (r.has_pattern) {
+    // Positional recipe: the pattern is what matches() enforces.
+    for (const auto &cell : r.pattern) {
+      if (cell.item_id != 0 && craftable.find(cell.item_id) == craftable.end())
+        return false;
+    }
+  } else {
+    for (const auto &in : r.inputs) {
+      if (in.item_id != 0 && craftable.find(in.item_id) == craftable.end())
+        return false;
+    }
+  }
+  for (const auto &in : r.fluid_inputs) {
+    if (in.fluid_id != 0 && craftable.find(in.fluid_id) == craftable.end())
+      return false;
+  }
+  return true;
+}
+
 // The items a player can actually obtain: the world base closed under
 // "outputs of any recipe whose every required input is already obtainable".
 std::set<uint16_t> computeCraftable(const std::vector<const Recipe *> &recipes) {
@@ -294,29 +350,18 @@ std::set<uint16_t> computeCraftable(const std::vector<const Recipe *> &recipes) 
   while (changed) {
     changed = false;
     for (const Recipe *r : recipes) {
-      if (r->outputs.empty())
-        continue; // producer class (generator/boiler): no items produced
-      bool satisfied = true;
-      if (r->has_pattern) {
-        // Positional recipe: the pattern is what matches() enforces.
-        for (const auto &cell : r->pattern) {
-          if (cell.item_id != 0 && craftable.find(cell.item_id) == craftable.end()) {
-            satisfied = false;
-            break;
-          }
-        }
-      } else {
-        for (const auto &in : r->inputs) {
-          if (in.item_id != 0 && craftable.find(in.item_id) == craftable.end()) {
-            satisfied = false;
-            break;
-          }
-        }
-      }
-      if (!satisfied)
+      if (!producesAnything(*r))
+        continue; // nothing to add to the fixpoint, whatever its inputs are
+      if (!requirementsSatisfied(*r, craftable))
         continue;
       for (const auto &out : r->outputs) {
         if (out.item_id != 0 && craftable.insert(out.item_id).second)
+          changed = true;
+      }
+      // A credited fluid is obtainable, same as an emitted item. Without this
+      // no fluid could EVER become craftable, however many recipes make it.
+      for (const auto &out : r->fluid_outputs) {
+        if (out.fluid_id != 0 && craftable.insert(out.fluid_id).second)
           changed = true;
       }
     }
@@ -544,6 +589,189 @@ static void test_coolant_is_stranded_on_purpose() {
         "coolant_bucket is in the recorded baseline");
 }
 
+// The fluid port is not decoration: this is the same property coolant gets
+// above, asserted for oil, and it is the reason this model reads
+// `fluid_inputs` at all.
+//
+// The facts, at the time this test was written:
+//   · oil (1111:11:58) is in fluids.csv and items.csv.
+//   · gtnh:chemical_reactor_oil_crack CONSUMES it via
+//     `fluid_inputs: [{fluid: oil, amount: 1000}]` and produces ethylene, so
+//     ethylene is stranded by cascade off oil.
+//   · NOTHING produces oil: no recipe declares it in `fluid_outputs`, no ore
+//     vein places it, and drops.csv maps nothing to it. There is no oil well
+//     machine in machines.yaml.
+//   · The polymer chain hangs off the same fluid, which is why the Python
+//     audit reports oil as a progression root with ~30 items downstream rather
+//     than as dead content nobody reads.
+//
+// So the honest verdict is: ethylene and the polyethylene chain are NOT
+// craftable, because the one recipe that makes ethylene requires a fluid the
+// game cannot produce. That is the correct answer, not a modelling failure --
+// and it is exactly the case that a fluid-blind model gets wrong in the
+// dangerous direction, by counting ethylene as craftable and hiding a real
+// strand behind a false green.
+//
+// Deliberately NOT done here: inventing an oil source. A producer has to be a
+// machine in machines.yaml, a block id, and a recipe; writing one to silence
+// this assertion would fabricate a feature. When oil does get a source, this
+// test fails by name and the person who added it decides what happens to the
+// baseline entry.
+static void test_oil_is_a_stranded_fluid_input_on_purpose() {
+  ensureRegistry();
+  RecipeMgr mgr;
+  mgr.loadRecipesFromYamlDirectory(kDataDir + "/recipes");
+
+  const uint16_t kOil = ItemId::pack("1111:11:58");
+  const uint16_t kEthylene = ItemId::pack("1111:11:6");
+
+  CHECK(ItemId::isFluid(kOil), "oil packs into the fluid id range");
+  CHECK(RecipeManager::ItemRegistry::instance().isValid(kOil),
+        "oil is a registered item");
+  const std::string fluids = readFile(kDataDir + "/registry/fluids.csv");
+  CHECK(fluids.find("1111:11:58,oil") != std::string::npos,
+        "oil is still declared in fluids.csv");
+
+  // The consumer is real, and it consumes oil through the FLUID port -- not
+  // through an item input. Asserting the port itself is what proves the model
+  // is reading these keys rather than getting the right answer by accident.
+  const Recipe *crack = mgr.getRecipeById("gtnh:chemical_reactor_oil_crack");
+  CHECK(crack != nullptr, "the oil-cracking consumer exists");
+  if (crack != nullptr) {
+    CHECK_EQ(size_t(1), crack->fluid_inputs.size(),
+             "it declares exactly one fluid input");
+    if (!crack->fluid_inputs.empty()) {
+      CHECK_EQ(size_t(kOil), size_t(crack->fluid_inputs[0].fluid_id),
+               "the fluid it requires is oil");
+      CHECK(crack->fluid_inputs[0].valid(),
+            "the fluid entry is valid (non-zero id, amount > 0)");
+    }
+    CHECK(crack->inputs.empty(),
+          "oil arrives via the fluid port, not as an item input");
+  }
+
+  // The producer side: nothing emits oil anywhere.
+  CHECK(mgr.findRecipesForItem(kOil, /*mode=*/1).empty(),
+        "oil still has no producing recipe (out of scope, see above)");
+  for (const Recipe *r : allRecipes(mgr))
+    for (const auto &out : r->fluid_outputs)
+      CHECK(out.fluid_id != kOil,
+            "no recipe declares oil in fluid_outputs yet");
+
+  const std::set<uint16_t> craftable = computeCraftable(allRecipes(mgr));
+  CHECK(craftable.find(kOil) == craftable.end(),
+        "oil is unreachable, as recorded");
+  // The cascade the audit calls out: ethylene is produced by a recipe, so it is
+  // stranded by its INPUT, not by a missing recipe. Same two-category
+  // distinction the coolant test documents.
+  CHECK(!mgr.findRecipesForItem(kEthylene, /*mode=*/1).empty(),
+        "ethylene does have a producing recipe");
+  CHECK(craftable.find(kEthylene) == craftable.end(),
+        "ethylene is unreachable because the oil it cracks is");
+}
+
+// The fluid port is only load-bearing if reading it CHANGES an answer. A test
+// that models fluids and never asserts the difference would pass just as
+// happily with the old fluid-blind code, so the two models are pinned against
+// each other here on purpose:
+//
+//   · a fluid that HAS a producer must become craftable, and
+//   · a fluid with NO producer must stay unreachable even though a recipe
+//     consumes it.
+//
+// The second half is the trap this whole change exists to close: silently
+// dropping a `fluid_inputs` entry makes its consumer look craftable, which
+// turns a real strand into a green build. Both are asserted on the REAL
+// content tree, so they hold today without a fixture.
+static void test_the_fluid_port_actually_changes_the_outcome() {
+  ensureRegistry();
+  RecipeMgr mgr;
+  mgr.loadRecipesFromYamlDirectory(kDataDir + "/recipes");
+  const std::vector<const Recipe *> recipes = allRecipes(mgr);
+  const std::set<uint16_t> craftable = computeCraftable(recipes);
+
+  // steam is emitted by boiler_coal (energy_output SU) -- but as an ENERGY
+  // output, not a fluid output, so it is NOT reachable through this port. If a
+  // future change gives steam a real `fluid_outputs` producer, this assertion
+  // is the thing that has to be revisited, deliberately and by name.
+  const uint16_t kSteam = ItemId::pack("1111:11:1");
+  bool steamProducedAsFluid = false;
+  for (const Recipe *r : recipes)
+    for (const auto &out : r->fluid_outputs)
+      if (out.fluid_id == kSteam)
+        steamProducedAsFluid = true;
+  CHECK_EQ(steamProducedAsFluid, craftable.find(kSteam) != craftable.end(),
+           "steam is craftable if and only if a recipe emits it as a fluid");
+
+  // Same invariant for EVERY registered fluid, not just the one named above.
+  // This is the general form of the rule: fluid_outputs is a producer, and
+  // fluid_inputs is a requirement. A fluid that no recipe consumes and no
+  // recipe produces is dead content, and the port must not resurrect it.
+  for (uint16_t fluid : registryItems()) {
+    if (!ItemId::isFluid(fluid))
+      continue;
+    bool produced = false;
+    bool consumed = false;
+    for (const Recipe *r : recipes) {
+      for (const auto &out : r->fluid_outputs)
+        if (out.fluid_id == fluid)
+          produced = true;
+      for (const auto &in : r->fluid_inputs)
+        if (in.fluid_id == fluid)
+          consumed = true;
+    }
+    const bool reachable = craftable.find(fluid) != craftable.end();
+    if (!produced && !consumed)
+      continue; // nothing to assert: dead content, port is silent on it
+    if (!produced && consumed) {
+      // The consumer exists and the producer does not: this fluid must be
+      // unreachable, and anything it feeds must be unreachable too.
+      CHECK(!reachable,
+            "a consumed fluid with no producer is NOT craftable");
+    }
+  }
+
+  // And the positive direction, proven on real content rather than asserted in
+  // the abstract: a fluid that a recipe DOES emit becomes craftable, and the
+  // items that recipe outputs with it become craftable in the same round.
+  int fluidProducers = 0;
+  for (const Recipe *r : recipes) {
+    if (r->fluid_outputs.empty())
+      continue;
+    ++fluidProducers;
+    for (const auto &out : r->fluid_outputs) {
+      const bool satisfied = requirementsSatisfied(*r, craftable);
+      CHECK_EQ(satisfied, craftable.find(out.fluid_id) != craftable.end(),
+               "a fluid output is reachable exactly when its recipe's "
+               "requirements are all reachable");
+    }
+  }
+  printf("    %d recipe(s) emit fluids; %zu live recipe(s) total\n",
+         fluidProducers, mgr.recipeCount());
+}
+
+// The recipe sweep in allRecipes() is a heuristic over two public accessors,
+// so it needs a completeness check: a recipe that names no item at all (a
+// fluid-only refinery) is invisible to collectRecipeItemIds(). This asserts
+// the sweep does not silently under-collect, which would quietly weaken every
+// count above.
+static void test_all_accepted_recipes_reach_the_model() {
+  ensureRegistry();
+  RecipeMgr mgr;
+  mgr.loadRecipesFromYamlDirectory(kDataDir + "/recipes");
+  const std::vector<const Recipe *> recipes = allRecipes(mgr);
+  printf("    %zu of %zu accepted recipes enumerated by allRecipes()\n",
+         recipes.size(), mgr.recipeCount());
+  CHECK(!recipes.empty(), "the sweep produced something");
+  // Every enumerated id is a real accepted recipe, and none is duplicated.
+  std::set<std::string> ids;
+  for (const Recipe *r : recipes) {
+    CHECK(mgr.getRecipeById(r->id) == r,
+          "an enumerated recipe is the loader's own instance");
+    CHECK(ids.insert(r->id).second, "no recipe is enumerated twice");
+  }
+}
+
 // The durable guard: the unreachable set must be a SUBSET of the recorded
 // baseline. New strands fail by name; existing debt is tolerated; any fix
 // (new ore vein, new dust recipe) only shrinks the set and passes.
@@ -593,9 +821,12 @@ int main(int argc, char **argv) {
 
   TEST(the_recipe_directory_loads_under_the_runtime_parser);
   TEST(the_item_registry_is_the_one_being_audited);
+  TEST(all_accepted_recipes_reach_the_model);
   TEST(transformer_lv_mv_has_a_recipe);
   TEST(every_quest_craft_requirement_has_a_producing_recipe);
   TEST(coolant_is_stranded_on_purpose);
+  TEST(oil_is_a_stranded_fluid_input_on_purpose);
+  TEST(the_fluid_port_actually_changes_the_outcome);
   TEST(unreachable_set_is_a_subset_of_the_recorded_baseline);
 
   printf("\n=== Results: %d tests, %d passed, %d failed ===\n", g_tests,

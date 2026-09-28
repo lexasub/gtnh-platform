@@ -20,12 +20,24 @@ exist at runtime and hides real gaps:
     This is the rule that makes the ~27 name-only stubs non-recipes.
   * ...:802-812 rejects a recipe whose resource_requirements' kind
     contradicts an explicit energy_in declaration.
+  * RecipeManager.cpp:952-991 parses the per-operation fluid port
+    (`fluid_inputs` / `fluid_outputs`, RecipeTypes.h:52 FluidIOItem) and is
+    STRICT: the entry must carry a `fluid` key naming a registered fluid
+    (ItemId::isFluid) and an `amount` > 0, or the WHOLE recipe is rejected --
+    the entry is never quietly dropped.
 
 An item is CRAFTABLE if AT LEAST ONE recipe producing it has every input
 already craftable. The fixpoint starts from what the world yields with zero
 crafting: the terrain blocks named in WorldGenerator.cpp:22-26, the
 block->drop mappings in drops.csv, oak_log from TreeGenerator.h:24, and
 every block named in ores.json veins.
+
+The fluid port is part of that input/output set, not a separate graph: a
+`fluid_inputs` entry is a required input exactly like an item input, and a
+`fluid_outputs` entry is a producer exactly like an item output. That is what
+makes a fluid obtainable once some recipe really makes it. A fluid with no
+producer classifies as a progression root, by the same root/orphan/cascade
+rule items use.
 
 Usage:
     python3 tools/reachability_audit.py                # summary
@@ -53,6 +65,12 @@ RECIPES = os.path.join(ROOT, "src/content/data/recipes")
 # Machine classes that legitimately have no 'outputs': they produce energy
 # (energy_output), not items. RecipeManager.cpp:700.
 ENERGY_PRODUCERS = {"generator", "boiler"}
+
+# ItemId::isFluid (ItemId.h:193) is a range test against this packed id. Named
+# here so the fluid port's acceptance rule has one definition shared by
+# is_fluid_ref and the report, instead of a magic 0xFC00 in two places.
+# "1111:11:0" -> prefix bits 1111 + 11 = 6 bits, shifted left by 16-6=10.
+FLUID_ID_MIN = 0b111111 << 10  # == 0xFC00 == 64512
 
 # OreGenerator.cpp:13 -- thread_local yDist(5, 60) picks the vein centre y.
 # A vein outside this range is never selected, so it is dead config.
@@ -104,6 +122,86 @@ def _resolve(ref, name_to_id) -> str | None:
     if ":" in ref or ref.isdigit():
         return ref
     return name_to_id.get(ref)
+
+
+def is_fluid_ref(ref: str) -> bool:
+    """ItemId::isFluid — a pure RANGE test, not a fluids.csv lookup.
+
+    ItemId.h:193 is `id >= ItemId::pack("1111:11:0")`, i.e. 0xFC00 and up. It
+    deliberately does NOT consult fluids.csv, so ids in that band that are in
+    items.csv but absent from fluids.csv (ethylene 1111:11:6, polyethylene
+    1111:11:7) DO satisfy the runtime's fluid test. Mirroring fluids.csv here
+    instead would make this audit reject recipes the server accepts, which is
+    exactly the "stricter parse invents rules" failure this file exists to
+    avoid.
+    """
+    return _pack(ref) >= FLUID_ID_MIN
+
+
+def _pack(ref: str) -> int:
+    """ItemId::pack: prefix bits shifted to the top, payload OR'd in.
+
+    Only used to answer RANGE questions (is this id a fluid). Reachability
+    itself is tracked with the string ids the rest of this file already uses,
+    so this never becomes a second id namespace.
+    """
+    if not ref:
+        return 0
+    last = ref.rfind(":")
+    if last < 0:
+        value = 0
+        for c in ref:
+            if c.isdigit():
+                value = value * 10 + int(c)
+        return value & 0xFFFF
+    prefix = 0
+    plen = 0
+    for c in ref[:last]:
+        if c == "0":
+            prefix <<= 1
+            plen += 1
+        elif c == "1":
+            prefix = (prefix << 1) | 1
+            plen += 1
+    if plen > 15:
+        return 0  # too many prefix bits -- pack() bails, same as C++
+    payload = 0
+    for c in ref[last + 1 :]:
+        if c.isdigit():
+            payload = payload * 10 + int(c)
+    return ((prefix << (16 - plen)) | payload) & 0xFFFF
+
+
+def resolve_fluid_io(entry, name_to_id):
+    """Resolve one `fluid_inputs`/`fluid_outputs` entry to a packed id.
+
+    Mirrors parseFluidIOList (RecipeManager.cpp:952-987) exactly, including the
+    three rejection conditions: no `fluid` key, a name that does not resolve to
+    a registered fluid, and `amount` <= 0. Returns (packed_id, reason). A
+    non-empty reason means the runtime REJECTS THE WHOLE RECIPE -- not that the
+    entry is skipped -- so the caller must reject the recipe, never drop the
+    entry. Dropping it would silently delete a requirement the server enforces
+    and would report the recipe as craftable when the server refuses to run it.
+    """
+    if not isinstance(entry, dict):
+        return None, "entry is not a mapping"
+    name = entry.get("fluid")
+    if name is None or not str(name).strip():
+        return None, "entry has no 'fluid'"
+    ref = _resolve(name, name_to_id)
+    if not ref:
+        return None, f"fluid '{name}' is not a registered item"
+    if not is_fluid_ref(ref):
+        return None, f"'{name}' ({ref}) is not a fluid id (ItemId::isFluid)"
+    # `amount` must be > 0. The runtime reads it as uint32_t, so a missing or
+    # unparsable value is 0 -- which is the reject case, not a default.
+    try:
+        amount = int(entry.get("amount", 0) or 0)
+    except (TypeError, ValueError):
+        amount = 0
+    if amount <= 0:
+        return None, f"fluid '{name}' has amount {entry.get('amount')!r}, must be > 0"
+    return ref, None
 
 
 def parse_recipe_files(items_by_id, name_to_id):
@@ -228,6 +326,39 @@ def parse_recipe_files(items_by_id, name_to_id):
                             if ref:
                                 pattern_cells.append(ref)
 
+            # The per-operation fluid port (RecipeManager.cpp:952-991). This
+            # is the same kind of gate as the rules above: a malformed entry
+            # fails the WHOLE recipe, so it is checked BEFORE anything is
+            # appended to `live`. Resolving the entries lazily here (rather
+            # than in a separate pass) is deliberate: a recipe whose fluid
+            # entry is bad must not be a producer or a consumer of anything.
+            fluid_inputs: list[str] = []
+            fluid_outputs: list[str] = []
+            fluid_error = None
+            for key, target in (
+                ("fluid_inputs", fluid_inputs),
+                ("fluid_outputs", fluid_outputs),
+            ):
+                seq = entry.get(key)
+                if seq is None:
+                    continue
+                if not isinstance(seq, list):
+                    fluid_error = f"{key} must be a sequence"
+                    break
+                for io_entry in seq:
+                    ref, why = resolve_fluid_io(io_entry, name_to_id)
+                    if why or ref is None:
+                        # `ref is None` is unreachable when `why` is empty, but
+                        # the assert-free form keeps the list typed `str`.
+                        fluid_error = f"{key}: {why or 'unresolved fluid'}"
+                        break
+                    target.append(ref)
+                if fluid_error:
+                    break
+            if fluid_error:
+                rejected.append((fname, rid, fluid_error))
+                continue
+
             inputs = pattern_cells or resolve_list(entry.get("inputs"))
             out_refs = resolve_list(outputs) if isinstance(outputs, list) else []
 
@@ -238,6 +369,8 @@ def parse_recipe_files(items_by_id, name_to_id):
                     "class": machine_class,
                     "inputs": inputs,
                     "outputs": out_refs,
+                    "fluid_inputs": fluid_inputs,
+                    "fluid_outputs": fluid_outputs,
                     "min_tier": min_tier,
                     "max_tier": max_tier,
                     "unlock_era": entry.get("unlock_era", 0),
@@ -362,12 +495,39 @@ def world_base(items_by_id):
 
 
 def build_producers(live):
-    """item -> list of producing recipes."""
+    """id -> list of producing recipes, over ITEM *and* FLUID outputs.
+
+    A `fluid_outputs` entry makes its fluid a producer here, by the same rule an
+    item output does. That is the entire point of the fluid port: a fluid with
+    a real source has to become reachable, and it only becomes reachable if the
+    fixpoint sees that source. Keyed in the same id space as everything else,
+    so an item and a fluid cannot collide.
+    """
     producers: dict[str, list] = defaultdict(list)
     for r in live:
         for out in r["outputs"]:
             producers[out].append(r)
+        for out in r.get("fluid_outputs", ()):
+            producers[out].append(r)
     return producers
+
+
+def required_inputs(r):
+    """Every id a recipe must be fed, items and fluids together.
+
+    A `fluid_inputs` entry is a REQUIREMENT, not a hint: Recipe::needsReservation
+    (RecipeTypes.h:151) makes the machine reserve the volume before the craft
+    starts, so a recipe demanding an unobtainable fluid cannot be run. Folding
+    these in here is what stops an unresolved fluid from being read as
+    satisfied, which would report the recipe craftable when the server would
+    refuse to start it.
+
+    Pattern precedence is unchanged and needs no branch here: `r["inputs"]`
+    is already `pattern_cells or resolve_list(inputs)` (see parse_recipe_files),
+    so a positional recipe contributes its pattern and an aggregate recipe
+    contributes its input list. The fluid port is ADDITIONAL either way.
+    """
+    return list(r["inputs"]) + list(r.get("fluid_inputs", ()))
 
 
 def fixpoint(items_by_id, base, producers):
@@ -383,7 +543,7 @@ def fixpoint(items_by_id, base, producers):
             if item in craftable:
                 continue
             for r in recs:
-                if all(i in craftable for i in r["inputs"]):
+                if all(i in craftable for i in required_inputs(r)):
                     craftable.add(item)
                     changed = True
                     break
@@ -424,7 +584,7 @@ def blocking_count(item, unreachable, producers, memo={}):
         for other in unreachable
         if other != item
         and any(
-            item in r["inputs"] and other in r["outputs"] for r in producers.get(other, [])
+            item in required_inputs(r) and other in r["outputs"] for r in producers.get(other, [])
         )
     )
     return memo[item]
@@ -439,7 +599,7 @@ def transitive_blocked(item, unreachable, producers):
         for other, recs in producers.items():
             if other in seen or other not in unreachable:
                 continue
-            if any(cur in r["inputs"] for r in recs):
+            if any(cur in required_inputs(r) for r in recs):
                 seen.add(other)
                 stack.append(other)
     return seen
@@ -518,8 +678,17 @@ def main() -> int:
     base = world_base(items_by_id)
     producers = build_producers(live)
     craftable, unreachable, rounds = fixpoint(items_by_id, base, producers)
-    referenced = {i for r in live for i in r["inputs"]}
+    # `referenced` is the consumption test behind the root/orphan split, so it
+    # has to see the fluid port too: a fluid with no producer but a live
+    # `fluid_inputs` consumer is a progression root, the same as an item.
+    # Using r["inputs"] here alone would report it as a harmless orphan and
+    # hide the exact breakage the fluid port exists to expose.
+    referenced = {i for r in live for i in required_inputs(r)}
     roots, orphans, cascade = classify(unreachable, producers, referenced)
+    # How much of the content tree actually exercises the fluid port. Zero
+    # means the port is parsed and enforced but unused by content -- the model
+    # is still correct, but no content result above is attributable to it.
+    recipes_with_fluid_io = [r for r in live if r["fluid_inputs"] or r["fluid_outputs"]]
 
     if args.veins:
         veins, placed, all_ores, problems = check_veins(items_by_id)
@@ -585,6 +754,9 @@ def main() -> int:
                     "cascade": sorted(items_by_id[i] for i in cascade),
                     "recipes_live": len(live),
                     "recipes_rejected": len(rejected),
+                    "recipes_with_fluid_io": len(recipes_with_fluid_io),
+                    "fluid_inputs_entries": sum(len(r["fluid_inputs"]) for r in live),
+                    "fluid_outputs_entries": sum(len(r["fluid_outputs"]) for r in live),
                 },
                 indent=2,
             )
@@ -613,6 +785,10 @@ def main() -> int:
     print(f"  progression roots   : {len(roots)}   <- no producer, but a recipe needs it")
     print(f"  orphans             : {len(orphans)}   <- neither produced nor consumed")
     print(f"  pure cascade        : {len(cascade)}")
+    print()
+    print(f"fluid port in use     : {len(recipes_with_fluid_io)} recipe(s)")
+    print(f"  fluid_inputs entries: {sum(len(r['fluid_inputs']) for r in live)}")
+    print(f"  fluid_outputs       : {sum(len(r['fluid_outputs']) for r in live)}")
     print()
 
     if args.roots or args.verbose:
