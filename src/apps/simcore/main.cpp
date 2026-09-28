@@ -32,6 +32,7 @@
 #include <game/mining/BatteryBufferSystem.h>
 #include <game/mining/AdjacencyTransferSystem.h>
 #include <game/mining/CreativeGeneratorSystem.h>
+#include <game/mining/CreativeFluidSystem.h>
 #include <game/machines/TransformerSystem.h>
 #include <game/mining/DrillSystem.h>
 #include <game/machines/RotareGeneratorSystem.h>
@@ -103,6 +104,12 @@ void spawnECSSystems(std::shared_ptr<simcore::ChunkStoreRepository> blockReposit
     simulationEngine->registerSystem(std::make_unique<simcore::ExplosionSystem>(simulationEngine->reg(), eventPublisher));
     simulationEngine->registerSystem(std::make_unique<simcore::GeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient, steam_item_id));
     simulationEngine->registerSystem(std::make_unique<simcore::CreativeGeneratorSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
+    // gp-asy3: the creative OIL and WATER sources. Registered next to
+    // CreativeGeneratorSystem because it is the same pattern (infinite source,
+    // no recipe, no energy input) on the fluid channel instead of the energy
+    // one. It publishes the `oil` / `water` fluid ids into the pipe network;
+    // consumers pull it through the recipe fluid port (fluid_inputs in YAML).
+    simulationEngine->registerSystem(std::make_unique<simcore::CreativeFluidSystem>(simulationEngine->reg(), eventPublisher, fluidClient));
     simulationEngine->registerSystem(std::make_unique<simcore::BoilerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient, fluidClient, resourcePortClient, steam_item_id, statePublisher));
     simulationEngine->registerSystem(std::make_unique<simcore::TransformerSystem>(simulationEngine->reg(), eventPublisher, pipeEnergyClient));
     simulationEngine->registerSystem(std::make_unique<simcore::DrillSystem>(simulationEngine->reg(), blockRepository, eventPublisher, pipeEnergyClient));

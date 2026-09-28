@@ -8,6 +8,7 @@ add_library(gtnh_game_mining STATIC
     DrillSystem.cpp
     BatteryBufferSystem.cpp
     CreativeGeneratorSystem.cpp
+    CreativeFluidSystem.cpp
     AdjacencyTransferSystem.cpp
 )
 
@@ -90,4 +91,33 @@ if(BUILD_TESTING)
     )
     add_dependencies(mining_systems_test simcored_fbs)
     add_test(NAME mining_systems_test COMMAND mining_systems_test)
+
+    # creative_fluid_system_test — CreativeFluidSystem, the infinite OIL and
+    # WATER sources (machines.yaml 1110:100:15 / 1110:100:16, gp-asy3).
+    # Same project CHECK/TEST harness, no GoogleTest anywhere in the build.
+    add_executable(creative_fluid_system_test
+        test/test_creative_fluid_system.cpp
+        # FluidClient and IoUringRouterClient are compiled from source rather
+        # than linked from the simcored static lib, which would drag in
+        # main.cpp.o and a second main(). Same pattern as mining_systems_test
+        # above. Both are pure socket wrappers and the test drives them
+        # UNCONNECTED, so no thread, socket or network I/O ever happens.
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore/Network/FluidClient.cpp
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore/Network/clients/IoUringRouterClient.cpp
+    )
+    target_include_directories(creative_fluid_system_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+        ${CMAKE_BINARY_DIR}/src/apps/simcore/simcored_fbs
+    )
+    target_link_libraries(creative_fluid_system_test PRIVATE
+        gtnh_game_mining
+        gtnh_engine_sim
+        gtnh-net
+        EnTT::EnTT
+        spdlog::spdlog
+        flatbuffers::flatbuffers
+    )
+    add_dependencies(creative_fluid_system_test simcored_fbs)
+    add_test(NAME creative_fluid_system_test COMMAND creative_fluid_system_test)
 endif()
