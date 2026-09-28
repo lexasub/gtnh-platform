@@ -6,6 +6,33 @@
 #
 # creative_generator: no recipes (infinite source, handled
 #   directly by CreativeGeneratorSystem)
+#
+# The two creative FLUID blocks below (creative_oil_generator,
+# creative_water_generator) are the exception, and they need their own
+# explanation. They are listed here because they are generator-class blocks,
+# but they are NOT crafted in a generator:
+#
+#   RecipeManager.cpp:812-844 — for machine_class "generator" or "boiler" the
+#   loader SKIPS the outputs block entirely. A recipe in this file that named
+#   an item under `outputs:` would parse as a valid recipe and would produce
+#   NOTHING at runtime, because recipe.outputs is left empty. A `class:
+#   generator` recipe can therefore never yield an item, ever.
+#
+#   So the two creative fluid blocks carry an explicit per-recipe
+#   `class: crafting_table` override (RecipeManager.cpp:688-691). That puts
+#   them in a real item-producing class, where `outputs` is parsed and the
+#   block is genuinely craftable. The recipe below is the real thing: the
+#   block is obtainable as an ITEM.
+#
+#   What is NOT solved here, and cannot be: the fluid itself. The creative
+#   fluid blocks fill the pipe network with a fluid VOLUME (FluidClient /
+#   FluidStorage, network-volume based). There is no fluid -> bucket-item
+#   conversion anywhere in the game — recipes consume the ITEM
+#   `oil_bucket` (0:11111:18), and nothing produces that item. So
+#   creative_oil_generator makes oil available to the NETWORK, not to an
+#   inventory bucket. oil_bucket stays unreachable until a C++/machine-side
+#   bucket-fill path exists. Do not "fix" that with a free recipe here; that
+#   would be a design lie.
 class: generator
 recipes:
 
@@ -33,3 +60,43 @@ recipes:
       - { item: oak_log, count: 1 }
     duration: 50
     energy_output: 2000   # HU generated
+
+  # ── Creative fluid blocks → obtainable as items ──────────
+  #
+  # `class: crafting_table` is a PER-RECIPE override of the file-level
+  # `class: generator` (RecipeManager.cpp:688-691). It is mandatory, not
+  # cosmetic: generator-class recipes have their `outputs` skipped by the
+  # loader (RecipeManager.cpp:812), so under the file default these two would
+  # load clean and craft nothing.
+  #
+  # Cost is deliberately trivial and needs no real resources: creative.
+  # oak_planks is the cheapest universally-available item at game start (a
+  # world-tree drop), and Recipe::matches counts required inputs
+  # (RecipeManager.cpp:146), so a recipe needs a real one.
+  - name: creative_oil_generator_block
+    class: crafting_table
+    pattern:
+      - [oak_planks, oak_planks, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: oak_planks, count: 2 }
+    outputs:
+      - { item: creative_oil_generator, count: 1 }
+    duration: 20
+    min_tier: 0
+    max_tier: 32767
+
+  - name: creative_water_generator_block
+    class: crafting_table
+    pattern:
+      - [oak_planks, oak_planks, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: oak_planks, count: 2 }
+    outputs:
+      - { item: creative_water_generator, count: 1 }
+    duration: 20
+    min_tier: 0
+    max_tier: 32767

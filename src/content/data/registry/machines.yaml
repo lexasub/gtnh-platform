@@ -195,6 +195,24 @@ machine_classes:
           capacity: 1000000
           max_output: 100000
 
+      # Infinite OIL source (creative). Same shape as creative_generator:
+      # no energy_in, a large buffer, no slots. The fluid it emits is driven
+      # by the creative generator system, NOT by a recipe — see generator.yaml.
+      - block_id: "1110:100:15"
+        name: creative_oil_generator
+        tier: 10
+        energy:
+          capacity: 1000000
+          max_output: 100000
+
+      # Infinite WATER source (creative).
+      - block_id: "1110:100:16"
+        name: creative_water_generator
+        tier: 10
+        energy:
+          capacity: 1000000
+          max_output: 100000
+
       # Kinetic/rotation generator — player clicks to spin, produces ROTATION
       - block_id: "1110:100:1"
         name: rotare_generator

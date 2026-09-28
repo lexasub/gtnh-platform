@@ -82,14 +82,33 @@ recipes:
     resource_requirements:
       - { kind: EU, amount: 32, tier: 0 }
 
-  # ── Polyethylene chain (items2.csv temporary registry) ─────
-  # GTNH: crude oil → (distillation/cracking) → ethylene → polyethylene
+  # ── Polyethylene chain ─────────────────────────────────────
+  # crude oil → (cracking) → ethylene → polyethylene
+  #
+  # Oil is a FLUID, not a bucket item. There is no fluid → bucket conversion
+  # anywhere in the game, so the old `item: oil_bucket` input could never be
+  # fed by creative_oil_generator (1110:100:15), which is an infinite source
+  # of a fluid VOLUME on the pipe network. This recipe therefore takes oil
+  # through the recipe fluid port: the block pushes oil into the network and
+  # the machine pulls `amount` mB per operation through that port.
+  #
+  # amount: 1000 mB per operation — one bucket's worth, so the recipe costs
+  # exactly what `1 × oil_bucket` used to. It also matches the project's only
+  # other per-operation fluid figure (test_pending_craft.cpp, water 1000) and
+  # is exactly one BLOCK_ID_FLUID_PIPE buffer (PipeNetwork.cpp:190,
+  # fluidCapacity = 1000; the dense pipe is 4000).
+  #
+  # Note: `amount` is millibuckets PER OPERATION, not per tick
+  # (RecipeTypes.h:48-54). CraftReservationClient.cpp:99-108 reserves the
+  # full volume up front as a one-shot leg, like the per-tick
+  # resource_requirements above.
+  #
+  # No empty_bucket output: the oil never left a bucket, so none comes back.
   - name: gtnh:chemical_reactor_oil_crack
-    inputs:
-      - { item: oil_bucket, count: 1 }
+    fluid_inputs:
+      - { fluid: oil, amount: 1000 }
     outputs:
       - { item: ethylene, count: 1 }
-      - { item: empty_bucket, count: 1 }
     duration: 300
     min_tier: 0
     max_tier: 32767

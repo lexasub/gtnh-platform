@@ -35,7 +35,7 @@ id,title,description,era,section,cost_item,cost_count,cooldown,target_count
 34,Steam Mixer,Craft a steam mixer to combine dusts and fluids.,vagrant,steam_age,,,,1
 35,Bronze Alloy Smelter,Craft an alloy smelter to automate bronze production.,vagrant,steam_age,,,,1
 36,Place Steam Boiler,Place the boiler and start the steam age.,vagrant,steam_age,,,,1
-37,ULV Transition,Craft a creative generator to bootstrap your first grid.,apprentice,ulv_transition,,,,1
+37,ULV Transition,Place a creative generator to bootstrap your first grid.,apprentice,ulv_transition,,,,1
 38,Tin Cable,Craft tin cables to transmit ULV power.,apprentice,ulv_transition,,,,16
 39,Drill ULV,Craft an ULV drill to automate mining.,apprentice,ulv_transition,,,,1
 40,Wrench Mastery,Craft a wrench to configure machine sides.,apprentice,ulv_transition,,,,1

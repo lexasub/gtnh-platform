@@ -413,6 +413,11 @@ int,name,stack,meta
 # machines/generation — allocation prefix 1110:100
 1110:100:0,creative_generator,,0
 1110:100:1,rotare_generator,,0
+# creative fluid sources. 1110:100:2-14 are claimed by the deferred
+# generators plan (item-subgroups-deferred.csv), so 15/16 are the first slots
+# free in items.csv AND unclaimed by that plan.
+1110:100:15,creative_oil_generator,,0
+1110:100:16,creative_water_generator,,0
 # machines/storage — allocation prefix 1110:101
 # Rechargeable batteries use the 1110:111 reserved component range. Their
 # damage/meta field stores current EU, while the item count remains stackable.
@@ -502,4 +507,8 @@ int,name,stack,meta
 1111:11:5,coolant,,0
 1111:11:6,ethylene,,0
 1111:11:7,polyethylene,,0
+# oil — crude oil. MUST exist here: Registry::validateReferences
+# (Registry.cpp:215) fails the entire catalog load when a fluids.csv item_id
+# does not resolve in items.csv, so fluids.csv and this file must agree.
+1111:11:58,oil,,0
 # infra/components-circuits — deferred issue21 additions; no current IDs

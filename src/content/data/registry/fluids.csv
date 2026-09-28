@@ -5,3 +5,8 @@ item_id,name,color,density,gaseous,temperature
 1111:11:3,oxygen,a0a0d4,1.429,true,300
 1111:11:4,hydrogen,90d8d8,0.09,true,20
 1111:11:5,coolant,4a6a9a,1100,false,300
+# oil — crude oil, a liquid (gaseous=false), slightly less dense than water.
+# Not 1111:11:6: that slot is ethylene, and 8-57 are claimed by the deferred
+# components plan in item-subgroups-deferred.csv. 58 is the first slot that is
+# free in items.csv AND unclaimed by that plan.
+1111:11:58,oil,1e1e1e,850,false,300

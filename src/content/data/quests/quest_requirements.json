@@ -399,7 +399,7 @@
     "auto_complete": true,
     "requirements": [
       {
-        "kind": "craft",
+        "kind": "place",
         "item": "1110:100:0",
         "count": 1,
         "consume": false
