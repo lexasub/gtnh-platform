@@ -288,6 +288,10 @@ int,name,stack,meta
 10:17,silver_ore,,0
 10:18,sulfur_ore,,0
 10:19,zinc_ore,,0
+10:27,bauxite_ore,,0
+10:28,titanium_ore,,0
+10:29,tungsten_ore,,0
+10:30,silicon_ore,,0
 
 # space — allocation pool 110
 # space/components-circuits — approved electrical components namespace

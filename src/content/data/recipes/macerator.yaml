@@ -85,6 +85,52 @@ recipes:
     min_tier: 0
     max_tier: 32767
 
+  # bauxite is the ALUMINIUM ore, not "aluminium_ore" (gp-ctry / items.csv:291).
+  # GregTech 4: bauxite macerates, and the crush feeds a centrifuge/electrolyser that
+  # yields aluminium dust AND titanium dust from the same ore. Both outputs are here
+  # deliberately, so the bauxite vein is a genuine two-metal source rather than a
+  # single-metal ore with an arbitrary name.
+  - name: gtnh:mac_bauxite_ore
+    inputs:
+      - { item: bauxite_ore, count: 1 }
+    outputs:
+      - { item: aluminium_dust, count: 2 }
+      - { item: titanium_dust, count: 1 }
+    duration: 400
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_titanium_ore
+    inputs:
+      - { item: titanium_ore, count: 1 }
+    outputs:
+      - { item: titanium_dust, count: 2 }
+    duration: 450
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_tungsten_ore
+    inputs:
+      - { item: tungsten_ore, count: 1 }
+    outputs:
+      - { item: tungsten_dust, count: 2 }
+    duration: 500
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
+  - name: gtnh:mac_silicon_ore
+    inputs:
+      - { item: silicon_ore, count: 1 }
+    outputs:
+      - { item: silicon_dust, count: 2 }
+    duration: 400
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
+
   - name: gtnh:mac_uranium_ore
     inputs:
       - { item: uranium_ore, count: 1 }

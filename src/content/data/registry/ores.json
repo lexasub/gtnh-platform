@@ -141,6 +141,39 @@
       "primary": "10:16",
       "secondary": "10:12",
       "sporadic": "10:15"
+    },
+    {
+      "name": "bauxite_vein",
+      "min_y": 5,
+      "max_y": 60,
+      "weight": 14,
+      "density": 0.55,
+      "primary": "10:27",
+      "secondary": "10:28",
+      "sporadic": "10:1",
+      "_note": "Bauxite is the ALUMINIUM ore - there is no aluminium_ore (gt-4: bauxite -> macerate -> centrifuge/electrolyser yields aluminium dust AND titanium dust). Surface-leaning, matching gt-4's y32-95, clamped to the [5,60] range OreGenerator.cpp:13 samples. titanium_ore rides along as secondary because gt-4 yields titanium from bauxite too."
+    },
+    {
+      "name": "tungsten_vein",
+      "min_y": 5,
+      "max_y": 28,
+      "weight": 5,
+      "density": 0.35,
+      "primary": "10:29",
+      "secondary": "10:30",
+      "sporadic": "10:11",
+      "_note": "Deep, rare metal. silicon_ore as secondary: silica-bearing zones carry both."
+    },
+    {
+      "name": "silicon_vein",
+      "min_y": 5,
+      "max_y": 24,
+      "weight": 4,
+      "density": 0.3,
+      "primary": "10:30",
+      "secondary": "10:29",
+      "sporadic": "10:5",
+      "_note": "Distinct from quartz_gangue_vein (10:5) on purpose: quartz macerates to quartz, this macerates to silicon_dust. 10 downstream items depend on silicon_dust."
     }
   ]
 }
