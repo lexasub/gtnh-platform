@@ -136,7 +136,8 @@ ninja -j5
 ```
 
 Or with CMake presets: `cmake --preset conan-release` (see CMakePresets.json).
-
+**Option B**
+https://github.com/lexasub/gtnh-platform/releases/download/deps-0/gtnh-platform-deps-2026-08-10.tar.xz
 ## Quick Start
 
 ```bash
