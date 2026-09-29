@@ -180,4 +180,36 @@ if(BUILD_TESTING)
     )
     add_dependencies(block_actions_test simcored_fbs)
     add_test(NAME block_actions_test COMMAND block_actions_test)
+
+    # fluid_bucket_test — the fluid -> bucket bridge in MachineInteractHandler
+    # (gp-jmlq): right-click a machine holding a fluid with an empty bucket in
+    # hand. Same project CHECK/TEST harness, no GoogleTest anywhere.
+    add_executable(fluid_bucket_test
+        test/test_fluid_buckets.cpp
+    )
+    target_compile_definitions(fluid_bucket_test PRIVATE
+        MACHINES_YAML="${CMAKE_SOURCE_DIR}/src/content/data/registry/machines.yaml"
+        ITEMS_CSV="${CMAKE_SOURCE_DIR}/src/content/data/registry/items.csv"
+        FLUID_BUCKETS_CSV="${CMAKE_SOURCE_DIR}/src/content/data/registry/fluid_buckets.csv"
+    )
+    target_include_directories(fluid_bucket_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/simcore
+        ${CMAKE_BINARY_DIR}/src/apps/simcore/simcored_fbs
+    )
+    target_link_libraries(fluid_bucket_test PRIVATE
+        gtnh_game_actions
+        gtnh_game_storage
+        gtnh_game_world
+        gtnh_engine_sim
+        gtnh_engine_registry
+        gtnh_game_quests
+        gtnh-net
+        EnTT::EnTT
+        flatbuffers::flatbuffers
+        asio::asio
+        spdlog::spdlog
+    )
+    add_dependencies(fluid_bucket_test simcored_fbs)
+    add_test(NAME fluid_bucket_test COMMAND fluid_bucket_test)
 endif()
