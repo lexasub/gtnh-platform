@@ -4,8 +4,12 @@
 #   energy in: none (burns fuel items directly)
 #   energy out: HEAT (energy_output)
 #
-# creative_generator: no recipes (infinite source, handled
-#   directly by CreativeGeneratorSystem)
+# The creative blocks are infinite sources handled directly by their systems
+# (CreativeGeneratorSystem for energy, CreativeFluidSystem for oil/water) -
+# they need no RECIPE to run. But a quest that wants one has to be able to
+# obtain it, so all three creative blocks DO have a cheap craft recipe here:
+# creative_generator_block, creative_oil_generator_block,
+# creative_water_generator_block (see the class: crafting_table note below).
 #
 # The two creative FLUID blocks below (creative_oil_generator,
 # creative_water_generator) are the exception, and they need their own
@@ -73,6 +77,25 @@ recipes:
   # oak_planks is the cheapest universally-available item at game start (a
   # world-tree drop), and Recipe::matches counts required inputs
   # (RecipeManager.cpp:146), so a recipe needs a real one.
+  # creative_generator itself, for the same reason. It was the one creative
+  # block WITHOUT a recipe, which is why quest 37 ("ULV Transition") stayed
+  # unpassable even after its requirement was corrected to `place`: a quest can
+  # complete on a block being placed, but the player still has to be able to
+  # OBTAIN the block. Three creative blocks, one rule.
+  - name: creative_generator_block
+    class: crafting_table
+    pattern:
+      - [oak_planks, oak_planks, ~]
+      - [~, ~, ~]
+      - [~, ~, ~]
+    inputs:
+      - { item: oak_planks, count: 2 }
+    outputs:
+      - { item: creative_generator, count: 1 }
+    duration: 20
+    min_tier: 0
+    max_tier: 32767
+
   - name: creative_oil_generator_block
     class: crafting_table
     pattern:
