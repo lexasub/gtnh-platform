@@ -1,0 +1,21 @@
+# Fluid -> bucket item mapping, for filling a bucket by right-clicking a
+# machine that holds the fluid (gp-jmlq, design (b)).
+#
+# A fluid BLOCK in the pipe network is volume; an empty_bucket is an inventory
+# item. This table is the only bridge between those two models, and it is
+# deliberately explicit: right-clicking a machine with an empty bucket fills it
+# ONLY if the machine's fluid appears here. A fluid with no bucket row means
+# the click does nothing and the machine is not drained - which is what should
+# happen rather than conjuring a bucket that does not exist.
+#
+# oil is absent on purpose. Its chain runs through the recipe fluid port
+# (gtnh:chemical_reactor_oil_crack takes fluid_inputs: oil), so no bucket is
+# needed. oil_bucket (0:11111:18) stays registered and unused; if a
+# fluid->bucket path ever makes sense for it, add a row here.
+#
+# The empty bucket that gets consumed and replaced is 0:11111:3.
+fluid_id,bucket_id
+1111:11:0,water_bucket
+1111:11:2,sulfuric_acid_bucket
+1111:11:4,hydrogen_bucket
+1111:11:5,coolant_bucket
