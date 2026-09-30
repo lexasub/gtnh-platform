@@ -367,3 +367,19 @@ recipes:
     eu: 32
     min_tier: 0
     max_tier: 32767
+
+  # carbon_dust is the one dust that is not made straight from an ore. Coal is
+  # the source, and it is already macerated once into coal_dust, so carbon costs
+  # one more machine step than the other seventeen dusts rather than skipping
+  # straight to a powder. Keeping the chain two-stage means elemental carbon
+  # still sits behind mining coal, instead of being reachable from wood the way
+  # charcoal would allow.
+  - name: gtnh:mac_coal_dust_carbon_dust
+    inputs:
+      - { item: coal_dust, count: 1 }
+    outputs:
+      - { item: carbon_dust, count: 1 }
+    duration: 200
+    eu: 32
+    min_tier: 0
+    max_tier: 32767
