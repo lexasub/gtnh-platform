@@ -123,3 +123,62 @@ recipes:
     duration: 20
     min_tier: 0
     max_tier: 32767
+
+  # The coolant plant, gtnh:coolant_plant_distil_water's block. It is listed here
+  # rather than in its own file only because the two creative FLUID blocks above
+  # set the precedent: a machine block that emits fluid is obtained by CRAFTING
+  # the block (class: crafting_table, so the loader does not strip `outputs` for
+  # a generator-class block), while the fluid it emits is driven by its own
+  # system, not by this recipe.
+  #
+  # Without this recipe the block exists in machines.yaml and the recipe binds to
+  # it, but the player has no way to obtain it - the same trap creative_generator
+  # fell into before a388d3c1 gave it a recipe.
+  # The two creative FLUID sources, declared as fluid PRODUCERS so the
+  # reachability models can see them. The fluid itself is emitted by
+  # CreativeFluidSystem (kCreativeFluidSources, CreativeFluidSystem.cpp:21), a
+  # C++ table -- not by a recipe. That made oil and water invisible to
+  # tools/reachability_audit.py and to the C++ ratchet, so both read as
+  # progression roots and any recipe with `fluid_inputs: water` looked
+  # impossible, even though the game genuinely produces water.
+  #
+  # `fluid_outputs` is parsed for every machine class (RecipeManager.cpp:988-989),
+  # including generator, so this declaration is read by the runtime too. It is
+  # additive documentation of a source that already exists: CreativeFluidSystem
+  # still does the actual publishing, and generator-class machines are
+  # managed_externally, so MachineSystem never runs this recipe. Nothing about
+  # the in-game behaviour changes - what changes is that the honest model stops
+  # claiming water and oil have no source.
+  - name: creative_oil_source_fluid
+    class: generator
+    fluid_outputs:
+      - { fluid: oil, amount: 100000 }
+    inputs:
+      - { item: oak_planks, count: 1 }
+    duration: 20
+    min_tier: 0
+    max_tier: 32767
+
+  - name: creative_water_source_fluid
+    class: generator
+    fluid_outputs:
+      - { fluid: water, amount: 100000 }
+    inputs:
+      - { item: oak_planks, count: 1 }
+    duration: 20
+    min_tier: 0
+    max_tier: 32767
+
+  - name: coolant_plant_block
+    class: crafting_table
+    pattern:
+      - [~, ~, ~]
+      - [oak_planks, oak_planks, oak_planks]
+      - [~, ~, ~]
+    inputs:
+      - { item: oak_planks, count: 2 }
+    outputs:
+      - { item: coolant_plant, count: 1 }
+    duration: 20
+    min_tier: 0
+    max_tier: 32767

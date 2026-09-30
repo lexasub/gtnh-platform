@@ -115,6 +115,68 @@ recipes:
     resource_requirements:
       - { kind: EU, amount: 32, tier: 0 }
 
+  # ── Coolant plant (1110:100:17) ────────────────────────────
+  #
+  # The one producer of `coolant` (1111:11:4, coolant_bucket) in the game, and
+  # the missing link in quest 159 "Coolant" (`obtain 0:11111:4`).
+  #
+  # `class: coolant_plant` is a PER-RECIPE override of this file's default
+  # `class: chemical_reactor` (RecipeManager.cpp:688-691), and it is mandatory,
+  # not cosmetic — the same mechanism generator.yaml:85-96 uses for the creative
+  # blocks. findRecipesForMachine (RecipeManager.cpp:1423-1435) resolves a block
+  # to its recipes BY CLASS, so leaving the default would expose this recipe to
+  # every chemical_reactor in the game and, worse, expose every chemical_reactor
+  # recipe to the coolant_plant block. The override scopes the pool to exactly
+  # this distillation.
+  #
+  # WHY THE OUTPUT IS AN ITEM AND NOT `fluid_outputs: coolant`:
+  # RecipeManager.cpp:812-818 requires a NON-producer class to declare a
+  # non-empty `outputs`, rejecting the recipe outright otherwise. Only
+  # generator/boiler may omit it — and those are exactly the classes the engine
+  # removes from the generic recipe loop (SimulationEngine.cpp:251-256 sets
+  # managed_externally, and MachineSystem skips those at :144, :235, :284), so a
+  # generator/boiler plant would parse as fluid-only and then never run a single
+  # operation. A fluid-only recipe on a runnable machine class cannot exist in
+  # this engine today. That is the same trap generator.yaml:19-23 documents for
+  # the creative blocks, seen from the other side.
+  #
+  # The unit is therefore the BUCKET, which is the honest one: CoolantSystem
+  # (HeatConstants.h:32, CoolantSystem.h:54-68) consumes COOLANT_ITEM_ID, a
+  # coolant_bucket, not the fluid. Producing the bucket directly is also a
+  # single path — see the note on the double mint below.
+  #
+  # WATER IS A REAL SOURCE, and it comes in through the FLUID PORT, not
+  # `item: water`: creative_water_generator (1110:100:16, CreativeFluidSystem)
+  # is an infinite source of water as a pipe-network VOLUME, and
+  # gtnh:chemical_reactor_oil_crack above is the existing precedent for a recipe
+  # consuming one that way. `item: water` would additionally be unrunnable —
+  # nothing yields a `water` ITEM, which is why tools/reachability_audit.py
+  # :484-487 strips every fluid from its world base (a water BLOCK in the
+  # terrain is volume, never a stack).
+  #
+  # amount: 1000 mB per operation — one bucket's worth, and exactly one
+  # BLOCK_ID_FLUID_PIPE buffer (PipeNetwork.cpp:190 fluidCapacity = 1000; the
+  # dense pipe is 4000).
+  #
+  # DELIBERATELY NOT ALSO DECLARING `fluid_outputs: coolant`: that would credit
+  # 1000 mB of coolant into the machine's buffer AND emit a coolant_bucket in
+  # the output slot for the same operation — two buckets per distill. The
+  # bucket-fill click in MachineInteractHandler already converts a
+  # coolant-filled buffer into a coolant_bucket, so a buffer-only design exists;
+  # it is simply unreachable while `water` has no modelled source (see the
+  # report). One path, one product.
+  - name: gtnh:coolant_plant_distil_water
+    class: coolant_plant
+    fluid_inputs:
+      - { fluid: water, amount: 1000 }
+    outputs:
+      - { item: coolant_bucket, count: 1 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 1 }
+
   - name: gtnh:chemical_reactor_polymerize_ethylene
     inputs:
       - { item: ethylene, count: 1 }

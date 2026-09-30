@@ -420,6 +420,11 @@ int,name,stack,meta
 # free in items.csv AND unclaimed by that plan.
 1110:100:15,creative_oil_generator,,0
 1110:100:16,creative_water_generator,,0
+# Coolant plant — distils water into coolant, gtnh:coolant_plant_distil_water
+# in recipes/chemical_reactor.yaml. 1110:100:17 is the next free slot after the
+# two creative fluid sources; verified free in items.csv and unclaimed by
+# item-subgroups-deferred.csv.
+1110:100:17,coolant_plant,,0
 # machines/storage — allocation prefix 1110:101
 # Rechargeable batteries use the 1110:111 reserved component range. Their
 # damage/meta field stores current EU, while the item count remains stackable.

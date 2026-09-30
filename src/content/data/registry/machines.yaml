@@ -224,6 +224,43 @@ machine_classes:
           capacity: 5000
           max_output: 64
 
+  # ── Coolant plant ───────────────────────────────────────
+  # Turns water into coolant. Water arrives through the recipe FLUID PORT as
+  # pipe-network volume (creative_water_generator, 1110:100:16, is the source),
+  # and the coolant comes out as a coolant_bucket ITEM, which is the unit
+  # CoolantSystem actually consumes (HeatConstants.h:32).
+  #
+  # It gets its OWN class rather than joining chemical_reactor, because
+  # findRecipesForMachine (RecipeManager.cpp:1423-1435) resolves a block to
+  # recipes BY CLASS. Sharing chemical_reactor would hand this block every
+  # copper-reduction recipe in the game; `class: coolant_plant` on the recipe
+  # scopes the pool to exactly the one distillation.
+  #
+  # It must NOT be a generator/boiler variant, for two reasons the runtime
+  # enforces rather than the audit:
+  #   · RecipeManager.cpp:812-818 SKIPS the whole `outputs` block for
+  #     class generator|boiler, so such a recipe can never declare an item
+  #     output — it would parse clean and craft nothing (the same trap
+  #     documented at recipes/generator.yaml:19-23).
+  #   · SimulationEngine.cpp:251-256 sets managed_externally for
+  #     generator|boiler|steam_turbine|battery_buffer, and MachineSystem skips
+  #     managed machines in all three passes (:144, :235, :284). A
+  #     producer-class machine never starts a recipe at all.
+  #
+  # The block declares no fluid fields because MachineVariant
+  # (MachineRegistry.h:16-31) has none; the recipe's fluid port is what wires the
+  # water reservation.
+  - class: coolant_plant
+    variants:
+      - block_id: "1110:100:17"
+        name: coolant_plant
+        energy_in: ELECTRICITY
+        tier: 1
+        slots: { input: 1, output: 1 }
+        energy:
+          capacity: 10000
+          usage: 32
+
   # ── Rotare Macerator (ROTATION-powered) ──────────────────
   - class: macerator
     variants:
