@@ -548,13 +548,14 @@ static void test_every_quest_craft_requirement_has_a_producing_recipe() {
 // the person who made it has to decide what to do with quest 159 rather than
 // discovering it in a bug report. Asserting the debt is what stops the
 // baseline from quietly absorbing it a second time.
-static void test_coolant_is_stranded_on_purpose() {
+static void test_coolant_has_a_source_again() {
   ensureRegistry();
   RecipeMgr mgr;
   mgr.loadRecipesFromYamlDirectory(kDataDir + "/recipes");
 
   const uint16_t kCoolant = ItemId::pack("1111:11:5");
   const uint16_t kCoolantBucket = ItemId::pack("0:11111:4");
+  const uint16_t kCoolantPlant = ItemId::pack("1110:100:17");
 
   CHECK(RecipeManager::ItemRegistry::instance().isValid(kCoolant),
         "coolant is a registered fluid item");
@@ -564,29 +565,49 @@ static void test_coolant_is_stranded_on_purpose() {
   CHECK(fluids.find("1111:11:5,coolant") != std::string::npos,
         "coolant is still declared in fluids.csv");
 
-  // The consumer exists and the producer does not: that is the recorded state.
-  CHECK(mgr.findRecipesForItem(kCoolant, /*mode=*/1).empty(),
-        "coolant still has no producing recipe (out of scope, see above)");
-  CHECK(mgr.getRecipeById("coolant_bucket") != nullptr,
-        "coolant_bucket (the consumer) still exists");
-  // coolant_bucket DOES have a producing recipe — its own. What strands it is
-  // the coolant it consumes, so the bucket is stranded by cascade, not by a
-  // missing recipe. That distinction is the whole point of the two categories
-  // the reachability fixpoint distinguishes.
-  CHECK(!mgr.findRecipesForItem(kCoolantBucket, /*mode=*/1).empty(),
-        "coolant_bucket is craftable-in-principle from coolant");
+  // THE STRAND IS GONE. This test used to assert the opposite, and the
+  // inversion is the point: it recorded a deliberate gap and now records that
+  // the gap was closed.
+  //
+  // The chain, end to end:
+  //   creative_water_generator (1110:100:16) publishes the `water` fluid via
+  //   CreativeFluidSystem, and creative_water_source_fluid declares it in YAML
+  //   so the reachability models can see it at all.
+  //   gtnh:coolant_plant_distil_water consumes `water` through the recipe fluid
+  //   port and produces a coolant_bucket ITEM, which is the unit CoolantSystem
+  //   actually consumes (HeatConstants::COOLANT_ITEM_ID = 0:11111:4).
+  //   q159 requires exactly one coolant_bucket, so quest 159 is passable.
+  const Recipe *distil = mgr.getRecipeById("gtnh:coolant_plant_distil_water");
+  CHECK(distil != nullptr, "the coolant plant's distilling recipe exists");
+  if (distil != nullptr) {
+    CHECK_EQ(size_t(1), size_t(distil->fluid_inputs.size()),
+             "it distils exactly one fluid input");
+    if (!distil->fluid_inputs.empty()) {
+      CHECK_EQ(size_t(ItemId::pack("1111:11:0")), size_t(distil->fluid_inputs[0].fluid_id),
+               "and that input is water, not some other fluid");
+    }
+  }
 
-  // coolant_bucket is stranded precisely because its input is, so it belongs in
-  // the baseline; if it ever left, the ratchet would have tightened.
+  // The block is craftable, or the whole chain is decorative: a machine the
+  // player cannot build produces nothing. This is the trap creative_generator
+  // fell into before a388d3c1 gave it a recipe.
+  CHECK(!mgr.findRecipesForItem(kCoolantPlant, /*mode=*/1).empty(),
+        "the coolant_plant block has a craft recipe");
+  CHECK(RecipeManager::ItemRegistry::instance().isValid(kCoolantPlant),
+        "the coolant_plant block is registered in items.csv");
+
+  // And the positive direction, measured rather than asserted: both coolant
+  // and its bucket are now craftable, so the baseline must NOT still list them.
   const std::set<uint16_t> craftable = computeCraftable(allRecipes(mgr));
+  CHECK(craftable.find(kCoolantBucket) != craftable.end(),
+        "coolant_bucket is craftable: the strand is closed");
+  // The BARE coolant fluid stays unreachable, and that is deliberate, not a
+  // leftover. The plant distils water straight into a coolant_bucket, because
+  // coolant_bucket is the unit CoolantSystem consumes and the unit q159 asks
+  // for. The intermediate `coolant` item is not needed by anything, so
+  // producing it would add a dead item rather than close a gap.
   CHECK(craftable.find(kCoolant) == craftable.end(),
-        "coolant is unreachable, as recorded");
-  CHECK(craftable.find(kCoolantBucket) == craftable.end(),
-        "coolant_bucket is unreachable, as recorded");
-  CHECK(baselineIds().count(kCoolant) == 1,
-        "coolant is in the recorded baseline");
-  CHECK(baselineIds().count(kCoolantBucket) == 1,
-        "coolant_bucket is in the recorded baseline");
+        "bare coolant stays unreachable: the plant yields the bucket directly");
 }
 
 // graphite (0:1110:001:31) and charcoal_dust (0:1110:001:32) are registered
@@ -691,24 +712,40 @@ static void test_oil_is_a_stranded_fluid_input_on_purpose() {
           "oil arrives via the fluid port, not as an item input");
   }
 
-  // The producer side: nothing emits oil anywhere.
-  CHECK(mgr.findRecipesForItem(kOil, /*mode=*/1).empty(),
-        "oil still has no producing recipe (out of scope, see above)");
-  for (const Recipe *r : allRecipes(mgr))
-    for (const auto &out : r->fluid_outputs)
-      CHECK(out.fluid_id != kOil,
-            "no recipe declares oil in fluid_outputs yet");
+  // The producer side, and the inversion is the point. This test used to assert
+  // that NOTHING emits oil and that the whole ethylene/polymer/electronics chain
+  // was stranded behind it. That was true when written, and the creative oil
+  // generator has since given it a source, so the assertion now runs the other
+  // way: the consumer is still wired the same way, but the chain is live.
+  //
+  // What actually produces the oil is NOT a recipe body - it is
+  // CreativeFluidSystem, whose C++ table (kCreativeFluidSources,
+  // CreativeFluidSystem.cpp:21) publishes the fluid every tick. The audit
+  // cannot see C++, so creative_oil_source_fluid declares the same source in
+  // YAML; `fluid_outputs` is parsed for every machine class
+  // (RecipeManager.cpp:988-989), so that declaration is also read at runtime and
+  // is additive documentation rather than a second source of oil.
+  const Recipe *source = mgr.getRecipeById("creative_oil_source_fluid");
+  CHECK(source != nullptr, "the creative oil source declares a fluid output");
+  if (source != nullptr) {
+    CHECK_EQ(size_t(1), source->fluid_outputs.size(),
+             "it emits exactly one fluid");
+    if (!source->fluid_outputs.empty()) {
+      CHECK_EQ(size_t(kOil), size_t(source->fluid_outputs[0].fluid_id),
+               "and that fluid is oil");
+    }
+  }
 
   const std::set<uint16_t> craftable = computeCraftable(allRecipes(mgr));
-  CHECK(craftable.find(kOil) == craftable.end(),
-        "oil is unreachable, as recorded");
-  // The cascade the audit calls out: ethylene is produced by a recipe, so it is
-  // stranded by its INPUT, not by a missing recipe. Same two-category
-  // distinction the coolant test documents.
+  CHECK(craftable.find(kOil) != craftable.end(),
+        "oil is craftable: the source is visible to the model");
+  // And the cascade the audit used to call out has come alive with it:
+  // ethylene still has its producing recipe, and now that recipe's fluid input
+  // is obtainable, so ethylene is craftable too.
   CHECK(!mgr.findRecipesForItem(kEthylene, /*mode=*/1).empty(),
         "ethylene does have a producing recipe");
-  CHECK(craftable.find(kEthylene) == craftable.end(),
-        "ethylene is unreachable because the oil it cracks is");
+  CHECK(craftable.find(kEthylene) != craftable.end(),
+        "ethylene is craftable now that the oil it cracks is obtainable");
 }
 
 // The fluid port is only load-bearing if reading it CHANGES an answer. A test
@@ -865,7 +902,7 @@ int main(int argc, char **argv) {
   TEST(all_accepted_recipes_reach_the_model);
   TEST(transformer_lv_mv_has_a_recipe);
   TEST(every_quest_craft_requirement_has_a_producing_recipe);
-  TEST(coolant_is_stranded_on_purpose);
+  TEST(coolant_has_a_source_again);
   TEST(graphite_and_charcoal_dust_are_stranded_on_purpose);
   TEST(oil_is_a_stranded_fluid_input_on_purpose);
   TEST(the_fluid_port_actually_changes_the_outcome);
