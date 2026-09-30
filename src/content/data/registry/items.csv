@@ -177,6 +177,8 @@ int,name,stack,meta
 0:1110:001:28,electrum_dust,,0
 0:1110:001:29,uranium_dust,,0
 0:1110:001:30,nickel_dust,,0
+0:1110:001:31,graphite,,0
+0:1110:001:32,charcoal_dust,,0
 # base/processed/rods-bolts-screws — allocation prefix 0:1110:010
 0:1110:010:0,copper_rod,,0
 0:1110:010:1,iron_rod,,0

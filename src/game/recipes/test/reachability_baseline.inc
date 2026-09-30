@@ -167,3 +167,8 @@
     "64518",
     "64519",
     "64570",
+    // 28959 graphite and 28960 charcoal_dust, registered at the user's request
+    // with no producer or consumer yet. Asserted stranded on purpose by
+    // test_graphite_and_charcoal_dust_are_stranded_on_purpose.
+    "28959",
+    "28960",

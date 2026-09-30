@@ -589,6 +589,47 @@ static void test_coolant_is_stranded_on_purpose() {
         "coolant_bucket is in the recorded baseline");
 }
 
+// graphite (0:1110:001:31) and charcoal_dust (0:1110:001:32) are registered
+// but stranded, the same shape as coolant above and for the same reason.
+//
+// The user asked for both items to exist; they did NOT exist before this
+// commit, so registering them is not a regression - it is two new orphans.
+// Nothing in the recipe tree mentions either name yet, and the user did not
+// specify a producer for them. Inventing one here would be exactly the
+// nonsense source the coolant test above refuses to invent: graphite has no
+// consumer in this tree to justify a producer, and charcoal_dust's obvious
+// use (alongside carbon_dust in gtnh:alloy_steel_dust) is a content decision
+// nobody has made.
+//
+// So the debt is asserted EXPLICITLY, and the baseline records both ids. When
+// someone gives them a real producer or consumer, this test fails and whoever
+// did it decides what it means rather than discovering it as a silent metric
+// change.
+static void test_graphite_and_charcoal_dust_are_stranded_on_purpose() {
+  ensureRegistry();
+  RecipeMgr mgr;
+  mgr.loadRecipesFromYamlDirectory(kDataDir + "/recipes");
+
+  const uint16_t kGraphite = ItemId::pack("0:1110:001:31");
+  const uint16_t kCharcoalDust = ItemId::pack("0:1110:001:32");
+
+  CHECK(RecipeManager::ItemRegistry::instance().isValid(kGraphite),
+        "graphite is registered");
+  CHECK(RecipeManager::ItemRegistry::instance().isValid(kCharcoalDust),
+        "charcoal_dust is registered");
+
+  // No recipe produces them yet, and none consumes them: that is the state.
+  CHECK(mgr.findRecipesForItem(kGraphite, /*mode=*/1).empty(),
+        "graphite has no producing recipe yet (awaiting a content decision)");
+  CHECK(mgr.findRecipesForItem(kCharcoalDust, /*mode=*/1).empty(),
+        "charcoal_dust has no producing recipe yet (awaiting a content decision)");
+
+  CHECK(baselineIds().count(kGraphite) == 1,
+        "graphite is in the recorded baseline");
+  CHECK(baselineIds().count(kCharcoalDust) == 1,
+        "charcoal_dust is in the recorded baseline");
+}
+
 // The fluid port is not decoration: this is the same property coolant gets
 // above, asserted for oil, and it is the reason this model reads
 // `fluid_inputs` at all.
@@ -825,6 +866,7 @@ int main(int argc, char **argv) {
   TEST(transformer_lv_mv_has_a_recipe);
   TEST(every_quest_craft_requirement_has_a_producing_recipe);
   TEST(coolant_is_stranded_on_purpose);
+  TEST(graphite_and_charcoal_dust_are_stranded_on_purpose);
   TEST(oil_is_a_stranded_fluid_input_on_purpose);
   TEST(the_fluid_port_actually_changes_the_outcome);
   TEST(unreachable_set_is_a_subset_of_the_recorded_baseline);
