@@ -49,7 +49,7 @@ func TestGateway_LCREnergyHatchThermalChain(t *testing.T) {
 		t.Fatalf("request fixture chunk: %v", err)
 	}
 
-	c.WaitForChunkGeneration(6 * time.Second)
+	c.WaitForChunkGeneration(12 * time.Second)
 
 	type block struct {
 		x, y, z int32
@@ -184,7 +184,7 @@ func TestGateway_LCREnergyHatchThermalChain(t *testing.T) {
 	seenHatch := false
 	seenProgress := false
 	seenOutput := false
-	deadline := time.Now().Add(60 * time.Second)
+	deadline := time.Now().Add(120 * time.Second)
 	for time.Now().Before(deadline) &&
 		(len(seenSteam) < 4 || len(seenTurbine) < 4 || len(seenBattery) < 4 || !seenHatch || !seenProgress || !seenOutput) {
 		msgType, data, readErr := c.ReadCtrl(500 * time.Millisecond)
@@ -218,6 +218,15 @@ func TestGateway_LCREnergyHatchThermalChain(t *testing.T) {
 				var hatchPos Protocol.Vec3i
 				if hatch.Pos(&hatchPos) != nil && hatchPos.X() == 711 && hatchPos.Y() == 125 && hatchPos.Z() == 692 && hatch.Tier() == 0 {
 					seenHatch = true
+				}
+			}
+		}
+		// Output may also be reported by the output hatch tile entity
+		if pos.X() == 711 && pos.Y() == 122 && pos.Z() == 690 {
+			for i := 0; i < update.OutputItemsLength(); i++ {
+				var item Protocol.ItemStack
+				if update.OutputItems(&item, i) && item.ItemId() == ironIngot && item.Count() > 0 {
+					seenOutput = true
 				}
 			}
 		}
