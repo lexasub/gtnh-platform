@@ -66,36 +66,15 @@ int main(int argc, char* argv[]) {
         if (topic == "metadb.player.online") {
             gateway.publish_player_joined();
         } else if (topic == "recipe.completed")
-            gateway.send_to_client_ctrl_raw(GatewayMsg::kRecipeCompleted, data, len);
+            gateway.broadcast_ctrl(GatewayMsg::kRecipeCompleted, data, len);
         else
             spdlog::trace("Gateway: unhandled topic '{}' ({} bytes)", topic, len);
     };
 
-    gateway.on_client_message = [&](const uint8_t* data, size_t len) {
-        // Filter PlayerActions on the gateway before they reach the router:
-        // the client floods MOVE/UNLOAD at ~15k/s while walking (chunk
-        // eviction).  Only CHUNK_REQUEST (chunkd) and ITEM_ACTION (simcore)
-        // are meaningful — forwarding MOVE/UNLOAD saturates the router and
-        // starves player.actions.setblock.
-        flatbuffers::Verifier v(data, len);
-        if (v.VerifyBuffer<Protocol::PlayerAction>(nullptr)) {
-            auto* pa = flatbuffers::GetRoot<Protocol::PlayerAction>(data);
-            if (pa) {
-                switch (pa->action()) {
-                case Protocol::PlayerActionType_CHUNK_REQUEST:
-                    gateway.publish("chunk.requests", data, len);
-                    return;
-                case Protocol::PlayerActionType_ITEM_ACTION:
-                    gateway.publish("player.actions", data, len);
-                    return;
-                default:
-                    return; // drop MOVE / UNLOAD / etc.
-                }
-            }
-        }
-        gateway.publish("player.actions", data, len);
-    };
-
+    // Client→server routing lives in IoUringGateway: it knows which session
+    // sent a frame, admits the claimed identity, and decides the upstream
+    // topic. main.cpp only handles server→client topics the gateway does not
+    // route itself.
     if (!gateway.init()) {
         spdlog::error("Gateway: failed to init io_uring");
         return 1;
@@ -176,7 +155,12 @@ int main(int argc, char* argv[]) {
                 spdlog::error("Gateway: router reconnect failed");
             }
         }
-        
+
+        // Reap closed connections on this thread: a connection's on_closed
+        // runs on its own poll thread and cannot destroy it there
+        // (see IoUringGateway::retire).
+        gateway.drain_retired();
+
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 

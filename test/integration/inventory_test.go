@@ -16,13 +16,13 @@ const cobblestoneID uint16 = 2
 
 // TC5: Chunk — get block state after placement (tests ChunkStore integration).
 func TestChunk_GetBlockAfterSet(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	playerID := uint64(42)
+	playerID := c.PlayerID()
 	const (
 		x = int32(300)
 		y = int32(50)
@@ -66,7 +66,7 @@ func TestChunk_GetBlockAfterSet(t *testing.T) {
 
 // TC6-TC7: Player inventory — send InventoryAction, expect InventoryUpdate back.
 func TestInventory_MoveBetweenSlots(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestInventory_MoveBetweenSlots(t *testing.T) {
 	// Gateway forwards queued player.inventory.update pushes without
 	// correlation, so the player's whole inventory is the predicate — not the
 	// first frame of that type. Correlate by player identity (gp-c56).
-	const playerID = uint64(42)
+	playerID := c.PlayerID()
 
 	// Give the player a known stack to move. ITEM_ACTION is the production
 	// creative-menu grant path
@@ -113,10 +113,9 @@ func TestInventory_MoveBetweenSlots(t *testing.T) {
 	// (gp-03n). The old hand-rolled loop only checked that the item had LEFT
 	// the player grid, which is a negative: it also passes when the click
 	// never ran, when the stack was silently dropped, and — because the
-	// cluster is shared and Gateway hands every Ctrl connection the same
-	// player id — when any other test in this process picks up the same item.
-	// PlayerInventoryStore::buildUpdate publishes cursor and grid in one
-	// frame, so waiting on the cursor states the fact the click claims.
+	// cluster is shared — when another test in this process has that same item
+	// in its cursor. PlayerInventoryStore::buildUpdate publishes cursor and grid
+	// in one frame, so waiting on the cursor states the fact the click claims.
 	if _, err := c.WaitForCursorItem(playerID, cobblestoneID, 4, 5*time.Second); err != nil {
 		t.Fatalf("pick-up did not move item %d x4 from player slot %d onto the cursor: %v",
 			cobblestoneID, srcSlot, err)
@@ -125,13 +124,13 @@ func TestInventory_MoveBetweenSlots(t *testing.T) {
 
 // TC8: Break a block and verify the item appears in inventory.
 func TestInventory_BreakBlockGivesItem(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 10*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 10*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	playerID := uint64(99)
+	playerID := c.PlayerID()
 	const (
 		x = int32(800)
 		y = int32(50)

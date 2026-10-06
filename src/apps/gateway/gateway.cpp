@@ -3,9 +3,9 @@
 #include "client_state_generated.h"
 #include "gateway_generated.h"
 #include "pipe_network_generated.h"
-#include "service_health_generated.h"
 #include "quest_generated.h"
 #include "recipe_generated.h"
+#include "service_health_generated.h"
 #include "common/FlatBuffersVerify.h"
 #include "common/ResourceBufferStateCodec.h"
 
@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <chrono>
+#include <shared_mutex>
 
 #define TRACE_LOG(tid, svc, op, dur_us) \
     spdlog::info("[TRACE tid={}] {} {} {}us", (tid), (svc), (op), (dur_us))
@@ -34,133 +35,131 @@ bool IoUringGateway::init() {
 
 // =========================================================================
 //  TCP accept (ctrl + bulk)
+//
+//  Two sockets, two sessions. The ctrl socket owns the session: it gets an
+//  identity and is the lifetime the session lives and dies with. The bulk
+//  socket is push-only and pairs itself to a session with the session id the
+//  client received in its welcome — no guessing by IP or arrival order, so
+//  several clients can have their bulk sockets open simultaneously.
 // =========================================================================
 
 bool IoUringGateway::listen(uint16_t ctrl_port, uint16_t bulk_port) {
     ctrl_port_ = ctrl_port;
-    bulk_port_ = bulk_port;
-
     ctrl_server_.on_accept = [this](int client_fd) {
         auto tags = tag_alloc_.alloc();
-        auto conn = std::make_unique<gtnh::net::IoUringConnection>(
+        auto conn = std::make_shared<gtnh::net::IoUringConnection>(
             client_fd, "ctrl", tags);
-        conn->on_message = [this](uint8_t type, const uint8_t* d, size_t l) {
-            on_client_ctrl_message(type, d, l);
+        auto ctx = std::make_shared<ClientConnContext>();
+
+        conn->on_message = [this, ctx](uint8_t type, const uint8_t* d, size_t l) {
+            const uint64_t sid = ctx->session_id.load(std::memory_order_acquire);
+            if (sid == 0) return; // session already torn down
+            on_client_ctrl_message(sid, type, d, l);
         };
-        // Atomic session increment with proper memory barrier
-        auto sess = ++session_gen_;
-        // Ensure session_gen_ is visible to on_closed callback
-        std::atomic_thread_fence(std::memory_order_release);
-        
-        // Atomic state for connection lifecycle
-        std::atomic<bool> connection_valid{true};
-        std::atomic<bool> read_started{false};
-        std::atomic<bool> connection_accepted{false};
-        
-        conn->on_closed = [this, sess]() {
-            spdlog::info("Gateway: ctrl client disconnected");
+        conn->on_closed = [this, ctx]() {
+            // exchange(0) makes teardown idempotent: a session is removed by
+            // exactly one of its sockets' close callbacks, whichever fires
+            // first.
+            const uint64_t sid = ctx->session_id.exchange(0, std::memory_order_acq_rel);
+            if (sid == 0) return;
+            // Only the registry mutation happens under conn_mutex_: publishing
+            // player.left goes to the router over the network, and holding the
+            // lock across that would stall every send in the process if the
+            // router stalls.
+            std::shared_ptr<gtnh::net::ClientSession> session;
+            std::shared_ptr<gtnh::net::IoUringConnection> ctrl_conn;
             {
-                std::lock_guard<std::mutex> lock(client_state_mutex_);
-                // Only act if no newer session has started — the old on_closed
-                // callback may fire after the next accept handler has already
-                // set up state for a new session (race on rapid reconnect).
-                // Use atomic load with acquire fence for proper synchronization
-                if (session_gen_.load(std::memory_order_acquire) != sess) {
-                    spdlog::info("Gateway: stale on_closed from session {} skipped", sess);
-                    return;
-                }
-                if (player_id_known_) {
-                    flatbuffers::FlatBufferBuilder fbb;
-                    auto left = Protocol::CreatePlayerLeft(
-                        fbb, client_player_id_, last_x_, last_y_, last_z_);
-                    fbb.Finish(left);
-                    publish("player.left", fbb.GetBufferPointer(), fbb.GetSize());
-                    spdlog::info("Gateway: player left (id={}, pos=[{}, {}, {}])",
-                                 client_player_id_, last_x_, last_y_, last_z_);
-                }
-                player_id_known_ = false;
+                std::unique_lock<std::shared_mutex> guard(conn_mutex_);
+                session = sessions_.remove_session(sid);
+                if (session) ctrl_conn = std::move(session->ctrl);
             }
+            if (session) {
+                announce_session_left(session);
+                retire(std::move(ctrl_conn));
+            }
+            spdlog::info("Gateway: ctrl session {} disconnected ({} sessions left)",
+                         sid, sessions_.size());
         };
+
+        // Assign identity before any byte can arrive, so the first client
+        // message is already attributed to a session.
+        std::shared_ptr<gtnh::net::ClientSession> session;
+        {
+            std::unique_lock<std::shared_mutex> guard(conn_mutex_);
+            session = sessions_.create_session(conn);
+        }
+        ctx->session_id.store(session->session_id, std::memory_order_release);
+
         if (!conn->start_reading()) {
             spdlog::error("Gateway: failed to start ctrl read loop");
-            conn->close();
+            ctx->session_id.store(0, std::memory_order_release);
+            std::unique_lock<std::shared_mutex> guard(conn_mutex_);
+            if (auto doomed = sessions_.remove_session(session->session_id))
+                retire(std::move(doomed->ctrl));
             return;
         }
-        // Same pattern as bulk: always accept, destroy old outside lock.
-        std::unique_ptr<gtnh::net::IoUringConnection> old_conn;
-        {
-            std::lock_guard<std::mutex> lock(client_ctrl_mutex_);
-            old_conn = std::move(client_ctrl_);
-            client_ctrl_ = std::move(conn);
-        }
-        // old_conn destroyed here (outside lock)
-        spdlog::info("Gateway: ctrl client connected");
-        
-        // Reset player state for new connection (old on_closed may not have
-        // fired yet, leaving player_id_known_ = true from prior session).
-        // Publish player.joined eagerly so MetaDB pushes inventory immediately
-        // — avoids race between client's first message and old on_closed.
-        // Use unified mutex for all connection state operations
-        {
-            std::lock_guard<std::mutex> lock(client_state_mutex_);
-            player_id_known_ = true;
-            client_player_id_ = 1;      // matches client's hardcoded dev ID
-            last_x_ = last_x_ ? last_x_ : 256;
-            if (!last_y_) last_y_ = 80;
-            last_z_ = last_z_ ? last_z_ : 224;
-            flatbuffers::FlatBufferBuilder fbb;
-            auto joined = Protocol::CreatePlayerJoined(fbb, 1);
-            fbb.Finish(joined);
-            publish("player.joined", fbb.GetBufferPointer(), fbb.GetSize());
-            spdlog::info("Gateway: player joined (id=1) on connect");
-        }
 
-        // Trigger CHUNK_REQUEST to load initial chunk
-        // Use last known position from previous session, or default spawn (0,50,0)
-        {
-            std::lock_guard<std::mutex> lock(client_state_mutex_);
-            int32_t sx = last_x_ ? last_x_ : 0;
-            int32_t sy = last_y_ ? last_y_ : 50;
-            int32_t sz = last_z_ ? last_z_ : 0;
-            int32_t cx = sx >> 5, cy = sy >> 5, cz = sz >> 5;
-            flatbuffers::FlatBufferBuilder fbb;
-            auto pos = Protocol::Vec3i(cx, cy, cz);
-            auto action = Protocol::CreatePlayerAction(fbb, 0,
-                                                       Protocol::PlayerActionType_CHUNK_REQUEST, &pos);
-            fbb.Finish(action);
-            spdlog::info("Gateway: sending CHUNK_REQUEST at chunk ({},{},{})", cx, cy, cz);
-            publish("chunk.requests", fbb.GetBufferPointer(), fbb.GetSize());
-        }
+        // The welcome is the client's only source of identity: everything it
+        // sends afterwards must carry this player_id, and the gateway drops
+        // frames that claim a different one.
+        flatbuffers::FlatBufferBuilder fbb;
+        auto welcome = Protocol::CreateSessionWelcome(fbb, session->session_id,
+                                                      session->player_id);
+        fbb.Finish(welcome);
+        conn->send(GatewayMsg::kSessionWelcome, fbb.GetBufferPointer(), fbb.GetSize());
+        spdlog::info("Gateway: ctrl session {} joined as player {} ({} sessions)",
+                     session->session_id, session->player_id, sessions_.size());
+
+        announce_session_join(session);
     };
 
     bulk_server_.on_accept = [this](int client_fd) {
         auto tags = tag_alloc_.alloc();
-        auto conn = std::make_unique<gtnh::net::IoUringConnection>(
+        auto conn = std::make_shared<gtnh::net::IoUringConnection>(
             client_fd, "bulk", tags);
-        conn->on_message = [this](uint8_t type, const uint8_t* d, size_t l) {
-            on_client_bulk_message(type, d, l);
+        auto ctx = std::make_shared<ClientConnContext>();
+        // Parked under a token, not in the context: the connection owns the
+        // callbacks holding the context, so a context that owned the
+        // connection back would be a cycle leaking a poll thread per client.
+        ctx->bulk_token = next_bulk_token_.fetch_add(1, std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> lock(pending_bulk_mutex_);
+            pending_bulk_[ctx->bulk_token] = conn;
+        }
+
+        conn->on_message = [this, ctx](uint8_t type, const uint8_t* d, size_t l) {
+            on_client_bulk_message(ctx, type, d, l);
         };
-        conn->on_closed = [this]() {
-            spdlog::info("Gateway: bulk client disconnected");
+        conn->on_closed = [this, ctx]() {
+            const uint64_t sid = ctx->session_id.exchange(0, std::memory_order_acq_rel);
+            if (sid == 0) {
+                // Never paired: forget the parked connection, but destroy it on
+                // the main loop — see IoUringGateway::retire.
+                if (auto unpaired = take_pending_bulk(ctx->bulk_token))
+                    retire(std::move(unpaired));
+                spdlog::info("Gateway: unpaired bulk connection closed");
+                return;
+            }
+            std::shared_ptr<gtnh::net::IoUringConnection> bulk_conn;
+            std::unique_lock<std::shared_mutex> guard(conn_mutex_);
+            if (auto session = sessions_.detach_bulk(sid, &bulk_conn)) {
+                // Taken, not reset in place: the registry dropping the last
+                // reference here would destroy the connection on its own poll
+                // thread (see retire).
+                retire(std::move(bulk_conn));
+                spdlog::info("Gateway: bulk socket detached from session {}", sid);
+            }
         };
+
         if (!conn->start_reading()) {
             spdlog::error("Gateway: failed to start bulk read loop");
-            conn->close();
+            if (auto doomed = take_pending_bulk(ctx->bulk_token)) {
+                doomed->close();
+                retire(std::move(doomed));
+            }
             return;
         }
-        // Always accept new connection.  Swap the old out first so its
-        // destructor (which joins the poll thread) runs outside the lock
-        // and doesn't block the TcpServer accept handler or other threads.
-        std::unique_ptr<gtnh::net::IoUringConnection> old_conn;
-        {
-            std::lock_guard<std::mutex> lock(client_bulk_mutex_);
-            old_conn = std::move(client_bulk_);
-            client_bulk_ = std::move(conn);
-        }
-        // old_conn destroyed here (outside lock) — joining its poll thread
-        // may block for up to 50 ms (the poll timeout).  Acceptable during
-        // reconnect.
-        spdlog::info("Gateway: bulk client connected");
+        spdlog::info("Gateway: bulk connection accepted, awaiting SessionHello");
     };
 
     if (!ctrl_server_.listen(ctrl_port, "ctrl")) return false;
@@ -207,8 +206,8 @@ void IoUringGateway::configure_router_callbacks() {
             auto vector = builder.CreateVector(rows);
             auto response = Protocol::CreateServiceHealthResp(builder, request_id, vector);
             builder.Finish(response);
-            send_to_client_ctrl_raw(GatewayMsg::kServiceHealthResp,
-                                    builder.GetBufferPointer(), builder.GetSize());
+            broadcast_ctrl(GatewayMsg::kServiceHealthResp,
+                           builder.GetBufferPointer(), builder.GetSize());
         });
 }
 
@@ -253,129 +252,206 @@ void IoUringGateway::publish(const std::string& topic, const uint8_t* data, size
 }
 
 // =========================================================================
-//  Client I/O (Ctrl = small msgs, Bulk = large data)
+//  Session announcements
 // =========================================================================
 
-void IoUringGateway::send_to_client_ctrl(uint8_t msg_type, const uint8_t* data, size_t len) {
-    std::lock_guard<std::mutex> lock(client_ctrl_mutex_);
-    if (client_ctrl_ && client_ctrl_->is_open())
-        client_ctrl_->send(msg_type, data, len);
+void IoUringGateway::announce_session_join(
+    const std::shared_ptr<gtnh::net::ClientSession>& session) {
+    flatbuffers::FlatBufferBuilder fbb;
+    auto name = fbb.CreateString(session->nickname);
+    auto joined = Protocol::CreatePlayerJoined(fbb, session->player_id, name);
+    fbb.Finish(joined);
+    publish("player.joined", fbb.GetBufferPointer(), fbb.GetSize());
+    request_spawn_chunk(session->session_id);
 }
 
-void IoUringGateway::send_to_client_bulk(uint8_t msg_type, const uint8_t* data, size_t len) {
-    // FIXED: Use unified client_state_mutex_ for all connection state operations
-    std::lock_guard<std::mutex> lock(client_state_mutex_);
-    if (client_bulk_ && client_bulk_->is_open())
-        client_bulk_->send(msg_type, data, len);
+void IoUringGateway::announce_session_left(
+    const std::shared_ptr<gtnh::net::ClientSession>& session) {
+    flatbuffers::FlatBufferBuilder fbb;
+    auto left = Protocol::CreatePlayerLeft(
+        fbb, session->player_id, session->last_x, session->last_y, session->last_z);
+    fbb.Finish(left);
+    publish("player.left", fbb.GetBufferPointer(), fbb.GetSize());
+    spdlog::info("Gateway: player left (id={}, pos=[{}, {}, {}])", session->player_id,
+                 session->last_x, session->last_y, session->last_z);
 }
 
-void IoUringGateway::send_to_client_ctrl_raw(std::shared_ptr<std::vector<uint8_t>> frame) {
-    std::lock_guard<std::mutex> lock(client_ctrl_mutex_);
-    if (client_ctrl_ && client_ctrl_->is_open())
-        client_ctrl_->send_raw(std::move(frame));
+void IoUringGateway::request_chunk(uint64_t session_id, gtnh::net::ChunkCoord coord) {
+    auto session = sessions_.by_id(session_id);
+    if (!session) return;
+    // The pending entry is what makes delivery per-session: chunkd answers a
+    // request by broadcasting world.chunk.loaded.compressed, and only the
+    // sessions that asked for this coordinate are served from it.
+    sessions_.note_chunk_request(session_id, coord);
+
+    flatbuffers::FlatBufferBuilder fbb;
+    auto pos = Protocol::Vec3i(coord.x, coord.y, coord.z);
+    auto action = Protocol::CreatePlayerAction(
+        fbb, session->player_id, Protocol::PlayerActionType_CHUNK_REQUEST, &pos);
+    fbb.Finish(action);
+    spdlog::info("Gateway: session {} requests chunk ({},{},{})", session_id,
+                 coord.x, coord.y, coord.z);
+    publish("chunk.requests", fbb.GetBufferPointer(), fbb.GetSize());
 }
 
-void IoUringGateway::send_to_client_bulk_raw(std::shared_ptr<std::vector<uint8_t>> frame) {
-    std::lock_guard<std::mutex> lock(client_state_mutex_);
-    if (client_bulk_ && client_bulk_->is_open())
-        client_bulk_->send_raw(std::move(frame));
+void IoUringGateway::request_spawn_chunk(uint64_t session_id) {
+    auto session = sessions_.by_id(session_id);
+    if (!session) return;
+    request_chunk(session_id, {session->last_x >> 5, session->last_y >> 5,
+                               session->last_z >> 5});
 }
 
-void IoUringGateway::send_to_client_ctrl_raw(uint8_t msg_type, const uint8_t* data, size_t len) {
-    std::lock_guard<std::mutex> lock(client_ctrl_mutex_);
-    if (client_ctrl_ && client_ctrl_->is_open())
-        client_ctrl_->send(msg_type, data, len);
+void IoUringGateway::retire(std::shared_ptr<gtnh::net::IoUringConnection> conn) {
+    if (!conn) return;
+    std::lock_guard<std::mutex> lock(retired_mutex_);
+    retired_.push_back(std::move(conn));
 }
 
-bool IoUringGateway::send_to_client_bulk_raw(uint8_t msg_type, const uint8_t* data, size_t len) {
-    std::lock_guard<std::mutex> lock(client_bulk_mutex_);
-    if (!client_bulk_) { spdlog::warn("Gateway: bulk client null, dropping {} bytes", len); return false; }
-    if (!client_bulk_->is_open()) { spdlog::warn("Gateway: bulk client closed, dropping {} bytes", len); return false; }
-    // Build a test frame to log its first bytes before sending
-    auto test_frame = gtnh::net::frame::pack(msg_type, data, len);
-    spdlog::info("Gateway: SEND bulk type={} len={} frame_size={} first_bytes={:02x} {:02x} {:02x} {:02x} {:02x}",
-                  msg_type, len, test_frame->size(),
-                  test_frame->size() > 0 ? (*test_frame)[0] : 0,
-                  test_frame->size() > 1 ? (*test_frame)[1] : 0,
-                  test_frame->size() > 2 ? (*test_frame)[2] : 0,
-                  test_frame->size() > 3 ? (*test_frame)[3] : 0,
-                  test_frame->size() > 4 ? (*test_frame)[4] : 0);
-    client_bulk_->send_raw(std::move(test_frame));
-    return true;
+void IoUringGateway::drain_retired() {
+    std::vector<std::shared_ptr<gtnh::net::IoUringConnection>> dead;
+    {
+        std::lock_guard<std::mutex> lock(retired_mutex_);
+        dead.swap(retired_);
+    }
+    // Destroyed here, on the main loop's thread: a closing connection cannot be
+    // destroyed on its own poll thread (~IoUringConnection cannot join itself,
+    // and a still-joinable std::thread terminates the process).
+    dead.clear();
 }
 
-// client_interest returns the chunk-interest state for the connected client,
-// or nullptr when interest management is not active.
-//
-// The return is nullptr on purpose and the pointer is NOT a placeholder for
-// unimplemented work: the whole call graph is the placeholder. There are no
-// callers, and there cannot be correct ones yet, for four reasons that are
-// each independently blocking. Verified against this tree, not assumed:
-//
-//   1. There is no per-session state to return. ctrl is a singleton
-//      (`client_ctrl_`, swapped on accept), so "the client's interest" has no
-//      identity of its own. Per-session interest is task 4.1 of
-//      openspec/changes/add-multiplayer-foundation — that change introduces
-//      ClientSession and is not started.
-//   2. The frame a filter would run on carries no player. chunkd publishes
-//      `world.chunk.loaded.compressed` as CompressedChunkData { coord,
-//      palette_data } (core.fbs:201-204) — there is no player id and no
-//      requesting-player set, so "is this chunk in the client's interest" has
-//      no subject to ask about. This is the same attribution gap that
-//      add-multiplayer-foundation calls out for `chunk.requests` (published
-//      with player_id=0 at gateway.cpp:489-492 and 128-132).
-//   3. There is no center to measure from. The client never reports its
-//      position: main.cpp's on_client_message drops MOVE/UNLOAD as flood
-//      control, so last_x_/last_y_/last_z_ are only ever the saved spawn
-//      point (gateway.cpp:108-110) or whatever a SetBlockAction happened to
-//      click (gateway.cpp:544, 568). Filtering on that would silently drop
-//      every chunk outside a radius around a stale coordinate.
-//   4. Nothing consumes a rejection. on_router_publish forwards chunk data
-//      unconditionally to the bulk socket, and the client has no re-request
-//      path for a chunk it was not sent, so a dropped chunk is a hole in the
-//      world with no recovery.
-//
-// The filter itself is NOT the blocker — it is one ShouldSendChunk call in
-// the world.chunk.loaded.compressed branch (gateway.cpp:389-396), and
-// PlayerInterest::ShouldSendChunk already exists (gateway.h:49-53). Wiring it
-// up before 1-4 are resolved is precisely the "half-version that silently
-// drops chunks" the task forbids: with a stale center (3) the client would
-// receive a sparse world and report it as a rendering bug.
-//
-// Landed: the dependency, above, with its task ids. Not landed: the filter.
-PlayerInterest* IoUringGateway::client_interest() {
-    // Use unified client_state_mutex_ for all connection state operations
-    // This prevents asymmetry between client_ctrl_mutex_, client_bulk_mutex_, and client_state_mutex_
-    std::lock_guard<std::mutex> lock(client_state_mutex_);
-    return nullptr;
-}
-
-bool IoUringGateway::has_client() const {
-    std::lock_guard<std::mutex> lock(client_ctrl_mutex_);
-    return client_ctrl_ && client_ctrl_->is_open();
+std::shared_ptr<gtnh::net::IoUringConnection>
+IoUringGateway::take_pending_bulk(uint64_t token) {
+    std::lock_guard<std::mutex> lock(pending_bulk_mutex_);
+    auto it = pending_bulk_.find(token);
+    if (it == pending_bulk_.end()) return nullptr;
+    auto conn = std::move(it->second);
+    pending_bulk_.erase(it);
+    return conn;
 }
 
 void IoUringGateway::publish_player_joined() {
-    std::lock_guard<std::mutex> lock(client_state_mutex_);
-    if (!player_id_known_) return;
-    flatbuffers::FlatBufferBuilder fbb;
-    auto joined = Protocol::CreatePlayerJoined(fbb, client_player_id_);
-    fbb.Finish(joined);
-    publish("player.joined", fbb.GetBufferPointer(), fbb.GetSize());
-    spdlog::info("Gateway: republished player.join (id={}) on upstream reconnect", client_player_id_);
+    for (const auto &session : sessions_.snapshot()) {
+        flatbuffers::FlatBufferBuilder fbb;
+        auto name = fbb.CreateString(session->nickname);
+        auto joined = Protocol::CreatePlayerJoined(fbb, session->player_id, name);
+        fbb.Finish(joined);
+        publish("player.joined", fbb.GetBufferPointer(), fbb.GetSize());
+        spdlog::info("Gateway: republished player.joined (id={}) after router reconnect",
+                     session->player_id);
+    }
 }
 
 void IoUringGateway::publish_player_left() {
-    std::lock_guard<std::mutex> lock(client_state_mutex_);
-    if (!player_id_known_) return;
-    flatbuffers::FlatBufferBuilder fbb;
-    auto left = Protocol::CreatePlayerLeft(
-        fbb, client_player_id_, last_x_, last_y_, last_z_);
-    fbb.Finish(left);
-    publish("player.left", fbb.GetBufferPointer(), fbb.GetSize());
-    spdlog::info("Gateway: publish player.left (id={}, pos=[{}, {}, {}])",
-                 client_player_id_, last_x_, last_y_, last_z_);
+    for (const auto &session : sessions_.snapshot()) {
+        flatbuffers::FlatBufferBuilder fbb;
+        auto left = Protocol::CreatePlayerLeft(
+            fbb, session->player_id, session->last_x, session->last_y, session->last_z);
+        fbb.Finish(left);
+        publish("player.left", fbb.GetBufferPointer(), fbb.GetSize());
+        spdlog::info("Gateway: publish player.left (id={}, pos=[{}, {}, {}])",
+                     session->player_id, session->last_x, session->last_y, session->last_z);
+    }
 }
+
+// =========================================================================
+//  Client I/O — targeted sends
+// =========================================================================
+
+std::vector<SessionSocket>
+IoUringGateway::collect_ctrl_sockets(uint64_t exclude_player_id) const {
+    std::shared_lock<std::shared_mutex> guard(conn_mutex_);
+    std::vector<SessionSocket> sockets;
+    for (const auto &session : sessions_.snapshot()) {
+        if (session->player_id == exclude_player_id) continue;
+        if (!session->has_ctrl()) continue;
+        sockets.push_back({session->player_id, session->ctrl});
+    }
+    return sockets;
+}
+
+std::vector<SessionSocket>
+IoUringGateway::collect_bulk_sockets(uint64_t exclude_player_id) const {
+    std::shared_lock<std::shared_mutex> guard(conn_mutex_);
+    std::vector<SessionSocket> sockets;
+    for (const auto &session : sessions_.snapshot()) {
+        if (session->player_id == exclude_player_id) continue;
+        if (!session->has_bulk()) continue;
+        sockets.push_back({session->player_id, session->bulk});
+    }
+    return sockets;
+}
+
+std::shared_ptr<gtnh::net::IoUringConnection>
+IoUringGateway::session_ctrl_socket(uint64_t session_id) const {
+    std::shared_lock<std::shared_mutex> guard(conn_mutex_);
+    auto session = sessions_.by_id(session_id);
+    if (!session || !session->has_ctrl()) return nullptr;
+    return session->ctrl;
+}
+
+std::shared_ptr<gtnh::net::IoUringConnection>
+IoUringGateway::session_bulk_socket(uint64_t session_id) const {
+    std::shared_lock<std::shared_mutex> guard(conn_mutex_);
+    auto session = sessions_.by_id(session_id);
+    if (!session || !session->has_bulk()) return nullptr;
+    return session->bulk;
+}
+
+void IoUringGateway::send_to_session_ctrl(uint64_t session_id, uint8_t msg_type,
+                                          const uint8_t* data, size_t len) {
+    if (auto conn = session_ctrl_socket(session_id)) conn->send(msg_type, data, len);
+}
+
+bool IoUringGateway::send_to_session_bulk(uint64_t session_id, uint8_t msg_type,
+                                          const uint8_t* data, size_t len) {
+    auto conn = session_bulk_socket(session_id);
+    if (!conn) {
+        spdlog::debug("Gateway: session {} has no bulk socket, dropping type={}",
+                      session_id, msg_type);
+        return false;
+    }
+    conn->send(msg_type, data, len);
+    return true;
+}
+
+void IoUringGateway::send_to_player_ctrl(uint64_t player_id, uint8_t msg_type,
+                                         const uint8_t* data, size_t len) {
+    std::shared_lock<std::shared_mutex> guard(conn_mutex_);
+    auto session = sessions_.by_player(player_id);
+    if (!session || !session->has_ctrl()) {
+        spdlog::debug("Gateway: no session for player {} (type={})", player_id, msg_type);
+        return;
+    }
+    session->ctrl->send(msg_type, data, len);
+}
+
+// =========================================================================
+//  Client I/O — fanout
+//
+//  Every fanout copies the connections under conn_mutex_ and writes outside
+//  it: the copy keeps a socket alive for the write even if the session is torn
+//  down meanwhile, and the copy itself cannot race a concurrent detach.
+// =========================================================================
+
+void IoUringGateway::broadcast_ctrl(uint8_t msg_type, const uint8_t* data,
+                                    size_t len, uint64_t exclude_player_id) {
+    for (const auto &socket : collect_ctrl_sockets(exclude_player_id))
+        socket.conn->send(msg_type, data, len);
+}
+
+void IoUringGateway::broadcast_ctrl_raw(std::shared_ptr<std::vector<uint8_t>> frame,
+                                        uint64_t exclude_player_id) {
+    for (const auto &socket : collect_ctrl_sockets(exclude_player_id))
+        socket.conn->send_raw(frame);
+}
+
+void IoUringGateway::broadcast_bulk(uint8_t msg_type, const uint8_t* data,
+                                    size_t len, uint64_t exclude_player_id) {
+    for (const auto &socket : collect_bulk_sockets(exclude_player_id))
+        socket.conn->send(msg_type, data, len);
+}
+
+size_t IoUringGateway::session_count() const { return sessions_.size(); }
 
 // =========================================================================
 //  Shutdown
@@ -383,22 +459,67 @@ void IoUringGateway::publish_player_left() {
 
 void IoUringGateway::shutdown() {
     spdlog::info("Gateway: shutting down...");
-    // Flush player position before disconnecting from router — after
+    // Flush player positions before disconnecting from router — after
     // router_.disconnect() the publish would silently fail and the last
-    // position would be lost.
+    // positions would be lost.
     publish_player_left();
     router_.disconnect();
+    // Retired, not destroyed in place: close() fires on_closed on each
+    // connection's own poll thread, and the objects themselves must die on
+    // this thread.
+    std::vector<SessionSocket> sockets;
     {
-        std::lock_guard<std::mutex> lock(client_ctrl_mutex_);
-        if (client_ctrl_) { client_ctrl_->close(); client_ctrl_.reset(); }
+        std::unique_lock<std::shared_mutex> guard(conn_mutex_);
+        for (const auto &session : sessions_.snapshot()) {
+            if (session->has_ctrl()) sockets.push_back({session->player_id, session->ctrl});
+            if (session->has_bulk()) sockets.push_back({session->player_id, session->bulk});
+        }
+    }
+    // close() outside the lock: it drains in-flight writes, which can block,
+    // and no other session's send may wait on that.
+    for (const auto &socket : sockets) {
+        retire(socket.conn);
+        socket.conn->close();
     }
     {
-        std::lock_guard<std::mutex> lock(client_bulk_mutex_);
-        if (client_bulk_) { client_bulk_->close(); client_bulk_.reset(); }
+        std::lock_guard<std::mutex> lock(pending_bulk_mutex_);
+        for (auto &[token, conn] : pending_bulk_) {
+            retire(conn);
+            conn->close();
+        }
+        pending_bulk_.clear();
     }
     ctrl_server_.stop();
     bulk_server_.stop();
+    // The retired connections are joined here; their poll threads have had the
+    // whole stop sequence to notice the closed sockets.
+    drain_retired();
     spdlog::info("Gateway: stopped");
+}
+
+// =========================================================================
+//  Client intent admission
+// =========================================================================
+
+bool IoUringGateway::admit_and_publish(uint64_t session_id, uint64_t claimed_player_id,
+                                       const char *what, const std::string &topic,
+                                       const uint8_t* data, size_t len) {
+    auto session = sessions_.by_id(session_id);
+    if (!session) {
+        spdlog::warn("Gateway: {} from unknown session {} dropped", what, session_id);
+        return false;
+    }
+    // One admission rule for every client→server frame that names a player:
+    // the identity must be the one this session was given.
+    const auto verdict = gtnh::net::admit_intent(*session, claimed_player_id);
+    if (verdict != gtnh::net::IntentVerdict::Accept) {
+        spdlog::warn("Gateway: {} rejected ({}): session {} is player {}, frame claims {}",
+                     what, gtnh::net::to_string(verdict), session_id, session->player_id,
+                     claimed_player_id);
+        return false;
+    }
+    publish(topic, data, len);
+    return true;
 }
 
 // =========================================================================
@@ -410,26 +531,39 @@ void IoUringGateway::on_router_publish(
 {
     const uint8_t* payload = data->data();
     size_t plen = data->size();
-    // DEBUG: log every router publish to identify source of 5 zero bytes
-    if (plen < 8) {
-        spdlog::warn("Gateway: RX topic='{}' len={} (SHORT!) first_bytes={:02x} {:02x} {:02x} {:02x}",
-                      topic, plen,
-                      plen > 0 ? payload[0] : 0,
-                      plen > 1 ? payload[1] : 0,
-                      plen > 2 ? payload[2] : 0,
-                      plen > 3 ? payload[3] : 0);
-    }
     spdlog::debug("Gateway: RX topic='{}' len={}", topic, plen);
 
-    // Bulk topics → bulk connection only (never ctrl — chunk data is large)
+    // ── Bulk topics: chunk data and world mutations ─────────────────────
     if (topic == "world.chunk.loaded.compressed") {
         flatbuffers::Verifier v(payload, plen);
-        if (v.VerifyBuffer<Protocol::CompressedChunkData>(nullptr)) {
-            bool sent = send_to_client_bulk_raw(GatewayMsg::kCompressedChunkData, payload, plen);
-            if (!sent)
-                spdlog::warn("Gateway: compressed chunk dropped, no bulk client");
-        } else
+        auto chunk = v.VerifyBuffer<Protocol::CompressedChunkData>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::CompressedChunkData>(payload)
+            : nullptr;
+        if (!chunk || !chunk->coord()) {
             spdlog::warn("Gateway: Router: invalid CompressedChunkData FlatBuffer");
+            return;
+        }
+        // Delivered to the sessions that requested this coordinate, and to
+        // nobody else. A session that never asked is not served, so two
+        // clients cannot be fed each other's worlds.
+        const gtnh::net::ChunkCoord coord{chunk->coord()->x(), chunk->coord()->y(),
+                                          chunk->coord()->z()};
+        std::shared_lock<std::shared_mutex> guard(conn_mutex_);
+        auto subscribers = sessions_.peek_chunk_subscribers(coord);
+        size_t delivered = 0;
+        for (const auto &session : subscribers) {
+            // A session whose bulk socket is not paired yet KEEPS its pending
+            // entry: consuming it here would drop the chunk with nobody to
+            // receive it and no way to ask again — ChunkStore answers a chunk
+            // request exactly once. Pairing re-issues the request.
+            if (!session->has_bulk()) continue;
+            session->bulk->send(GatewayMsg::kCompressedChunkData, payload, plen);
+            sessions_.consume_chunk_request(session->session_id, coord);
+            ++delivered;
+        }
+        if (delivered == 0)
+            spdlog::debug("Gateway: chunk ({},{},{}) had no deliverable subscriber",
+                          coord.x, coord.y, coord.z);
     } else if (topic == "world.blocks.changed") {
         uint32_t tid = 0;
         uint64_t src_player = 0;
@@ -439,114 +573,169 @@ void IoUringGateway::on_router_publish(
             tid = ev->request_id();
             src_player = ev->source_player_id();
         }
-        // Don't relay block changes back to the player who made them
-        // (they already got an optimistic BlockAck).
-        if (src_player != 0 && src_player == client_player_id_) {
-            TRACE_LOG(tid, "gateway", "skip_relay_to_source", 0);
-            return;
-        }
+        // Everyone but the author sees it: they already applied their own
+        // optimistic change and got the authoritative BlockAck.
         auto t0 = std::chrono::steady_clock::now();
-        send_to_client_bulk_raw(GatewayMsg::kBlockUpdate, payload, plen);
+        broadcast_bulk(GatewayMsg::kBlockUpdate, payload, plen, src_player);
         auto dur = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - t0).count();
-        TRACE_LOG(tid, "gateway", "relay_block_changed", dur);
+        TRACE_LOG(tid, "gateway", src_player ? "relay_block_changed" : "broadcast_block_changed", dur);
     } else if (topic.find("entities.") == 0) {
         flatbuffers::Verifier v(payload, plen);
         if (v.VerifyBuffer<Protocol::EntitySnapshot>(nullptr))
-            send_to_client_bulk_raw(GatewayMsg::kEntitySnapshot, payload, plen);
+            broadcast_bulk(GatewayMsg::kEntitySnapshot, payload, plen);
         else
             spdlog::warn("Gateway: Router: invalid EntitySnapshot FlatBuffer");
     } else if (topic == "sim.multiblock.created") {
         flatbuffers::Verifier v(payload, plen);
         if (v.VerifyBuffer<Protocol::MultiblockCreatedEvent>(nullptr))
-            send_to_client_ctrl_raw(GatewayMsg::kMultiblockEvent, payload, plen);
+            broadcast_ctrl(GatewayMsg::kMultiblockEvent, payload, plen);
         else
             spdlog::warn("Gateway: Router: invalid MultiblockCreatedEvent");
     } else if (topic == "sim.multiblock.destroyed") {
         flatbuffers::Verifier v(payload, plen);
         if (v.VerifyBuffer<Protocol::MultiblockDestroyedEvent>(nullptr))
-            send_to_client_ctrl_raw(GatewayMsg::kMultiblockEvent, payload, plen);
+            broadcast_ctrl(GatewayMsg::kMultiblockEvent, payload, plen);
         else
             spdlog::warn("Gateway: Router: invalid MultiblockDestroyedEvent");
     }
-    // Ctrl topics → ctrl connection
-    else if (topic == "player.actions.ack")
-        send_to_client_ctrl_raw(GatewayMsg::kBlockAck, payload, plen);
+    // ── Ctrl topics ─────────────────────────────────────────────────────
+    //
+    // Attribution rule: a payload that names its owner (player_id) or carries
+    // a request_id the gateway correlated on the way in is routed to that one
+    // session. Payloads with neither are broadcast — that is the honest
+    // fallback, and the ones still needing correlation are listed in
+    // openspec/changes/add-multiplayer-foundation task 3.2.
+    else if (topic == "player.actions.ack") {
+        uint32_t request_id = 0;
+        flatbuffers::Verifier v(payload, plen);
+        if (v.VerifyBuffer<Protocol::BlockAck>(nullptr))
+            request_id = flatbuffers::GetRoot<Protocol::BlockAck>(payload)->request_id();
+        // Routed to the session that sent the request (the correlation is
+        // recorded on the way in). An ack nobody claims falls back to a
+        // broadcast: a client is free to send request_id = 0, which carries no
+        // correlation, and dropping those would silently lose its result. The
+        // leak is bounded by that — a correlated ack never reaches a client
+        // that did not ask.
+        auto owners = sessions_.claim_request(request_id);
+        if (owners.empty()) {
+            spdlog::debug("Gateway: BlockAck request_id={} uncorrelated, broadcast",
+                          request_id);
+            broadcast_ctrl(GatewayMsg::kBlockAck, payload, plen);
+            return;
+        }
+        for (const auto &session : owners) {
+            if (auto conn = session_ctrl_socket(session->session_id))
+                conn->send(GatewayMsg::kBlockAck, payload, plen);
+        }
+    }
     else if (topic == "player.actions.directive")
-        send_to_client_ctrl_raw(GatewayMsg::kBlockActionDirective, payload, plen);
-    else if (topic == "player.inventory.update")
-        send_to_client_ctrl_raw(GatewayMsg::kInventoryUpdate, payload, plen);
+        broadcast_ctrl(GatewayMsg::kBlockActionDirective, payload, plen);
+    else if (topic == "player.inventory.update") {
+        uint64_t owner = 0;
+        flatbuffers::Verifier v(payload, plen);
+        if (v.VerifyBuffer<Protocol::InventoryUpdate>(nullptr))
+            owner = flatbuffers::GetRoot<Protocol::InventoryUpdate>(payload)->player_id();
+        if (owner != 0) {
+            send_to_player_ctrl(owner, GatewayMsg::kInventoryUpdate, payload, plen);
+        } else {
+            broadcast_ctrl(GatewayMsg::kInventoryUpdate, payload, plen);
+        }
+    }
     else if (topic == "world.block_entity.update")
-        send_to_client_ctrl_raw(GatewayMsg::kBlockEntityUpdate, payload, plen);
+        broadcast_ctrl(GatewayMsg::kBlockEntityUpdate, payload, plen);
     else if (topic == gtnh::common::kTopicResourceBufferState) {
         // Server-authoritative machine/port buffer state → client ctrl.
         // Internal PipeNetwork topics (resource.port.*, resource.drain.*,
         // resource.consume.*) are deliberately NOT subscribed/forwarded.
         flatbuffers::Verifier v(payload, plen);
         if (v.VerifyBuffer<Protocol::ResourceBufferState>(nullptr))
-            send_to_client_ctrl_raw(GatewayMsg::kResourceBufferState, payload, plen);
+            broadcast_ctrl(GatewayMsg::kResourceBufferState, payload, plen);
         else
             spdlog::warn("Gateway: Router: invalid ResourceBufferState");
     }
     else if (topic == "sim.craft.response")
-        send_to_client_ctrl_raw(GatewayMsg::kCraftResponse, payload, plen);
+        broadcast_ctrl(GatewayMsg::kCraftResponse, payload, plen);
     else if (topic == "sim.workbench.state")
-        send_to_client_ctrl_raw(GatewayMsg::kGridUpdate, payload, plen);
+        broadcast_ctrl(GatewayMsg::kGridUpdate, payload, plen);
     // Server-driven recipe query replies (RecipeFrame payload, pass-through)
     else if (topic == "recipe.check.response")
-        send_to_client_ctrl_raw(GatewayMsg::kRecipeCheckResp, payload, plen);
+        broadcast_ctrl(GatewayMsg::kRecipeCheckResp, payload, plen);
     else if (topic == "recipe.catalog.response")
-        send_to_client_ctrl_raw(GatewayMsg::kRecipeCatalogResp, payload, plen);
+        broadcast_ctrl(GatewayMsg::kRecipeCatalogResp, payload, plen);
     else if (topic == "recipe.item.response")
-        send_to_client_ctrl_raw(GatewayMsg::kRecipeItemResp, payload, plen);
+        broadcast_ctrl(GatewayMsg::kRecipeItemResp, payload, plen);
     else if (topic == "recipe.machine.response")
-        send_to_client_ctrl_raw(GatewayMsg::kRecipeMachineResp, payload, plen);
+        broadcast_ctrl(GatewayMsg::kRecipeMachineResp, payload, plen);
     else if (topic == "pipe.contents.response") {
+        uint64_t owner = 0;
         flatbuffers::Verifier v(payload, plen);
         if (v.VerifyBuffer<Protocol::PipeContentsResp>(nullptr))
-            send_to_client_ctrl_raw(GatewayMsg::kPipeContentsResp, payload, plen);
-        else
-            spdlog::warn("Gateway: Router: invalid PipeContentsResp");
-    }
-else if (topic == "player.machine.slot.response")
-    send_to_client_ctrl_raw(GatewayMsg::kSetMachineSlotResp, payload, plen);
-    else if (topic == "player.tool.action.response")
-        send_to_client_ctrl_raw(GatewayMsg::kToolActionResp, payload, plen);
-    else if (topic == "player.position.load") {
-        auto pos = gtnh::wire::VerifyAndGetRoot<Protocol::PlayerLeft>(payload, plen);
-        if (pos) {
-            std::lock_guard<std::mutex> lock(client_state_mutex_);
-            last_x_ = pos->x(); last_y_ = pos->y(); last_z_ = pos->z();
-            spdlog::info("Gateway: position restored ([{}, {}, {}])",
-                         last_x_, last_y_, last_z_);
-            int32_t cx = last_x_ >> 5, cy = last_y_ >> 5, cz = last_z_ >> 5;
-            flatbuffers::FlatBufferBuilder fbb;
-            auto cp = Protocol::Vec3i(cx, cy, cz);
-            auto action = Protocol::CreatePlayerAction(fbb, 0,
-                                                       Protocol::PlayerActionType_CHUNK_REQUEST, &cp);
-            fbb.Finish(action);
-            publish("chunk.requests", fbb.GetBufferPointer(), fbb.GetSize());
-            spdlog::info("Gateway: re-sent CHUNK_REQUEST at chunk ({},{},{})", cx, cy, cz);
+            owner = flatbuffers::GetRoot<Protocol::PipeContentsResp>(payload)->player_id();
+        if (owner != 0) {
+            send_to_player_ctrl(owner, GatewayMsg::kPipeContentsResp, payload, plen);
+        } else {
+            broadcast_ctrl(GatewayMsg::kPipeContentsResp, payload, plen);
         }
     }
+else if (topic == "player.machine.slot.response")
+    broadcast_ctrl(GatewayMsg::kSetMachineSlotResp, payload, plen);
+    else if (topic == "player.tool.action.response")
+        broadcast_ctrl(GatewayMsg::kToolActionResp, payload, plen);
+    else if (topic == "player.position.load") {
+        // MetaDB answered a join with the saved position: it belongs to that
+        // player, and the chunk request it triggers is that player's too.
+        auto pos = gtnh::wire::VerifyAndGetRoot<Protocol::PlayerLeft>(payload, plen);
+        if (!pos) return;
+        auto session = sessions_.by_player(pos->player_id());
+        if (!session) {
+            spdlog::debug("Gateway: position restored for player {} with no session",
+                          pos->player_id());
+            return;
+        }
+        session->last_x = pos->x();
+        session->last_y = pos->y();
+        session->last_z = pos->z();
+        spdlog::info("Gateway: position restored for player {} ([{}, {}, {}])",
+                     session->player_id, session->last_x, session->last_y, session->last_z);
+        request_spawn_chunk(session->session_id);
+    }
     else if (topic == "quest.progress.updated")
-        send_to_client_ctrl_raw(GatewayMsg::kQuestProgressUpdate, payload, plen);
+        broadcast_ctrl(GatewayMsg::kQuestProgressUpdate, payload, plen);
     else if (topic == "quest.unlocked")
-        send_to_client_ctrl_raw(GatewayMsg::kQuestUnlockNotification, payload, plen);
+        broadcast_ctrl(GatewayMsg::kQuestUnlockNotification, payload, plen);
     else if (topic == "quest.completed.notification")
-        send_to_client_ctrl_raw(GatewayMsg::kQuestCompletedNotification, payload, plen);
+        broadcast_ctrl(GatewayMsg::kQuestCompletedNotification, payload, plen);
     else if (topic == "quest.era.transition")
-        send_to_client_ctrl_raw(GatewayMsg::kQuestEraTransition, payload, plen);
+        broadcast_ctrl(GatewayMsg::kQuestEraTransition, payload, plen);
     else if (topic == "meta_db.quest.get.response")
-        send_to_client_ctrl_raw(GatewayMsg::kQuestProgressUpdate, payload, plen);
-    else if (topic == "quest.exchange.response")
-        send_to_client_ctrl_raw(GatewayMsg::kQuestExchangeResponse, payload, plen);
-    else if (topic == "quest.exchange.cooldown.response")
-        send_to_client_ctrl_raw(GatewayMsg::kQuestExchangeCooldown, payload, plen);
+        broadcast_ctrl(GatewayMsg::kQuestProgressUpdate, payload, plen);
+    else if (topic == "quest.exchange.response") {
+        uint64_t owner = 0;
+        flatbuffers::Verifier v(payload, plen);
+        if (v.VerifyBuffer<Protocol::QuestExchangeResponse>(nullptr))
+            owner = flatbuffers::GetRoot<Protocol::QuestExchangeResponse>(payload)->player_id();
+        if (owner != 0) {
+            send_to_player_ctrl(owner, GatewayMsg::kQuestExchangeResponse, payload, plen);
+        } else {
+            broadcast_ctrl(GatewayMsg::kQuestExchangeResponse, payload, plen);
+        }
+    }
+    else if (topic == "quest.exchange.cooldown.response") {
+        uint64_t owner = 0;
+        flatbuffers::Verifier v(payload, plen);
+        if (v.VerifyBuffer<Protocol::QuestExchangeCooldown>(nullptr))
+            owner = flatbuffers::GetRoot<Protocol::QuestExchangeCooldown>(payload)->player_id();
+        if (owner != 0) {
+            send_to_player_ctrl(owner, GatewayMsg::kQuestExchangeCooldown, payload, plen);
+        } else {
+            broadcast_ctrl(GatewayMsg::kQuestExchangeCooldown, payload, plen);
+        }
+    }
     else if (topic == "player.gamemode.changed")
-        send_to_client_ctrl_raw(GatewayMsg::kGameModeChange, payload, plen);
+        broadcast_ctrl(GatewayMsg::kGameModeChange, payload, plen);
     else if (topic == "player.scenario.start.response")
-        send_to_client_ctrl_raw(GatewayMsg::kStartScenarioResp, payload, plen);
+        broadcast_ctrl(GatewayMsg::kStartScenarioResp, payload, plen);
     else if (on_router_message)
         on_router_message(topic, payload, plen);
 }
@@ -555,176 +744,235 @@ else if (topic == "player.machine.slot.response")
 //  Client read callbacks
 // =========================================================================
 
-void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* data, size_t len) {
+void IoUringGateway::on_client_bulk_message(const std::shared_ptr<ClientConnContext>& ctx,
+                                            uint8_t msg_type, const uint8_t* data,
+                                            size_t len) {
+    if (msg_type != GatewayMsg::kSessionHello) {
+        spdlog::warn("Gateway: unexpected msg_type={} on bulk socket ({} bytes)",
+                     msg_type, len);
+        return;
+    }
+    if (ctx->session_id.load(std::memory_order_acquire) != 0) {
+        spdlog::warn("Gateway: bulk socket sent a second SessionHello, ignored");
+        return;
+    }
+    auto conn = take_pending_bulk(ctx->bulk_token);
+    if (!conn) {
+        spdlog::error("Gateway: bulk connection is no longer parked, dropping");
+        return;
+    }
+    flatbuffers::Verifier v(data, len);
+    if (!v.VerifyBuffer<Protocol::SessionHello>(nullptr)) {
+        spdlog::error("Gateway: invalid SessionHello on bulk socket");
+        conn->close();
+        retire(std::move(conn));
+        return;
+    }
+    const uint64_t session_id =
+        flatbuffers::GetRoot<Protocol::SessionHello>(data)->session_id();
+    bool attached;
+    {
+        std::unique_lock<std::shared_mutex> guard(conn_mutex_);
+        attached = sessions_.attach_bulk(session_id, conn);
+    }
+    if (!attached) {
+        spdlog::warn("Gateway: bulk socket named unknown session {}, closing", session_id);
+        conn->close();
+        retire(std::move(conn));
+        return;
+    }
+    ctx->session_id.store(session_id, std::memory_order_release);
+    auto session = sessions_.by_id(session_id);
+    spdlog::info("Gateway: bulk socket paired to session {} (player {})", session_id,
+                 session ? session->player_id : 0);
+
+    // The join request for this session's chunk was published before any bulk
+    // socket existed, and ChunkStore answers exactly once: without this
+    // re-request the session would wait forever for a chunk already answered
+    // to nobody.
+    for (const auto &coord : sessions_.pending_chunks(session_id))
+        request_chunk(session_id, coord);
+}
+
+void IoUringGateway::on_client_ctrl_message(uint64_t session_id, uint8_t msg_type,
+                                            const uint8_t* data, size_t len) {
     switch (msg_type) {
     case GatewayMsg::kPlayerAction: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::PlayerAction>(nullptr)) { spdlog::error("Gateway: invalid PlayerAction on ctrl"); return; }
-        if (on_client_message) on_client_message(data, len);
-        auto action = flatbuffers::GetRoot<Protocol::PlayerAction>(data);
-        if (!action) return;
-        uint64_t pid = action->player_id();
-        std::lock_guard<std::mutex> lock(client_state_mutex_);
-        if (!player_id_known_) {
-            client_player_id_ = pid;
-            player_id_known_ = true;
-            flatbuffers::FlatBufferBuilder fbb;
-            auto joined = Protocol::CreatePlayerJoined(fbb, pid);
-            fbb.Finish(joined);
-            const uint8_t* d = fbb.GetBufferPointer();
-            size_t s = fbb.GetSize();
-            publish("player.joined", d, s);
-            spdlog::info("Gateway: player joined (id={})", pid);
+        auto action = v.VerifyBuffer<Protocol::PlayerAction>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::PlayerAction>(data) : nullptr;
+        if (!action) { spdlog::error("Gateway: invalid PlayerAction on ctrl"); return; }
+        if (!admit_and_publish(session_id, action->player_id(), "PlayerAction",
+                               "player.actions", data, len))
+            return;
+        auto session = sessions_.by_id(session_id);
+        if (action->pos() && session) {
+            session->last_x = action->pos()->x();
+            session->last_y = action->pos()->y();
+            session->last_z = action->pos()->z();
         }
-        auto pos = action->pos();
-        last_x_ = pos->x(); last_y_ = pos->y(); last_z_ = pos->z();
-        return;
+        switch (action->action()) {
+        case Protocol::PlayerActionType_CHUNK_REQUEST: {
+            if (!action->pos() || !session) return;
+            // Request-scoped delivery: remember who asked, and attribute the
+            // upstream request to this session's player, not to whatever id
+            // the client typed.
+            const gtnh::net::ChunkCoord coord{action->pos()->x(), action->pos()->y(),
+                                              action->pos()->z()};
+            sessions_.note_chunk_request(session_id, coord);
+            flatbuffers::FlatBufferBuilder fbb;
+            auto pos = Protocol::Vec3i(coord.x, coord.y, coord.z);
+            auto attributed = Protocol::CreatePlayerAction(
+                fbb, session->player_id, Protocol::PlayerActionType_CHUNK_REQUEST, &pos);
+            fbb.Finish(attributed);
+            publish("chunk.requests", fbb.GetBufferPointer(), fbb.GetSize());
+            return;
+        }
+        case Protocol::PlayerActionType_ITEM_ACTION:
+            publish("player.actions", data, len);
+            return;
+        default:
+            // MOVE/UNLOAD are dropped as flood control: the client sends them
+            // at ~15k/s while walking, and they saturate the router. Position
+            // streaming is tracked as gp-rxry.
+            spdlog::debug("Gateway: dropped PlayerAction action={}", (int)action->action());
+            return;
+        }
     }
     case GatewayMsg::kSetBlockAction: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::SetBlockAction>(nullptr)) { spdlog::error("Gateway: invalid SetBlockAction on ctrl"); return; }
-        publish("player.actions.setblock", data, len);
-        auto action = flatbuffers::GetRoot<Protocol::SetBlockAction>(data);
-        if (!action) return;
-        uint64_t pid = action->player_id();
-        {
-            std::lock_guard<std::mutex> lock(client_state_mutex_);
-            if (!player_id_known_) {
-                client_player_id_ = pid;
-                player_id_known_ = true;
-                flatbuffers::FlatBufferBuilder fbb;
-                auto joined = Protocol::CreatePlayerJoined(fbb, pid);
-                fbb.Finish(joined);
-                const uint8_t* d = fbb.GetBufferPointer();
-                size_t s = fbb.GetSize();
-                publish("player.joined", d, s);
-                spdlog::info("Gateway: player joined (id={})", pid);
-            }
-            auto pos = action->pos();
-            if (pos) { last_x_ = pos->x(); last_y_ = pos->y(); last_z_ = pos->z(); }
+        auto action = v.VerifyBuffer<Protocol::SetBlockAction>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::SetBlockAction>(data) : nullptr;
+        if (!action) { spdlog::error("Gateway: invalid SetBlockAction on ctrl"); return; }
+        // Correlate the ACK: BlockAck carries only request_id, so the session
+        // that asked is remembered here instead of broadcasting the reply.
+        sessions_.remember_request(session_id, action->request_id());
+        if (!admit_and_publish(session_id, action->player_id(), "SetBlockAction",
+                               "player.actions.setblock", data, len))
+            return;
+        auto session = sessions_.by_id(session_id);
+        if (action->pos() && session) {
+            session->last_x = action->pos()->x();
+            session->last_y = action->pos()->y();
+            session->last_z = action->pos()->z();
         }
         return;
     }
     case GatewayMsg::kInventoryAction: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::InventoryAction>(nullptr)) { spdlog::error("Gateway: invalid InventoryAction on ctrl"); return; }
-        auto* act = flatbuffers::GetRoot<Protocol::InventoryAction>(data);
-        spdlog::debug("[Gateway] InventoryAction pid={} act={} cid={} slot={}", act->player_id(), act->action_type(), act->container_id(), act->slot());
-        publish("player.inventory.actions", data, len);
+        auto* act = v.VerifyBuffer<Protocol::InventoryAction>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::InventoryAction>(data) : nullptr;
+        if (!act) { spdlog::error("Gateway: invalid InventoryAction on ctrl"); return; }
+        spdlog::debug("[Gateway] InventoryAction pid={} act={} cid={} slot={}",
+                      act->player_id(), act->action_type(), act->container_id(), act->slot());
+        admit_and_publish(session_id, act->player_id(), "InventoryAction",
+                          "player.inventory.actions", data, len);
         break;
     }
     case GatewayMsg::kCraftRequest: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::CraftRequest>(nullptr)) { spdlog::error("Gateway: invalid CraftRequest on ctrl"); return; }
-        publish("sim.craft.request", data, len);
+        auto* req = v.VerifyBuffer<Protocol::CraftRequest>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::CraftRequest>(data) : nullptr;
+        if (!req) { spdlog::error("Gateway: invalid CraftRequest on ctrl"); return; }
+        admit_and_publish(session_id, req->player_id(), "CraftRequest",
+                          "sim.craft.request", data, len);
         break;
     }
     case GatewayMsg::kSetMachineSlot: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::SetMachineSlotReq>(nullptr)) { spdlog::error("Gateway: invalid SetMachineSlotReq on ctrl"); return; }
-        publish("player.machine.slot", data, len);
+        auto* req = v.VerifyBuffer<Protocol::SetMachineSlotReq>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::SetMachineSlotReq>(data) : nullptr;
+        if (!req) { spdlog::error("Gateway: invalid SetMachineSlotReq on ctrl"); return; }
+        admit_and_publish(session_id, req->player_id(), "SetMachineSlot",
+                          "player.machine.slot", data, len);
         break;
     }
     case GatewayMsg::kToolAction: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::ToolAction>(nullptr)) { spdlog::error("Gateway: invalid ToolAction on ctrl"); return; }
-        publish("player.tool.action", data, len);
+        auto* req = v.VerifyBuffer<Protocol::ToolAction>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::ToolAction>(data) : nullptr;
+        if (!req) { spdlog::error("Gateway: invalid ToolAction on ctrl"); return; }
+        admit_and_publish(session_id, req->player_id(), "ToolAction",
+                          "player.tool.action", data, len);
         break;
     }
     case GatewayMsg::kQuestCompleteRequest: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::QuestCompleteRequest>(nullptr)) { spdlog::error("Gateway: invalid QuestCompleteRequest on ctrl"); return; }
-        publish("quest.complete.request", data, len);
+        auto* req = v.VerifyBuffer<Protocol::QuestCompleteRequest>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::QuestCompleteRequest>(data) : nullptr;
+        if (!req) { spdlog::error("Gateway: invalid QuestCompleteRequest on ctrl"); return; }
+        admit_and_publish(session_id, req->player_id(), "QuestCompleteRequest",
+                          "quest.complete.request", data, len);
         break;
     }
     case GatewayMsg::kQuestBookOpen: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::QuestBookOpen>(nullptr)) { spdlog::error("Gateway: invalid QuestBookOpen on ctrl"); return; }
-        publish("quest.book.open", data, len);
+        auto* req = v.VerifyBuffer<Protocol::QuestBookOpen>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::QuestBookOpen>(data) : nullptr;
+        if (!req) { spdlog::error("Gateway: invalid QuestBookOpen on ctrl"); return; }
+        admit_and_publish(session_id, req->player_id(), "QuestBookOpen",
+                          "quest.book.open", data, len);
         break;
     }
     case GatewayMsg::kQuestExchangeRequest: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::QuestExchangeRequest>(nullptr)) { spdlog::error("Gateway: invalid QuestExchangeRequest on ctrl"); return; }
-        publish("quest.exchange.request", data, len);
+        auto* req = v.VerifyBuffer<Protocol::QuestExchangeRequest>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::QuestExchangeRequest>(data) : nullptr;
+        if (!req) { spdlog::error("Gateway: invalid QuestExchangeRequest on ctrl"); return; }
+        admit_and_publish(session_id, req->player_id(), "QuestExchangeRequest",
+                          "quest.exchange.request", data, len);
         break;
     }
     case GatewayMsg::kQuestExchangeCooldownGet: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::QuestExchangeCooldownGet>(nullptr)) { spdlog::error("Gateway: invalid QuestExchangeCooldownGet on ctrl"); return; }
-        publish("quest.exchange.cooldown.get", data, len);
+        auto* req = v.VerifyBuffer<Protocol::QuestExchangeCooldownGet>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::QuestExchangeCooldownGet>(data) : nullptr;
+        if (!req) { spdlog::error("Gateway: invalid QuestExchangeCooldownGet on ctrl"); return; }
+        admit_and_publish(session_id, req->player_id(), "QuestExchangeCooldownGet",
+                          "quest.exchange.cooldown.get", data, len);
         break;
     }
     case GatewayMsg::kGameModeChange: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::GameModeChange>(nullptr)) {
-            spdlog::error("Gateway: invalid GameModeChange on ctrl"); return;
-        }
-        publish("player.gamemode.change", data, len);
+        auto* req = v.VerifyBuffer<Protocol::GameModeChange>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::GameModeChange>(data) : nullptr;
+        if (!req) { spdlog::error("Gateway: invalid GameModeChange on ctrl"); return; }
+        admit_and_publish(session_id, req->player_id(), "GameModeChange",
+                          "player.gamemode.change", data, len);
         break;
     }
     case GatewayMsg::kStartScenarioReq: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::StartScenarioReq>(nullptr)) {
-            spdlog::error("Gateway: invalid StartScenarioReq on ctrl"); return;
-        }
-        publish("player.scenario.start", data, len);
+        auto* req = v.VerifyBuffer<Protocol::StartScenarioReq>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::StartScenarioReq>(data) : nullptr;
+        if (!req) { spdlog::error("Gateway: invalid StartScenarioReq on ctrl"); return; }
+        admit_and_publish(session_id, req->player_id(), "StartScenarioReq",
+                          "player.scenario.start", data, len);
         break;
     }
-    case GatewayMsg::kMachineOpenReq: {
-        // Client → simcore: open a machine window → register a per-player
-        // container session backed by the live ECS InventoryContainer.
-        // Payload: Protocol::ContainerOpenReq (player_id + pos).
-        flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::ContainerOpenReq>(nullptr)) {
-            spdlog::error("Gateway: invalid ContainerOpenReq on ctrl");
-            return;
-        }
-        publish("player.machine.open", data, len);
-        break;
-    }
-    case GatewayMsg::kChestOpenReq: {
-        // Client → simcore: open a chest window → register a per-player
-        // container session. Payload: Protocol::ContainerOpenReq.
-        flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::ContainerOpenReq>(nullptr)) {
-            spdlog::error("Gateway: invalid ContainerOpenReq on ctrl");
-            return;
-        }
-        publish("player.chest.open", data, len);
-        break;
-    }
-    case GatewayMsg::kChestCloseReq: {
-        // Client → simcore: close a chest window → persist + deregister the
-        // container session. Payload: Protocol::ContainerOpenReq (player_id+pos).
-        flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::ContainerOpenReq>(nullptr)) {
-            spdlog::error("Gateway: invalid ChestCloseReq on ctrl");
-            return;
-        }
-        publish("player.chest.close", data, len);
-        break;
-    }
-    case GatewayMsg::kMachineCloseReq: {
-        // Client → simcore: close a machine window → persist + deregister the
-        // container session. Payload: Protocol::ContainerOpenReq (player_id+pos).
-        flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::ContainerOpenReq>(nullptr)) {
-            spdlog::error("Gateway: invalid MachineCloseReq on ctrl");
-            return;
-        }
-        publish("player.machine.close", data, len);
-        break;
-    }
+    // Container windows (machine/chest/workbench open+close): one payload type,
+    // ContainerOpenReq{player_id, pos}, routed to four topics.
+    case GatewayMsg::kMachineOpenReq:
+    case GatewayMsg::kChestOpenReq:
+    case GatewayMsg::kChestCloseReq:
+    case GatewayMsg::kMachineCloseReq:
     case GatewayMsg::kWorkbenchOpenReq: {
-        // Client → simcore: request saved workbench grid state from EntityStateStore
-        // and open a per-player container session. Payload: Protocol::ContainerOpenReq.
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::ContainerOpenReq>(nullptr)) {
-            spdlog::error("Gateway: invalid WorkbenchOpenReq on ctrl");
+        auto* req = v.VerifyBuffer<Protocol::ContainerOpenReq>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::ContainerOpenReq>(data) : nullptr;
+        if (!req) {
+            spdlog::error("Gateway: invalid ContainerOpenReq on ctrl (type={})", msg_type);
             return;
         }
-        publish("sim.workbench.load", data, len);
+        const char* topic = nullptr;
+        switch (msg_type) {
+        case GatewayMsg::kMachineOpenReq:    topic = "player.machine.open"; break;
+        case GatewayMsg::kChestOpenReq:      topic = "player.chest.open"; break;
+        case GatewayMsg::kChestCloseReq:     topic = "player.chest.close"; break;
+        case GatewayMsg::kMachineCloseReq:   topic = "player.machine.close"; break;
+        case GatewayMsg::kWorkbenchOpenReq:  topic = "sim.workbench.load"; break;
+        }
+        admit_and_publish(session_id, req->player_id(), "ContainerOpenReq", topic, data, len);
         break;
     }
     // Server-driven recipe queries → RecipeManagerService (RecipeFrame payload).
@@ -753,28 +1001,26 @@ void IoUringGateway::on_client_ctrl_message(uint8_t msg_type, const uint8_t* dat
     // relay the PipeContentsResp back on pipe.contents.response → ctrl.
     case GatewayMsg::kPipeContentsReq: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::PipeContentsReq>(nullptr)) {
+        auto* req = v.VerifyBuffer<Protocol::PipeContentsReq>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::PipeContentsReq>(data) : nullptr;
+        if (!req) {
             spdlog::error("Gateway: invalid PipeContentsReq on ctrl"); return;
         }
-        publish("pipe.contents.request", data, len);
+        admit_and_publish(session_id, req->player_id(), "PipeContentsReq",
+                          "pipe.contents.request", data, len);
         break;
     }
     case GatewayMsg::kServiceHealthReq: {
         flatbuffers::Verifier v(data, len);
-        if (!v.VerifyBuffer<Protocol::ServiceHealthReq>(nullptr)) {
+        auto *req = v.VerifyBuffer<Protocol::ServiceHealthReq>(nullptr)
+            ? flatbuffers::GetRoot<Protocol::ServiceHealthReq>(data) : nullptr;
+        if (!req) {
             spdlog::error("Gateway: invalid ServiceHealthReq on ctrl"); return;
         }
-        const auto *req = flatbuffers::GetRoot<Protocol::ServiceHealthReq>(data);
-        if (req) {
-            spdlog::info("Gateway: received ServiceHealthReq request_id={}", req->request_id());
-            request_service_health(req->request_id());
-        }
+        spdlog::info("Gateway: received ServiceHealthReq request_id={}", req->request_id());
+        request_service_health(req->request_id());
         break;
     }
     default: spdlog::warn("Gateway: unknown ctrl client msg type {}", msg_type); break;
     }
-}
-
-void IoUringGateway::on_client_bulk_message([[maybe_unused]] uint8_t msg_type, [[maybe_unused]] const uint8_t* data, size_t len) {
-    spdlog::warn("Gateway: bulk client sent msg_type={} len={} (unexpected on bulk)", msg_type, len);
 }

@@ -28,7 +28,7 @@ def _find_textures_dir() -> Path:
 TEXTURES = _find_textures_dir()
 RAW = TEXTURES / "raw"
 TILE = 16
-MAX_TILE_ID = 255
+MAX_TILE_ID = 1023
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 METADATA_NAME = "texture_scan.json"
 
@@ -346,7 +346,7 @@ def scan() -> ScanPlan:
                                         merge_base, merge_overlay))
     next_id = registry.max_tile_id + 1
     if candidates and next_id + len(candidates) - 1 > MAX_TILE_ID:
-        messages.append("scan exceeds 256 logical texture IDs; no additions planned")
+        messages.append("scan exceeds 1024 logical texture IDs (0..1023); no additions planned")
         candidates = []
     return plan_rows(candidates, registry, next_id, names, messages)
 

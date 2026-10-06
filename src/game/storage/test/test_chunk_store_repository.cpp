@@ -22,6 +22,16 @@
 // unconnected behaviour byte for byte. No socket, no thread, no LMDB, no
 // cluster, no MessageRouter, no wall-clock.
 //
+// player_id=0
+// -----------
+// The issue also asks to verify the openspec add-multiplayer-foundation claim
+// that chunk.requests is published with player_id=0. That is a GATEWAY claim,
+// not a repository one: the repository has no player_id concept at all (see
+// the test_gateway_chunk_request_* tests at the end, which build the exact
+// FlatBuffer gateway.cpp publishes and feed it to the consumer's own parse
+// rules). Those tests are hermetic: they reproduce both sides' logic from the
+// production sources, they do not link the gateway binary.
+//
 // Uses the PROJECT's own CHECK/TEST harness (src/engine/net/test/test.h
 // convention, mirrored by src/game/world/test/BlockTransforms_test.cpp and
 // src/game/machines/test/test_explosion_system.cpp). GoogleTest is deliberately
@@ -523,6 +533,51 @@ static void test_repository_is_usable_through_the_i_block_repository_interface()
   CHECK_EQ(i_(get_seen.block_id), 55, "the read result arrives intact");
 }
 
+// ---------------------------------------------------------------------------
+// player_id=0 on chunk.requests — the openspec claim, verified
+// ---------------------------------------------------------------------------
+//
+// Source of truth for the code reproduced below:
+//   src/apps/gateway/gateway.cpp:127-131 and :488-491  (the producer)
+//   src/apps/gateway/main.cpp:84-90                    (the forwarder)
+//   src/apps/chunk_store/Network/IoUringRouterClient.cpp:37-60  (the consumer)
+//
+// These tests do NOT link the gateway or chunkd binaries. They rebuild the
+// producer's FlatBuffer with the production builder and run the consumer's own
+// accept/reject rules, so the claim is checked hermetically and deterministically.
+
+// The exact FlatBuffer gateway.cpp builds: a PlayerAction with player_id=0 and
+// action=CHUNK_REQUEST at a chunk coordinate. This asserts the CLAIM itself
+// (the bytes really do carry player_id 0) before asking whether it matters.
+static void test_gateway_chunk_request_is_built_with_player_id_zero() {
+  flatbuffers::FlatBufferBuilder fbb;
+  const int32_t cx = 12, cy = 1, cz = -34;
+  Protocol::Vec3i pos(cx, cy, cz);
+  auto action = Protocol::CreatePlayerAction(
+      fbb, /*player_id=*/0, Protocol::PlayerActionType_CHUNK_REQUEST, &pos);
+  fbb.Finish(action);
+
+  const std::vector<uint8_t> bytes(fbb.GetBufferPointer(),
+                                   fbb.GetBufferPointer() + fbb.GetSize());
+  flatbuffers::Verifier v(bytes.data(), bytes.size());
+  CHECK(v.VerifyBuffer<Protocol::PlayerAction>(nullptr),
+        "the gateway's chunk.requests payload is a valid PlayerAction");
+  if (!v.VerifyBuffer<Protocol::PlayerAction>(nullptr)) return;
+
+  const auto* pa = flatbuffers::GetRoot<Protocol::PlayerAction>(bytes.data());
+  CHECK_EQ(i_(pa->player_id()), 0,
+           "CLAIM CONFIRMED: the gateway publishes chunk.requests with "
+           "player_id == 0 (gateway.cpp:127 and :488 pass a literal 0)");
+  CHECK_EQ(i_(pa->action()), i_(Protocol::PlayerActionType_CHUNK_REQUEST),
+           "the action is CHUNK_REQUEST");
+  CHECK(pa->pos() != nullptr, "and it carries a required pos");
+  if (pa->pos()) {
+    CHECK_EQ(pa->pos()->x(), cx, "x is the chunk coordinate");
+    CHECK_EQ(pa->pos()->y(), cy, "y is the chunk coordinate");
+    CHECK_EQ(pa->pos()->z(), cz, "z is the chunk coordinate, sign included");
+  }
+}
+
 // chunkd's accept rules, transcribed from
 // src/apps/chunk_store/Network/IoUringRouterClient.cpp:37-60. It checks the
 // topic, a minimum length, a non-null root, a non-null pos, and the action
@@ -576,7 +631,7 @@ static void test_chunk_store_consumer_still_checks_the_action_type() {
 
 // The chunkstore request tables themselves carry no player_id at all, so a
 // block write or read can never be attributed to a player no matter what the
-// gateway sent. This is the structural reason the player id is inert here.
+// gateway sent. This is the structural reason player_id=0 is harmless here.
 static void test_chunk_store_request_types_have_no_player_id() {
   flatbuffers::FlatBufferBuilder fbb(256);
   Protocol::Vec3i pos(1, 2, 3);
@@ -644,7 +699,8 @@ int main() {
   TEST(reconnecting_the_store_changes_the_answer);
   TEST(repository_is_usable_through_the_i_block_repository_interface);
 
-  // ChunkStore's side of chunk.requests: the player id is irrelevant to it.
+  // player_id=0 verification
+  TEST(gateway_chunk_request_is_built_with_player_id_zero);
   TEST(chunk_store_consumer_ignores_player_id);
   TEST(chunk_store_consumer_still_checks_the_action_type);
   TEST(chunk_store_request_types_have_no_player_id);

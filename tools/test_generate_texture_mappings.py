@@ -1,6 +1,7 @@
 """Sandboxed tests for the additive texture scanner (tools/generate_texture_mappings.py)."""
 from __future__ import annotations
 
+import csv
 import json
 import shutil
 import tempfile
@@ -35,10 +36,35 @@ class ScannerSandbox(unittest.TestCase):
         self._tmp = Path(tempfile.mkdtemp(prefix="texture_scan_test_"))
         self.addCleanup(shutil.rmtree, self._tmp, True)
         self.textures = self._tmp / "textures"
-        shutil.copytree(REAL_TEXTURES / "packs", self.textures / "packs")
-        for name in ("textures.csv", "item_icons.csv", "block_faces.csv",
-                     "textures_merge.csv"):
-            shutil.copy(REAL_TEXTURES / name, self.textures / name)
+        shutil.copytree(REAL_TEXTURES / "packs", self.textures / "packs",
+                        ignore=shutil.ignore_patterns("additive_*.png"))
+        source_lines = (REAL_TEXTURES / "textures.csv").read_text().splitlines(keepends=True)
+        base_texture_lines = []
+        additive_tile_ids = set()
+        for line in source_lines:
+            row = next(csv.reader([line]))
+            if len(row) >= 2 and row[1].startswith("packs/additive_"):
+                additive_tile_ids.add(row[0])
+            else:
+                base_texture_lines.append(line)
+        (self.textures / "textures.csv").write_text("".join(base_texture_lines))
+        for name in ("item_icons.csv", "block_faces.csv", "textures_merge.csv"):
+            lines = (REAL_TEXTURES / name).read_text().splitlines(keepends=True)
+            kept = []
+            for line in lines:
+                row = next(csv.reader([line]))
+                if not row or row[0].startswith("#"):
+                    kept.append(line)
+                elif name == "item_icons.csv" and len(row) >= 2 and row[1] in additive_tile_ids:
+                    kept.append(f"{row[0]},23\n")
+                elif name == "block_faces.csv" and any(tile in additive_tile_ids for tile in row[1:7]):
+                    row[1:7] = ["40" if tile in additive_tile_ids else tile for tile in row[1:7]]
+                    kept.append(",".join(row) + "\n")
+                elif name == "textures_merge.csv" and any(tile in additive_tile_ids for tile in row[:3]):
+                    continue
+                else:
+                    kept.append(line)
+            (self.textures / name).write_text("".join(kept))
         (self.textures / "raw").mkdir()
         items = self._tmp / "data" / "registry" / "items.csv"
         items.parent.mkdir(parents=True)
@@ -241,14 +267,28 @@ class MatchingTests(ScannerSandbox):
         self.assertEqual(plan.additions, [])
         self.assertTrue(any("grid" in m for m in plan.messages))
 
+    def test_maximum_tile_id_1023_is_valid(self):
+        textures = self.textures / "textures.csv"
+        textures.write_text(textures.read_text() + "1023,packs/terrain.png,7,0,0\n")
+        registry = gtm.read_registry()
+        self.assertEqual(registry.max_tile_id, 1023)
+        self.assertEqual(registry.errors, [])
+
+    def test_tile_id_1024_is_rejected(self):
+        textures = self.textures / "textures.csv"
+        textures.write_text(textures.read_text() + "1024,packs/terrain.png,7,0,0\n")
+        with self.assertRaises(ValueError) as ctx:
+            gtm.scan()
+        self.assertIn("outside 0..1023", str(ctx.exception))
+
     def test_overflow_blocks_all_additions(self):
         textures = self.textures / "textures.csv"
-        # raise max tile id to 255 -> no capacity left
-        textures.write_text(textures.read_text() + "255,packs/terrain.png,7,0,0\n")
+        # Tile 1023 is valid but leaves no logical ID for another addition.
+        textures.write_text(textures.read_text() + "1023,packs/terrain.png,7,0,0\n")
         self.add_raw("materials/alpha_block.png")
         plan = gtm.scan()
         self.assertEqual(plan.additions, [])
-        self.assertTrue(any("exceeds 256" in m for m in plan.messages))
+        self.assertTrue(any("exceeds 1024 logical texture IDs" in m for m in plan.messages))
 
     def test_tile_ids_are_append_only_above_existing_max(self):
         self.add_raw("materials/alpha_block.png")

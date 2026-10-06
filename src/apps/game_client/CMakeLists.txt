@@ -467,4 +467,19 @@ if(BUILD_TESTING)
     )
     add_test(NAME gameclient_item_registry_test
              COMMAND gameclient_item_registry_test)
+
+    add_executable(gameclient_texture_atlas_capacity_test
+        tests/TextureAtlasCapacity_test.cpp
+    )
+    target_compile_definitions(gameclient_texture_atlas_capacity_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/src/content/data"
+    )
+    target_include_directories(gameclient_texture_atlas_capacity_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    target_link_libraries(gameclient_texture_atlas_capacity_test PRIVATE renderlib)
+    add_test(NAME gameclient_texture_atlas_capacity_test
+             COMMAND gameclient_texture_atlas_capacity_test)
+
 endif()

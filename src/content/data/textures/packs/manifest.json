@@ -5,7 +5,20 @@
     "materials",
     "machines",
     "ores",
-    "transport"
+    "transport",
+    "additive_casings",
+    "additive_merge",
+    "additive_ores",
+    "additive_transport",
+    "additive_components",
+    "additive_fluids",
+    "additive_hatches",
+    "additive_machines",
+    "additive_materials",
+    "additive_pipes",
+    "additive_fluids_core",
+    "additive_processing",
+    "additive_machine_sprites"
   ],
   "source_policy": "RGBA; exact terrain cells and fit_icon for large art"
 }

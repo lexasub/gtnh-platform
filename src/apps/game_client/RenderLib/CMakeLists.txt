@@ -36,3 +36,25 @@ target_link_libraries(renderlib PRIVATE
     spdlog::spdlog
     TBB::tbb
 )
+
+if(BUILD_TESTING)
+    # Compile the atlas against an isolated synthetic data directory so the
+    # highest tile and physical-slot boundary can be exercised without changing
+    # the canonical content registries.
+    add_executable(gameclient_texture_atlas_full_boundary_test
+        ../tests/TextureAtlasFullBoundary_test.cpp
+        Utils/TextureAtlas.cpp
+    )
+    target_compile_definitions(gameclient_texture_atlas_full_boundary_test PRIVATE
+        DATA_DIR="${CMAKE_CURRENT_BINARY_DIR}/texture_atlas_full_fixture"
+    )
+    target_include_directories(gameclient_texture_atlas_full_boundary_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/..
+    )
+    target_link_libraries(gameclient_texture_atlas_full_boundary_test PRIVATE
+        bgfx bx bimg lodepng::lodepng spdlog::spdlog
+    )
+    add_test(NAME gameclient_texture_atlas_full_boundary_test
+             COMMAND gameclient_texture_atlas_full_boundary_test)
+endif()

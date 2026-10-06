@@ -266,16 +266,7 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
     netClient_ = std::make_shared<NetClient>();
 
     // ── UI system init ───────────────────────────────────────────────────
-    // Identity comes from the server: the gateway sends SessionWelcome right
-    // after the ctrl socket is accepted, and the callback below replaces this
-    // placeholder. Until then the id is 0, which the gateway attributes to
-    // the session itself.
-    invState_.player_id = 0;
-    netClient_->SetSessionWelcomeCallback(
-        [this](uint64_t /*session_id*/, uint64_t player_id) {
-            invState_.player_id = player_id;
-            spdlog::info("GameClient: server assigned player {}", player_id);
-        });
+    invState_.player_id = 1; // hardcoded dev ID until auth
     UIDefaults::RegisterPlayerUI(uiMgr_, invState_);
     uiMgr_.SetNetClient(netClient_.get());
     uiMgr_.SetResourceBufferStore(&resourceBuffers_);

@@ -16,7 +16,7 @@ textures from raw artwork — and it is strictly **additive**:
   are never reopened; re-applying to an existing additive pack fails closed).
 - New tile IDs are allocated deterministically above the current maximum
   (`textures.csv` tiles and `textures_merge.csv` composites) and must stay
-  within 0..255.
+  within 0..1023.
 - Filename → registry matching requires exactly **one** item/block name match
   (`data/registry/items.csv`). Ambiguous, missing or multi-cell assets are
   reported and skipped — the scanner never guesses gameplay mappings.
@@ -45,7 +45,7 @@ tile_id,filename,tile_x,tile_y,rotate
 
 | Column    | Type    | Description |
 |-----------|---------|-------------|
-| `tile_id` | int     | Unique tile identifier (0–255) |
+| `tile_id` | int     | Unique tile identifier (0–1023) |
 | `filename`| string  | PNG file path relative to `data/textures/` |
 | `tile_x`  | int     | Tile column in source PNG (0-based, `pixel_x = tile_x * 16`) |
 | `tile_y`  | int     | Tile row in source PNG (0-based, `pixel_y = tile_y * 16`) |
@@ -60,7 +60,7 @@ tile_id,filename,tile_x,tile_y,rotate
 
 ### Atlas slot assignment
 
-Slots are assigned automatically in registration order: first tile → atlas `(0,0)`, second → `(1,0)`, ..., `(15,0)`, `(0,1)`, etc. Source PNG positions (`tile_x`, `tile_y`) are only used for reading pixels — they do not control atlas layout.
+Slots are assigned automatically in registration order: first tile → atlas `(0,0)`, second → `(1,0)`, ..., `(31,0)`, `(0,1)`, etc. Source PNG positions (`tile_x`, `tile_y`) are only used for reading pixels — they do not control atlas layout.
 
 Supported PNG sizes: 16×16, 32×32, 48×48, 64×64, etc. — dimensions must be multiples of 16. Each 16×16 block in the PNG is referenced by `(tile_x, tile_y)`.
 
@@ -103,9 +103,9 @@ Blocks without an entry use default mapping: `block_id → tile_id` (block N use
 
 ## Atlas Texture
 
-- Size: 256×256 RGBA (256 KB)
+- Size: 512×512 RGBA (1 MB)
 - Tile size: 16×16 pixels
-- Grid: 16 columns × 16 rows = 256 slots
+- Grid: 32 columns × 32 rows = 1024 slots
 - Format: `bgfx::TextureFormat::RGBA8`
 - Filtering: bilinear with half-pixel UV inset (prevents tile bleeding)
 
@@ -206,11 +206,10 @@ Then in `block_faces.csv`:
 
 | Atlas size | Capacity | VRAM | Use case |
 |------------|----------|------|----------|
-| 256×256 | 256 tiles | 256 KB | **Current** — sufficient for blocks + items |
-| 512×512 | 1024 tiles | 1 MB | When machines/animations grow beyond 256 |
-| Texture2DArray | Unlimited | per-layer | If atlas packing becomes a bottleneck |
+| 512×512 | 1024 tiles | 1 MB | **Current** — blocks, items, and machine textures |
+| Texture2DArray | Unlimited | per-layer | Future option if content exceeds 1024 tiles |
 
-**Caching/eviction**: None needed. 256 KB fits in VRAM permanently. No LRU, no tiered eviction. Revisit if animated textures or tile entity sprites are added.
+**Caching/eviction**: None needed. The 1 MB atlas stays resident in GPU memory. No LRU or tiered eviction is required.
 
 ---
 
@@ -218,11 +217,9 @@ Then in `block_faces.csv`:
 
 ### Atlas capacity
 
-Current atlas is 256×256 = 256 unique tile slots. For a GTNH-scale game with hundreds of machines and blocks this will not be enough.
+The current atlas is 512×512 = 1024 unique tile IDs. The runtime rejects tile IDs outside 0..1023 and guards physical slot allocation. If future content exceeds this capacity, consider a `Texture2DArray` or a larger atlas and update the same runtime, scanner, and registry bounds together.
 
-**TODO**: increase capacity — either bump atlas to 512×512 (1024 tiles) or switch to `Texture2DArray` (unlimited layers, no packing overhead).
-
-See also: `kDefaultTilesX` / `kDefaultTilesY` in `TextureAtlas.h`, and all per-tile arrays sized `[256]` in `TextureAtlas.cpp`.
+See also: `kDefaultTilesX` / `kDefaultTilesY` and `kTileCapacity` in `TextureAtlas.h`, plus the per-tile arrays in `TextureAtlas.cpp`.
 
 ## Implementation
 

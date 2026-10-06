@@ -1,0 +1,886 @@
+{
+  "assets": [
+    {
+      "file": "ores/iron_ore_overlay.png",
+      "item_id": "10:0",
+      "block_id": "10:0",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/tin_ore_overlay.png",
+      "item_id": "10:2",
+      "block_id": "10:2",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/copper_ore_overlay.png",
+      "item_id": "10:3",
+      "block_id": "10:3",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/quartz_ore_overlay.png",
+      "item_id": "10:5",
+      "block_id": "10:5",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/coal_ore_overlay.png",
+      "item_id": "10:6",
+      "block_id": "10:6",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/lapis_ore_overlay.png",
+      "item_id": "10:8",
+      "block_id": "10:8",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/diamond_ore_overlay.png",
+      "item_id": "10:9",
+      "block_id": "10:9",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/electrum_ore_overlay.png",
+      "item_id": "10:10",
+      "block_id": "10:10",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/chromium_ore_overlay.png",
+      "item_id": "10:11",
+      "block_id": "10:11",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/iridium_ore_overlay.png",
+      "item_id": "10:12",
+      "block_id": "10:12",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/lead_ore_overlay.png",
+      "item_id": "10:13",
+      "block_id": "10:13",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/nickel_ore_overlay.png",
+      "item_id": "10:14",
+      "block_id": "10:14",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/osmium_ore_overlay.png",
+      "item_id": "10:15",
+      "block_id": "10:15",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/platinum_ore_overlay.png",
+      "item_id": "10:16",
+      "block_id": "10:16",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/silver_ore_overlay.png",
+      "item_id": "10:17",
+      "block_id": "10:17",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/sulfur_ore_overlay.png",
+      "item_id": "10:18",
+      "block_id": "10:18",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/zinc_ore_overlay.png",
+      "item_id": "10:19",
+      "block_id": "10:19",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/bauxite_ore_overlay.png",
+      "item_id": "10:27",
+      "block_id": "10:27",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/titanium_ore_overlay.png",
+      "item_id": "10:28",
+      "block_id": "10:28",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/tungsten_ore_overlay.png",
+      "item_id": "10:29",
+      "block_id": "10:29",
+      "merge_base": 40
+    },
+    {
+      "file": "ores/silicon_ore_overlay.png",
+      "item_id": "10:30",
+      "block_id": "10:30",
+      "merge_base": 40
+    },
+    {
+      "file": "casings/lv_machine_casing.jpg",
+      "item_id": "1110:111:0"
+    },
+    {
+      "file": "transport/fluid_pipe_square.png",
+      "item_id": "1111:10:0"
+    },
+    {
+      "file": "materials/ingots/iron_ingot.png",
+      "item_id": "0:110:1"
+    },
+    {
+      "file": "materials/ingots/gold_ingot.png",
+      "item_id": "0:110:2"
+    },
+    {
+      "file": "materials/ingots/tin_ingot.png",
+      "item_id": "0:110:3"
+    },
+    {
+      "file": "materials/ingots/electrum_ingot.png",
+      "item_id": "0:110:4"
+    },
+    {
+      "file": "materials/ingots/uranium_ingot.png",
+      "item_id": "0:110:5"
+    },
+    {
+      "file": "materials/ingots/bronze_ingot.png",
+      "item_id": "0:110:6"
+    },
+    {
+      "file": "materials/ingots/copper_ingot.png",
+      "item_id": "0:110:7"
+    },
+    {
+      "file": "materials/ingots/aluminium_ingot.png",
+      "item_id": "0:110:0"
+    },
+    {
+      "file": "materials/ingots/brass_ingot.png",
+      "item_id": "0:110:8"
+    },
+    {
+      "file": "materials/ingots/chromium_ingot.png",
+      "item_id": "0:110:9"
+    },
+    {
+      "file": "materials/ingots/cupronickel_ingot.png",
+      "item_id": "0:110:10"
+    },
+    {
+      "file": "materials/ingots/invar_ingot.png",
+      "item_id": "0:110:11"
+    },
+    {
+      "file": "materials/ingots/iridium_ingot.png",
+      "item_id": "0:110:12"
+    },
+    {
+      "file": "materials/ingots/kanthal_ingot.png",
+      "item_id": "0:110:13"
+    },
+    {
+      "file": "materials/ingots/lead_ingot.png",
+      "item_id": "0:110:14"
+    },
+    {
+      "file": "materials/ingots/nichrome_ingot.png",
+      "item_id": "0:110:15"
+    },
+    {
+      "file": "materials/ingots/nickel_ingot.png",
+      "item_id": "0:110:16"
+    },
+    {
+      "file": "materials/ingots/osmium_ingot.png",
+      "item_id": "0:110:17"
+    },
+    {
+      "file": "materials/ingots/platinum_ingot.png",
+      "item_id": "0:110:18"
+    },
+    {
+      "file": "materials/ingots/rubber_ingot.png",
+      "item_id": "0:110:19"
+    },
+    {
+      "file": "materials/ingots/silver_ingot.png",
+      "item_id": "0:110:20"
+    },
+    {
+      "file": "materials/ingots/stainless_steel_ingot.png",
+      "item_id": "0:110:21"
+    },
+    {
+      "file": "materials/ingots/steel_ingot.png",
+      "item_id": "0:110:22"
+    },
+    {
+      "file": "materials/ingots/titanium_ingot.png",
+      "item_id": "0:110:23"
+    },
+    {
+      "file": "materials/ingots/tungsten_ingot.png",
+      "item_id": "0:110:24"
+    },
+    {
+      "file": "materials/ingots/tungstensteel_ingot.png",
+      "item_id": "0:110:25"
+    },
+    {
+      "file": "materials/ingots/zinc_ingot.png",
+      "item_id": "0:110:26"
+    },
+    {
+      "file": "materials/ingots/naquadah_ingot.png",
+      "item_id": "0:110:27"
+    },
+    {
+      "file": "materials/ingots/naquadah_alloy_ingot.png",
+      "item_id": "0:110:28"
+    },
+    {
+      "file": "materials/ingots/hss_e_ingot.png",
+      "item_id": "0:110:29"
+    },
+    {
+      "file": "materials/ingots/neutronium_ingot.png",
+      "item_id": "0:110:30"
+    },
+    {
+      "file": "materials/plates/bronze_plate.png",
+      "item_id": "0:1110:000:0"
+    },
+    {
+      "file": "materials/plates/aluminium_plate.png",
+      "item_id": "0:1110:000:1"
+    },
+    {
+      "file": "materials/plates/brass_plate.png",
+      "item_id": "0:1110:000:2"
+    },
+    {
+      "file": "materials/plates/chromium_plate.png",
+      "item_id": "0:1110:000:3"
+    },
+    {
+      "file": "materials/plates/copper_plate.png",
+      "item_id": "0:1110:000:4"
+    },
+    {
+      "file": "materials/plates/gold_plate.png",
+      "item_id": "0:1110:000:5"
+    },
+    {
+      "file": "materials/plates/invar_plate.png",
+      "item_id": "0:1110:000:6"
+    },
+    {
+      "file": "materials/plates/iridium_plate.png",
+      "item_id": "0:1110:000:7"
+    },
+    {
+      "file": "materials/plates/iron_plate.png",
+      "item_id": "0:1110:000:8"
+    },
+    {
+      "file": "materials/plates/lead_plate.png",
+      "item_id": "0:1110:000:9"
+    },
+    {
+      "file": "materials/plates/osmium_plate.png",
+      "item_id": "0:1110:000:10"
+    },
+    {
+      "file": "materials/plates/platinum_plate.png",
+      "item_id": "0:1110:000:11"
+    },
+    {
+      "file": "materials/plates/silver_plate.png",
+      "item_id": "0:1110:000:12"
+    },
+    {
+      "file": "materials/plates/stainless_steel_plate.png",
+      "item_id": "0:1110:000:13"
+    },
+    {
+      "file": "materials/plates/steel_plate.png",
+      "item_id": "0:1110:000:14"
+    },
+    {
+      "file": "materials/plates/tin_plate.png",
+      "item_id": "0:1110:000:15"
+    },
+    {
+      "file": "materials/plates/titanium_plate.png",
+      "item_id": "0:1110:000:16"
+    },
+    {
+      "file": "materials/plates/tungsten_plate.png",
+      "item_id": "0:1110:000:17"
+    },
+    {
+      "file": "materials/plates/tungstensteel_plate.png",
+      "item_id": "0:1110:000:18"
+    },
+    {
+      "file": "materials/plates/wooden_pressure_plate.png",
+      "item_id": "0:1110:000:19"
+    },
+    {
+      "file": "materials/plates/zinc_plate.png",
+      "item_id": "0:1110:000:20"
+    },
+    {
+      "file": "materials/special/graphene.png",
+      "item_id": "0:1110:000:21"
+    },
+    {
+      "file": "materials/special/carbon_fiber.png",
+      "item_id": "0:1110:000:22"
+    },
+    {
+      "file": "materials/dusts/aluminium_dust.png",
+      "item_id": "0:1110:001:0"
+    },
+    {
+      "file": "materials/dusts/brass_dust.png",
+      "item_id": "0:1110:001:1"
+    },
+    {
+      "file": "materials/dusts/carbon_dust.png",
+      "item_id": "0:1110:001:2"
+    },
+    {
+      "file": "materials/dusts/chromium_dust.png",
+      "item_id": "0:1110:001:3"
+    },
+    {
+      "file": "materials/dusts/coal_dust.png",
+      "item_id": "0:1110:001:4"
+    },
+    {
+      "file": "materials/dusts/crushed_copper.png",
+      "item_id": "0:1110:001:5"
+    },
+    {
+      "file": "materials/dusts/crushed_gold.png",
+      "item_id": "0:1110:001:6"
+    },
+    {
+      "file": "materials/dusts/crushed_iron.png",
+      "item_id": "0:1110:001:7"
+    },
+    {
+      "file": "materials/dusts/crushed_lead.png",
+      "item_id": "0:1110:001:8"
+    },
+    {
+      "file": "materials/dusts/crushed_silver.png",
+      "item_id": "0:1110:001:9"
+    },
+    {
+      "file": "materials/dusts/crushed_tin.png",
+      "item_id": "0:1110:001:10"
+    },
+    {
+      "file": "materials/dusts/crushed_zinc.png",
+      "item_id": "0:1110:001:11"
+    },
+    {
+      "file": "materials/dusts/invar_dust.png",
+      "item_id": "0:1110:001:12"
+    },
+    {
+      "file": "materials/dusts/iridium_dust.png",
+      "item_id": "0:1110:001:13"
+    },
+    {
+      "file": "materials/dusts/lead_dust.png",
+      "item_id": "0:1110:001:14"
+    },
+    {
+      "file": "materials/dusts/osmium_dust.png",
+      "item_id": "0:1110:001:15"
+    },
+    {
+      "file": "materials/dusts/platinum_dust.png",
+      "item_id": "0:1110:001:16"
+    },
+    {
+      "file": "materials/dusts/silicon_dust.png",
+      "item_id": "0:1110:001:17"
+    },
+    {
+      "file": "materials/dusts/silver_dust.png",
+      "item_id": "0:1110:001:18"
+    },
+    {
+      "file": "materials/dusts/steel_dust.png",
+      "item_id": "0:1110:001:19"
+    },
+    {
+      "file": "materials/dusts/titanium_dust.png",
+      "item_id": "0:1110:001:20"
+    },
+    {
+      "file": "materials/dusts/tungsten_dust.png",
+      "item_id": "0:1110:001:21"
+    },
+    {
+      "file": "materials/dusts/zinc_dust.png",
+      "item_id": "0:1110:001:22"
+    },
+    {
+      "file": "materials/dusts/tin_dust.png",
+      "item_id": "0:1110:001:23"
+    },
+    {
+      "file": "materials/dusts/copper_dust.png",
+      "item_id": "0:1110:001:24"
+    },
+    {
+      "file": "materials/dusts/bronze_dust.png",
+      "item_id": "0:1110:001:25"
+    },
+    {
+      "file": "materials/dusts/iron_dust.png",
+      "item_id": "0:1110:001:26"
+    },
+    {
+      "file": "materials/dusts/gold_dust.png",
+      "item_id": "0:1110:001:27"
+    },
+    {
+      "file": "materials/dusts/electrum_dust.png",
+      "item_id": "0:1110:001:28"
+    },
+    {
+      "file": "materials/dusts/uranium_dust.png",
+      "item_id": "0:1110:001:29"
+    },
+    {
+      "file": "materials/dusts/nickel_dust.png",
+      "item_id": "0:1110:001:30"
+    },
+    {
+      "file": "materials/dusts/graphite.png",
+      "item_id": "0:1110:001:31"
+    },
+    {
+      "file": "materials/dusts/charcoal_dust.png",
+      "item_id": "0:1110:001:32"
+    },
+    {
+      "file": "components/circuits/electronic_circuit_lv.png",
+      "item_id": "110:000:0"
+    },
+    {
+      "file": "components/circuits/integrated_circuit_mv.png",
+      "item_id": "110:000:1"
+    },
+    {
+      "file": "components/circuits/advanced_circuit_hv.png",
+      "item_id": "110:000:2"
+    },
+    {
+      "file": "components/circuits/processor_circuit_ev.png",
+      "item_id": "110:000:3"
+    },
+    {
+      "file": "components/circuits/wetware_circuit_iv.png",
+      "item_id": "110:000:4"
+    },
+    {
+      "file": "components/circuits/quantum_circuit_luv.png",
+      "item_id": "110:000:5"
+    },
+    {
+      "file": "components/boards/circuit_board_empty.png",
+      "item_id": "110:001:0"
+    },
+    {
+      "file": "components/boards/circuit_board_basic.png",
+      "item_id": "110:001:1"
+    },
+    {
+      "file": "components/boards/fiberglass.png",
+      "item_id": "110:001:2"
+    },
+    {
+      "file": "components/boards/pcb.png",
+      "item_id": "110:001:3"
+    },
+    {
+      "file": "components/mechanical/conveyor_module.png",
+      "item_id": "110:010:0"
+    },
+    {
+      "file": "components/mechanical/electric_motor.png",
+      "item_id": "110:010:1"
+    },
+    {
+      "file": "components/mechanical/electric_piston.png",
+      "item_id": "110:010:2"
+    },
+    {
+      "file": "components/mechanical/field_generator.png",
+      "item_id": "110:010:3"
+    },
+    {
+      "file": "components/mechanical/fluid_pump.png",
+      "item_id": "110:010:4"
+    },
+    {
+      "file": "components/mechanical/robot_arm.png",
+      "item_id": "110:010:5"
+    },
+    {
+      "file": "components/mechanical/solenoid.png",
+      "item_id": "110:010:6"
+    },
+    {
+      "file": "components/smd/capacitor_smd.png",
+      "item_id": "110:011:0"
+    },
+    {
+      "file": "components/smd/coil_smd.png",
+      "item_id": "110:011:1"
+    },
+    {
+      "file": "components/smd/diode_smd.png",
+      "item_id": "110:011:2"
+    },
+    {
+      "file": "components/smd/flip_flop_smd.png",
+      "item_id": "110:011:3"
+    },
+    {
+      "file": "components/smd/inductor_smd.png",
+      "item_id": "110:011:4"
+    },
+    {
+      "file": "components/smd/logic_chip_smd.png",
+      "item_id": "110:011:5"
+    },
+    {
+      "file": "components/smd/resistor_smd.png",
+      "item_id": "110:011:6"
+    },
+    {
+      "file": "components/smd/transistor_smd.png",
+      "item_id": "110:011:7"
+    },
+    {
+      "file": "components/passive/resistor.png",
+      "item_id": "110:101:0"
+    },
+    {
+      "file": "components/passive/capacitor.png",
+      "item_id": "110:101:1"
+    },
+    {
+      "file": "components/passive/transistor.png",
+      "item_id": "110:101:2"
+    },
+    {
+      "file": "components/passive/diode.png",
+      "item_id": "110:101:3"
+    },
+    {
+      "file": "components/passive/inductor.png",
+      "item_id": "110:101:4"
+    },
+    {
+      "file": "components/passive/coil.png",
+      "item_id": "110:101:5"
+    },
+    {
+      "file": "components/misc/emitter.png",
+      "item_id": "110:100:0"
+    },
+    {
+      "file": "components/misc/field_coil.png",
+      "item_id": "110:100:1"
+    },
+    {
+      "file": "components/misc/sensor.png",
+      "item_id": "110:100:2"
+    },
+    {
+      "file": "machines/icons/charger.png",
+      "item_id": "1110:101:3"
+    },
+    {
+      "file": "machines/icons/fluid_tank.png",
+      "item_id": "1110:101:4"
+    },
+    {
+      "file": "hatches/icons/hatch_input_lv.png",
+      "item_id": "1110:111:10"
+    },
+    {
+      "file": "hatches/icons/hatch_output_lv.png",
+      "item_id": "1110:111:11"
+    },
+    {
+      "file": "hatches/icons/hatch_bus_input_lv.png",
+      "item_id": "1110:111:12"
+    },
+    {
+      "file": "hatches/icons/hatch_bus_output_lv.png",
+      "item_id": "1110:111:13"
+    },
+    {
+      "file": "hatches/icons/hatch_energy_input_lv.png",
+      "item_id": "1110:111:14"
+    },
+    {
+      "file": "hatches/icons/hatch_maintenance.png",
+      "item_id": "1110:111:15"
+    },
+    {
+      "file": "hatches/icons/multi_volume_hatch.png",
+      "item_id": "1110:111:16"
+    },
+    {
+      "file": "hatches/icons/hatch_energy_output_lv.png",
+      "item_id": "1110:111:9"
+    },
+    {
+      "file": "hatches/icons/hatch_input_mv.png",
+      "item_id": "1110:111:17"
+    },
+    {
+      "file": "hatches/icons/hatch_output_mv.png",
+      "item_id": "1110:111:18"
+    },
+    {
+      "file": "hatches/icons/hatch_bus_input_mv.png",
+      "item_id": "1110:111:19"
+    },
+    {
+      "file": "hatches/icons/hatch_energy_input_mv.png",
+      "item_id": "1110:111:23"
+    },
+    {
+      "file": "hatches/icons/hatch_bus_output_mv.png",
+      "item_id": "1110:111:24"
+    },
+    {
+      "file": "hatches/icons/hatch_input_hv.png",
+      "item_id": "1110:111:25"
+    },
+    {
+      "file": "hatches/icons/hatch_output_hv.png",
+      "item_id": "1110:111:26"
+    },
+    {
+      "file": "hatches/icons/hatch_bus_input_hv.png",
+      "item_id": "1110:111:27"
+    },
+    {
+      "file": "hatches/icons/hatch_energy_input_hv.png",
+      "item_id": "1110:111:28"
+    },
+    {
+      "file": "hatches/icons/hatch_bus_output_hv.png",
+      "item_id": "1110:111:29"
+    },
+    {
+      "file": "hatches/icons/hatch_input_ev.png",
+      "item_id": "1110:111:30"
+    },
+    {
+      "file": "hatches/icons/hatch_output_ev.png",
+      "item_id": "1110:111:31"
+    },
+    {
+      "file": "hatches/icons/hatch_bus_input_ev.png",
+      "item_id": "1110:111:32"
+    },
+    {
+      "file": "hatches/icons/hatch_energy_input_ev.png",
+      "item_id": "1110:111:33"
+    },
+    {
+      "file": "hatches/icons/hatch_bus_output_ev.png",
+      "item_id": "1110:111:34"
+    },
+    {
+      "file": "hatches/icons/hatch_input_iv.png",
+      "item_id": "1110:111:35"
+    },
+    {
+      "file": "hatches/icons/hatch_output_iv.png",
+      "item_id": "1110:111:36"
+    },
+    {
+      "file": "hatches/icons/hatch_bus_input_iv.png",
+      "item_id": "1110:111:37"
+    },
+    {
+      "file": "hatches/icons/hatch_energy_input_iv.png",
+      "item_id": "1110:111:38"
+    },
+    {
+      "file": "hatches/icons/hatch_bus_output_iv.png",
+      "item_id": "1110:111:39"
+    },
+    {
+      "file": "hatches/icons/hatch_dynamo.png",
+      "item_id": "1110:111:82"
+    },
+    {
+      "file": "hatches/icons/hatch_cleanroom.png",
+      "item_id": "1110:111:83"
+    },
+    {
+      "file": "hatches/icons/hatch_fluid_void.png",
+      "item_id": "1110:111:84"
+    },
+    {
+      "file": "hatches/icons/hatch_item_void.png",
+      "item_id": "1110:111:85"
+    },
+    {
+      "file": "pipes/icons/item_pipe.png",
+      "item_id": "1111:10:1"
+    },
+    {
+      "file": "pipes/icons/dense_item_pipe.png",
+      "item_id": "1111:10:2"
+    },
+    {
+      "file": "pipes/icons/dense_fluid_pipe.png",
+      "item_id": "1111:10:3"
+    },
+    {
+      "file": "pipes/icons/heat_pipe.png",
+      "item_id": "1111:10:4"
+    },
+    {
+      "file": "fluids/icons/nitrogen.png",
+      "item_id": "1111:11:59"
+    },
+    {
+      "file": "fluids/icons/chlorine.png",
+      "item_id": "1111:11:60"
+    },
+    {
+      "file": "fluids/icons/bromine.png",
+      "item_id": "1111:11:61"
+    },
+    {
+      "file": "fluids/icons/fluorine.png",
+      "item_id": "1111:11:62"
+    },
+    {
+      "file": "fluids/icons/iodine.png",
+      "item_id": "1111:11:63"
+    },
+    {
+      "file": "fluids/icons/mercury.png",
+      "item_id": "1111:11:64"
+    },
+    {
+      "file": "fluids/icons/sodium.png",
+      "item_id": "1111:11:65"
+    },
+    {
+      "file": "fluids/icons/potassium.png",
+      "item_id": "1111:11:66"
+    },
+    {
+      "file": "fluids/icons/lubricant.png",
+      "item_id": "1111:11:67"
+    },
+    {
+      "file": "fluids/icons/plasma.png",
+      "item_id": "1111:11:68"
+    },
+    {
+      "file": "fluids/icons/deuterium.png",
+      "item_id": "1111:11:69"
+    },
+    {
+      "file": "fluids/icons/tritium.png",
+      "item_id": "1111:11:70"
+    },
+    {
+      "file": "fluids/icons/helium3.png",
+      "item_id": "1111:11:71"
+    },
+    {
+      "file": "fluids_core/water.png",
+      "item_id": "1111:11:0"
+    },
+    {
+      "file": "fluids_core/steam.png",
+      "item_id": "1111:11:1"
+    },
+    {
+      "file": "fluids_core/sulfuric_acid.png",
+      "item_id": "1111:11:2"
+    },
+    {
+      "file": "fluids_core/oxygen.png",
+      "item_id": "1111:11:3"
+    },
+    {
+      "file": "fluids_core/hydrogen.png",
+      "item_id": "1111:11:4"
+    },
+    {
+      "file": "fluids_core/coolant.png",
+      "item_id": "1111:11:5"
+    },
+    {
+      "file": "fluids_core/ethylene.png",
+      "item_id": "1111:11:6"
+    },
+    {
+      "file": "fluids_core/polyethylene.png",
+      "item_id": "1111:11:7"
+    },
+    {
+      "file": "processing/autoclave.png",
+      "item_id": "1110:010:49"
+    },
+    {
+      "file": "processing/centrifuge.png",
+      "item_id": "1110:010:53"
+    },
+    {
+      "file": "processing/chemical_reactor.png",
+      "item_id": "1110:010:56"
+    },
+    {
+      "file": "processing/electrolyzer.png",
+      "item_id": "1110:010:58"
+    },
+    {
+      "file": "processing/ore_washer.png",
+      "item_id": "1110:010:61"
+    },
+    {
+      "file": "processing/thermal_centrifuge.png",
+      "item_id": "1110:010:63"
+    },
+    {
+      "file": "machine_sprites/steam_macerator.png",
+      "item_id": "1110:001:0"
+    }
+  ]
+}

@@ -29,8 +29,9 @@ public:
   static UVRect GetItemUV(uint16_t itemId);
   static uint64_t GetGeneration();
 
-  static constexpr int kDefaultTilesX = 16;
-  static constexpr int kDefaultTilesY = 16;
+  static constexpr int kDefaultTilesX = 32;
+  static constexpr int kDefaultTilesY = 32;
+  static constexpr int kTileCapacity = kDefaultTilesX * kDefaultTilesY;
 
   static UVRect GetUV(uint16_t blockId, int face);
 

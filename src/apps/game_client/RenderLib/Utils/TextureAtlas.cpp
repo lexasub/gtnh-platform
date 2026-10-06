@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <string>
 #include <algorithm>
+#include <array>
 #include <lodepng.h>
 #include <spdlog/spdlog.h>
 
@@ -20,18 +21,21 @@ static OpenHashMap<uint16_t, TransportMaterial, 64, 0xFFFF> s_transportMaterials
 
 static bgfx::TextureHandle s_texture = BGFX_INVALID_HANDLE;
 static int s_tileSize = 16;
-static int s_atlasW = 256;
-static int s_atlasH = 256;
+static int s_atlasW = TextureAtlas::kDefaultTilesX * 16;
+static int s_atlasH = TextureAtlas::kDefaultTilesY * 16;
 static bool s_initialized = false;
 static uint64_t s_generation = 0;
-static uint8_t s_nextAtlasSlot = 0; // tracks next free atlas slot across LoadTextureRegistry + LoadMergeRegistry
+static uint16_t s_nextAtlasSlot = 0; // tracks next free atlas slot across LoadTextureRegistry + LoadMergeRegistry
 
-// tile_id → atlas grid position (populated from textures.csv, fallback to id%16, id/16)
-static uint8_t s_tileAtlasX[256];
-static uint8_t s_tileAtlasY[256];
-static uint8_t s_srcPosX[256]; // tile_id → source PNG tile X (from textures.csv)
-static uint8_t s_srcPosY[256]; // tile_id → source PNG tile Y (from textures.csv)
-static uint8_t s_rotate[256];  // tile_id → rotation: 0=0°, 1=90°CW, 2=180°, 3=270°CW
+// Tile ID to source/atlas data. Atlas grid coordinates remain byte-sized (0..31).
+static std::array<uint8_t, TextureAtlas::kTileCapacity> s_tileAtlasX{};
+static std::array<uint8_t, TextureAtlas::kTileCapacity> s_tileAtlasY{};
+static std::array<uint8_t, TextureAtlas::kTileCapacity> s_srcPosX{};
+static std::array<uint8_t, TextureAtlas::kTileCapacity> s_srcPosY{};
+static std::array<uint8_t, TextureAtlas::kTileCapacity> s_rotate{};
+static std::array<bool, TextureAtlas::kTileCapacity> s_selfMergeOverlay{};
+static std::array<bool, TextureAtlas::kTileCapacity> s_tileSourceRegistered{};
+static std::array<bool, TextureAtlas::kTileCapacity> s_tileAtlasAssigned{};
 
 static std::vector<std::string> SplitCSV(const std::string& line) {
     std::vector<std::string> fields;
@@ -42,6 +46,55 @@ static std::vector<std::string> SplitCSV(const std::string& line) {
     }
     fields.push_back(line.substr(start));
     return fields;
+}
+
+static bool ParseTileId(const std::string& value, uint16_t& tileId) {
+    const int parsed = std::stoi(value);
+    if (parsed < 0 || parsed >= TextureAtlas::kTileCapacity) return false;
+    tileId = static_cast<uint16_t>(parsed);
+    return true;
+}
+
+static bool AssignAtlasSlot(uint16_t tileId) {
+    if (tileId >= TextureAtlas::kTileCapacity || s_nextAtlasSlot >= TextureAtlas::kTileCapacity) {
+        spdlog::error("TextureAtlas capacity exhausted while assigning tile {}", tileId);
+        return false;
+    }
+
+    const uint16_t slot = s_nextAtlasSlot++;
+    s_tileAtlasX[tileId] = static_cast<uint8_t>(slot % TextureAtlas::kDefaultTilesX);
+    s_tileAtlasY[tileId] = static_cast<uint8_t>(slot / TextureAtlas::kDefaultTilesX);
+    s_tileAtlasAssigned[tileId] = true;
+    return true;
+}
+
+static void LoadSelfMergeOverlayIds(const char* dataDir) {
+    s_selfMergeOverlay.fill(false);
+    const std::string filename = std::string(dataDir) + "/textures/textures_merge.csv";
+    std::FILE* file = std::fopen(filename.c_str(), "r");
+    if (!file) return;
+
+    char line[1024];
+    bool hasHeader = false;
+    while (std::fgets(line, sizeof(line), file)) {
+        std::string lineStr(line);
+        if (!hasHeader) {
+            hasHeader = true;
+            continue;
+        }
+        const auto fields = SplitCSV(lineStr);
+        if (fields.size() < 3) continue;
+        try {
+            uint16_t compositeId, overlayTileId;
+            if (ParseTileId(fields[0], compositeId) &&
+                ParseTileId(fields[2], overlayTileId) && compositeId == overlayTileId) {
+                s_selfMergeOverlay[overlayTileId] = true;
+            }
+        } catch (const std::exception&) {
+            // LoadMergeRegistry reports malformed rows with their full context.
+        }
+    }
+    std::fclose(file);
 }
 
 static UVRect TileUV(uint16_t tileId) {
@@ -84,10 +137,17 @@ static bool LoadTransportMaterialRegistry(const char* dataDir) {
         try {
             uint16_t blockId = ItemId::pack(fields[0]);
             TransportMaterial material{};
+            bool validTiles = true;
             for (int face = 0; face < 6; ++face) {
-                uint16_t tileId = static_cast<uint16_t>(std::stoi(fields[face + 1]));
+                uint16_t tileId;
+                if (!ParseTileId(fields[face + 1], tileId)) {
+                    spdlog::warn("Out-of-range transport tile ID in row: {}", lineStr);
+                    validTiles = false;
+                    break;
+                }
                 material.uv[face] = TileUV(tileId);
             }
+            if (!validTiles) continue;
             material.transparent = std::stoi(fields[7]) == 1;
             if (!s_transportMaterials.insert(blockId, material)) {
                 spdlog::error("TextureAtlas transport registry is full; block {} ignored", fields[0]);
@@ -124,18 +184,24 @@ static bool LoadTextureRegistry(const char* dataDir) {
         }
         
         try {
-            uint16_t tileId = static_cast<uint16_t>(std::stoi(fields[0]));
-            uint8_t tileX = static_cast<uint8_t>(std::stoi(fields[2]));
-            uint8_t tileY = static_cast<uint8_t>(std::stoi(fields[3]));
-            uint8_t rotate = fields.size() >= 5 ? static_cast<uint8_t>(std::stoi(fields[4])) : 0;
-            
-            // Auto-assign atlas slot sequentially; tileX/Y are source PNG position only
-            s_tileAtlasX[tileId] = s_nextAtlasSlot % TextureAtlas::kDefaultTilesX;
-            s_tileAtlasY[tileId] = s_nextAtlasSlot / TextureAtlas::kDefaultTilesX;
-            s_srcPosX[tileId] = tileX;
-            s_srcPosY[tileId] = tileY;
-            s_rotate[tileId] = rotate & 3;
-            s_nextAtlasSlot++;
+            uint16_t tileId;
+            if (!ParseTileId(fields[0], tileId)) {
+                spdlog::warn("Out-of-range tile ID in texture registry row: {}", lineStr);
+                continue;
+            }
+            const int tileX = std::stoi(fields[2]);
+            const int tileY = std::stoi(fields[3]);
+            const int rotate = fields.size() >= 5 ? std::stoi(fields[4]) : 0;
+            if (tileX < 0 || tileX > 255 || tileY < 0 || tileY > 255) {
+                spdlog::warn("Out-of-range source cell in texture registry row: {}", lineStr);
+                continue;
+            }
+
+            s_srcPosX[tileId] = static_cast<uint8_t>(tileX);
+            s_srcPosY[tileId] = static_cast<uint8_t>(tileY);
+            s_rotate[tileId] = static_cast<uint8_t>(rotate) & 3;
+            s_tileSourceRegistered[tileId] = true;
+            if (!s_selfMergeOverlay[tileId] && !AssignAtlasSlot(tileId)) continue;
         } catch (const std::exception& e) {
             spdlog::warn("Error parsing texture registry row '{}': {}", lineStr, e.what());
             continue;
@@ -184,12 +250,19 @@ static bool LoadBlockFaceRegistry(const char* dataDir) {
             faces.transparent = transparent;
             
             static constexpr int kFaceFields[6] = {1, 2, 3, 4, 5, 6};
+            bool validTiles = true;
             for (int f = 0; f < 6; ++f) {
-                uint16_t tileId = static_cast<uint16_t>(std::stoi(fields[kFaceFields[f]]));
+                uint16_t tileId;
+                if (!ParseTileId(fields[kFaceFields[f]], tileId)) {
+                    spdlog::warn("Out-of-range tile ID in block-face row: {}", lineStr);
+                    validTiles = false;
+                    break;
+                }
                 faces.tileX[f] = s_tileAtlasX[tileId];
                 faces.tileY[f] = s_tileAtlasY[tileId];
             }
-            
+            if (!validTiles) continue;
+
             if (!s_blockFaces.insert(blockId, faces)) {
                 spdlog::error("TextureAtlas block-face registry is full; block {} will use fallback UV", blockIdStr);
             }
@@ -230,8 +303,12 @@ static bool LoadItemIconRegistry(const char* dataDir) {
         try {
             std::string itemIdStr = fields[0];
             uint16_t itemId = ItemId::pack(itemIdStr);
-            uint16_t tileId = static_cast<uint16_t>(std::stoi(fields[1]));
-            
+            uint16_t tileId;
+            if (!ParseTileId(fields[1], tileId)) {
+                spdlog::warn("Out-of-range tile ID in item icon row: {}", lineStr);
+                continue;
+            }
+
             s_itemIcons.insert(itemId, tileId);
         } catch (const std::exception& e) {
             spdlog::warn("Error parsing item icon registry row '{}': {}", lineStr, e.what());
@@ -282,9 +359,13 @@ static bool LoadMergeRegistry(const char* dataDir, std::vector<uint8_t>& atlasPi
         }
 
         try {
-            uint16_t compositeId = static_cast<uint16_t>(std::stoi(fields[0]));
-            uint16_t baseTileId = static_cast<uint16_t>(std::stoi(fields[1]));
-            uint16_t overlayTileId = static_cast<uint16_t>(std::stoi(fields[2]));
+            uint16_t compositeId, baseTileId, overlayTileId;
+            if (!ParseTileId(fields[0], compositeId) ||
+                !ParseTileId(fields[1], baseTileId) ||
+                !ParseTileId(fields[2], overlayTileId)) {
+                spdlog::warn("Out-of-range tile ID in merge registry row: {}", lineStr);
+                continue;
+            }
 
             int tSz = s_tileSize;
 
@@ -302,7 +383,8 @@ static bool LoadMergeRegistry(const char* dataDir, std::vector<uint8_t>& atlasPi
                     std::string ts(tl);
                     if (!hdr) { hdr = true; continue; }
                     auto f = SplitCSV(ts);
-                    if (f.size() >= 4 && static_cast<uint16_t>(std::stoi(f[0])) == overlayTileId) {
+                    uint16_t sourceTileId;
+                    if (f.size() >= 4 && ParseTileId(f[0], sourceTileId) && sourceTileId == overlayTileId) {
                         if (!LoadPNGRaw(f[1], overlayPng, ovW, ovH)) { std::fclose(tf); continue; }
                         found = true; break;
                     }
@@ -311,16 +393,23 @@ static bool LoadMergeRegistry(const char* dataDir, std::vector<uint8_t>& atlasPi
                 if (!found || overlayPng.empty()) { spdlog::warn("Overlay tile {} not found", overlayTileId); continue; }
             }
 
-            uint8_t ovTx = s_srcPosX[overlayTileId];
-            uint8_t ovTy = s_srcPosY[overlayTileId];
-            uint8_t baseTx = s_tileAtlasX[baseTileId];
-            uint8_t baseTy = s_tileAtlasY[baseTileId];
+            if (!s_tileSourceRegistered[overlayTileId] || !s_tileAtlasAssigned[baseTileId]) {
+                spdlog::warn("Merge row references an unloaded base/overlay tile: {}", lineStr);
+                continue;
+            }
 
-            uint8_t atlasTx = s_nextAtlasSlot % TextureAtlas::kDefaultTilesX;
-            uint8_t atlasTy = s_nextAtlasSlot / TextureAtlas::kDefaultTilesX;
+            const uint8_t ovTx = s_srcPosX[overlayTileId];
+            const uint8_t ovTy = s_srcPosY[overlayTileId];
+            if (ovTx >= ovW / tSz || ovTy >= ovH / tSz) {
+                spdlog::warn("Merge overlay source cell is out of bounds: {}", lineStr);
+                continue;
+            }
+            const uint8_t baseTx = s_tileAtlasX[baseTileId];
+            const uint8_t baseTy = s_tileAtlasY[baseTileId];
 
-            s_tileAtlasX[compositeId] = atlasTx;
-            s_tileAtlasY[compositeId] = atlasTy;
+            if (!AssignAtlasSlot(compositeId)) continue;
+            const uint8_t atlasTx = s_tileAtlasX[compositeId];
+            const uint8_t atlasTy = s_tileAtlasY[compositeId];
 
             for (int py = 0; py < tSz; ++py) {
                 for (int px = 0; px < tSz; ++px) {
@@ -360,7 +449,6 @@ static bool LoadMergeRegistry(const char* dataDir, std::vector<uint8_t>& atlasPi
                 }
             }
 
-            s_nextAtlasSlot++;
             spdlog::info("Merged tile {} = base {} + overlay {}", compositeId, baseTileId, overlayTileId);
         } catch (const std::exception& e) {
             spdlog::warn("Error parsing merge row '{}': {}", lineStr, e.what());
@@ -432,15 +520,23 @@ void TextureAtlas::Init(int tileSize) {
     s_tileSize = tileSize;
     s_atlasW = kDefaultTilesX * s_tileSize;
     s_atlasH = kDefaultTilesY * s_tileSize;
-    
-    for (uint16_t id = 0; id < 256; ++id) {
-        s_tileAtlasX[id] = id % kDefaultTilesX;
-        s_tileAtlasY[id] = id / kDefaultTilesY;
-        s_srcPosX[id] = id % kDefaultTilesX;
-        s_srcPosY[id] = id / kDefaultTilesY;
+
+    const bgfx::Caps* caps = bgfx::getCaps();
+    if (!caps || caps->limits.maxTextureSize < static_cast<uint32_t>(std::max(s_atlasW, s_atlasH))) {
+        spdlog::error("TextureAtlas requires a GPU texture size of at least {} pixels", std::max(s_atlasW, s_atlasH));
+        return;
+    }
+
+    for (int id = 0; id < kTileCapacity; ++id) {
+        s_tileAtlasX[id] = static_cast<uint8_t>(id % kDefaultTilesX);
+        s_tileAtlasY[id] = static_cast<uint8_t>(id / kDefaultTilesX);
+        s_srcPosX[id] = static_cast<uint8_t>(id % kDefaultTilesX);
+        s_srcPosY[id] = static_cast<uint8_t>(id / kDefaultTilesX);
         s_rotate[id] = 0;
     }
-    
+    s_tileSourceRegistered.fill(false);
+    s_tileAtlasAssigned.fill(false);
+
 #ifdef DATA_DIR
     s_dataDir = DATA_DIR;
 #else
@@ -448,6 +544,7 @@ void TextureAtlas::Init(int tileSize) {
 #endif
     const char* dataDir = s_dataDir.c_str();
     s_nextAtlasSlot = 0;
+    LoadSelfMergeOverlayIds(dataDir);
     LoadTextureRegistry(dataDir);
     
     // Face entries store resolved atlas slots, so load them only after source
@@ -470,7 +567,9 @@ void TextureAtlas::Init(int tileSize) {
                 auto fields = SplitCSV(lineStr);
                 if (fields.size() >= 4) {
                     try {
-                        uint16_t tileId = static_cast<uint16_t>(std::stoi(fields[0]));
+                        uint16_t tileId;
+                        if (!ParseTileId(fields[0], tileId) || !s_tileSourceRegistered[tileId] ||
+                            !s_tileAtlasAssigned[tileId] || s_selfMergeOverlay[tileId]) continue;
                         std::string filename = fields[1];
                         auto it = std::find_if(fileToTileIds.begin(), fileToTileIds.end(),
                                                [&filename](const auto& pair) { return pair.first == filename; });
@@ -506,10 +605,10 @@ void TextureAtlas::Init(int tileSize) {
     // composite slots have been assigned.
 
     // Mark atlas slots already filled by loaded source tiles + merge tiles
-    bool slotUsed[256] = {};
+    std::array<bool, kTileCapacity> slotUsed{};
     for (const auto& filePair : fileToTileIds) {
         for (uint16_t tileId: filePair.second) {
-            uint8_t slot = s_tileAtlasY[tileId] * kDefaultTilesX + s_tileAtlasX[tileId];
+            const size_t slot = static_cast<size_t>(s_tileAtlasY[tileId]) * kDefaultTilesX + s_tileAtlasX[tileId];
             slotUsed[slot] = true;
         }
     }
@@ -578,7 +677,8 @@ const TransportMaterial* TextureAtlas::GetTransportMaterial(uint16_t blockId) {
 }
 
 UVRect TextureAtlas::GetTileUV(uint16_t tileId) {
-    if (!s_initialized || tileId >= 256) return {0, 0, 1, 1};
+    if (!s_initialized) return {0, 0, 1, 1};
+    if (tileId >= kTileCapacity) return TileUV(16);
     return TileUV(tileId);
 }
 
@@ -611,6 +711,7 @@ UVRect TextureAtlas::GetItemUV(uint16_t itemId) {
     // Resolution chain: 1. item_icons.csv, 2. block_faces.csv (first face), 3. default UV
     if (auto* itemEntry = s_itemIcons.find(itemId)) {
         uint16_t tileId = *itemEntry;
+        if (tileId >= kTileCapacity) return TileUV(16);
         float tx = s_tileAtlasX[tileId];
         float ty = s_tileAtlasY[tileId];
         float halfU = 0.5f / s_atlasW;

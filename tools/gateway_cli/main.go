@@ -50,7 +50,6 @@ const (
 	kPipeContentsReq    = 48
 	kPipeContentsResp   = 49
 	kMultiblockEvent    = 23
-	kSessionWelcome     = 52
 )
 
 // pack("1110:011:0") -> 0xE400 (steam_solid_boiler), pack("1111:10:0") -> 0xF800 (fluid_pipe)
@@ -107,10 +106,6 @@ type client struct {
 	watchX        int32
 	watchY        int32
 	watchZ        int32
-	// playerID is the identity the gateway assigned in SessionWelcome. A frame
-	// claiming another id is dropped, so actions go out under this one unless
-	// --player deliberately overrides it.
-	playerID uint64
 }
 
 func (c *client) sendRaw(msgType byte, fbData []byte, desc string) {
@@ -285,12 +280,6 @@ func (c *client) startReader() {
 				return
 			}
 			switch header[4] {
-			case kSessionWelcome:
-				welcome := Protocol.GetRootAsSessionWelcome(payload, 0)
-				if welcome != nil {
-					c.playerID = welcome.PlayerId()
-					fmt.Printf("  SESSION id=%d player=%d\n", welcome.SessionId(), c.playerID)
-				}
 			case kMultiblockEvent:
 				if created := Protocol.GetRootAsMultiblockCreatedEvent(payload, 0); created != nil {
 					var pos Protocol.Vec3i
@@ -367,11 +356,6 @@ func main() {
 	c := &client{conn: conn}
 	c.startReader()
 	time.Sleep(200 * time.Millisecond)
-	// Adopt the server-assigned identity unless the caller pinned one with
-	// --player.
-	if *playerID == 0 {
-		*playerID = c.playerID
-	}
 
 	run := func(cmd string, x, y, z int32, item, expected uint16) {
 		switch cmd {
