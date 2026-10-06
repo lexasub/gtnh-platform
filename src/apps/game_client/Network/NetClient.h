@@ -205,6 +205,24 @@ public:
   void SendRecipesForItemReq(uint16_t item_id, uint8_t mode, uint32_t req_id);
   void SendRecipesForMachineReq(uint16_t machine_id, uint32_t req_id);
 
+  // ---- Session identity --------------------------------------------------
+  //
+  // The server assigns both values (SessionWelcome on ctrl). Until the
+  // welcome arrives, PlayerId() is 0 — such a frame is attributed to the
+  // session by the gateway, so a client that connects slightly late is not
+  // rejected, it is merely not yet identifiable.
+  using SessionWelcomeCallback =
+      std::function<void(uint64_t session_id, uint64_t player_id)>;
+  void SetSessionWelcomeCallback(SessionWelcomeCallback cb) {
+    onSessionWelcome_ = std::move(cb);
+  }
+  uint64_t PlayerId() const { return player_id_.load(std::memory_order_acquire); }
+  uint64_t SessionId() const { return session_id_.load(std::memory_order_acquire); }
+
+  // Pairs the bulk socket with the current session. Sent automatically when
+  // the welcome arrives, and again after a bulk reconnect.
+  void SendBulkSessionHello();
+
 private:
   // ---- Thread-safe message queue -----------------------------------------
 
@@ -236,6 +254,10 @@ private:
   std::atomic<bool> reconnect_requested_{false};
 
   std::atomic<uint32_t> next_request_id_{1}; // monotonic counter for BlockAck matching
+
+  // Assigned by the gateway in SessionWelcome (ctrl); 0 until it arrives.
+  std::atomic<uint64_t> session_id_{0};
+  std::atomic<uint64_t> player_id_{0};
 
   void request_reconnect();
   void do_reconnect();
@@ -285,5 +307,6 @@ private:
     ResourceBufferStateCallback onResourceBufferState_;
     PipeContentsCallback onPipeContents_;
     ReconnectCallback onReconnect_;
+    SessionWelcomeCallback onSessionWelcome_;
   ServiceHealthCallback onServiceHealth_;
 };

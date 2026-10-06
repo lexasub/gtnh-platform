@@ -8,13 +8,13 @@ import (
 )
 
 func TestBase_BuildMultiMachine(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	const playerID = uint64(9001)
+	playerID := c.PlayerID()
 	// origin far from existing tests
 	cornerX := int32(7000)
 	cornerY := int32(70)

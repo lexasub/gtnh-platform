@@ -10,7 +10,7 @@ import (
 
 func connect(t *testing.T) *testutil.GatewayClient {
 	t.Helper()
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
@@ -77,9 +77,13 @@ func placeAtCell(playerID uint64, x, y, z int32, blockID uint16, reqID uint32) [
 // deterministic, needs no cluster, and fails at build time of the test rather
 // than at 5 s into a placement.
 func TestPlaceAtCellSendsAClaimableFrame(t *testing.T) {
+	// The frame is never sent and the gateway assigns a per-session player id,
+	// so the identity stamped on it is arbitrary here; name it rather than
+	// imply a fixed session identity exists.
+	const frameOnlyPlayerID = uint64(42)
 	var pos Protocol.Vec3i
 	action := Protocol.GetRootAsSetBlockAction(
-		placeAtCell(42, 100, 60, 200, cobblestoneID, 41001), 0)
+		placeAtCell(frameOnlyPlayerID, 100, 60, 200, cobblestoneID, 41001), 0)
 
 	// 1. RIGHT_MOUSE_CLICK — a LEFT_MOUSE_CLICK is a break, which
 	// BreakBlockHandler claims instead (BreakBlockHandler.cpp:53-55).
@@ -123,7 +127,7 @@ func TestPlaceAtCellSendsAClaimableFrame(t *testing.T) {
 // spawn can otherwise lose the world-gen race and come back CONFLICT.
 func primeChunk(t *testing.T, c *testutil.GatewayClient, x, y, z int32) {
 	t.Helper()
-	if err := c.RequestChunk(42, x>>5, y>>5, z>>5); err != nil {
+	if err := c.RequestChunk(c.PlayerID(), x>>5, y>>5, z>>5); err != nil {
 		t.Fatalf("request chunk for (%d,%d,%d): %v", x, y, z, err)
 	}
 	c.WaitForChunkGeneration(4 * time.Second)
@@ -149,7 +153,7 @@ func TestSetBlock_CAS_Accept(t *testing.T) {
 
 	const reqID = uint32(41001)
 	if err := c.SendCtrl(testutil.MsgSetBlockAction,
-		placeAtCell(42, 100, y, 200, 2, reqID)); err != nil {
+		placeAtCell(c.PlayerID(), 100, y, 200, 2, reqID)); err != nil {
 		t.Fatalf("send SetBlockAction: %v", err)
 	}
 	// The placement protocol's immediate client acknowledgement is ACCEPTED
@@ -182,7 +186,7 @@ func TestSetBlock_CAS_Conflict(t *testing.T) {
 	// First placement fills the air cell, so the cell is no longer air.
 	const firstReqID = uint32(41010)
 	if err := c.SendCtrl(testutil.MsgSetBlockAction,
-		placeAtCell(42, x, y, z, 1, firstReqID)); err != nil {
+		placeAtCell(c.PlayerID(), x, y, z, 1, firstReqID)); err != nil {
 		t.Fatalf("send first SetBlockAction: %v", err)
 	}
 	if _, err := c.WaitForBlockAck(firstReqID, Protocol.BlockAckStatusACCEPTED, 5*time.Second); err != nil {
@@ -196,7 +200,7 @@ func TestSetBlock_CAS_Conflict(t *testing.T) {
 	// expected id is air, the cell holds block 1, so CAS fails.
 	const secondReqID = uint32(41011)
 	if err := c.SendCtrl(testutil.MsgSetBlockAction,
-		placeAtCell(42, x, y, z, 2, secondReqID)); err != nil {
+		placeAtCell(c.PlayerID(), x, y, z, 2, secondReqID)); err != nil {
 		t.Fatalf("send second SetBlockAction: %v", err)
 	}
 	// SimCore sends optimistic ACCEPTED first, then CONFLICT after the
@@ -222,7 +226,7 @@ func TestSetBlock_CAS_AcceptAfterCorrectExpected(t *testing.T) {
 
 	const firstReqID = uint32(41020)
 	if err := c.SendCtrl(testutil.MsgSetBlockAction,
-		placeAtCell(42, x, y, z, 5, firstReqID)); err != nil {
+		placeAtCell(c.PlayerID(), x, y, z, 5, firstReqID)); err != nil {
 		t.Fatalf("send first SetBlockAction: %v", err)
 	}
 	if _, err := c.WaitForBlockAck(firstReqID, Protocol.BlockAckStatusACCEPTED, 5*time.Second); err != nil {
@@ -236,7 +240,7 @@ func TestSetBlock_CAS_AcceptAfterCorrectExpected(t *testing.T) {
 	// fresh placement into the same column is accepted once the expected
 	// condition holds again.
 	if err := c.SendCtrl(testutil.MsgSetBlockAction,
-		testutil.BuildBreakBlockAction(42, x, y, z, 5)); err != nil {
+		testutil.BuildBreakBlockAction(c.PlayerID(), x, y, z, 5)); err != nil {
 		t.Fatalf("send break: %v", err)
 	}
 	if err := cs.WaitForBlock(x, y, z, 0, 5*time.Second); err != nil {
@@ -245,7 +249,7 @@ func TestSetBlock_CAS_AcceptAfterCorrectExpected(t *testing.T) {
 
 	const secondReqID = uint32(41021)
 	if err := c.SendCtrl(testutil.MsgSetBlockAction,
-		placeAtCell(42, x, y, z, 7, secondReqID)); err != nil {
+		placeAtCell(c.PlayerID(), x, y, z, 7, secondReqID)); err != nil {
 		t.Fatalf("send second SetBlockAction: %v", err)
 	}
 	if _, err := c.WaitForBlockAck(secondReqID, Protocol.BlockAckStatusACCEPTED, 5*time.Second); err != nil {

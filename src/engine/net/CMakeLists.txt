@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(spdlog REQUIRED)
 
 add_library(gtnh-net STATIC
+    src/client_session.cpp
     src/io_uring_context.cpp
     src/io_uring_connection.cpp
     src/tcp_connector.cpp

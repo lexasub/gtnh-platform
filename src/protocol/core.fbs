@@ -393,6 +393,24 @@ table MultiblockDestroyedEvent {
 // Player join/leave events (for MetaDB inventory load/save)
 table PlayerJoined {
   player_id:uint64;
+  nickname:string;          // server-side name for this session (dev-mode handshake)
+}
+
+// Gateway → client, ctrl connection, sent once right after the ctrl socket is
+// accepted. It carries the server-canonical identity the client must use in
+// every subsequent action: the server assigns it, the client never picks it.
+// Sessions coexist, so a client that kept a hardcoded id would act as (or
+// collide with) somebody else.
+table SessionWelcome {
+  session_id:uint64;
+  player_id:uint64;
+}
+
+// Client → gateway, bulk connection, first frame. It binds the bulk socket to
+// the ctrl session that was welcomed earlier, so chunk and block-update
+// traffic reaches the client that actually asked for it.
+table SessionHello {
+  session_id:uint64;
 }
 
 table PlayerLeft {

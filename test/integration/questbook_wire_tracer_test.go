@@ -12,17 +12,18 @@ import (
 // client Ctrl frame 33 -> Gateway topic quest.book.open -> SimCore inventory
 // check -> QuestManager completion -> Gateway notifications.
 func TestQuestBookOpen_InventoryCompletion(t *testing.T) {
-	// TestMain starts one process-scoped cluster and every Ctrl connection is
-	// assigned player 1, so this tracer can prove its cause exactly once:
-	// quest state recorded on the first run suppresses the second run's
-	// completion notification and it would fail later with an unrelated read
-	// timeout. Claiming the run turns that into an explicit contract. The key
-	// is t.Name() so a rename cannot silently mint a second claim slot.
+	// TestMain starts one process-scoped cluster and the gateway assigns each
+	// Ctrl connection its own session identity, so this tracer can prove its
+	// cause exactly once: quest state recorded on the first run suppresses the
+	// second run's completion notification and it would fail later with an
+	// unrelated read timeout. Claiming the run turns that into an explicit
+	// contract. The key is t.Name() so a rename cannot silently mint a second
+	// claim slot.
 	if err := testutil.ClaimSingleRun(t.Name()); err != nil {
 		t.Fatalf("repeat run: %v", err)
 	}
 
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Fatalf("dial Gateway: %v", err)
 	}
@@ -31,9 +32,10 @@ func TestQuestBookOpen_InventoryCompletion(t *testing.T) {
 	// A creative spawn uses the production client path: switch the authoritative
 	// server game mode first, wait for the echo, then use the same ITEM_ACTION
 	// emitted by the game client's creative menu.
-	// TestMain's cluster is process-scoped; player 1 is deliberately the fixed
-	// identity used by the production client path in this focused tracer.
-	const playerID = uint64(1)
+	// The gateway assigns the identity this session may act under, and server
+	// replies carry it, so every outbound frame and every reply assertion below
+	// uses the assigned id rather than a hardcoded one.
+	playerID := c.PlayerID()
 	if err := c.SendCtrl(testutil.MsgGameModeChange,
 		testutil.BuildGameModeChange(playerID, Protocol.GameModeCREATIVE)); err != nil {
 		t.Fatalf("switch to creative: %v", err)
@@ -52,7 +54,7 @@ func TestQuestBookOpen_InventoryCompletion(t *testing.T) {
 	}
 	// Gateway forwards queued player.inventory.update pushes without
 	// correlation, so wait for the snapshot that actually proves this grant
-	// (player 1 holding at least 8 oak logs) instead of the first frame.
+	// (this session holding at least 8 oak logs) instead of the first frame.
 	data, err := c.WaitForInventoryItem(playerID, 22530, 8, 5*time.Second)
 	if err != nil {
 		t.Fatalf("wait for authoritative oak inventory update: %v", err)

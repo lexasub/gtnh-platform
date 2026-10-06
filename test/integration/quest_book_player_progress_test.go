@@ -20,13 +20,13 @@ type QuestGraphRoot struct {
 }
 
 func TestQuestBook_PlayerProgress(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	const playerID = uint64(9500)
+	playerID := c.PlayerID()
 	baseX := int32(14000)
 	baseY := int32(70)
 	baseZ := int32(14000)

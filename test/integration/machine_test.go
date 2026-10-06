@@ -91,13 +91,13 @@ func (s *invSnapshot) awaitItem(itemID uint16, min int, timeout time.Duration) {
 // InvalidRecipe case proves a grid that merely has items in it is still
 // rejected when it matches nothing.
 func TestCrafting_ValidInvalid(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	const playerID = uint64(43)
+	playerID := c.PlayerID()
 
 	t.Run("ValidRecipe", func(t *testing.T) {
 		b := &benchSession{t: t, c: c, playerID: playerID}
@@ -152,13 +152,13 @@ func TestCrafting_ValidInvalid(t *testing.T) {
 // TC8: SetMachineSlotReq — move an item into a machine slot.
 // TC9: SetMachineSlotReq — extract the item back out.
 func TestMachine_SlotTransfer(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	const playerID = uint64(44)
+	playerID := c.PlayerID()
 
 	// heat_furnace is "1110:000:0" packed (machines.yaml:35-45). The old
 	// literal 36 predates the packed-id scheme and names no machine.
@@ -242,13 +242,13 @@ func TestMachine_SlotTransfer(t *testing.T) {
 //  5. Put iron_ore ("10:0") in the furnace's input slot
 //  6. Wait for the furnace to report an iron_ingot output
 func TestMachine_GeneratorFurnaceChain(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	const playerID = uint64(45)
+	playerID := c.PlayerID()
 	// Packed machine ids from src/content/data/registry/machines.yaml. The old
 	// literals 36/46/44/3 predate the packed-id scheme and name nothing.
 	const (

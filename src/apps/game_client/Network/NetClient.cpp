@@ -148,7 +148,30 @@ bool NetClient::start_bulk_connection(int fd) {
     }
     bulk_conn_ = std::move(conn);
     connected_bulk_ = true;
+    // A reconnect re-opens the bulk socket: the gateway pairs each bulk
+    // connection explicitly, so a fresh socket has to say which session it
+    // belongs to again.
+    SendBulkSessionHello();
     return true;
+}
+
+void NetClient::SendBulkSessionHello() {
+    const uint64_t sid = session_id_.load(std::memory_order_acquire);
+    if (sid == 0) {
+        // No welcome yet: the gateway has not told us which session this bulk
+        // socket belongs to, and it refuses an unpaired bulk socket.
+        spdlog::debug("NetClient: no session id yet, deferring bulk SessionHello");
+        return;
+    }
+    if (!connected_bulk_ || !bulk_conn_) {
+        spdlog::debug("NetClient: bulk socket not connected, deferring SessionHello");
+        return;
+    }
+    flatbuffers::FlatBufferBuilder fbb;
+    auto hello = Protocol::CreateSessionHello(fbb, sid);
+    fbb.Finish(hello);
+    bulk_conn_->send(GatewayMsg::kSessionHello, fbb.GetBufferPointer(), fbb.GetSize());
+    spdlog::info("NetClient: bulk socket paired with session {}", sid);
 }
 
 // =========================================================================
@@ -215,6 +238,12 @@ void NetClient::request_reconnect() {
 
 void NetClient::do_reconnect() {
     spdlog::info("NetClient: reconnecting...");
+
+    // The gateway assigns a new session on every ctrl accept, so the old ids
+    // are stale: keeping them would make the fresh bulk socket name a session
+    // that no longer exists.
+    session_id_.store(0, std::memory_order_release);
+    player_id_.store(0, std::memory_order_release);
 
     // Destroy old connections (joins their poll threads)
     ctrl_conn_.reset();
@@ -327,6 +356,25 @@ void NetClient::OnMessage(uint8_t msg_type,
     size_t plen = data->size();
 
     switch (msg_type) {
+        case GatewayMsg::kSessionWelcome: {
+            // The server owns identity: this player_id replaces anything the
+            // client assumed, and the bulk socket pairs itself with the
+            // session id received here.
+            flatbuffers::Verifier v(payload, plen);
+            if (!v.VerifyBuffer<Protocol::SessionWelcome>(nullptr)) {
+                spdlog::warn("NetClient: invalid SessionWelcome");
+                return;
+            }
+            auto welcome = flatbuffers::GetRoot<Protocol::SessionWelcome>(payload);
+            session_id_.store(welcome->session_id(), std::memory_order_release);
+            player_id_.store(welcome->player_id(), std::memory_order_release);
+            spdlog::info("NetClient: session {} welcomed as player {}",
+                         welcome->session_id(), welcome->player_id());
+            if (onSessionWelcome_) onSessionWelcome_(welcome->session_id(),
+                                                      welcome->player_id());
+            SendBulkSessionHello();
+            return;
+        }
         case GatewayMsg::kCompressedChunkData:
             ProcessKCompressedChunkData(std::move(data));
             return;

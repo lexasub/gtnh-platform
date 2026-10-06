@@ -111,6 +111,19 @@ func BuildCraftRequest(playerID uint64, x, y, z int32, grid [][3]uint16) []byte 
 	return b.FinishedBytes()
 }
 
+// BuildSessionHello builds the first frame a client sends on its bulk socket,
+// binding that socket to the session id the gateway assigned. The gateway
+// refuses an unpaired bulk socket, so chunk and block-update delivery would
+// silently never arrive without it.
+func BuildSessionHello(sessionID uint64) []byte {
+	b := flatbuffers.NewBuilder(64)
+	Protocol.SessionHelloStart(b)
+	Protocol.SessionHelloAddSessionId(b, sessionID)
+	hello := Protocol.SessionHelloEnd(b)
+	b.Finish(hello)
+	return b.FinishedBytes()
+}
+
 // AssertBlockAck checks that a BlockAck has the expected status.
 func AssertBlockAck(t *testing.T, data []byte, expectedStatus Protocol.BlockAckStatus) {
 	t.Helper()

@@ -8,7 +8,7 @@ void test_context();
 void test_echo();
 void test_heartbeat();
 void test_toctou();
-
+void test_session_registry();
 #define TEST(name) do { ++g_tests; printf("  TEST: %s\n", #name); test_##name(); } while(0)
 
 void test_check(bool cond, const char* file, int line, const char* expr, const char* msg) {
@@ -27,7 +27,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 
     TEST(frame);
     TEST(context);
-    TEST(echo);
+    TEST(session_registry);
     TEST(heartbeat);
     // TEST(toctou) — TOCTOU stress (200 close/reconnect iters) lives in
     // toctou_test standalone, disabled on CI (io_uring accept loop stalls

@@ -11,13 +11,13 @@ import (
 // TestGateway_ThermalPowerChain places the complete bounded thermal-to-electric
 // fixture and verifies machine state transitions through Gateway snapshots.
 func TestGateway_ThermalPowerChain(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	const playerID = uint64(1101)
+	playerID := c.PlayerID()
 	// CAS placement requires the target chunk to exist in ChunkStore. Request
 	// the fixture chunks explicitly because Gateway's automatic spawn request
 	// covers only the player's initial position.

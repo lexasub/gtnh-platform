@@ -11,13 +11,13 @@ import (
 )
 
 func TestQuestBook_AllCraftsFull(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	const playerID = uint64(9300)
+	playerID := c.PlayerID()
 	baseX := int32(12000)
 	baseY := int32(70)
 	baseZ := int32(12000)

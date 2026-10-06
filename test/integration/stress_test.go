@@ -17,7 +17,8 @@ import (
 //
 //   gateway.h:112  std::unique_ptr<IoUringConnection> client_ctrl_;   ONE socket, not a map
 //   gateway.cpp:90-94  a new ctrl connection MOVES the old one out and destroys it
-//   gateway.cpp:112    CreatePlayerJoined(fbb, 1) - every client is announced as player 1
+//   gateway.cpp:112    CreatePlayerJoined(fbb, …) - every client is announced with
+//                      the id the gateway just assigned to that connection
 //
 // So client N+1 evicts client N, and player.actions.ack has no routing key: the ack for
 // a CAS outcome is written to whichever single socket is currently attached, and the
@@ -44,7 +45,7 @@ func TestStress_ConcurrentBlockPlacement(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			c, err := testutil.DialGateway(gw, 5*time.Second)
+			c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 			if err != nil {
 				errs <- err
 				return
@@ -58,7 +59,7 @@ func TestStress_ConcurrentBlockPlacement(t *testing.T) {
 			// lower than the test intended. y=120 therefore places at y=119.
 			// stoneID, carried in hand: an empty-hand frame is rejected by
 			// PlaceBlockHandler::canHandle (PlaceBlockHandler.cpp:14-18).
-			fbData := testutil.BuildPlaceBlockAction(uint64(100+id), x, 120, 600, 0, stoneID)
+			fbData := testutil.BuildPlaceBlockAction(c.PlayerID(), x, 120, 600, 0, stoneID)
 			if err := c.SendCtrl(testutil.MsgSetBlockAction, fbData); err != nil {
 				errs <- err
 				return
@@ -92,7 +93,7 @@ func TestStress_CASRace(t *testing.T) {
 	result := make(chan int, 2)
 	for i := 0; i < 2; i++ {
 		go func(id int) {
-			c, err := testutil.DialGateway(gw, 5*time.Second)
+			c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 			if err != nil {
 				t.Logf("client %d: dial error: %v", id, err)
 				result <- 0
@@ -103,7 +104,7 @@ func TestStress_CASRace(t *testing.T) {
 			// Face 0 is DOWN, so the server shifts the placement one cell down
 			// (ActionContext.cpp:47). stoneID is carried in hand; the old literal 42
 			// is not a real item and was rejected by PlaceBlockHandler::canHandle.
-			fbData := testutil.BuildPlaceBlockAction(uint64(200+id), pos[0], pos[1], pos[2], 0, stoneID)
+			fbData := testutil.BuildPlaceBlockAction(c.PlayerID(), pos[0], pos[1], pos[2], 0, stoneID)
 			c.SendCtrl(testutil.MsgSetBlockAction, fbData)
 
 			deadline := time.Now().Add(10 * time.Second)
@@ -137,29 +138,54 @@ func TestStress_CASRace(t *testing.T) {
 }
 
 func TestStress_RapidFireBlocks(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
+	// A region of its own: the thermal fixtures already occupy
+	// (700..711, 119, 700) in this shared world, so a CAS there conflicts with
+	// another test's machine. Face 0 (DOWN) places into y-1, and the target cell
+	// has to be genuinely air — the other fixtures resolve it through
+	// ChunkStore for exactly that reason.
 	const n = 10
-	for i := 0; i < n; i++ {
-		x := int32(700 + i)
-		fbData := testutil.BuildPlaceBlockAction(42, x, 120, 700, 0, stoneID)
+	cs, err := testutil.DialChunkStore("127.0.0.1", 5001, 5*time.Second)
+	if err != nil {
+		t.Fatalf("dial ChunkStore: %v", err)
+	}
+	defer cs.Close()
+	// Resolve the target cells first, then load the chunks that actually hold
+	// them: the first air cell above y=50 is terrain-dependent, so requesting
+	// the chunk of y=50 up front can leave the real target in an ungenerated
+	// chunk and every CAS comes back CONFLICT.
+	targetY := make([]int32, n)
+	for i := range n {
+		targetY[i] = airCellAbove(t, cs, int32(1500+i), 50, 1500)
+		if err := c.RequestChunk(c.PlayerID(), int32(1500+i)>>5, targetY[i]>>5, 1500>>5); err != nil {
+			t.Fatalf("request chunk %d: %v", i, err)
+		}
+	}
+	c.WaitForChunkGeneration(4 * time.Second)
+
+	// Distinct request ids, matched by id: reading a bare ack stream would also
+	// pick up results of requests another test fired earlier in this shared
+	// world, which is exactly how this test used to report CONFLICT for blocks
+	// it had never sent.
+	reqIDs := make([]uint32, n)
+	for i := range n {
+		reqIDs[i] = uint32(97000 + i)
+		fbData := testutil.BuildPlaceBlockActionWithOptions(c.PlayerID(), int32(1500+i),
+			targetY[i]+1, 1500, 0, stoneID,
+			testutil.SetBlockActionOptions{RequestID: reqIDs[i], Face: 0, HeldItem: stoneID})
 		if err := c.SendCtrl(testutil.MsgSetBlockAction, fbData); err != nil {
 			t.Fatalf("send %d: %v", i, err)
 		}
 	}
 
-	for i := 0; i < n; i++ {
-		data, err := c.ExpectMsgType(testutil.MsgBlockAck, 10*time.Second)
-		if err != nil {
-			t.Fatalf("expect ack %d: %v", i, err)
-		}
-		ack := Protocol.GetRootAsBlockAck(data, 0)
-		if ack.Status() != Protocol.BlockAckStatusACCEPTED {
-			t.Errorf("block %d: expected ACCEPTED, got %v", i, ack.Status())
+	for i := range n {
+		if _, err := c.WaitForBlockAck(reqIDs[i], Protocol.BlockAckStatusACCEPTED, 10*time.Second); err != nil {
+			t.Fatalf("block %d (request %d): %v", i, reqIDs[i], err)
 		}
 	}
 }

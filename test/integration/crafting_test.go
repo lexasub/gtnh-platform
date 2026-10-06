@@ -203,13 +203,13 @@ func (b *benchSession) craft() *Protocol.CraftResponse {
 // per-block-position state in WorkbenchStateManager and a craft only clears
 // the cells it consumed.
 func TestCrafting_RequestResponse(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	const playerID = uint64(42)
+	playerID := c.PlayerID()
 
 	// TC3: 2x2 oak_planks → 1 crafting_table (crafting_table.yaml:9-20).
 	t.Run("ValidRecipe", func(t *testing.T) {

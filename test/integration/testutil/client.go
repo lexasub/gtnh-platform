@@ -55,6 +55,8 @@ const (
 	MsgResourceBufferState        = 47
 	MsgPipeContentsReq            = 48
 	MsgPipeContentsResp           = 49
+	MsgSessionWelcome             = 52
+	MsgSessionHello               = 53
 )
 
 // GatewayAddress holds ctrl and bulk addresses.
@@ -77,9 +79,18 @@ type GatewayClient struct {
 	conn                   net.Conn
 	addr                   GatewayAddress
 	pendingMultiblockEvent [][]byte
+	// Assigned by the gateway in SessionWelcome. The gateway drops frames that
+	// claim a different non-zero player_id, so every fixture must build its
+	// frames with PlayerID().
+	sessionID uint64
+	playerID  uint64
 }
 
 // DialGateway connects to the Gateway ctrl port.
+//
+// Prefer DialGatewaySession: the gateway assigns identity per session and drops
+// frames carrying somebody else's id, so a client that skips the welcome
+// cannot act.
 func DialGateway(addr GatewayAddress, timeout time.Duration) (*GatewayClient, error) {
 	target := fmt.Sprintf("%s:%d", addr.CtrlHost, addr.CtrlPort)
 	conn, err := net.DialTimeout("tcp", target, timeout)
@@ -88,6 +99,49 @@ func DialGateway(addr GatewayAddress, timeout time.Duration) (*GatewayClient, er
 	}
 	return &GatewayClient{conn: conn, addr: addr}, nil
 }
+
+// DialGatewaySession connects the ctrl port and performs the session
+// handshake: the gateway sends SessionWelcome immediately, and that player_id
+// is the only identity this connection may act under.
+func DialGatewaySession(addr GatewayAddress, timeout time.Duration) (*GatewayClient, error) {
+	c, err := DialGateway(addr, timeout)
+	if err != nil {
+		return nil, err
+	}
+	sessionID, playerID, err := c.ExpectSessionWelcome(timeout)
+	if err != nil {
+		c.Close()
+		return nil, fmt.Errorf("session handshake on %s:%d: %w",
+			addr.CtrlHost, addr.CtrlPort, err)
+	}
+	c.sessionID = sessionID
+	c.playerID = playerID
+	return c, nil
+}
+
+// DialGatewayBulk opens the bulk socket of a session and pairs it, which is
+// what chunk data and block updates arrive on.
+func DialGatewayBulk(addr GatewayAddress, sessionID uint64, timeout time.Duration) (*GatewayClient, error) {
+	bulkAddr := GatewayAddress{
+		CtrlHost: addr.BulkHost, CtrlPort: addr.BulkPort,
+		BulkHost: addr.BulkHost, BulkPort: addr.BulkPort,
+	}
+	bulk, err := DialGateway(bulkAddr, timeout)
+	if err != nil {
+		return nil, err
+	}
+	if err := bulk.SendCtrl(MsgSessionHello, BuildSessionHello(sessionID)); err != nil {
+		bulk.Close()
+		return nil, fmt.Errorf("send SessionHello: %w", err)
+	}
+	return bulk, nil
+}
+
+// PlayerID is the identity the gateway assigned to this connection.
+func (c *GatewayClient) PlayerID() uint64 { return c.playerID }
+
+// SessionID identifies the connection for bulk pairing.
+func (c *GatewayClient) SessionID() uint64 { return c.sessionID }
 
 // Close closes the connection.
 func (c *GatewayClient) Close() {
@@ -206,6 +260,22 @@ func (c *GatewayClient) ExpectMsgType(expected uint8, timeout time.Duration) ([]
 		// Unexpected type — skip and retry (push notifications are interleaved)
 	}
 	return nil, fmt.Errorf("timeout waiting for msg_type %d", expected)
+}
+
+// ExpectSessionWelcome waits for the gateway's SessionWelcome frame and
+// returns the (session_id, player_id) pair it assigns. This is the client's
+// only source of identity: the gateway drops any later frame that claims a
+// different player_id, so a test must read it before acting.
+func (c *GatewayClient) ExpectSessionWelcome(timeout time.Duration) (sessionID, playerID uint64, err error) {
+	data, err := c.ExpectMsgType(MsgSessionWelcome, timeout)
+	if err != nil {
+		return 0, 0, err
+	}
+	welcome := Protocol.GetRootAsSessionWelcome(data, 0)
+	if welcome == nil {
+		return 0, 0, fmt.Errorf("SessionWelcome: nil root")
+	}
+	return welcome.SessionId(), welcome.PlayerId(), nil
 }
 
 // WaitForInventoryItem waits for an InventoryUpdate snapshot belonging to

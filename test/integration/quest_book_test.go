@@ -8,13 +8,13 @@ import (
 )
 
 func TestQuestBook_CompleteChain(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	const playerID = uint64(9100)
+	playerID := c.PlayerID()
 	cornerX := int32(10000)
 	cornerY := int32(70)
 	cornerZ := int32(10000)

@@ -68,13 +68,13 @@ func ebfFixtureBlocks(cornerX, cornerY, cornerZ, energyX, energyY, energyZ int32
 }
 
 func TestGateway_EBFMultiblockLifecycle(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	const playerID = uint64(1003)
+	playerID := c.PlayerID()
 	cs, err := testutil.DialChunkStore("127.0.0.1", 5001, 5*time.Second)
 	if err != nil {
 		t.Fatalf("dial ChunkStore: %v", err)
@@ -138,18 +138,18 @@ func TestGateway_EBFMultiblockLifecycle(t *testing.T) {
 // physical multiblock formation, EU delivery through the energy hatch, and
 // iron_dust -> 2 iron_ingot processing through the item hatches.
 func TestGateway_EBFProcessesIronDust(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
+	playerID := c.PlayerID()
 	cs, err := testutil.DialChunkStore("127.0.0.1", 5001, 5*time.Second)
 	if err != nil {
 		t.Fatalf("dial ChunkStore: %v", err)
 	}
 	defer cs.Close()
 
-	const playerID = uint64(1401)
 	const ironDust uint16 = 0x711A  // 0:1110:001:26
 	const ironIngot uint16 = 0x6001 // 0:110:1
 

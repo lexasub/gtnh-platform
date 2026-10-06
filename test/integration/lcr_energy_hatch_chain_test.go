@@ -12,18 +12,18 @@ import (
 // four independent heat/steam branches feed a shared cable trunk, four battery
 // buffers, and an LCR through its physical energy hatch.
 func TestGateway_LCREnergyHatchThermalChain(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
+	playerID := c.PlayerID()
 	cs, err := testutil.DialChunkStore("127.0.0.1", 5001, 5*time.Second)
 	if err != nil {
 		t.Fatalf("dial ChunkStore: %v", err)
 	}
 	defer cs.Close()
 
-	const playerID = uint64(1201)
 	const casing uint16 = 1001
 	const lcrController uint16 = 1006
 	const heatGenerator uint16 = 0xE002
@@ -197,7 +197,10 @@ func TestGateway_LCREnergyHatchThermalChain(t *testing.T) {
 			continue
 		}
 		if pos.X() == 710 && pos.Y() == 123 && pos.Z() == 690 {
-			seenProgress = update.Progress() > 0
+			// Sticky like the other observations: the machine resets progress to 0
+			// when a craft completes, and a plain assignment would let the final
+			// idle snapshot erase the proof that the recipe ever ran.
+			seenProgress = seenProgress || update.Progress() > 0
 			for i := 0; i < update.OutputItemsLength(); i++ {
 				var item Protocol.ItemStack
 				if update.OutputItems(&item, i) && item.ItemId() == ironIngot && item.Count() > 0 {

@@ -9,11 +9,13 @@ import (
 )
 
 func TestSingleBlockSideConfig_ElectricalSteamFluid(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
+
+	playerID := c.PlayerID()
 
 	cs, err := testutil.DialChunkStore("127.0.0.1", 5001, 5*time.Second)
 	if err != nil {
@@ -21,7 +23,6 @@ func TestSingleBlockSideConfig_ElectricalSteamFluid(t *testing.T) {
 	}
 	defer cs.Close()
 
-	const playerID = uint64(9002)
 	const wrenchID uint16 = 0xF005 // 1111:00:5
 
 	// IDs

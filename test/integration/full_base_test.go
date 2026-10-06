@@ -9,7 +9,7 @@ import (
 )
 
 func TestFullBase_MultiMachineIntegration(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
@@ -21,7 +21,7 @@ func TestFullBase_MultiMachineIntegration(t *testing.T) {
 	}
 	defer cs.Close()
 
-	const playerID = uint64(9999)
+	playerID := c.PlayerID()
 	const baseX int32 = 90000
 	const baseY int32 = 70
 	const baseZ int32 = 90000

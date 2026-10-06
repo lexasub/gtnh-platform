@@ -14,13 +14,13 @@ import (
 const stoneID uint16 = 1
 
 func TestChunk_DataIntegrity(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
 	defer c.Close()
 
-	playerID := uint64(42)
+	playerID := c.PlayerID()
 	pos := [3]int32{400, 50, 400}
 
 	// Gateway's automatic CHUNK_REQUEST only covers the player's saved spawn

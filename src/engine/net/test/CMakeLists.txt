@@ -5,6 +5,7 @@ add_executable(gtnh_net_test
     test_echo.cpp
     test_heartbeat.cpp
     test_toctou.cpp
+    test_session_registry.cpp
 )
 
 target_link_libraries(gtnh_net_test PRIVATE
