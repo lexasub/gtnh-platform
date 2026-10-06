@@ -246,3 +246,166 @@ recipes:
     max_tier: 32767
     resource_requirements:
       - { kind: EU, amount: 32, tier: 0 }
+
+  # ── Chemistry strand ────────────────────────────────────────────
+  # Producers for the 1111:11:59-71 block added to items.csv. Inputs are
+  # limited to items that already had a producer, so the strand roots in the
+  # world base rather than in itself. Compositions are the simplified
+  # industrial routes (salt electrolysis, seawater chlorination, HF from
+  # fluorite-free fluorspar stand-in via chlorine), not GTNH's exact trees.
+  - name: gtnh:chemical_reactor_nitrogen
+    inputs:
+      - { item: water_bucket, count: 1 }
+      - { item: coal_dust, count: 1 }
+    outputs:
+      - { item: nitrogen, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
+
+  - name: gtnh:chemical_reactor_chlorine
+    inputs:
+      - { item: water_bucket, count: 1 }
+      - { item: coal_dust, count: 1 }
+    outputs:
+      - { item: chlorine, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
+
+  - name: gtnh:chemical_reactor_sodium
+    inputs:
+      - { item: chlorine, count: 1 }
+      - { item: carbon_dust, count: 1 }
+    outputs:
+      - { item: sodium, count: 1 }
+    duration: 600
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 64, tier: 0 }
+
+  - name: gtnh:chemical_reactor_potassium
+    inputs:
+      - { item: sodium, count: 1 }
+      - { item: carbon_dust, count: 2 }
+    outputs:
+      - { item: potassium, count: 1 }
+    duration: 600
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 64, tier: 0 }
+
+  - name: gtnh:chemical_reactor_fluorine
+    inputs:
+      - { item: chlorine, count: 1 }
+      - { item: titanium_ingot, count: 1 }
+    outputs:
+      - { item: fluorine, count: 1 }
+    duration: 800
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 64, tier: 0 }
+
+  - name: gtnh:chemical_reactor_bromine
+    inputs:
+      - { item: chlorine, count: 1 }
+      - { item: water_bucket, count: 1 }
+    outputs:
+      - { item: bromine, count: 1 }
+    duration: 600
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 64, tier: 0 }
+
+  - name: gtnh:chemical_reactor_iodine
+    inputs:
+      - { item: bromine, count: 1 }
+      - { item: coal_dust, count: 2 }
+    outputs:
+      - { item: iodine, count: 1 }
+    duration: 800
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 64, tier: 0 }
+
+  - name: gtnh:chemical_reactor_mercury
+    inputs:
+      - { item: sulfur_ore, count: 1 }
+      - { item: lead_ingot, count: 1 }
+    outputs:
+      - { item: mercury, count: 2 }
+    duration: 600
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
+
+  - name: gtnh:chemical_reactor_lubricant
+    inputs:
+      - { item: coal_dust, count: 4 }
+      - { item: carbon_dust, count: 2 }
+    outputs:
+      - { item: lubricant, count: 2 }
+    duration: 400
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 32, tier: 0 }
+
+  - name: gtnh:chemical_reactor_deuterium
+    inputs:
+      - { item: water_bucket, count: 2 }
+      - { item: nickel_ingot, count: 1 }
+    outputs:
+      - { item: deuterium, count: 1 }
+    duration: 1200
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 64, tier: 0 }
+
+  - name: gtnh:chemical_reactor_tritium
+    inputs:
+      - { item: deuterium, count: 1 }
+      - { item: titanium_ingot, count: 1 }
+    outputs:
+      - { item: tritium, count: 1 }
+    duration: 1600
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 64, tier: 0 }
+
+  - name: gtnh:chemical_reactor_helium3
+    inputs:
+      - { item: tritium, count: 1 }
+      - { item: deuterium, count: 1 }
+    outputs:
+      - { item: helium3, count: 1 }
+    duration: 2000
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 64, tier: 0 }
+
+  - name: gtnh:chemical_reactor_plasma
+    inputs:
+      - { item: tritium, count: 1 }
+      - { item: deuterium, count: 1 }
+      - { item: naquadah_ingot, count: 1 }
+    outputs:
+      - { item: plasma, count: 1 }
+    duration: 2400
+    min_tier: 0
+    max_tier: 32767
+    resource_requirements:
+      - { kind: EU, amount: 64, tier: 0 }

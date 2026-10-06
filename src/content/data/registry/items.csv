@@ -409,6 +409,31 @@ int,name,stack,meta
 1110:010:46,advanced_database,1,0
 1110:010:47,electric_blast_furnace,1,0
 1110:010:48,hot_blast_furnace,1,0
+# Processing machines — MV/HV variants and multiblock controllers. Slots 0-48
+# are live and 1110:010:0-31 are additionally claimed by the deferred plan in
+# item-subgroups-deferred.csv, so 49+ is the first contiguous free range.
+# The _lv forms already exist above (ore_washer_lv 15, thermal_centrifuge_lv 16,
+# centrifuge_lv 2, chemical_reactor_lv 3, electrolyzer_lv 8) and the LCR
+# controller is large_chemical_reactor 45 — only the missing tiers land here.
+1110:010:49,autoclave_lv,1,0
+1110:010:50,autoclave_mv,1,0
+1110:010:51,autoclave_hv,1,0
+1110:010:52,multiblock_autoclave,1,0
+1110:010:53,centrifuge_mv,1,0
+1110:010:54,centrifuge_hv,1,0
+1110:010:55,multiblock_centrifuge,1,0
+1110:010:56,chemical_reactor_mv,1,0
+1110:010:57,chemical_reactor_hv,1,0
+1110:010:58,electrolyzer_mv,1,0
+1110:010:59,electrolyzer_hv,1,0
+1110:010:60,multiblock_electrolyser,1,0
+1110:010:61,ore_washer_mv,1,0
+1110:010:62,ore_washer_hv,1,0
+1110:010:63,thermal_centrifuge_mv,1,0
+1110:010:64,thermal_centrifuge_hv,1,0
+# emitter/sensor deliberately NOT added per tier: 110:100:0 emitter and
+# 110:100:2 sensor already exist and assembler.yaml crafts both. The gap was
+# their recipes, not their ids.
 # machines/boilers-generation — allocation prefix 1110:011
 1110:011:0,steam_solid_boiler,,0
 1110:011:1,steam_heat_boiler,,0
@@ -425,6 +450,15 @@ int,name,stack,meta
 # two creative fluid sources; verified free in items.csv and unclaimed by
 # item-subgroups-deferred.csv.
 1110:100:17,coolant_plant,,0
+# Generators — combustion/diesel/gas turbine. 0-1 and 15-17 are live; 2-14 are
+# claimed by the deferred generators plan, so 18+ is the first free range.
+1110:100:18,combustion_generator,,0
+1110:100:19,diesel_generator_lv,,0
+1110:100:20,diesel_generator_mv,,0
+1110:100:21,diesel_generator_hv,,0
+1110:100:22,gas_turbine_lv,,0
+1110:100:23,gas_turbine_mv,,0
+1110:100:24,gas_turbine_hv,,0
 # machines/storage — allocation prefix 1110:101
 # Rechargeable batteries use the 1110:111 reserved component range. Their
 # damage/meta field stores current EU, while the item count remains stackable.
@@ -460,6 +494,43 @@ int,name,stack,meta
 1110:111:14,hatch_energy_input_lv,,0
 1110:111:15,hatch_maintenance,,0
 1110:111:16,multi_volume_hatch,,0
+# Hatch tiers MV/HV/EV/IV. Slot map for this pool:
+#   0-4   live (hull_lv..hull_zpm)
+#   5-8   PatternLibrary.h BLOCK_CASING/KANHAL/NICHROME/TUNGSTENSTEEL coils —
+#         referenced by C++ constants but not yet in items.csv (gp-831t).
+#         Left alone on purpose.
+#   9     free
+#   10-16 live (LV hatches, maintenance, multi_volume)
+#   17-19 free
+#   20-22 live (battery_lv/mv/hv)
+#   23-39 free
+#   40-81 claimed by the deferred casings/bus plan
+1110:111:9,hatch_energy_output_lv,,0
+1110:111:17,hatch_input_mv,,0
+1110:111:18,hatch_output_mv,,0
+1110:111:19,hatch_bus_input_mv,,0
+1110:111:23,hatch_energy_input_mv,,0
+1110:111:24,hatch_bus_output_mv,,0
+1110:111:25,hatch_input_hv,,0
+1110:111:26,hatch_output_hv,,0
+1110:111:27,hatch_bus_input_hv,,0
+1110:111:28,hatch_energy_input_hv,,0
+1110:111:29,hatch_bus_output_hv,,0
+1110:111:30,hatch_input_ev,,0
+1110:111:31,hatch_output_ev,,0
+1110:111:32,hatch_bus_input_ev,,0
+1110:111:33,hatch_energy_input_ev,,0
+1110:111:34,hatch_bus_output_ev,,0
+1110:111:35,hatch_input_iv,,0
+1110:111:36,hatch_output_iv,,0
+1110:111:37,hatch_bus_input_iv,,0
+1110:111:38,hatch_energy_input_iv,,0
+1110:111:39,hatch_bus_output_iv,,0
+# Special hatches — dynamo, cleanroom and the two void sinks.
+1110:111:82,hatch_dynamo,,0
+1110:111:83,hatch_cleanroom,,0
+1110:111:84,hatch_fluid_void,,0
+1110:111:85,hatch_item_void,,0
 
 # infra — allocation pool 1111
 # infra/electric-tools — legacy allocation anchor 111100
@@ -518,4 +589,22 @@ int,name,stack,meta
 # (Registry.cpp:215) fails the entire catalog load when a fluids.csv item_id
 # does not resolve in items.csv, so fluids.csv and this file must agree.
 1111:11:58,oil,,0
+# Chemistry — gases, reactive metals and process fluids as items. Slots 8-57
+# and 0-7 are taken (ethylene/polyethylene) or claimed by the deferred
+# components plan in item-subgroups-deferred.csv; 59+ is the first contiguous
+# free range. These are ITEM rows only — fluids.csv still has no row for them,
+# so no fluid-reservation recipe can consume them yet (see gp-xo4g).
+1111:11:59,nitrogen,,0
+1111:11:60,chlorine,,0
+1111:11:61,bromine,,0
+1111:11:62,fluorine,,0
+1111:11:63,iodine,,0
+1111:11:64,mercury,,0
+1111:11:65,sodium,,0
+1111:11:66,potassium,,0
+1111:11:67,lubricant,,0
+1111:11:68,plasma,,0
+1111:11:69,deuterium,,0
+1111:11:70,tritium,,0
+1111:11:71,helium3,,0
 # infra/components-circuits — deferred issue21 additions; no current IDs
