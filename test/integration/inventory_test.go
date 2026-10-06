@@ -88,6 +88,9 @@ func TestInventory_MoveBetweenSlots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("wait for the granted stack: %v", err)
 	}
+	if got := testutil.InventoryItemCount(granted, cobblestoneID); got != 4 {
+		t.Fatalf("ITEM_ACTION granted cobblestone count=%d, want exactly 4", got)
+	}
 
 	// The grant lands in the first free slot, which is not necessarily slot 0.
 	// Click whatever slot actually holds it, so the click is a real move

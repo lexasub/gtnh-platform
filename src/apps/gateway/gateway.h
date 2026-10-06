@@ -77,7 +77,6 @@ public:
   IoUringGateway(const IoUringGateway &) = delete;
   IoUringGateway &operator=(const IoUringGateway &) = delete;
 
-  bool init();
   bool listen(uint16_t ctrl_port, uint16_t bulk_port);
   bool connect_router(const std::string &host, uint16_t port);
   bool connect_router(); // re-registers with stored topics

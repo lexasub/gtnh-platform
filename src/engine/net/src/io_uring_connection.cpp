@@ -102,19 +102,8 @@ void IoUringConnection::exit_rings() {
     if (read_ring_inited_.exchange(false, std::memory_order_acq_rel)) {
         io_uring_queue_exit(&ring_);
     }
-    {
-        // Lock order matches the write path (write_mutex_ then sq_mutex_write_):
-        // io_uring_queue_exit frees the ring, so it must not overlap a
-        // concurrent io_uring_get_sqe/io_uring_submit from another thread
-        // (observed as SIGSEGV inside liburing while a fanout thread was
-        // sending to a socket that was closing).
-        std::lock_guard<std::mutex> write_lock(write_mutex_);
-        std::lock_guard<std::mutex> sq_lock(sq_mutex_write_);
-        if (write_ring_inited_.exchange(false, std::memory_order_acq_rel)) {
-            io_uring_queue_exit(&ring_write_);
-        }
-        write_queue_.clear();
-        in_flight_writes_.clear();
+    if (write_ring_inited_.exchange(false, std::memory_order_acq_rel)) {
+        io_uring_queue_exit(&ring_write_);
     }
     if (write_eventfd_ >= 0) {
         ::close(write_eventfd_);
@@ -624,13 +613,6 @@ void IoUringConnection::start_next_writes() {
         io_uring_sqe* sqe;
         {
             std::lock_guard<std::mutex> sq_lock(sq_mutex_write_);
-            // The ring may have been torn down between the shutting_down_ check
-            // above and this lock; using it after queue_exit is a use-after-free
-            // inside liburing.
-            if (!write_ring_inited_.load(std::memory_order_acquire)) {
-                write_queue_.clear();
-                return;
-            }
             sqe = io_uring_get_sqe(&ring_write_);
         }
         if (!sqe) {
@@ -650,7 +632,6 @@ void IoUringConnection::start_next_writes() {
     }
 
     std::lock_guard<std::mutex> sq_lock(sq_mutex_write_);
-    if (!write_ring_inited_.load(std::memory_order_acquire)) return;
     io_uring_submit(&ring_write_);
 }
 

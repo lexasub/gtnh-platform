@@ -75,10 +75,6 @@ int main(int argc, char* argv[]) {
     // sent a frame, admits the claimed identity, and decides the upstream
     // topic. main.cpp only handles server→client topics the gateway does not
     // route itself.
-    if (!gateway.init()) {
-        spdlog::error("Gateway: failed to init io_uring");
-        return 1;
-    }
 
     if (!gateway.listen(ctrl_port, bulk_port)) {
         spdlog::error("Gateway: failed to listen on ports {} {}", ctrl_port, bulk_port);

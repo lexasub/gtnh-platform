@@ -43,6 +43,7 @@ add_custom_target(gateway_fbs
 add_executable(gatewayd
     main.cpp
     gateway.cpp
+    gateway_router_publish.cpp
 )
 
 add_dependencies(gatewayd gateway_fbs)
