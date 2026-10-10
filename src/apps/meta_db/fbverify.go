@@ -188,6 +188,15 @@ var (
 			{slot: 10, kind: fbS32}, // z : int32
 		},
 	}
+
+	fbAccountAuthRequest = &fbTable{
+		name: "AccountAuthRequest",
+		fields: []fbField{
+			{slot: 4, kind: fbU8},     // action : AccountAuthAction
+			{slot: 6, kind: fbString}, // username : string
+			{slot: 8, kind: fbString}, // password : string
+		},
+	}
 )
 
 // fbFieldWidth is the on-buffer width of each scalar encoding, in bytes. These

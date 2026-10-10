@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync/atomic"
 	"time"
 
 	Protocol "github.com/gtnh-platform/protocol/generated/go/Protocol"
@@ -57,7 +58,11 @@ const (
 	MsgPipeContentsResp           = 49
 	MsgSessionWelcome             = 52
 	MsgSessionHello               = 53
+	MsgAccountAuthRequest         = 54
+	MsgAuthResult                 = 55
 )
+
+var nextTestAccount atomic.Uint64
 
 // GatewayAddress holds ctrl and bulk addresses.
 type GatewayAddress struct {
@@ -100,18 +105,48 @@ func DialGateway(addr GatewayAddress, timeout time.Duration) (*GatewayClient, er
 	return &GatewayClient{conn: conn, addr: addr}, nil
 }
 
-// DialGatewaySession connects the ctrl port and performs the session
-// handshake: the gateway sends SessionWelcome immediately, and that player_id
-// is the only identity this connection may act under.
+// DialGatewaySession creates an isolated test account, authenticates over ctrl,
+// and then adopts the stable player identity returned by the server.
+func NextTestUsername() string {
+	return fmt.Sprintf("test_user_%d", nextTestAccount.Add(1))
+}
+
 func DialGatewaySession(addr GatewayAddress, timeout time.Duration) (*GatewayClient, error) {
+	return DialGatewayAccountSession(addr, timeout,
+		NextTestUsername(), "integration-test-password", true)
+}
+
+// DialGatewayAccountSession authenticates an explicit account. Register should
+// be true only for its initial connection; reconnects should log in instead.
+func DialGatewayAccountSession(addr GatewayAddress, timeout time.Duration,
+	username, password string, register bool) (*GatewayClient, error) {
 	c, err := DialGateway(addr, timeout)
 	if err != nil {
 		return nil, err
 	}
+	if err := c.SendCtrl(MsgAccountAuthRequest,
+		BuildAccountAuthRequest(register, username, password)); err != nil {
+		c.Close()
+		return nil, fmt.Errorf("send account auth request: %w", err)
+	}
+	resultBytes, err := c.ExpectMsgType(MsgAuthResult, timeout)
+	if err != nil {
+		c.Close()
+		return nil, fmt.Errorf("wait for account auth result: %w", err)
+	}
+	result := Protocol.GetRootAsAuthResult(resultBytes, 0)
+	if result.Status() != Protocol.AccountAuthStatusSUCCESS {
+		message := "authentication failed"
+		if result.Message() != nil {
+			message = string(result.Message())
+		}
+		c.Close()
+		return nil, fmt.Errorf("account auth rejected: %s", message)
+	}
 	sessionID, playerID, err := c.ExpectSessionWelcome(timeout)
 	if err != nil {
 		c.Close()
-		return nil, fmt.Errorf("session handshake on %s:%d: %w",
+		return nil, fmt.Errorf("session welcome on %s:%d: %w",
 			addr.CtrlHost, addr.CtrlPort, err)
 	}
 	c.sessionID = sessionID
@@ -164,6 +199,27 @@ func (c *GatewayClient) SendCtrl(msgType uint8, fbData []byte) error {
 
 	_, err := c.conn.Write(frame)
 	return err
+}
+
+func (c *GatewayClient) SendAccountAuth(register bool, username, password string) error {
+	return c.SendCtrl(MsgAccountAuthRequest,
+		BuildAccountAuthRequest(register, username, password))
+}
+
+func (c *GatewayClient) ExpectAuthResult(timeout time.Duration) (Protocol.AccountAuthStatus, string, error) {
+	data, err := c.ExpectMsgType(MsgAuthResult, timeout)
+	if err != nil {
+		return Protocol.AccountAuthStatusINTERNAL_ERROR, "", err
+	}
+	result := Protocol.GetRootAsAuthResult(data, 0)
+	if result == nil {
+		return Protocol.AccountAuthStatusINTERNAL_ERROR, "", fmt.Errorf("AuthResult has no root")
+	}
+	message := ""
+	if result.Message() != nil {
+		message = string(result.Message())
+	}
+	return result.Status(), message, nil
 }
 
 // ReadCtrl reads one message from the Gateway ctrl port.

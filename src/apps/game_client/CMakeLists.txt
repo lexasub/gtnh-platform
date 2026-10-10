@@ -57,6 +57,7 @@ add_subdirectory(${CMAKE_SOURCE_DIR}/src/game/ui/client ${CMAKE_CURRENT_BINARY_D
 add_executable(gameclientd
     main.cpp
     ${CMAKE_SOURCE_DIR}/src/game/client/GameClient.cpp
+    ${CMAKE_SOURCE_DIR}/src/game/client/AccountCredentialStore.cpp
 
     ${CMAKE_SOURCE_DIR}/src/game/client/Player/PlayerController.cpp
 
@@ -276,6 +277,70 @@ if(BUILD_TESTING)
     target_include_directories(gameclient_static_assert_test PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR})
     add_dependencies(gameclient_static_assert_test game_client_fbs)
     add_test(NAME gameclient_static_assert_test COMMAND gameclient_static_assert_test)
+
+    add_executable(gameclient_account_login_window_test
+        tests/AccountLoginWindow_test.cpp
+        ${CMAKE_SOURCE_DIR}/src/game/client/AccountCredentialStore.cpp
+        ${CMAKE_SOURCE_DIR}/src/game/client/Crafting/ClientItemRegistry.cpp
+    )
+    target_compile_definitions(gameclient_account_login_window_test PRIVATE
+        DATA_DIR="${CMAKE_SOURCE_DIR}/src/content/data"
+    )
+    target_include_directories(gameclient_account_login_window_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/apps/game_client
+        ${CMAKE_SOURCE_DIR}/src/game/client
+        ${CMAKE_SOURCE_DIR}/src/game/ui/client
+    )
+    target_link_libraries(gameclient_account_login_window_test PRIVATE
+        UI
+        glm::glm
+        spdlog::spdlog
+        imgui::imgui
+        nlohmann_json::nlohmann_json
+    )
+    add_test(NAME gameclient_account_login_window_test
+             COMMAND gameclient_account_login_window_test)
+
+    add_executable(gameclient_account_credential_store_test
+        tests/AccountCredentialStore_test.cpp
+        ${CMAKE_SOURCE_DIR}/src/game/client/AccountCredentialStore.cpp
+    )
+    target_include_directories(gameclient_account_credential_store_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/src/game/client
+    )
+    target_link_libraries(gameclient_account_credential_store_test PRIVATE
+        nlohmann_json::nlohmann_json
+    )
+    add_test(NAME gameclient_account_credential_store_test
+             COMMAND gameclient_account_credential_store_test)
+
+    add_executable(gameclient_netclient_auth_gate_test
+        tests/NetClientAuthGate_test.cpp
+        Network/NetClient.cpp
+        World/ChunkView.cpp
+        World/ChunkStorage.cpp
+    )
+    target_include_directories(gameclient_netclient_auth_gate_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${FBS_GEN_DIR}
+        ${CMAKE_SOURCE_DIR}/src/engine/net/include
+    )
+    target_link_libraries(gameclient_netclient_auth_gate_test PRIVATE
+        chunkd_codec
+        gtnh-net
+        flatbuffers::flatbuffers
+        glm::glm
+        spdlog::spdlog
+        nlohmann_json::nlohmann_json
+        glfw
+        TBB::tbb
+    )
+    add_dependencies(gameclient_netclient_auth_gate_test game_client_fbs)
+    add_test(NAME gameclient_netclient_auth_gate_test
+             COMMAND gameclient_netclient_auth_gate_test)
 
     add_executable(gameclient_mesh_hash_test
         tests/MeshHash_test.cpp

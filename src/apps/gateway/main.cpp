@@ -157,7 +157,9 @@ int main(int argc, char* argv[]) {
         // (see IoUringGateway::retire).
         gateway.drain_retired();
 
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        // Pending account-auth connections have a strict 15-second deadline;
+        // keep the reaper cadence bounded independently of incoming frames.
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     // Explicit shutdown — calls publish_player_left() before router disconnect

@@ -2,7 +2,9 @@
 #include <GLFW/glfw3.h>
 #include <asio/executor_work_guard.hpp>
 #include <spdlog/spdlog.h>
+#include <algorithm>
 #include <glm/gtc/type_ptr.hpp>
+#include <algorithm>
 #include <thread>
 #include <chrono>
 
@@ -207,6 +209,7 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
     shaderDir_ = shaderDir;
     width_ = width;
     height_ = height;
+    auto savedCredentials = credentialStore_.Load();
 
     if (!window_.Init(width_, height_, "GTNH GameClient")) {
         spdlog::error("Failed to init window");
@@ -266,15 +269,44 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
     netClient_ = std::make_shared<NetClient>();
 
     // ── UI system init ───────────────────────────────────────────────────
-    // Identity comes from the server: the gateway sends SessionWelcome right
-    // after the ctrl socket is accepted, and the callback below replaces this
-    // placeholder. Until then the id is 0, which the gateway attributes to
-    // the session itself.
+    // Account login is required before the Gateway creates a gameplay session.
     invState_.player_id = 0;
+    accountLoginWindow_ = &uiMgr_.Register<AccountLoginWindow>(
+        [this](const std::string &username, const std::string &password,
+               bool register_account) {
+            return netClient_->SendAccountAuthRequest(username, password,
+                                                     register_account);
+        },
+        [this](const std::string &username, const std::string &password) {
+            return credentialStore_.Save({username, password});
+        });
+    uiMgr_.OpenExclusive(accountLoginWindow_);
+    if (savedCredentials)
+        accountLoginWindow_->PrefillUsername(savedCredentials->username);
+    netClient_->SetAuthResultCallback(
+        [this](uint8_t status, const std::string &message) {
+            if (status != Protocol::AccountAuthStatus_SUCCESS)
+                authenticated_ = false;
+            if (status == Protocol::AccountAuthStatus_INVALID_CREDENTIALS &&
+                !netClient_->HasRetriableCredentials())
+                authenticated_ = false;
+            if (autoLoginAttempt_) {
+                if (status == Protocol::AccountAuthStatus_INVALID_CREDENTIALS &&
+                    !credentialStore_.Remove())
+                    spdlog::warn("GameClient: could not remove rejected saved credentials");
+                autoLoginAttempt_ = false;
+            }
+            if (accountLoginWindow_)
+                accountLoginWindow_->HandleAuthResult(status, message);
+        });
     netClient_->SetSessionWelcomeCallback(
         [this](uint64_t /*session_id*/, uint64_t player_id) {
             invState_.player_id = player_id;
-            spdlog::info("GameClient: server assigned player {}", player_id);
+            authenticated_ = true;
+            if (accountLoginWindow_) accountLoginWindow_->SetOpen(false);
+            inputMgr_.SetMouseCaptured(true);
+            spdlog::info("GameClient: authenticated as persistent player {}", player_id);
+            recipeDb_.RequestCatalog();
         });
     UIDefaults::RegisterPlayerUI(uiMgr_, invState_);
     uiMgr_.SetNetClient(netClient_.get());
@@ -315,8 +347,16 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
         spdlog::error("GameClient: failed to connect to server");
         return false;
     }
-    // Prime the recipe catalog ("what recipes exist") once connected.
-    recipeDb_.RequestCatalog();
+    if (savedCredentials && accountLoginWindow_) {
+        autoLoginAttempt_ = true;
+        if (!accountLoginWindow_->SubmitCredentials(savedCredentials->username,
+                                                     savedCredentials->password)) {
+            autoLoginAttempt_ = false;
+            accountLoginWindow_->PrefillUsername(savedCredentials->username);
+        }
+        std::fill(savedCredentials->password.begin(),
+                  savedCredentials->password.end(), '\0');
+    }
     threadPool_.addThread(worldContext_, "ClientWorld");
     threadPool_.addThread(chunkLoadContext_, "ChunkLoad");
 
@@ -324,6 +364,14 @@ bool GameClient::Init(const std::string& shaderDir, int width, int height,
 }
 
 void GameClient::Update(float dt) {
+    if (!authenticated_) {
+        // While the account form is open, ImGui owns keyboard/mouse input.
+        // Do not route typed characters through gameplay bindings (for example,
+        // the E key could otherwise open the inventory while entering a name).
+        if (inputMgr_.IsMouseCaptured()) inputMgr_.SetMouseCaptured(false);
+        return;
+    }
+
     // Apply queued server-authoritative buffer state on the render thread
     // before UI rendering reads it.
     resourceBuffers_.ApplyPending();

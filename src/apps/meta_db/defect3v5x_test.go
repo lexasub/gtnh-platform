@@ -1,16 +1,13 @@
-// gp-3v5x: regression tests for the two MetaDB boundary defects plus the
-// same defect class in the sidecar handlers.
+// gp-3v5x: regression tests for MetaDB boundary defects plus the same defect
+// class in the sidecar handlers.
 //
-// DEFECT 1: the "logout" JSON path built one FlatBuffer per slot and then
-// re-parsed it with GetRootAsInventorySlot(builder.FinishedBytes(), off) —
-// FinishedBytes without Finish(), which panics unconditionally in
-// flatbuffers/go builder.go:74-77 (assertFinished, builder.go:424). The path
-// panicked for ANY non-empty slot list, so these tests drive the real
-// handleRequest entry point rather than a synthetic reproduction.
+// Legacy JSON player-data actions are now disabled because their caller-supplied
+// numeric IDs are not authenticated. Tests pin that such requests cannot mutate
+// a profile. The direct FlatBuffers boundary tests below still exercise malformed
+// frame handling over a real net.Pipe.
 //
-// DEFECT 2: handleFlatBufferConnection parsed attacker-controlled frames on a
+// DEFECT: handleFlatBufferConnection parsed attacker-controlled frames on a
 // bare goroutine with no recover(), so one malformed frame killed metadbd.
-// The tests below drive the real handler over a real net.Pipe.
 package main
 
 import (
@@ -50,82 +47,51 @@ func writeFBFrame(c net.Conn, payload []byte) error {
 }
 
 // ---------------------------------------------------------------------------
-// DEFECT 1 — FinishedBytes without Finish() on the inventory-save path
+// Legacy JSON profile actions are denied before reading or mutating inventory
 // ---------------------------------------------------------------------------
 
-func TestLogoutWithNonEmptySlotsDoesNotPanic(t *testing.T) {
+func TestLegacyLogoutCannotMutatePlayerProfile(t *testing.T) {
 	m := newTestMetaDB(t)
-
-	req := Request{
-		Action:   "logout",
-		PlayerID: 42,
-		Data: map[string]interface{}{
-			"slots": []interface{}{
-				map[string]interface{}{"slot": float64(0), "block_id": float64(1234), "count": float64(5)},
-				map[string]interface{}{"slot": float64(1), "block_id": float64(5678), "count": float64(9)},
-			},
-			"x": float64(10),
-			"y": float64(64),
-			"z": float64(-3),
-		},
+	if err := m.UpdateInventorySlot(42, 0, 77, 2); err != nil {
+		t.Fatal(err)
 	}
-
-	// Pre-fix this call panics with:
-	//   "If you get this assert, you're attempting to get access a buffer
-	//    which hasn't been finished yet. Be sure to call builder.Finish()..."
-	// on the very first slot, and the test binary dies.
-	resp := handleRequest(m, req)
-	if !resp.Success {
-		t.Fatalf("logout failed: %v", resp.Error)
+	if err := m.SavePlayerPosition(42, 10, 64, -3); err != nil {
+		t.Fatal(err)
 	}
-
-	// The save must actually have landed: this path exists to persist slots.
-	slots, err := m.GetInventory(42)
-	if err != nil {
-		t.Fatalf("GetInventory: %v", err)
-	}
-	if len(slots) != 2 {
-		t.Fatalf("saved %d slots, want 2", len(slots))
-	}
-	if slots[0].BlockID != 1234 || slots[0].Count != 5 {
-		t.Fatalf("slot 0 = %+v, want block_id=1234 count=5", slots[0])
-	}
-	if slots[1].BlockID != 5678 || slots[1].Count != 9 {
-		t.Fatalf("slot 1 = %+v, want block_id=5678 count=9", slots[1])
-	}
-
-	pos, err := m.GetPlayerPosition(42)
-	if err != nil {
-		t.Fatalf("GetPlayerPosition: %v", err)
-	}
-	if pos.X != 10 || pos.Y != 64 || pos.Z != -3 {
-		t.Fatalf("position = %+v, want [10 64 -3]", pos)
-	}
-}
-
-// A single slot is enough to trip the un-Finished builder; guard that the
-// minimal case works too.
-func TestLogoutWithSingleSlotDoesNotPanic(t *testing.T) {
-	m := newTestMetaDB(t)
 
 	resp := handleRequest(m, Request{
 		Action:   "logout",
-		PlayerID: 7,
+		PlayerID: 42,
 		Data: map[string]interface{}{
-			"slots": []interface{}{
-				map[string]interface{}{"slot": float64(3), "block_id": float64(99), "count": float64(1)},
-			},
+			"slots": []interface{}{map[string]interface{}{
+				"slot": float64(0), "block_id": float64(1234), "count": float64(5),
+			}},
+			"x": float64(90), "y": float64(90), "z": float64(90),
 		},
 	})
-	if !resp.Success {
-		t.Fatalf("logout failed: %v", resp.Error)
+	if resp.Success || resp.Error != "unsupported action" {
+		t.Fatalf("legacy logout response=%+v, want unsupported action", resp)
 	}
-	slots, err := m.GetInventory(7)
-	if err != nil {
-		t.Fatalf("GetInventory: %v", err)
+	found, blockID, count, err := m.GetInventorySlot(42, 0)
+	if err != nil || !found || blockID != 77 || count != 2 {
+		t.Fatalf("legacy logout changed inventory found=%t item=%d count=%d err=%v", found, blockID, count, err)
 	}
-	if len(slots) != 1 || slots[0].BlockID != 99 {
-		t.Fatalf("slots = %+v, want one slot with block_id=99", slots)
+	pos, err := m.GetPlayerPosition(42)
+	if err != nil || pos.X != 10 || pos.Y != 64 || pos.Z != -3 {
+		t.Fatalf("legacy logout changed position=%+v err=%v", pos, err)
+	}
+}
+
+func TestLegacyLogoutWithSingleSlotIsRejected(t *testing.T) {
+	m := newTestMetaDB(t)
+	resp := handleRequest(m, Request{
+		Action: "logout", PlayerID: 7,
+		Data: map[string]interface{}{"slots": []interface{}{map[string]interface{}{
+			"slot": float64(3), "block_id": float64(99), "count": float64(1),
+		}}},
+	})
+	if resp.Success || resp.Error != "unsupported action" {
+		t.Fatalf("legacy single-slot logout response=%+v, want unsupported action", resp)
 	}
 }
 

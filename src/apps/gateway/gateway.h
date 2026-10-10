@@ -9,9 +9,12 @@
 #include <gtnh/net/server.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -59,7 +62,21 @@
 // that leaks a poll thread per client.
 struct ClientConnContext {
   std::atomic<uint64_t> session_id{0};
+  std::atomic<bool> authenticated{false};
   uint64_t bulk_token = 0;
+  uint64_t auth_token = 0;
+  std::weak_ptr<gtnh::net::IoUringConnection> ctrl;
+  std::chrono::steady_clock::time_point auth_deadline;
+  std::string remote_ip;
+  std::string account_id;
+  std::mutex state_mutex;
+  bool auth_inflight = false;
+  bool closed = false;
+};
+
+struct PendingCtrlConnection {
+  std::shared_ptr<gtnh::net::IoUringConnection> conn;
+  std::weak_ptr<ClientConnContext> context;
 };
 
 // A session's connection, copied out from under the connection lock so the
@@ -131,6 +148,13 @@ private:
 
   void on_client_ctrl_message(uint64_t session_id, uint8_t msg_type,
                               const uint8_t *data, size_t len);
+  void on_client_auth(const std::shared_ptr<ClientConnContext> &ctx,
+                      uint8_t msg_type, const uint8_t *data, size_t len);
+  bool auth_rate_limited(const std::string &ip, const std::string &username,
+                         std::chrono::steady_clock::time_point now);
+  void record_auth_failure(const std::string &ip, const std::string &username,
+                           std::chrono::steady_clock::time_point now);
+  void reap_pending_auth();
   void on_client_bulk_message(const std::shared_ptr<ClientConnContext> &ctx,
                               uint8_t msg_type, const uint8_t *data,
                               size_t len);
@@ -185,6 +209,19 @@ private:
   mutable std::mutex pending_bulk_mutex_;
   std::unordered_map<uint64_t, std::shared_ptr<gtnh::net::IoUringConnection>> pending_bulk_;
   std::atomic<uint64_t> next_bulk_token_{1};
+
+  mutable std::mutex pending_auth_mutex_;
+  std::unordered_map<uint64_t, PendingCtrlConnection> pending_auth_;
+  std::atomic<uint64_t> next_auth_token_{1};
+  static constexpr size_t kMaxPendingAuth = 64;
+
+  mutable std::mutex auth_failure_mutex_;
+  std::unordered_map<std::string, std::deque<std::chrono::steady_clock::time_point>>
+      account_auth_failures_;
+  std::unordered_map<std::string, std::deque<std::chrono::steady_clock::time_point>>
+      ip_auth_failures_;
+
+  std::unordered_map<std::string, uint64_t> active_accounts_;
 
   gtnh::net::TcpServer ctrl_server_;
   gtnh::net::TcpServer bulk_server_;

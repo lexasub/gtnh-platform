@@ -12,11 +12,14 @@ import (
 
 // Local import - no network dependency
 // Uses replace directive in go.mod for local build
-import "github.com/gtnh/platform/gtnh-common/metrics"
+import (
+	"github.com/gtnh/platform/gtnh-common/auth"
+	"github.com/gtnh/platform/gtnh-common/metrics"
+)
 
 const (
 	dbPath = "metadb.sqlite"
-	port   = ":5005"
+	port   = "127.0.0.1:5005"
 )
 
 func main() {
@@ -29,6 +32,14 @@ func main() {
 		log.Fatalf("Failed to initialize MetaDB: %v", err)
 	}
 	defer m.db.Close()
+
+	hasher, err := auth.NewPasswordHasher(2)
+	if err != nil {
+		log.Fatalf("Failed to initialize account password hasher: %v", err)
+	}
+	if err := startAccountAuthListener(m, hasher); err != nil {
+		log.Fatalf("Failed to start account-auth listener: %v", err)
+	}
 
 	if err := loadQuestDefinitions("src/content/data/quests/quests.csv"); err != nil {
 		log.Printf("[QUEST] failed to load quest definitions from src/content/data/quests/quests.csv: %v", err)
@@ -44,9 +55,13 @@ func main() {
 	routerClient.Start()
 	defer routerClient.Stop()
 
-	listener, err := net.Listen("tcp", port)
+	jsonAddress, err := configuredPrivateBind("GTNH_METADB_JSON_BIND", port)
 	if err != nil {
-		log.Fatalf("Failed to listen on %s: %v", port, err)
+		log.Fatalf("Invalid MetaDB JSON bind address: %v", err)
+	}
+	listener, err := net.Listen("tcp", jsonAddress)
+	if err != nil {
+		log.Fatalf("Failed to listen on %s: %v", jsonAddress, err)
 	}
 	defer listener.Close()
 
@@ -55,7 +70,7 @@ func main() {
 	signal.Notify(sig, syscall.SIGUSR1)
 	go handleSignals(sig, m, startTime)
 
-	log.Printf("MetaDB listening on %s", port)
+	log.Printf("MetaDB JSON diagnostics listening on %s", jsonAddress)
 
 	for {
 		conn, err := listener.Accept()
@@ -71,7 +86,7 @@ func handleSignals(sig chan os.Signal, m *MetaDB, startTime time.Time) {
 	for {
 		<-sig
 		playerCount := m.GetPlayerCount()
-		
+
 		metrics.PrintMetricsHeader("MetaDB Service (metadbd)")
 		log.Printf("Uptime: %s", metrics.FormatUptime(startTime))
 		log.Printf("Database: %s", dbPath)

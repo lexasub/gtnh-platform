@@ -71,11 +71,13 @@ inline constexpr uint8_t kPipeContentsResp = 49;
 // Service health debug snapshot (Protocol::ServiceHealthReq/Resp).
 inline constexpr uint8_t kServiceHealthReq = 50;
 inline constexpr uint8_t kServiceHealthResp = 51;
-// Session handshake (core.fbs). Gateway → client on ctrl: SessionWelcome with
-// the server-assigned player_id. Client → gateway on bulk: SessionHello
-// binding the bulk socket to the session that was welcomed.
+// Session handshake (core.fbs). Auth happens first over ctrl; the server then
+// sends AuthResult followed by SessionWelcome. Client → gateway on bulk:
+// SessionHello binds the bulk socket to the authenticated ephemeral session.
 inline constexpr uint8_t kSessionWelcome = 52;
 inline constexpr uint8_t kSessionHello = 53;
+inline constexpr uint8_t kAccountAuthRequest = 54;
+inline constexpr uint8_t kAuthResult = 55;
 // Client-side historical alias for kEntitySnapshot (NetClient.h).
 inline constexpr uint8_t kEntitySnap = kEntitySnapshot;
 } // namespace GatewayMsg

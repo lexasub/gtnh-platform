@@ -53,6 +53,11 @@ func TestStress_ConcurrentBlockPlacement(t *testing.T) {
 			defer c.Close()
 
 			x := int32(600 + id)
+			if err := c.RequestChunk(c.PlayerID(), x>>5, 120>>5, 600>>5); err != nil {
+				errs <- fmt.Errorf("client %d request chunk: %w", id, err)
+				return
+			}
+			c.WaitForChunkGeneration(4 * time.Second)
 			// Face 0 is DOWN, so the server's faceAdjacentBlock shifts the target one
 			// cell down (ActionContext.cpp:47, ActionContext.h:21). Send the cell the
 			// block is FACING, not the cell it goes into, or the CAS lands a block

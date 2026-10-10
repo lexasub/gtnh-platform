@@ -12,7 +12,7 @@ import (
 // four independent heat/steam branches feed a shared cable trunk, four battery
 // buffers, and an LCR through its physical energy hatch.
 func TestGateway_LCREnergyHatchThermalChain(t *testing.T) {
-	c, err := testutil.DialGateway(gw, 5*time.Second)
+	c, err := testutil.DialGatewaySession(gw, 5*time.Second)
 	if err != nil {
 		t.Skipf("Gateway not reachable: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestGateway_LCREnergyHatchThermalChain(t *testing.T) {
 	}
 	defer cs.Close()
 
-	const playerID = uint64(1201)
+	playerID := c.PlayerID()
 	const casing uint16 = 1001
 	const lcrController uint16 = 1006
 	const heatGenerator uint16 = 0xE002

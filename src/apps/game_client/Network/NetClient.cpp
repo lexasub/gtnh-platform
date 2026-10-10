@@ -19,6 +19,7 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/tcp.h>
+#include <algorithm>
 #include <chrono>
 
 #define TRACE_LOG(tid, svc, op, dur_us) \
@@ -109,7 +110,9 @@ bool NetClient::start_ctrl_connection(int fd) {
     auto tags = s_tag_alloc.alloc();
     auto conn = std::make_unique<gtnh::net::IoUringConnection>(fd, "ctrl", tags);
     conn->on_message = [this](uint8_t type, const uint8_t* data, size_t len) {
-        auto copy = std::make_shared<std::vector<uint8_t>>(data, data + len);
+        auto copy = data && len
+                        ? std::make_shared<std::vector<uint8_t>>(data, data + len)
+                        : std::make_shared<std::vector<uint8_t>>();
         std::lock_guard<std::mutex> lock(ctrl_mutex_);
         ctrl_queue_.push_back({type, std::move(copy)});
     };
@@ -132,7 +135,9 @@ bool NetClient::start_bulk_connection(int fd) {
     auto tags = s_tag_alloc.alloc();
     auto conn = std::make_unique<gtnh::net::IoUringConnection>(fd, "bulk", tags);
     conn->on_message = [this](uint8_t type, const uint8_t* data, size_t len) {
-        auto copy = std::make_shared<std::vector<uint8_t>>(data, data + len);
+        auto copy = data && len
+                        ? std::make_shared<std::vector<uint8_t>>(data, data + len)
+                        : std::make_shared<std::vector<uint8_t>>();
         std::lock_guard<std::mutex> lock(bulk_mutex_);
         bulk_queue_.push_back({type, std::move(copy)});
     };
@@ -157,7 +162,7 @@ bool NetClient::start_bulk_connection(int fd) {
 
 void NetClient::SendBulkSessionHello() {
     const uint64_t sid = session_id_.load(std::memory_order_acquire);
-    if (sid == 0) {
+    if (sid == 0 || !auth_succeeded_.load(std::memory_order_acquire)) {
         // No welcome yet: the gateway has not told us which session this bulk
         // socket belongs to, and it refuses an unpaired bulk socket.
         spdlog::debug("NetClient: no session id yet, deferring bulk SessionHello");
@@ -183,6 +188,10 @@ bool NetClient::Connect(const std::string& host, uint16_t ctrl_port, uint16_t bu
     ctrl_port_ = ctrl_port;
     bulk_port_ = bulk_port;
     reconnect_attempts_ = 0;
+    auth_succeeded_ = false;
+    session_id_ = 0;
+    player_id_ = 0;
+    retry_login_allowed_ = false;
 
     int ctrl_fd = tcp_connect(host.c_str(), ctrl_port);
     if (ctrl_fd < 0) return false;
@@ -191,26 +200,56 @@ bool NetClient::Connect(const std::string& host, uint16_t ctrl_port, uint16_t bu
         ::close(ctrl_fd);
         return false;
     }
-    spdlog::info("NetClient: ctrl connected to {}:{}", host, ctrl_port);
+    spdlog::info("NetClient: unauthenticated ctrl connected to {}:{}", host, ctrl_port);
+    return true;
+}
 
-    int bulk_fd = tcp_connect(host.c_str(), bulk_port);
-    if (bulk_fd < 0) {
-        Disconnect();
+bool NetClient::SendAccountAuthRequest(const std::string &username,
+                                       const std::string &password,
+                                       bool register_account) {
+    if (!connected_ctrl_ || !ctrl_conn_ || username.empty() || password.empty())
         return false;
-    }
+    std::fill(auth_password_.begin(), auth_password_.end(), '\0');
+    auth_username_ = username;
+    auth_password_ = password;
+    auth_register_ = register_account;
+    auth_succeeded_ = false;
+    retry_login_allowed_ = false;
 
+    flatbuffers::FlatBufferBuilder fbb;
+    const auto username_offset = fbb.CreateString(username);
+    const auto password_offset = fbb.CreateString(password);
+    const auto action = register_account ? Protocol::AccountAuthAction_REGISTER
+                                         : Protocol::AccountAuthAction_LOGIN;
+    const auto request = Protocol::CreateAccountAuthRequest(
+        fbb, action, username_offset, password_offset);
+    fbb.Finish(request);
+    return EnqueueWrite(GatewayMsg::kAccountAuthRequest, fbb.GetBufferPointer(),
+                        fbb.GetSize(), true);
+}
+
+bool NetClient::connect_bulk_socket() {
+    if (connected_bulk_) return true;
+    int bulk_fd = tcp_connect(host_.c_str(), bulk_port_);
+    if (bulk_fd < 0) return false;
     if (!start_bulk_connection(bulk_fd)) {
         ::close(bulk_fd);
-        Disconnect();
         return false;
     }
-    spdlog::info("NetClient: bulk connected to {}:{}", host, bulk_port);
+    spdlog::info("NetClient: authenticated bulk connected to {}:{}", host_, bulk_port_);
     return true;
 }
 
 void NetClient::Disconnect() {
     connected_ctrl_ = false;
     connected_bulk_ = false;
+    auth_username_.clear();
+    std::fill(auth_password_.begin(), auth_password_.end(), '\0');
+    auth_password_.clear();
+    auth_register_ = false;
+    auth_succeeded_ = false;
+    session_id_ = 0;
+    player_id_ = 0;
     // Destroy connections — ~IoUringConnection joins poll threads
     ctrl_conn_.reset();
     bulk_conn_.reset();
@@ -237,15 +276,12 @@ void NetClient::request_reconnect() {
 }
 
 void NetClient::do_reconnect() {
-    spdlog::info("NetClient: reconnecting...");
+    spdlog::info("NetClient: reconnecting; a fresh account login is required");
 
-    // The gateway assigns a new session on every ctrl accept, so the old ids
-    // are stale: keeping them would make the fresh bulk socket name a session
-    // that no longer exists.
     session_id_.store(0, std::memory_order_release);
     player_id_.store(0, std::memory_order_release);
+    auth_succeeded_ = false;
 
-    // Destroy old connections (joins their poll threads)
     ctrl_conn_.reset();
     bulk_conn_.reset();
     connected_ctrl_ = false;
@@ -259,16 +295,12 @@ void NetClient::do_reconnect() {
         bulk_queue_.clear();
     }
 
-    // Wait 100ms so the gateway's poll loop (50ms timeout) detects EOF on
-    // the old connection. Otherwise the gateway rejects the new one because
-    // client_bulk_->is_open() still returns true from the half-closed fd.
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    const bool have_credentials = HasRetriableCredentials();
 
     for (int attempt = 0; attempt < max_reconnect_attempts_; ++attempt) {
         int backoff = 1 << attempt;
         if (backoff > 30) backoff = 30;
-
-        // Reconnect ctrl
         int ctrl_fd = tcp_connect(host_.c_str(), ctrl_port_);
         if (ctrl_fd < 0 || !start_ctrl_connection(ctrl_fd)) {
             if (ctrl_fd >= 0) ::close(ctrl_fd);
@@ -277,33 +309,31 @@ void NetClient::do_reconnect() {
             std::this_thread::sleep_for(std::chrono::seconds(backoff));
             continue;
         }
-
-        // Reconnect bulk
-        int bulk_fd = tcp_connect(host_.c_str(), bulk_port_);
-        if (bulk_fd < 0 || !start_bulk_connection(bulk_fd)) {
-            if (bulk_fd >= 0) ::close(bulk_fd);
-            spdlog::error("NetClient: bulk reconnect attempt {}/{} failed (backoff={}s)",
-                          attempt + 1, max_reconnect_attempts_, backoff);
-            // Don't leave ctrl half-connected — tear it down
-            ctrl_conn_.reset();
-            connected_ctrl_ = false;
-            std::this_thread::sleep_for(std::chrono::seconds(backoff));
-            continue;
-        }
-
-        spdlog::info("NetClient: reconnected successfully on attempt {}/{}",
-                     attempt + 1, max_reconnect_attempts_);
         reconnect_attempts_ = attempt + 1;
+        if (have_credentials) {
+            if (!SendAccountAuthRequest(auth_username_, auth_password_, false)) {
+                Disconnect();
+                reconnecting_ = false;
+                return;
+            }
+            return; // AuthResult and SessionWelcome finish the reconnect asynchronously.
+        }
+        connected_ctrl_ = false;
+        if (ctrl_conn_) ctrl_conn_->close();
         reconnecting_ = false;
-        if (onReconnect_)
-            onReconnect_();
+        if (onAuthResult_)
+            onAuthResult_(Protocol::AccountAuthStatus_INTERNAL_ERROR,
+                          "Connection restored. Sign in to continue.");
         return;
     }
 
-    spdlog::warn("NetClient: reconnect failed after {} attempts", max_reconnect_attempts_);
+    spdlog::warn("NetClient: ctrl reconnect failed after {} attempts", max_reconnect_attempts_);
     connected_ctrl_ = false;
     connected_bulk_ = false;
     reconnecting_ = false;
+    if (onAuthResult_)
+        onAuthResult_(Protocol::AccountAuthStatus_INTERNAL_ERROR,
+                      "Unable to reconnect to the server.");
 }
 
 // =========================================================================
@@ -356,23 +386,57 @@ void NetClient::OnMessage(uint8_t msg_type,
     size_t plen = data->size();
 
     switch (msg_type) {
+        case GatewayMsg::kAuthResult: {
+            flatbuffers::Verifier verifier(payload, plen);
+            if (!verifier.VerifyBuffer<Protocol::AuthResult>(nullptr)) {
+                spdlog::warn("NetClient: invalid AuthResult");
+                return;
+            }
+            const auto *result = flatbuffers::GetRoot<Protocol::AuthResult>(payload);
+            const auto status = result->status();
+            const std::string message = result->message() ? result->message()->str() : "";
+            const bool success = status == Protocol::AccountAuthStatus_SUCCESS;
+            auth_succeeded_.store(success, std::memory_order_release);
+            if (success) {
+                auth_register_ = false;
+                retry_login_allowed_ = true;
+            } else {
+                const bool wasReconnect = reconnecting_.exchange(false);
+                retry_login_allowed_ = false;
+                // Keep the manual form retryable on the existing ctrl socket,
+                // but never retry a rejected password after transport reconnect.
+                std::fill(auth_password_.begin(), auth_password_.end(), '\0');
+                auth_password_.clear();
+                auth_username_.clear();
+                auth_register_ = false;
+                if (wasReconnect) reconnect_attempts_ = 0;
+            }
+            if (onAuthResult_) onAuthResult_(static_cast<uint8_t>(status), message);
+            return;
+        }
         case GatewayMsg::kSessionWelcome: {
-            // The server owns identity: this player_id replaces anything the
-            // client assumed, and the bulk socket pairs itself with the
-            // session id received here.
-            flatbuffers::Verifier v(payload, plen);
-            if (!v.VerifyBuffer<Protocol::SessionWelcome>(nullptr)) {
+            if (!auth_succeeded_.load(std::memory_order_acquire)) {
+                spdlog::warn("NetClient: refusing SessionWelcome before successful AuthResult");
+                return;
+            }
+            flatbuffers::Verifier verifier(payload, plen);
+            if (!verifier.VerifyBuffer<Protocol::SessionWelcome>(nullptr)) {
                 spdlog::warn("NetClient: invalid SessionWelcome");
                 return;
             }
             auto welcome = flatbuffers::GetRoot<Protocol::SessionWelcome>(payload);
             session_id_.store(welcome->session_id(), std::memory_order_release);
             player_id_.store(welcome->player_id(), std::memory_order_release);
-            spdlog::info("NetClient: session {} welcomed as player {}",
+            spdlog::info("NetClient: authenticated session {} welcomed as player {}",
                          welcome->session_id(), welcome->player_id());
-            if (onSessionWelcome_) onSessionWelcome_(welcome->session_id(),
-                                                      welcome->player_id());
-            SendBulkSessionHello();
+            if (onSessionWelcome_)
+                onSessionWelcome_(welcome->session_id(), welcome->player_id());
+            if (!connect_bulk_socket()) {
+                spdlog::error("NetClient: failed to connect authenticated bulk socket");
+                if (ctrl_conn_) ctrl_conn_->close();
+                return;
+            }
+            if (reconnecting_.exchange(false) && onReconnect_) onReconnect_();
             return;
         }
         case GatewayMsg::kCompressedChunkData:
@@ -705,9 +769,15 @@ void NetClient::ProcessBlockActionDirective(
 //  Outbound messages — all go through ctrl connection
 // =========================================================================
 
-void NetClient::EnqueueWrite(uint8_t msg_type, const void* data, size_t size) {
-    if (!ctrl_conn_ || !connected_ctrl_) return;
+bool NetClient::EnqueueWrite(uint8_t msg_type, const void* data, size_t size,
+                             bool allow_pre_auth) {
+    if (!ctrl_conn_ || !connected_ctrl_ ||
+        (!allow_pre_auth &&
+         (!auth_succeeded_.load(std::memory_order_acquire) ||
+          session_id_.load(std::memory_order_acquire) == 0)))
+        return false;
     ctrl_conn_->send(msg_type, static_cast<const uint8_t*>(data), size);
+    return true;
 }
 
 void NetClient::RequestChunk(const ChunkCoord& coord) {

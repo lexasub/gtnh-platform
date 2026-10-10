@@ -626,39 +626,32 @@ func TestSavePlayerPositionUpserts(t *testing.T) {
 	}
 }
 
-// The full logout save — inventory plus position — must be consistent when
-// read back, which is what the "logout" action in handleRequest does.
-func TestLogoutSaveInventoryAndPositionAreConsistent(t *testing.T) {
+// Authenticated server paths persist inventory and position through their
+// dedicated storage operations; the unauthenticated JSON logout API is disabled.
+func TestPlayerInventoryAndPositionPersistConsistently(t *testing.T) {
 	m := newTxnTestMetaDB(t)
-
-	resp := handleRequest(m, Request{
-		Action:   "logout",
-		PlayerID: 31,
-		Data: map[string]interface{}{
-			"slots": []interface{}{
-				map[string]interface{}{"slot": float64(0), "block_id": float64(4001), "count": float64(3)},
-				map[string]interface{}{"slot": float64(1), "block_id": float64(4002), "count": float64(4)},
-				map[string]interface{}{"slot": float64(2), "block_id": float64(4003), "count": float64(5)},
-			},
-			"x": float64(100),
-			"y": float64(70),
-			"z": float64(-20),
-		},
-	})
-	if !resp.Success {
-		t.Fatalf("logout failed: %+v", resp)
+	slots := []SlotData{
+		{Slot: 0, BlockID: 4001, Count: 3},
+		{Slot: 1, BlockID: 4002, Count: 4},
+		{Slot: 2, BlockID: 4003, Count: 5},
+	}
+	if err := m.CreateInventory(31, slots); err != nil {
+		t.Fatalf("CreateInventory: %v", err)
+	}
+	if err := m.SavePlayerPosition(31, 100, 70, -20); err != nil {
+		t.Fatalf("SavePlayerPosition: %v", err)
 	}
 
 	got, err := m.GetInventory(31)
 	if err != nil {
 		t.Fatalf("GetInventory: %v", err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("got %d slots, want 3", len(got))
+	if len(got) != len(slots) {
+		t.Fatalf("got %d slots, want %d", len(got), len(slots))
 	}
-	for i, s := range got {
-		if s.BlockID != uint16(4001+i) || s.Count != uint8(3+i) {
-			t.Errorf("slot %d: got block=%d count=%d", i, s.BlockID, s.Count)
+	for i, slot := range got {
+		if slot.BlockID != uint16(4001+i) || slot.Count != uint8(3+i) {
+			t.Errorf("slot %d: got block=%d count=%d", i, slot.BlockID, slot.Count)
 		}
 	}
 	pos, err := m.GetPlayerPosition(31)

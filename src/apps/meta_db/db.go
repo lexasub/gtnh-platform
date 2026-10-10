@@ -1,13 +1,14 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
 
 	flatbuffers "github.com/google/flatbuffers/go"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/gtnh-platform/protocol/generated/go/Protocol"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // ---------------------------------------------------------------------------
@@ -72,6 +73,25 @@ CREATE TABLE IF NOT EXISTS quest_exchange_cooldowns (
 );
 
 CREATE INDEX IF NOT EXISTS idx_quest_exchange_cooldowns_player ON quest_exchange_cooldowns(player_id);
+
+-- AUTOINCREMENT preserves committed IDs even if a player row is later deleted.
+-- Registration first seeds this sequence above every legacy/current player ID.
+CREATE TABLE IF NOT EXISTS player_id_allocator (
+    id INTEGER PRIMARY KEY AUTOINCREMENT
+);
+
+CREATE TABLE IF NOT EXISTS accounts (
+    account_id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS account_player_map (
+    account_id TEXT PRIMARY KEY,
+    player_id INTEGER NOT NULL UNIQUE,
+    FOREIGN KEY (account_id) REFERENCES accounts(account_id) ON DELETE CASCADE,
+    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+);
 `
 
 const entityStateSchema = `
@@ -106,14 +126,20 @@ func NewMetaDB(dbPath string) (*MetaDB, error) {
 
 	m := &MetaDB{db: db}
 	if err := m.initSchema(); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 	return m, nil
 }
 
 func (m *MetaDB) initSchema() error {
-	_, err := m.db.Exec(schema)
-	return err
+	if _, err := m.db.Exec(schema); err != nil {
+		return err
+	}
+	if _, err := m.db.Exec(entityStateSchema); err != nil {
+		return err
+	}
+	return m.seedPlayerIDAllocator(context.Background())
 }
 
 // ---------------------------------------------------------------------------
@@ -366,20 +392,6 @@ type InventorySlot struct {
 	Count   int
 }
 
-// jsonFloat reads an integer-valued field out of a decoded JSON object.
-// encoding/json decodes every number as float64, so that is the only accepted
-// type; a missing key, a string, a bool or null yields float64(0) and the
-// comma-ok form reports it. gp-3v5x: the call sites used to do a bare
-// data["slot"].(float64), which panics on a malformed payload instead of
-// returning an error response.
-func jsonFloat(data map[string]interface{}, key string) (int, error) {
-	v, ok := data[key].(float64)
-	if !ok {
-		return 0, fmt.Errorf("field %q: expected a number, got %T", key, data[key])
-	}
-	return int(v), nil
-}
-
 // ---------------------------------------------------------------------------
 // JSON handler (legacy TCP API — used by old clients)
 // ---------------------------------------------------------------------------
@@ -396,121 +408,13 @@ type Response struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
-func handleRequest(m *MetaDB, req Request) Response {
+func handleRequest(_ *MetaDB, req Request) Response {
 	switch req.Action {
-	case "login":
-		slots, err := m.GetInventory(req.PlayerID)
-		if err != nil {
-			return Response{Success: false, Error: err.Error()}
-		}
-		return Response{Success: true, Data: slots}
-
-	case "logout":
-		data, ok := req.Data.(map[string]interface{})
-		if !ok {
-			return Response{Success: false, Error: "invalid data format"}
-		}
-
-		slotsData, ok := data["slots"].([]interface{})
-		if !ok {
-			return Response{Success: false, Error: "invalid slots format"}
-		}
-
-		var slots []SlotData
-		for _, s := range slotsData {
-			slotMap, ok := s.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			// gp-3v5x: these used to be asserted with a bare type switch
-			// (slotMap["slot"].(float64)), which panics on a malformed
-			// logout payload. The comma-ok form reports it as a bad request
-			// instead of unwinding the connection goroutine.
-			slot, ok1 := slotMap["slot"].(float64)
-			blockID, ok2 := slotMap["block_id"].(float64)
-			count, ok3 := slotMap["count"].(float64)
-			if !ok1 || !ok2 || !ok3 {
-				log.Printf("[INV] logout: dropping malformed slot entry %v", slotMap)
-				continue
-			}
-			slots = append(slots, SlotData{
-				Slot:    int(slot),
-				BlockID: uint16(blockID),
-				Count:   uint8(count),
-			})
-		}
-
-		// gp-3v5x: this used to build one FlatBuffer per slot and re-parse it
-		// with GetRootAsInventorySlot(builder.FinishedBytes(), off). Without a
-		// builder.Finish() that panics unconditionally, so any logout with a
-		// non-empty slot list crashed metadbd. CreateInventory persists plain
-		// values and never serialized, so the round-trip was pure overhead.
-		if err := m.CreateInventory(req.PlayerID, slots); err != nil {
-			return Response{Success: false, Error: err.Error()}
-		}
-
-		if x, ok := data["x"].(float64); ok {
-			if y, ok := data["y"].(float64); ok {
-				if z, ok := data["z"].(float64); ok {
-					m.SavePlayerPosition(req.PlayerID, int(x), int(y), int(z))
-				}
-			}
-		}
-
-		return Response{Success: true}
-
-	case "update_slot":
-		data, ok := req.Data.(map[string]interface{})
-		if !ok {
-			return Response{Success: false, Error: "invalid data format"}
-		}
-		// gp-3v5x: bare type assertions here panicked on a malformed payload.
-		slot, err1 := jsonFloat(data, "slot")
-		blockID, err2 := jsonFloat(data, "block_id")
-		count, err3 := jsonFloat(data, "count")
-		if err1 != nil || err2 != nil || err3 != nil {
-			return Response{Success: false, Error: "invalid data format"}
-		}
-
-		if err := m.UpdateInventorySlot(req.PlayerID, slot, blockID, count); err != nil {
-			return Response{Success: false, Error: err.Error()}
-		}
-		return Response{Success: true}
-
-	case "delete_slot":
-		data, ok := req.Data.(map[string]interface{})
-		if !ok {
-			return Response{Success: false, Error: "invalid data format"}
-		}
-		slot, err := jsonFloat(data, "slot")
-		if err != nil {
-			return Response{Success: false, Error: "invalid data format"}
-		}
-
-		if err := m.DeleteInventorySlot(req.PlayerID, slot); err != nil {
-			return Response{Success: false, Error: err.Error()}
-		}
-		return Response{Success: true}
-
-	case "save_position":
-		data, ok := req.Data.(map[string]interface{})
-		if !ok {
-			return Response{Success: false, Error: "invalid data format"}
-		}
-		x, err1 := jsonFloat(data, "x")
-		y, err2 := jsonFloat(data, "y")
-		z, err3 := jsonFloat(data, "z")
-		if err1 != nil || err2 != nil || err3 != nil {
-			return Response{Success: false, Error: "invalid data format"}
-		}
-
-		if err := m.SavePlayerPosition(req.PlayerID, x, y, z); err != nil {
-			return Response{Success: false, Error: err.Error()}
-		}
-		return Response{Success: true}
-
+	case "login", "logout", "update_slot", "delete_slot", "save_position":
+		// The legacy API has no authenticated identity. Reject every player-data
+		// operation so caller-supplied numeric IDs cannot read or mutate profiles.
+		return Response{Success: false, Error: "unsupported action"}
 	default:
-		log.Printf("unknown action: %s", req.Action)
 		return Response{Success: false, Error: "unknown action"}
 	}
 }
