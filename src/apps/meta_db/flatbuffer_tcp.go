@@ -12,7 +12,7 @@ import (
 	"github.com/gtnh-platform/protocol/generated/go/Protocol"
 )
 
-const fbPort = ":5006"
+const defaultFBAddr = "127.0.0.1:5006"
 
 // maxFBFrameBytes caps the allocation a single 4-byte length prefix can
 // request. gp-3v5x: the length is remote input; unchecked, one frame header can
@@ -26,13 +26,17 @@ func debugStack() string {
 }
 
 func startFlatBufferListener(m *MetaDB) {
-	listener, err := net.Listen("tcp", fbPort)
+	address, err := configuredPrivateBind("GTNH_METADB_FB_BIND", defaultFBAddr)
 	if err != nil {
-		log.Fatalf("Failed to listen on FlatBuffers port %s: %v", fbPort, err)
+		log.Fatalf("Invalid MetaDB FlatBuffers bind address: %v", err)
+	}
+	listener, err := net.Listen("tcp", address)
+	if err != nil {
+		log.Fatalf("Failed to listen on FlatBuffers address %s: %v", address, err)
 	}
 	defer listener.Close()
 
-	log.Printf("MetaDB FlatBuffers handler listening on %s", fbPort)
+	log.Printf("MetaDB FlatBuffers handler listening on %s", address)
 
 	for {
 		conn, err := listener.Accept()
@@ -299,7 +303,7 @@ func handleSetInventorySlotReq(reqID uint32, req *Protocol.SetInventorySlotReq, 
 
 	// empty GetInventoryResp signals success (no dedicated SetInventorySlotResp in schema)
 	builder := flatbuffers.NewBuilder(64)
-    invVec := builder.CreateByteVector(nil)
+	invVec := builder.CreateByteVector(nil)
 	Protocol.GetInventoryRespStart(builder)
 	Protocol.GetInventoryRespAddInventory(builder, invVec)
 	respOffset := Protocol.GetInventoryRespEnd(builder)

@@ -23,6 +23,11 @@ add_custom_command(
         ${FBS_GO_OUT_DIR}/Protocol/QuestCompletedNotification.go
         ${FBS_GO_OUT_DIR}/Protocol/QuestUnlockNotification.go
         ${FBS_GO_OUT_DIR}/Protocol/QuestUnlocked.go
+        ${FBS_GO_OUT_DIR}/Protocol/AccountAuthAction.go
+        ${FBS_GO_OUT_DIR}/Protocol/AccountAuthStatus.go
+        ${FBS_GO_OUT_DIR}/Protocol/AccountAuthRequest.go
+        ${FBS_GO_OUT_DIR}/Protocol/AccountAuthResponse.go
+        ${FBS_GO_OUT_DIR}/Protocol/AuthResult.go
     COMMAND flatbuffers::flatc
         --go
         -I ${FBS_DIR}
@@ -44,7 +49,14 @@ add_custom_command(
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/main.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/db.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/accounts.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/account_auth_tcp.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/flatbuffer_tcp.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/fbverify.go
         ${CMAKE_CURRENT_SOURCE_DIR}/go.mod
+        ${CMAKE_CURRENT_SOURCE_DIR}/go.sum
+        ${CMAKE_SOURCE_DIR}/src/libs/gtnh-common-go/auth/auth.go
         ${FBS_GO_OUT_DIR}/Protocol/MetaDBFrame.go
     COMMENT "Building MetaDB Go service"
 )

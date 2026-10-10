@@ -390,14 +390,50 @@ table MultiblockDestroyedEvent {
   controller_id:uint64;
 }
 
+// Account authentication is carried on the existing control connection before
+// SessionWelcome. The credentials never enter MessageRouter. MetaDB's private
+// direct auth RPC uses AccountAuthRequest/AccountAuthResponse as its root data.
+enum AccountAuthAction : uint8 {
+  LOGIN = 0,
+  REGISTER = 1,
+}
+
+enum AccountAuthStatus : uint8 {
+  SUCCESS = 0,
+  INVALID_CREDENTIALS = 1,
+  USERNAME_TAKEN = 2,
+  RATE_LIMITED = 3,
+  INTERNAL_ERROR = 4,
+  ACCOUNT_ACTIVE = 5,
+}
+
+table AccountAuthRequest {
+  action:AccountAuthAction;
+  username:string (required);
+  password:string (required);
+}
+
+table AccountAuthResponse {
+  status:AccountAuthStatus;
+  account_id:string;
+  player_id:uint64;
+}
+
+// Gateway → client, ctrl connection. Success is followed by SessionWelcome;
+// failures use generic bounded text and never create a player session.
+table AuthResult {
+  status:AccountAuthStatus;
+  message:string;
+}
+
 // Player join/leave events (for MetaDB inventory load/save)
 table PlayerJoined {
   player_id:uint64;
   nickname:string;          // server-side name for this session (dev-mode handshake)
 }
 
-// Gateway → client, ctrl connection, sent once right after the ctrl socket is
-// accepted. It carries the server-canonical identity the client must use in
+// Gateway → client, ctrl connection, sent only after account authentication
+// succeeds. It carries the server-canonical identity the client must use in
 // every subsequent action: the server assigns it, the client never picks it.
 // Sessions coexist, so a client that kept a hardcoded id would act as (or
 // collide with) somebody else.
