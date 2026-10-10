@@ -10,7 +10,7 @@
 //	go run . place 400 70 401 0xF800
 //	go run . break 400 69 401 --expected 0xF800
 //	go run . script /tmp/scenario.txt
-//	go run . --addr 127.0.0.1:7777 --player 1 place 400 70 401 0xE400
+//	GTNH_ACCOUNT_USERNAME=player GTNH_ACCOUNT_PASSWORD=... go run . --addr 127.0.0.1:7777 place 400 70 401 0xE400
 //	go run . open 277 66 128     # состояние машины (BlockEntityUpdate: энергия, слоты)
 //	go run . pipe 278 66 128     # содержимое трубы (PipeContentsResp)
 //
@@ -51,6 +51,8 @@ const (
 	kPipeContentsResp   = 49
 	kMultiblockEvent    = 23
 	kSessionWelcome     = 52
+	kAccountAuthRequest = 54
+	kAuthResult         = 55
 )
 
 // pack("1110:011:0") -> 0xE400 (steam_solid_boiler), pack("1111:10:0") -> 0xF800 (fluid_pipe)
@@ -100,8 +102,14 @@ func parseItem(s string) (uint16, error) {
 	return uint16(v), nil
 }
 
+type authResult struct {
+	status  Protocol.AccountAuthStatus
+	message string
+}
+
 type client struct {
 	conn          net.Conn
+	authResults   chan authResult
 	nextRequestID uint32
 	watchPos      bool
 	watchX        int32
@@ -269,6 +277,39 @@ func statusName(s Protocol.BlockAckStatus) string {
 	return fmt.Sprintf("UNKNOWN(%d)", uint8(s))
 }
 
+func (c *client) authenticate(username, password string, register bool) error {
+	builder := flatbuffers.NewBuilder(128)
+	usernameOffset := builder.CreateString(username)
+	passwordOffset := builder.CreateString(password)
+	action := Protocol.AccountAuthActionLOGIN
+	if register {
+		action = Protocol.AccountAuthActionREGISTER
+	}
+	Protocol.AccountAuthRequestStart(builder)
+	Protocol.AccountAuthRequestAddAction(builder, action)
+	Protocol.AccountAuthRequestAddUsername(builder, usernameOffset)
+	Protocol.AccountAuthRequestAddPassword(builder, passwordOffset)
+	request := Protocol.AccountAuthRequestEnd(builder)
+	Protocol.FinishAccountAuthRequestBuffer(builder, request)
+	c.sendRaw(kAccountAuthRequest, builder.FinishedBytes(), "account auth request sent")
+	select {
+	case result := <-c.authResults:
+		if result.status != Protocol.AccountAuthStatusSUCCESS {
+			return fmt.Errorf("authentication rejected: %s", result.message)
+		}
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("authentication timed out")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for c.playerID == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if c.playerID == 0 {
+		return fmt.Errorf("authenticated welcome not received")
+	}
+	return nil
+}
+
 func (c *client) startReader() {
 	go func() {
 		header := make([]byte, 5)
@@ -285,6 +326,15 @@ func (c *client) startReader() {
 				return
 			}
 			switch header[4] {
+			case kAuthResult:
+				result := Protocol.GetRootAsAuthResult(payload, 0)
+				if result != nil && c.authResults != nil {
+					message := ""
+					if result.Message() != nil {
+						message = string(result.Message())
+					}
+					c.authResults <- authResult{status: result.Status(), message: message}
+				}
 			case kSessionWelcome:
 				welcome := Protocol.GetRootAsSessionWelcome(payload, 0)
 				if welcome != nil {
@@ -348,11 +398,14 @@ func waitAck(ms int) {
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7777", "gateway TCP address")
 	timeout := flag.Int("timeout", 1500, "default ACK wait (ms) after each action")
-	playerID := flag.Uint64("player", 0, "player id for open/pipe queries")
+	username := flag.String("username", os.Getenv("GTNH_ACCOUNT_USERNAME"), "account username")
+	password := flag.String("password", os.Getenv("GTNH_ACCOUNT_PASSWORD"), "account password (prefer GTNH_ACCOUNT_PASSWORD env)")
+	register := flag.Bool("register", false, "register the username instead of signing in")
+	playerID := flag.Uint64("player", 0, "assert the authenticated player id")
 	flag.Parse()
 	args := flag.Args()
-	if len(args) == 0 {
-		fmt.Println("usage: gateway_cli [--addr HOST:PORT] <place|break|script> ...")
+	if len(args) == 0 || *username == "" || *password == "" {
+		fmt.Println("usage: GTNH_ACCOUNT_USERNAME=... GTNH_ACCOUNT_PASSWORD=... gateway_cli [--addr HOST:PORT] [--register] <place|break|script> ...")
 		os.Exit(2)
 	}
 
@@ -364,14 +417,17 @@ func main() {
 	defer conn.Close()
 	fmt.Printf("connected to gateway %s\n", *addr)
 
-	c := &client{conn: conn}
+	c := &client{conn: conn, authResults: make(chan authResult, 1)}
 	c.startReader()
-	time.Sleep(200 * time.Millisecond)
-	// Adopt the server-assigned identity unless the caller pinned one with
-	// --player.
-	if *playerID == 0 {
-		*playerID = c.playerID
+	if err := c.authenticate(*username, *password, *register); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
 	}
+	if *playerID != 0 && *playerID != c.playerID {
+		fmt.Printf("requested player id %d does not match authenticated id %d\n", *playerID, c.playerID)
+		os.Exit(1)
+	}
+	*playerID = c.playerID
 
 	run := func(cmd string, x, y, z int32, item, expected uint16) {
 		switch cmd {

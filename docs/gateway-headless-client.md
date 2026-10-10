@@ -7,29 +7,51 @@ The repository has two headless clients for exercising the real Gateway TCP path
 
 The client-facing wire IDs come from `src/common/GatewayMsg.h`; the `GatewayPayload` union in `src/protocol/gateway.fbs` is stale and must not be used as the numeric source of truth. Gateway control frames are `[4 bytes big-endian payload size][1 byte message type][FlatBuffer]`. The headless clients are protocol clients, not alternate simulation implementations: block placement still travels through Gateway → MessageRouter → SimulationCore → ChunkStore.
 
-## Session handshake (required, multi-client)
+## Account authentication and session handshake (required)
 
-Gateway serves **sessions**, not "the client". Every ctrl connection is its own
-session with its own server-assigned identity, and several sessions are live at
-once. A client that skips the handshake is either invisible (unpaired bulk
-socket) or acting under an identity the gateway will drop:
+Gateway serves **sessions**, not "the client". Each ctrl connection first remains
+unauthenticated; it cannot receive a player identity, publish lifecycle events,
+restore state, perform gameplay actions, or pair bulk until account auth succeeds.
 
-1. Dial the ctrl port. The gateway immediately sends type **52 = SessionWelcome**
-   carrying `session_id` and `player_id` (`Protocol::SessionWelcome`,
-   `src/protocol/core.fbs`). This `player_id` is canonical — the server chose it.
-2. Dial the bulk port and send type **53 = SessionHello** carrying that
+1. Dial the ctrl port. Send type **54 = AccountAuthRequest** with a register or
+   login action, username, and password (`Protocol::AccountAuthRequest`,
+   `src/protocol/core.fbs`). Gateway authenticates directly against MetaDB's
+   private FlatBuffers listener; credentials never traverse MessageRouter.
+2. Receive type **55 = AuthResult**. On success only, Gateway next sends type
+   **52 = SessionWelcome** carrying the ephemeral `session_id` and persistent
+   server-assigned `player_id`. On failure, retry is allowed within the
+   connection's 15-second pre-auth deadline.
+3. Dial the bulk port and send type **53 = SessionHello** carrying that
    `session_id` (`Protocol::SessionHello`). Chunk data and block updates are
-   only delivered to a bulk socket paired this way.
-3. Send every later frame with the assigned `player_id`. A frame claiming a
+   delivered only to a bulk socket paired to the authenticated session.
+4. Send every later frame with the assigned `player_id`. A frame claiming a
    different non-zero id is rejected by `gtnh::net::admit_intent`
-   (`src/engine/net/include/gtnh/net/client_session.h`); id `0` means
-   "unclaimed" and is attributed to the session.
+   (`src/engine/net/include/gtnh/net/client_session.h`).
 
-`testutil.GatewayClient.ExpectSessionWelcome` and
-`testutil.BuildSessionHello` implement this for the automated client;
-`gateway_cli` prints the welcome and adopts the assigned id unless `--player`
-overrides it. Multi-client coverage lives in `test/integration/multiplayer_test.go`
-(two sessions, block change visible to the peer, per-session chunk stream).
+`testutil.GatewayClient` implements register/login plus the welcome handshake;
+`gateway_cli` requires `GTNH_ACCOUNT_USERNAME` and `GTNH_ACCOUNT_PASSWORD` and
+accepts `--register` for first-time registration. The same account resolves to
+the same MetaDB player profile across reconnects, so inventory, position, and
+quest data restore under that `player_id`.
+
+**Deployment security:** this version uses plaintext on trusted LAN/VPN only.
+Credentials and session traffic are observable and replayable on an untrusted
+network; do not expose these ports publicly. TLS is required before hostile or
+public-network deployment. MetaDB auth binds to `127.0.0.1:5007` by default;
+`GTNH_METADB_AUTH_BIND` / Gateway `GTNH_METADB_AUTH_ADDR` are explicit private
+interface overrides. MetaDB's numeric-ID gameplay FlatBuffers RPC (`:5006`) and
+legacy JSON diagnostics (`:5005`) also bind to loopback by default; use
+`GTNH_METADB_FB_BIND` or `GTNH_METADB_JSON_BIND` only for trusted private-interface
+deployments.
+
+The desktop GameClient remembers credentials after successful registration or
+sign-in in `$XDG_CONFIG_HOME/gtnh-platform/account-credentials.json`, falling
+back to `$HOME/.config/gtnh-platform/account-credentials.json`. The config
+directory is mode `0700` and the JSON file is mode `0600`. The password is
+stored in plaintext: these permissions do not protect it from the same OS user,
+root, malware running as that user, or backups. Delete this file to disable
+automatic sign-in; a missing or invalid file leaves the manual login screen
+available. Credentials are never written to logs.
 
 Chunk delivery is request-scoped: a chunk reaches exactly the sessions that
 asked for that coordinate, so two clients are not fed each other's worlds.
@@ -69,9 +91,11 @@ Start the normal services first (at minimum Router, ChunkStore, Gateway, and Sim
 cd test/integration
 go test ./...
 
-# Manual diagnostic client
+# Manual diagnostic client (use --register once for a new account)
 cd ../../tools/gateway_cli
-go run . --addr 127.0.0.1:7777 place 400 70 401 0xE400
+export GTNH_ACCOUNT_USERNAME=diagnostic_user
+read -rsp 'Account password: ' GTNH_ACCOUNT_PASSWORD; printf '\n'; export GTNH_ACCOUNT_PASSWORD
+go run . --addr 127.0.0.1:7777 --register place 400 70 401 0xE400
 go run . --addr 127.0.0.1:7777 script /tmp/scenario.txt
 ```
 

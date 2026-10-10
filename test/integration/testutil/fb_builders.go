@@ -111,6 +111,25 @@ func BuildCraftRequest(playerID uint64, x, y, z int32, grid [][3]uint16) []byte 
 	return b.FinishedBytes()
 }
 
+// BuildAccountAuthRequest builds a client registration/login frame for the
+// existing ctrl connection. Credentials go only to Gateway, never MessageRouter.
+func BuildAccountAuthRequest(register bool, username, password string) []byte {
+	b := flatbuffers.NewBuilder(128)
+	usernameOffset := b.CreateString(username)
+	passwordOffset := b.CreateString(password)
+	action := Protocol.AccountAuthActionLOGIN
+	if register {
+		action = Protocol.AccountAuthActionREGISTER
+	}
+	Protocol.AccountAuthRequestStart(b)
+	Protocol.AccountAuthRequestAddAction(b, action)
+	Protocol.AccountAuthRequestAddUsername(b, usernameOffset)
+	Protocol.AccountAuthRequestAddPassword(b, passwordOffset)
+	request := Protocol.AccountAuthRequestEnd(b)
+	Protocol.FinishAccountAuthRequestBuffer(b, request)
+	return b.FinishedBytes()
+}
+
 // BuildSessionHello builds the first frame a client sends on its bulk socket,
 // binding that socket to the session id the gateway assigned. The gateway
 // refuses an unpaired bulk socket, so chunk and block-update delivery would
