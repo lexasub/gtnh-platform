@@ -1,6 +1,7 @@
 // gateway.cpp
 #include "gateway.h"
 #include "client_state_generated.h"
+#include "core_generated.h"
 #include "gateway_generated.h"
 #include "pipe_network_generated.h"
 #include "quest_generated.h"
@@ -14,13 +15,183 @@
 
 #include <spdlog/spdlog.h>
 
+#include <arpa/inet.h>
+#include <cerrno>
+#include <chrono>
+#include <cstdlib>
 #include <cstring>
+#include <netdb.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <chrono>
 #include <shared_mutex>
 
 IoUringGateway::~IoUringGateway() { shutdown(); }
+
+namespace {
+constexpr size_t kAccountAuthFrameLimit = 64 * 1024;
+constexpr auto kAccountAuthRpcTimeout = std::chrono::seconds(3);
+constexpr auto kAccountAuthWindow = std::chrono::minutes(15);
+constexpr size_t kAccountFailuresPerName = 5;
+constexpr size_t kAccountFailuresPerIp = 20;
+
+struct AccountAuthOutcome {
+  Protocol::AccountAuthStatus status = Protocol::AccountAuthStatus_INTERNAL_ERROR;
+  std::string account_id;
+  uint64_t player_id = 0;
+};
+
+std::string rate_limit_username(std::string username) {
+  size_t first = 0;
+  while (first < username.size() &&
+         (username[first] == ' ' || username[first] == '\t'))
+    ++first;
+  size_t last = username.size();
+  while (last > first &&
+         (username[last - 1] == ' ' || username[last - 1] == '\t'))
+    --last;
+  username = username.substr(first, last - first);
+  for (char &c : username) {
+    if (c >= 'A' && c <= 'Z') c = static_cast<char>(c + ('a' - 'A'));
+  }
+  return username;
+}
+
+bool wait_for_fd(int fd, short events,
+                 std::chrono::steady_clock::time_point deadline) {
+  const auto now = std::chrono::steady_clock::now();
+  if (now >= deadline) return false;
+  const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+  pollfd descriptor{fd, events, 0};
+  int rc;
+  do {
+    rc = ::poll(&descriptor, 1, static_cast<int>(remaining.count()));
+  } while (rc < 0 && errno == EINTR);
+  return rc > 0 && (descriptor.revents & events) != 0;
+}
+
+bool send_exact(int fd, const uint8_t *data, size_t size,
+                std::chrono::steady_clock::time_point deadline) {
+  size_t sent = 0;
+  while (sent < size) {
+    const auto n = ::send(fd, data + sent, size - sent, MSG_NOSIGNAL);
+    if (n > 0) {
+      sent += static_cast<size_t>(n);
+      continue;
+    }
+    if (n < 0 && errno == EINTR) continue;
+    if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) &&
+        wait_for_fd(fd, POLLOUT, deadline))
+      continue;
+    return false;
+  }
+  return true;
+}
+
+bool recv_exact(int fd, uint8_t *data, size_t size,
+                std::chrono::steady_clock::time_point deadline) {
+  size_t received = 0;
+  while (received < size) {
+    const auto n = ::recv(fd, data + received, size - received, 0);
+    if (n > 0) {
+      received += static_cast<size_t>(n);
+      continue;
+    }
+    if (n < 0 && errno == EINTR) continue;
+    if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) &&
+        wait_for_fd(fd, POLLIN, deadline))
+      continue;
+    return false;
+  }
+  return true;
+}
+
+bool connect_auth_service(int fd, const std::string &address,
+                          std::chrono::steady_clock::time_point deadline) {
+  const auto colon = address.rfind(':');
+  if (colon == std::string::npos || colon == 0 || colon + 1 == address.size())
+    return false;
+  const std::string host = address.substr(0, colon);
+  const std::string service = address.substr(colon + 1);
+  addrinfo hints{};
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;
+  addrinfo *resolved = nullptr;
+  if (::getaddrinfo(host.c_str(), service.c_str(), &hints, &resolved) != 0)
+    return false;
+  const auto *ipv4 = reinterpret_cast<const sockaddr_in *>(resolved->ai_addr);
+  const uint32_t address_be = ntohl(ipv4->sin_addr.s_addr);
+  const bool loopback = (address_be >> 24) == 127;
+  const bool private_10 = (address_be >> 24) == 10;
+  const bool private_172 = (address_be >> 20) == 0xAC1;
+  const bool private_192 = (address_be >> 16) == 0xC0A8;
+  if (!loopback && !private_10 && !private_172 && !private_192) {
+    ::freeaddrinfo(resolved);
+    return false;
+  }
+  const int rc = ::connect(fd, resolved->ai_addr, resolved->ai_addrlen);
+  ::freeaddrinfo(resolved);
+  if (rc == 0) return true;
+  if (errno != EINPROGRESS || !wait_for_fd(fd, POLLOUT, deadline)) return false;
+  int socket_error = 0;
+  socklen_t error_size = sizeof(socket_error);
+  return ::getsockopt(fd, SOL_SOCKET, SO_ERROR, &socket_error, &error_size) == 0 &&
+         socket_error == 0;
+}
+
+bool call_account_auth_service(
+    const uint8_t *request, size_t request_size, AccountAuthOutcome &outcome,
+    std::chrono::steady_clock::time_point accept_deadline) {
+  if (!request || request_size == 0 || request_size > kAccountAuthFrameLimit ||
+      std::chrono::steady_clock::now() >= accept_deadline)
+    return false;
+  const char *configured = std::getenv("GTNH_METADB_AUTH_ADDR");
+  const std::string address = configured && *configured
+                                  ? configured
+                                  : "127.0.0.1:5007";
+  const auto now = std::chrono::steady_clock::now();
+  const auto deadline = std::min(now + kAccountAuthRpcTimeout, accept_deadline);
+  if (now >= deadline) return false;
+  const int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+  if (fd < 0) return false;
+  struct CloseFd {
+    int fd;
+    ~CloseFd() { ::close(fd); }
+  } close_fd{fd};
+  if (!connect_auth_service(fd, address, deadline)) return false;
+
+  const uint32_t frame_size = static_cast<uint32_t>(request_size);
+  uint8_t prefix[4] = {static_cast<uint8_t>(frame_size >> 24),
+                       static_cast<uint8_t>(frame_size >> 16),
+                       static_cast<uint8_t>(frame_size >> 8),
+                       static_cast<uint8_t>(frame_size)};
+  if (!send_exact(fd, prefix, sizeof(prefix), deadline) ||
+      !send_exact(fd, request, request_size, deadline))
+    return false;
+
+  uint8_t response_prefix[4]{};
+  if (!recv_exact(fd, response_prefix, sizeof(response_prefix), deadline))
+    return false;
+  const uint32_t response_size =
+      (static_cast<uint32_t>(response_prefix[0]) << 24) |
+      (static_cast<uint32_t>(response_prefix[1]) << 16) |
+      (static_cast<uint32_t>(response_prefix[2]) << 8) |
+      static_cast<uint32_t>(response_prefix[3]);
+  if (response_size == 0 || response_size > kAccountAuthFrameLimit) return false;
+  std::vector<uint8_t> response(response_size);
+  if (!recv_exact(fd, response.data(), response.size(), deadline)) return false;
+
+  flatbuffers::Verifier verifier(response.data(), response.size());
+  const auto *result = flatbuffers::GetRoot<Protocol::AccountAuthResponse>(response.data());
+  if (!result->Verify(verifier)) return false;
+  outcome.status = result->status();
+  outcome.player_id = result->player_id();
+  if (result->account_id()) outcome.account_id = result->account_id()->str();
+  return true;
+}
+
+} // namespace
 
 // =========================================================================
 //  TCP accept (ctrl + bulk)
@@ -39,67 +210,89 @@ bool IoUringGateway::listen(uint16_t ctrl_port, uint16_t bulk_port) {
         auto conn = std::make_shared<gtnh::net::IoUringConnection>(
             client_fd, "ctrl", tags);
         auto ctx = std::make_shared<ClientConnContext>();
+        ctx->ctrl = conn;
+        ctx->auth_token = next_auth_token_.fetch_add(1, std::memory_order_relaxed);
+        ctx->auth_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        sockaddr_in peer{};
+        socklen_t peer_size = sizeof(peer);
+        char peer_ip[INET_ADDRSTRLEN]{};
+        if (::getpeername(client_fd, reinterpret_cast<sockaddr *>(&peer), &peer_size) == 0 &&
+            ::inet_ntop(AF_INET, &peer.sin_addr, peer_ip, sizeof(peer_ip)))
+            ctx->remote_ip = peer_ip;
+        else
+            ctx->remote_ip = "unknown";
 
-        conn->on_message = [this, ctx](uint8_t type, const uint8_t* d, size_t l) {
+        conn->on_message = [this, ctx](uint8_t type, const uint8_t *d, size_t l) {
+            spdlog::debug("Gateway: ctrl frame received (type={}, bytes={})", type, l);
             const uint64_t sid = ctx->session_id.load(std::memory_order_acquire);
-            if (sid == 0) return; // session already torn down
-            on_client_ctrl_message(sid, type, d, l);
+            if (sid != 0) {
+                on_client_ctrl_message(sid, type, d, l);
+                return;
+            }
+            if (!ctx->authenticated.load(std::memory_order_acquire))
+                on_client_auth(ctx, type, d, l);
         };
         conn->on_closed = [this, ctx]() {
-            // exchange(0) makes teardown idempotent: a session is removed by
-            // exactly one of its sockets' close callbacks, whichever fires
-            // first.
-            const uint64_t sid = ctx->session_id.exchange(0, std::memory_order_acq_rel);
-            if (sid == 0) return;
-            // Only the registry mutation happens under conn_mutex_: publishing
-            // player.left goes to the router over the network, and holding the
-            // lock across that would stall every send in the process if the
-            // router stalls.
+            uint64_t sid = ctx->session_id.exchange(0, std::memory_order_acq_rel);
+            auto pending_conn = sid == 0 ? ctx->ctrl.lock()
+                                         : std::shared_ptr<gtnh::net::IoUringConnection>{};
+            std::string account_id;
+            {
+                std::lock_guard<std::mutex> state(ctx->state_mutex);
+                ctx->closed = true;
+                account_id = std::move(ctx->account_id);
+            }
+            {
+                std::lock_guard<std::mutex> lock(pending_auth_mutex_);
+                pending_auth_.erase(ctx->auth_token);
+            }
             std::shared_ptr<gtnh::net::ClientSession> session;
             std::shared_ptr<gtnh::net::IoUringConnection> ctrl_conn;
+            std::shared_ptr<gtnh::net::IoUringConnection> bulk_conn;
             {
                 std::unique_lock<std::shared_mutex> guard(conn_mutex_);
-                session = sessions_.remove_session(sid);
-                if (session) ctrl_conn = std::move(session->ctrl);
+                if (sid != 0) {
+                    session = sessions_.remove_session(sid);
+                    if (session) {
+                        ctrl_conn = std::move(session->ctrl);
+                        bulk_conn = std::move(session->bulk);
+                    }
+                }
+                if (!account_id.empty()) {
+                    auto active = active_accounts_.find(account_id);
+                    if (active != active_accounts_.end() && active->second == sid)
+                        active_accounts_.erase(active);
+                }
             }
             if (session) {
                 announce_session_left(session);
                 retire(std::move(ctrl_conn));
+                retire(std::move(bulk_conn));
+                spdlog::info("Gateway: ctrl session {} disconnected ({} sessions left)",
+                             sid, sessions_.size());
+            } else if (pending_conn) {
+                retire(std::move(pending_conn));
             }
-            spdlog::info("Gateway: ctrl session {} disconnected ({} sessions left)",
-                         sid, sessions_.size());
         };
 
-        // Assign identity before any byte can arrive, so the first client
-        // message is already attributed to a session.
-        std::shared_ptr<gtnh::net::ClientSession> session;
+        bool pending_limit_reached = false;
         {
-            std::unique_lock<std::shared_mutex> guard(conn_mutex_);
-            session = sessions_.create_session(conn);
+            std::lock_guard<std::mutex> lock(pending_auth_mutex_);
+            pending_limit_reached = pending_auth_.size() >= kMaxPendingAuth;
+            if (!pending_limit_reached)
+                pending_auth_[ctx->auth_token] = PendingCtrlConnection{conn, ctx};
         }
-        ctx->session_id.store(session->session_id, std::memory_order_release);
-
-        if (!conn->start_reading()) {
-            spdlog::error("Gateway: failed to start ctrl read loop");
-            ctx->session_id.store(0, std::memory_order_release);
-            std::unique_lock<std::shared_mutex> guard(conn_mutex_);
-            if (auto doomed = sessions_.remove_session(session->session_id))
-                retire(std::move(doomed->ctrl));
+        if (pending_limit_reached) {
+            spdlog::warn("Gateway: rejecting ctrl connection; pending-auth limit reached");
+            conn->close();
             return;
         }
-
-        // The welcome is the client's only source of identity: everything it
-        // sends afterwards must carry this player_id, and the gateway drops
-        // frames that claim a different one.
-        flatbuffers::FlatBufferBuilder fbb;
-        auto welcome = Protocol::CreateSessionWelcome(fbb, session->session_id,
-                                                      session->player_id);
-        fbb.Finish(welcome);
-        conn->send(GatewayMsg::kSessionWelcome, fbb.GetBufferPointer(), fbb.GetSize());
-        spdlog::info("Gateway: ctrl session {} joined as player {} ({} sessions)",
-                     session->session_id, session->player_id, sessions_.size());
-
-        announce_session_join(session);
+        if (!conn->start_reading()) {
+            spdlog::error("Gateway: failed to start pending-auth ctrl read loop");
+            conn->close();
+            return;
+        }
+        spdlog::info("Gateway: ctrl connection accepted; awaiting account authentication");
     };
 
     bulk_server_.on_accept = [this](int client_fd) {
@@ -297,6 +490,7 @@ void IoUringGateway::retire(std::shared_ptr<gtnh::net::IoUringConnection> conn) 
 }
 
 void IoUringGateway::drain_retired() {
+    reap_pending_auth();
     std::vector<std::shared_ptr<gtnh::net::IoUringConnection>> dead;
     {
         std::lock_guard<std::mutex> lock(retired_mutex_);
@@ -563,6 +757,227 @@ void IoUringGateway::on_client_bulk_message(const std::shared_ptr<ClientConnCont
     // to nobody.
     for (const auto &coord : sessions_.pending_chunks(session_id))
         request_chunk(session_id, coord);
+}
+
+bool IoUringGateway::auth_rate_limited(
+    const std::string &ip, const std::string &username,
+    std::chrono::steady_clock::time_point now) {
+  std::lock_guard<std::mutex> lock(auth_failure_mutex_);
+  auto prune = [now](auto &failures) {
+    while (!failures.empty() && now - failures.front() >= kAccountAuthWindow)
+      failures.pop_front();
+  };
+  auto account = account_auth_failures_.find(username);
+  if (account != account_auth_failures_.end()) prune(account->second);
+  auto remote = ip_auth_failures_.find(ip);
+  if (remote != ip_auth_failures_.end()) prune(remote->second);
+  return (account != account_auth_failures_.end() &&
+          account->second.size() >= kAccountFailuresPerName) ||
+         (remote != ip_auth_failures_.end() &&
+          remote->second.size() >= kAccountFailuresPerIp);
+}
+
+void IoUringGateway::record_auth_failure(
+    const std::string &ip, const std::string &username,
+    std::chrono::steady_clock::time_point now) {
+  std::lock_guard<std::mutex> lock(auth_failure_mutex_);
+  account_auth_failures_[username].push_back(now);
+  ip_auth_failures_[ip].push_back(now);
+  auto prune = [now](auto &failures) {
+    while (!failures.empty() && now - failures.front() >= kAccountAuthWindow)
+      failures.pop_front();
+  };
+  for (auto it = account_auth_failures_.begin(); it != account_auth_failures_.end();) {
+    prune(it->second);
+    if (it->second.empty()) it = account_auth_failures_.erase(it);
+    else ++it;
+  }
+  for (auto it = ip_auth_failures_.begin(); it != ip_auth_failures_.end();) {
+    prune(it->second);
+    if (it->second.empty()) it = ip_auth_failures_.erase(it);
+    else ++it;
+  }
+}
+
+void IoUringGateway::reap_pending_auth() {
+  std::vector<std::shared_ptr<gtnh::net::IoUringConnection>> expired;
+  const auto now = std::chrono::steady_clock::now();
+  {
+    std::lock_guard<std::mutex> lock(pending_auth_mutex_);
+    for (auto it = pending_auth_.begin(); it != pending_auth_.end();) {
+      auto ctx = it->second.context.lock();
+      auto conn = it->second.conn;
+      if (!ctx || !conn || ctx->authenticated.load(std::memory_order_acquire)) {
+        it = pending_auth_.erase(it);
+      } else if (now >= ctx->auth_deadline) {
+        expired.push_back(std::move(conn));
+        it = pending_auth_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+  for (auto &conn : expired) conn->close();
+}
+
+void IoUringGateway::on_client_auth(
+    const std::shared_ptr<ClientConnContext> &ctx, uint8_t msg_type,
+    const uint8_t *data, size_t len) {
+  auto conn = ctx->ctrl.lock();
+  if (!conn) return;
+  spdlog::debug("Gateway: received pre-auth ctrl frame (type={}, bytes={})", msg_type, len);
+  if (std::chrono::steady_clock::now() >= ctx->auth_deadline ||
+      msg_type != GatewayMsg::kAccountAuthRequest || !data || len == 0 ||
+      len > kAccountAuthFrameLimit) {
+    spdlog::warn("Gateway: closing pre-auth ctrl for invalid message or deadline (type={}, bytes={})",
+                 msg_type, len);
+    conn->close();
+    return;
+  }
+  {
+    std::lock_guard<std::mutex> lock(ctx->state_mutex);
+    if (ctx->closed || ctx->auth_inflight) {
+      conn->close();
+      return;
+    }
+    ctx->auth_inflight = true;
+  }
+  struct AttemptReset {
+    std::shared_ptr<ClientConnContext> ctx;
+    ~AttemptReset() {
+      std::lock_guard<std::mutex> lock(ctx->state_mutex);
+      ctx->auth_inflight = false;
+    }
+  } reset{ctx};
+
+  flatbuffers::Verifier verifier(data, len);
+  if (!verifier.VerifyBuffer<Protocol::AccountAuthRequest>(nullptr)) {
+    spdlog::warn("Gateway: dropping malformed account-auth frame ({} bytes)", len);
+    conn->close();
+    return;
+  }
+  const auto *request = flatbuffers::GetRoot<Protocol::AccountAuthRequest>(data);
+  if (!request->username() || !request->password()) {
+    spdlog::warn("Gateway: account-auth frame is missing required credentials");
+    conn->close();
+    return;
+  }
+  const std::string username(request->username()->c_str(), request->username()->size());
+  const std::string rate_key = rate_limit_username(username);
+  const auto now = std::chrono::steady_clock::now();
+  if (auth_rate_limited(ctx->remote_ip, rate_key, now)) {
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message = fbb.CreateString("Login attempts are temporarily limited.");
+    auto result = Protocol::CreateAuthResult(
+        fbb, Protocol::AccountAuthStatus_RATE_LIMITED, message);
+    fbb.Finish(result);
+    conn->send(GatewayMsg::kAuthResult, fbb.GetBufferPointer(), fbb.GetSize());
+    return;
+  }
+
+  AccountAuthOutcome outcome;
+  if (!call_account_auth_service(data, len, outcome, ctx->auth_deadline)) {
+    spdlog::warn("Gateway: account-auth RPC to MetaDB failed");
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message = fbb.CreateString("Authentication service unavailable.");
+    auto result = Protocol::CreateAuthResult(
+        fbb, Protocol::AccountAuthStatus_INTERNAL_ERROR, message);
+    fbb.Finish(result);
+    conn->send(GatewayMsg::kAuthResult, fbb.GetBufferPointer(), fbb.GetSize());
+    return;
+  }
+  if (outcome.status != Protocol::AccountAuthStatus_SUCCESS) {
+    if (outcome.status == Protocol::AccountAuthStatus_INVALID_CREDENTIALS ||
+        outcome.status == Protocol::AccountAuthStatus_USERNAME_TAKEN)
+      record_auth_failure(ctx->remote_ip, rate_key, now);
+    const char *text = "Authentication failed.";
+    if (outcome.status == Protocol::AccountAuthStatus_INVALID_CREDENTIALS)
+      text = "Invalid username or password.";
+    else if (outcome.status == Protocol::AccountAuthStatus_USERNAME_TAKEN)
+      text = "That username is already registered.";
+    else if (outcome.status == Protocol::AccountAuthStatus_RATE_LIMITED)
+      text = "Login attempts are temporarily limited.";
+    else if (outcome.status == Protocol::AccountAuthStatus_INTERNAL_ERROR)
+      text = "Authentication service unavailable.";
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message = fbb.CreateString(text);
+    auto result = Protocol::CreateAuthResult(fbb, outcome.status, message);
+    fbb.Finish(result);
+    conn->send(GatewayMsg::kAuthResult, fbb.GetBufferPointer(), fbb.GetSize());
+    return;
+  }
+  if (outcome.account_id.empty() || outcome.player_id == 0 ||
+      !conn->is_open() || std::chrono::steady_clock::now() >= ctx->auth_deadline) {
+    conn->close();
+    return;
+  }
+
+  std::shared_ptr<gtnh::net::ClientSession> session;
+  bool account_active = false;
+  {
+    std::unique_lock<std::shared_mutex> guard(conn_mutex_);
+    account_active = active_accounts_.find(outcome.account_id) != active_accounts_.end();
+    if (!account_active) {
+      session = sessions_.create_session(conn, outcome.player_id, username);
+      if (session && session->player_id == outcome.player_id) {
+        active_accounts_[outcome.account_id] = session->session_id;
+      } else if (session) {
+        sessions_.remove_session(session->session_id);
+        session.reset();
+      }
+    }
+  }
+  if (account_active || !session) {
+    const auto status = account_active ? Protocol::AccountAuthStatus_ACCOUNT_ACTIVE
+                                       : Protocol::AccountAuthStatus_INTERNAL_ERROR;
+    const char *text = account_active ? "This account is already active."
+                                      : "Authentication service unavailable.";
+    flatbuffers::FlatBufferBuilder fbb;
+    auto message = fbb.CreateString(text);
+    auto result = Protocol::CreateAuthResult(fbb, status, message);
+    fbb.Finish(result);
+    conn->send(GatewayMsg::kAuthResult, fbb.GetBufferPointer(), fbb.GetSize());
+    return;
+  }
+
+  bool canceled = false;
+  {
+    std::lock_guard<std::mutex> lock(ctx->state_mutex);
+    canceled = ctx->closed || std::chrono::steady_clock::now() >= ctx->auth_deadline ||
+               !conn->is_open();
+    if (!canceled) {
+      ctx->account_id = outcome.account_id;
+      ctx->authenticated.store(true, std::memory_order_release);
+      ctx->session_id.store(session->session_id, std::memory_order_release);
+    }
+  }
+  if (canceled) {
+    std::unique_lock<std::shared_mutex> guard(conn_mutex_);
+    active_accounts_.erase(outcome.account_id);
+    sessions_.remove_session(session->session_id);
+    return;
+  }
+  {
+    std::lock_guard<std::mutex> lock(pending_auth_mutex_);
+    pending_auth_.erase(ctx->auth_token);
+  }
+
+  flatbuffers::FlatBufferBuilder fbb;
+  auto message = fbb.CreateString("Authenticated.");
+  auto result = Protocol::CreateAuthResult(
+      fbb, Protocol::AccountAuthStatus_SUCCESS, message);
+  fbb.Finish(result);
+  conn->send(GatewayMsg::kAuthResult, fbb.GetBufferPointer(), fbb.GetSize());
+
+  flatbuffers::FlatBufferBuilder welcome_builder;
+  auto welcome = Protocol::CreateSessionWelcome(
+      welcome_builder, session->session_id, session->player_id);
+  welcome_builder.Finish(welcome);
+  conn->send(GatewayMsg::kSessionWelcome, welcome_builder.GetBufferPointer(),
+             welcome_builder.GetSize());
+  spdlog::info("Gateway: authenticated session {} admitted ({} sessions)",
+               session->session_id, sessions_.size());
+  announce_session_join(session);
 }
 
 void IoUringGateway::on_client_ctrl_message(uint64_t session_id, uint8_t msg_type,
