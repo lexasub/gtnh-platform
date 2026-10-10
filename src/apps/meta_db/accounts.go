@@ -19,8 +19,6 @@ var (
 	ErrInvalidCredential = errors.New("invalid credentials")
 )
 
-const dummyPasswordHash = "$argon2id$v=19$m=65536,t=3,p=1$MDEyMzQ1Njc4OWFiY2RlZg$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-
 const (
 	registrationAttempts   = 4
 	registrationRetryDelay = 15 * time.Millisecond
@@ -147,6 +145,10 @@ func (m *MetaDB) registerAccountOnce(ctx context.Context, username, passwordHash
 	return Account{ID: accountID, Username: username, PlayerID: playerID}, nil
 }
 
+// Valid-format fixed dummy hash so unknown-account login runs Argon2id without
+// paying a separate password-hash KDF to prepare a placeholder on each miss.
+const dummyCredentialHash = "$argon2id$v=19$m=65536,t=3,p=1$MDEyMzQ1Njc4OWFiY2RlZg$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
 // AuthenticateAccount performs a uniform username/password login lookup.
 // Unknown usernames and wrong passwords both return ErrInvalidCredential.
 func (m *MetaDB) AuthenticateAccount(ctx context.Context, username, password string, hasher *auth.PasswordHasher) (Account, error) {
@@ -162,10 +164,11 @@ func (m *MetaDB) AuthenticateAccount(ctx context.Context, username, password str
 		FROM accounts AS a
 		JOIN account_player_map AS mapping ON mapping.account_id = a.account_id
 		WHERE a.username = ?`, canonical).Scan(&account.ID, &account.Username, &account.PlayerID, &encodedHash)
+	accountFound := !errors.Is(err, sql.ErrNoRows)
 	if errors.Is(err, sql.ErrNoRows) {
-		// The precomputed valid-format hash drives unknown users through the same
-		// Argon2 verification work as known users with an incorrect password.
-		encodedHash = dummyPasswordHash
+		// The fixed, valid-format dummy hash preserves the Argon2 verification
+		// cost for unknown usernames without running another KDF on each miss.
+		encodedHash = dummyCredentialHash
 	} else if err != nil {
 		return Account{}, fmt.Errorf("lookup account: %w", err)
 	}
@@ -174,7 +177,7 @@ func (m *MetaDB) AuthenticateAccount(ctx context.Context, username, password str
 	if err != nil {
 		return Account{}, fmt.Errorf("verify stored password hash: %w", err)
 	}
-	if !ok || account.ID == "" {
+	if !ok || !accountFound {
 		return Account{}, ErrInvalidCredential
 	}
 	return account, nil
