@@ -12,6 +12,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <vector>
 
 namespace gtnh::net {
@@ -205,12 +206,21 @@ public:
   void SendRecipesForItemReq(uint16_t item_id, uint8_t mode, uint32_t req_id);
   void SendRecipesForMachineReq(uint16_t machine_id, uint32_t req_id);
 
-  // ---- Session identity --------------------------------------------------
-  //
-  // The server assigns both values (SessionWelcome on ctrl). Until the
-  // welcome arrives, PlayerId() is 0 — such a frame is attributed to the
-  // session by the gateway, so a client that connects slightly late is not
-  // rejected, it is merely not yet identifiable.
+  // ---- Account authentication and session identity ----------------------
+  using AuthResultCallback =
+      std::function<void(uint8_t status, const std::string &message)>;
+  void SetAuthResultCallback(AuthResultCallback cb) {
+    onAuthResult_ = std::move(cb);
+  }
+  bool SendAccountAuthRequest(const std::string &username,
+                              const std::string &password, bool register_account);
+  bool HasRetriableCredentials() const {
+    return retry_login_allowed_.load(std::memory_order_acquire) &&
+           !auth_username_.empty() && !auth_password_.empty();
+  }
+
+  // The server assigns both values only after authentication (SessionWelcome
+  // on ctrl). Until then PlayerId() and SessionId() are zero.
   using SessionWelcomeCallback =
       std::function<void(uint64_t session_id, uint64_t player_id)>;
   void SetSessionWelcomeCallback(SessionWelcomeCallback cb) {
@@ -236,6 +246,7 @@ private:
   int tcp_connect(const char *host, uint16_t port);
   bool start_ctrl_connection(int fd);
   bool start_bulk_connection(int fd);
+  bool connect_bulk_socket();
 
   // ---- Inbound message dispatch (called from Poll on game thread) --------
 
@@ -248,6 +259,11 @@ private:
   std::string host_;
   uint16_t ctrl_port_;
   uint16_t bulk_port_;
+  std::string auth_username_;
+  std::string auth_password_; // process-memory only; cleared on Disconnect()
+  bool auth_register_ = false;
+  std::atomic<bool> auth_succeeded_{false};
+  std::atomic<bool> retry_login_allowed_{false};
   int reconnect_attempts_ = 0;
   const int max_reconnect_attempts_ = 3;
   std::atomic<bool> reconnecting_{false};
@@ -270,7 +286,8 @@ private:
 
   // ---- Internal ----------------------------------------------------------
 
-  void EnqueueWrite(uint8_t msg_type, const void *data, size_t size);
+  bool EnqueueWrite(uint8_t msg_type, const void *data, size_t size,
+                    bool allow_pre_auth = false);
   void drain_queue(std::deque<QueuedMessage> &queue, bool is_bulk);
 
   std::unique_ptr<gtnh::net::IoUringConnection> ctrl_conn_;
@@ -307,6 +324,7 @@ private:
     ResourceBufferStateCallback onResourceBufferState_;
     PipeContentsCallback onPipeContents_;
     ReconnectCallback onReconnect_;
+    AuthResultCallback onAuthResult_;
     SessionWelcomeCallback onSessionWelcome_;
   ServiceHealthCallback onServiceHealth_;
 };

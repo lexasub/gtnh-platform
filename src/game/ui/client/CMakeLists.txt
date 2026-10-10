@@ -15,6 +15,7 @@ add_library(UI
     block/ChestWindow.cpp
     player/RecipeInspectWindow.cpp
     player/PlayerInventory.cpp
+    player/AccountLoginWindow.cpp
     player/CreativeMenu.cpp
     player/QuestBookWindow.cpp
     player/ConsoleWindow.cpp

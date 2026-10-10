@@ -2,6 +2,7 @@
 
 #include "Cache/ChunkLoadManager.h"
 #include "Cache/MeshManager.h"
+#include "AccountCredentialStore.h"
 #include "Camera/Camera.h"
 #include "Common/Inventory.h"
 #include "Common/NamedThreadPool.h"
@@ -14,6 +15,7 @@
 #include "Render/RenderBridge.h"
 #include <game/ui/client/InputManager.h>
 #include <game/ui/client/UIManager.h>
+#include <game/ui/client/player/AccountLoginWindow.h>
 #include <game/ui/client/Window.h>
 #include "World/InteractionSystem.h"
 #include "World/World.h"
@@ -48,6 +50,7 @@ private:
       asio::io_context::basic_executor_type<std::allocator<void>, 0>>
       chunkLoadWorkGuard_;
   std::shared_ptr<NetClient> netClient_;
+  AccountCredentialStore credentialStore_;
   NamedThreadPool &threadPool_ = NamedThreadPool::instance();
 
   // Server-driven recipe store (catalog + LRU caches); owns recipe queries.
@@ -79,6 +82,9 @@ private:
   // ---- UI system (Mediator + Strategy) ----
   InventoryState invState_; // shared player inventory (40 slots)
   UIManager uiMgr_;         // owns all IUIWindow instances
+  AccountLoginWindow *accountLoginWindow_ = nullptr;
+  bool authenticated_ = false;
+  bool autoLoginAttempt_ = false;
 
   // ---- Transient state ----
   std::string shaderDir_;
